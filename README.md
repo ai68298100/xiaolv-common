@@ -103,7 +103,7 @@ common.protocolCommands["xiaolv.common.open"]();          // 稳定命令 ID
 ```bash
 pnpm i
 pnpm run check   # tsc --noEmit
-pnpm test        # esbuild 转译 + node --test（130 项）
+pnpm test        # esbuild 转译 + node --test（132 项）
 pnpm run build   # dist/ + package.zip
 node scripts/render-prototype.cjs    # 原型图截图（需 Playwright Chromium）
 pnpm run test:ui                # 生产 UI 冒烟门禁（13 项 DOM 断言 + 截图，需 Playwright Chromium）

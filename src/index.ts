@@ -843,9 +843,11 @@ export default class XiaolvCommonPlugin extends Plugin {
     }
 
     /** 资源字节获取：/api/file/getFile 为二进制端点，fetchSyncPost 信封不适用，
-     *  使用同源 fetch（思源前端鉴权走 cookie，随同源请求自动携带）。失败返回 null。 */
+     *  使用同源 fetch（思源前端鉴权走 cookie，随同源请求自动携带）。失败返回 null。
+     *  路径校验：assets/ 单段名（禁止 .. 与子目录穿越），文件名字符不限（编码后传输）。 */
     private async fetchAssetBytes(assetPath: string): Promise<Uint8Array | null> {
-        if (!/^assets\/[\w\-. @\u4e00-\u9fff]+$/.test(assetPath)) return null;
+        const safe = assetPath.startsWith("assets/") && !assetPath.includes("..") && !assetPath.slice("assets/".length).includes("/");
+        if (!safe) return null;
         try {
             const res = await fetch(`/api/file/getFile?path=${encodeURIComponent(assetPath)}`);
             if (!res.ok) return null;

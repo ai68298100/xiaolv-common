@@ -550,16 +550,18 @@ export class LibraryService {
         return refreshed.ok ? ok({item: refreshed.data}) : {ok: false, reason: refreshed.reason, message: refreshed.message};
     }
 
-    /** 恢复来源：把指定文档/块设为条目新来源（用户显式操作，非自动改写）。 */
+    /** 恢复来源：把指定文档/块设为条目新来源（用户显式操作，非自动改写）。
+     *  未提供 sourceBlockId 时显式清空旧块引用（防止残留指向旧位置的失效 src-block）。 */
     async relinkSource(itemId: string, source: {sourceDocId: string; sourceBlockId?: string}): Promise<Receipt<{item: CommonItem}>> {
         if (!isBlockId(source.sourceDocId)) return fail("invalid-input", "sourceDocId invalid");
         const got = await this.getItem(itemId);
         if (!got.ok) return {ok: false, reason: got.reason, message: got.message};
         const attrs: Record<string, string> = {
             [ATTR.srcDoc]: source.sourceDocId,
+            // 显式置空：思源空串删属性语义；避免旧 src-block 残留指向错误位置
+            [ATTR.srcBlock]: source.sourceBlockId && isBlockId(source.sourceBlockId) ? source.sourceBlockId : "",
             [ATTR.updated]: String(Date.now()),
         };
-        if (source.sourceBlockId && isBlockId(source.sourceBlockId)) attrs[ATTR.srcBlock] = source.sourceBlockId;
         try {
             await this.kernel.request("setBlockAttrs", {id: got.data.blockId, attrs});
         } catch (err) {
