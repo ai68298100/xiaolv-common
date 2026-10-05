@@ -298,7 +298,6 @@
       this.ctx = ctx;
     }
     open() {
-      var _a;
       const isMobile = this.deps.isMobile();
       const content = this.buildDom(isMobile);
       this.dialog = new import_siyuan.Dialog({
@@ -318,7 +317,15 @@
       }
       const container = this.dialog.element.querySelector(".b3-dialog__container");
       if (container && isMobile) container.classList.add("xlc-sheet");
-      (_a = this.dialog.element.querySelector(".xlc-search-input")) == null ? void 0 : _a.focus();
+      const input = this.dialog.element.querySelector(".xlc-search-input");
+      if (input) {
+        const last = this.deps.getLastQuery();
+        if (last) {
+          input.value = last;
+          this.currentScope = "all";
+        }
+        input.focus();
+      }
       void this.refresh();
     }
     updateContext(ctx) {
@@ -341,6 +348,7 @@
       input.setAttribute("aria-label", this.deps.t("searchPlaceholder"));
       input.addEventListener("input", () => {
         this.currentScope = "all";
+        this.deps.setLastQuery(input.value);
         if (this.isComposing) return;
         if (this.inputDebounce) clearTimeout(this.inputDebounce);
         this.inputDebounce = setTimeout(() => void this.refresh(), 200);
@@ -894,6 +902,11 @@
     }
     /** 普通点击 = 主动作（insert；blockref = 插入引用） */
     async runPrimary(entry) {
+      if (this.deps.insertTarget) {
+        this.destroy();
+        await this.deps.insertToDoc(entry.id, this.deps.insertTarget.docId, this.deps.insertTarget.hPath);
+        return;
+      }
       const mode = entry.itemType === "blockref" ? "insert-ref" : "insert";
       await this.deps.runAction(entry.id, mode);
       this.destroy();
@@ -2519,6 +2532,10 @@
       getFilters: () => ({ type: "", tag: "" }),
       setFilters: () => {
       },
+      getLastQuery: () => "",
+      setLastQuery: () => {
+      },
+      insertTarget: null,
       openSetup: () => {
       },
       providerSearch: async (query) => query.includes("\u5DE5\u4F5C\u53F0") ? [

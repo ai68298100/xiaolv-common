@@ -84,6 +84,9 @@ function makeDeps(overrides: {aiEnabled?: boolean; missing?: boolean} = {}) {
         saveTransformed: async () => {},
         getFilters: () => ({type: "", tag: ""}),
         setFilters: () => {},
+        getLastQuery: () => "",
+        setLastQuery: () => {},
+        insertTarget: null,
         openSetup: () => {},
         providerSearch: async (query: string) => query.includes("工作台") ? [
             {virtualId: "pv:xiaolv-speed-switch:1", providerId: "xiaolv-speed-switch", providerName: "小驴雷切", title: "当前工作台", payload: "快速回到工作台布局（提供方演示数据）"},

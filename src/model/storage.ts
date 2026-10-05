@@ -82,6 +82,8 @@ export interface SearchPrefs {
     pinyin: boolean;
     /** 动态占位符（插入/复制时替换 {{xlc:date}} 等；默认开，存储内容始终保留模板原文） */
     placeholders: boolean;
+    /** 上次搜索词（跨会话保留，200 字符截断；空串=无） */
+    lastQuery: string;
 }
 
 export interface PluginState {
@@ -161,6 +163,9 @@ export function normalizeState(raw: unknown): PluginState {
         search: {
             pinyin: !(obj.search !== null && typeof obj.search === "object" && (obj.search as SearchPrefs).pinyin === false),
             placeholders: !(obj.search !== null && typeof obj.search === "object" && (obj.search as SearchPrefs).placeholders === false),
+            lastQuery: obj.search !== null && typeof obj.search === "object" && typeof (obj.search as SearchPrefs).lastQuery === "string"
+                ? ((obj.search as SearchPrefs).lastQuery as string).slice(0, LIMITS.queryChars)
+                : "",
         },
     };
 }

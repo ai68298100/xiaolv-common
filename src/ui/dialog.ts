@@ -30,6 +30,11 @@ export interface DialogDeps {
     /** 筛选状态持久化（类型/标签跨会话记忆；state.uiPrefs 承载） */
     getFilters: () => {type: string; tag: string};
     setFilters: (f: {type: string; tag: string}) => void;
+    /** 上次搜索词（跨会话保留；空串=无） */
+    getLastQuery: () => string;
+    setLastQuery: (q: string) => void;
+    /** 定向插入目标（文档树入口；设置后 Enter/点按插入到该文档而非活动编辑器） */
+    insertTarget?: {docId: string; hPath: string} | null;
     toggleFavorite: (itemId: string) => boolean;
     isFavorite: (itemId: string) => boolean;
     insertRaw: (markdown: string) => Promise<boolean>;
@@ -79,6 +84,11 @@ export class CommonSearchDialog {
         this.ctx = ctx;
     }
 
+    /** 定向插入目标（文档树入口；设置后 Enter/点按插入到该文档而非活动编辑器） */
+    insertTarget?: {docId: string; hPath: string} | null;
+    /** 上次搜索词（跨会话保留） */
+    getLastQuery: () => string;
+    setLastQuery: (q: string) => void;
     open(): void {
         const isMobile = this.deps.isMobile();
         const content = this.buildDom(isMobile);
@@ -99,7 +109,16 @@ export class CommonSearchDialog {
         }
         const container = this.dialog.element.querySelector(".b3-dialog__container");
         if (container && isMobile) container.classList.add("xlc-sheet");
-        this.dialog.element.querySelector<HTMLInputElement>(".xlc-search-input")?.focus();
+        const input = this.dialog.element.querySelector<HTMLInputElement>(".xlc-search-input");
+        if (input) {
+            // 上次搜索词回填（跨会话保留）
+            const last = this.deps.getLastQuery();
+            if (last) {
+                input.value = last;
+                this.currentScope = "all";
+            }
+            input.focus();
+        }
         void this.refresh();
     }
 
@@ -126,6 +145,7 @@ export class CommonSearchDialog {
         input.setAttribute("aria-label", this.deps.t("searchPlaceholder"));
         input.addEventListener("input", () => {
             this.currentScope = "all";
+            this.deps.setLastQuery(input.value);
             // IME 组合输入（中文输入法组词）期间跳过刷新——候选词未上屏不过滤；
             // compositionend 后统一刷新一次
             if (this.isComposing) return;
@@ -712,6 +732,12 @@ export class CommonSearchDialog {
 
     /** 普通点击 = 主动作（insert；blockref = 插入引用） */
     private async runPrimary(entry: SearchEntry): Promise<void> {
+        // 定向插入模式（文档树入口）：插入到指定文档而非活动编辑器
+        if (this.deps.insertTarget) {
+            this.destroy();
+            await this.deps.insertToDoc(entry.id, this.deps.insertTarget.docId, this.deps.insertTarget.hPath);
+            return;
+        }
         const mode: InsertMode = entry.itemType === "blockref" ? "insert-ref" : "insert";
         await this.deps.runAction(entry.id, mode);
         this.destroy();

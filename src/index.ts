@@ -483,7 +483,8 @@ export default class XiaolvCommonPlugin extends Plugin {
     /** 预览文本的有界可丢弃缓存（60s TTL：同步变更后预览最多陈旧一分钟；插入/复制仍现场取正文） */
     private previewCache = new LruCache<string>(PREVIEW_CACHE_CAPACITY, PREVIEW_CACHE_TTL_MS);
 
-    openSearch(): void {
+    /** 打开搜索弹窗；insertTarget 提供时进入定向插入模式（插入到指定文档） */
+    openSearch(insertTarget?: {docId: string; hPath: string}): void {
         if (!this.config) {
             this.openSetup();
             return;
@@ -637,6 +638,11 @@ export default class XiaolvCommonPlugin extends Plugin {
                 this.state.uiPrefs.lastTagFilter = f.tag.slice(0, 64);
                 this.persistSoon();
             },
+            getLastQuery: () => this.state.search.lastQuery,
+            setLastQuery: (q) => {
+                this.state.search.lastQuery = q.slice(0, 200);
+                this.persistSoon();
+            },
             preview: async (itemId) => {
                 const cached = this.previewCache.get(itemId);
                 if (cached !== undefined) return cached;
@@ -765,6 +771,7 @@ export default class XiaolvCommonPlugin extends Plugin {
             },
             isMobile: () => this.host.isMobile(),
         }, this.searchContext());
+        this.searchDialog.insertTarget = insertTarget ? {docId: insertTarget.docId, hPath: insertTarget.hPath} : null;
         this.searchDialog.open();
     }
 
