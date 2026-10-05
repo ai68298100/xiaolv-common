@@ -132,6 +132,7 @@
       this.deps = deps;
       this.dialog = null;
       this.results = [];
+      this.providerRows = [];
       this.aiResults = false;
       this.activeIndex = 0;
       this.searchSeq = 0;
@@ -303,7 +304,19 @@
       root.appendChild(bodyWrap);
       const footer = document.createElement("div");
       footer.className = "xlc-footer";
-      footer.textContent = isMobile ? this.deps.t("usageHintMobile") : this.deps.t("usageHint");
+      const hintText = document.createElement("span");
+      hintText.textContent = isMobile ? this.deps.t("usageHintMobile") : this.deps.t("usageHint");
+      footer.appendChild(hintText);
+      if (!isMobile) {
+        const gear = document.createElement("button");
+        gear.className = "b3-button b3-button--text xlc-btn-ghost xlc-footer-gear";
+        gear.textContent = "\u2699 " + this.deps.t("openSettings");
+        gear.addEventListener("click", () => {
+          this.destroy();
+          this.deps.openSetup();
+        });
+        footer.appendChild(gear);
+      }
       root.appendChild(footer);
       return root;
     }
@@ -451,9 +464,35 @@
       }
       if (seq !== this.searchSeq) return;
       this.activeIndex = 0;
-      if (status) status.textContent = this.results.length ? "" : this.deps.t("empty");
+      if (status) {
+        if (this.results.length) {
+          status.textContent = "";
+        } else if (query.text.trim() && !query.text.trim().startsWith("?") && this.deps.aiEnabled()) {
+          status.textContent = this.deps.t("semanticSuggestion");
+        } else {
+          status.textContent = this.deps.t("empty");
+        }
+      }
       if (footer) {
         footer.textContent = (this.deps.isMobile() ? this.deps.t("usageHintMobile") : this.deps.t("usageHint")) + " \uFF5C " + this.deps.t("totalItems", String(total)) + (truncated ? " \u26A0" : "");
+        const gear = document.createElement("button");
+        gear.className = "b3-button b3-button--text xlc-btn-ghost xlc-footer-gear";
+        gear.textContent = "\u2699 " + this.deps.t("openSettings");
+        gear.addEventListener("click", () => {
+          this.destroy();
+          this.deps.openSetup();
+        });
+        footer.appendChild(gear);
+      }
+      this.providerRows = [];
+      const q = query.text.trim();
+      if (q && !q.startsWith("?")) {
+        try {
+          this.providerRows = await this.deps.providerSearch(q);
+        } catch {
+          this.providerRows = [];
+        }
+        if (seq !== this.searchSeq) return;
       }
       this.renderList(list);
       this.updatePreview();
@@ -511,7 +550,74 @@
         row.appendChild(star);
         list.appendChild(row);
       }
+      if (this.providerRows.length > 0) {
+        const header = document.createElement("div");
+        header.className = "xlc-provider-header";
+        header.textContent = "\u2726 " + this.deps.t("providerSection") + " \xB7 " + this.providerRows.length;
+        list.appendChild(header);
+        for (const row of this.providerRows) {
+          const el = document.createElement("div");
+          el.className = "xlc-row xlc-row--provider";
+          el.dataset.xlcVirtualId = row.virtualId;
+          const main = document.createElement("div");
+          main.className = "xlc-row-main";
+          const title = document.createElement("div");
+          title.className = "xlc-row-title";
+          const badge = document.createElement("span");
+          badge.className = "xlc-badge xlc-badge--ai";
+          badge.textContent = row.providerName.slice(0, 12);
+          title.appendChild(badge);
+          const titleText = document.createElement("span");
+          titleText.className = "xlc-row-titletext";
+          titleText.textContent = row.title || row.payload.slice(0, 40);
+          title.appendChild(titleText);
+          main.appendChild(title);
+          const meta = document.createElement("div");
+          meta.className = "xlc-row-meta";
+          meta.textContent = row.payload.slice(0, 120);
+          main.appendChild(meta);
+          el.appendChild(main);
+          el.addEventListener("click", () => void this.showProviderMenu(row, el));
+          el.addEventListener("contextmenu", (e) => {
+            e.preventDefault();
+            void this.showProviderMenu(row, el);
+          });
+          list.appendChild(el);
+        }
+      }
       this.paintActive();
+    }
+    async showProviderMenu(row, anchor) {
+      var _a, _b;
+      const menu = document.createElement("div");
+      menu.className = "xlc-menu";
+      const lbl = document.createElement("div");
+      lbl.className = "xlc-menu-lbl";
+      lbl.textContent = row.providerName + " \xB7 " + this.deps.t("providerSection");
+      menu.appendChild(lbl);
+      const sec = document.createElement("div");
+      sec.className = "xlc-menu-sec";
+      const mk = (label, run) => {
+        const btn = document.createElement("button");
+        btn.className = "xlc-menu-item";
+        btn.textContent = label;
+        btn.addEventListener("click", async () => {
+          this.destroy();
+          await run();
+        });
+        sec.appendChild(btn);
+      };
+      mk(this.deps.t("providerInsert"), () => this.deps.insertProviderPayload(row.payload));
+      mk(this.deps.t("providerCopy"), () => this.deps.copyProviderPayload(row.payload));
+      menu.appendChild(sec);
+      ((_b = (_a = this.dialog) == null ? void 0 : _a.element) != null ? _b : anchor).appendChild(menu);
+      const dismiss = (e) => {
+        if (!menu.contains(e.target)) {
+          menu.remove();
+          document.removeEventListener("pointerdown", dismiss, true);
+        }
+      };
+      document.addEventListener("pointerdown", dismiss, true);
     }
     async refreshPreservingPosition() {
       var _a;
@@ -855,7 +961,11 @@
       insertToDoc: "\u63D2\u5165\u5230\u6307\u5B9A\u6587\u6863",
       insertToDocPick: "\u9009\u62E9\u76EE\u6807\u6587\u6863\uFF08\u8F93\u5165\u5173\u952E\u8BCD\u641C\u7D22\uFF09",
       saveTransformed: "\u5B58\u4E3A\u65B0\u6761\u76EE",
-      deleteConfirm: "\u5220\u9664\u6761\u76EE\u300C%s\u300D\uFF1F"
+      deleteConfirm: "\u5220\u9664\u6761\u76EE\u300C%s\u300D\uFF1F",
+      providerSection: "\u63D0\u4F9B\u65B9\u5185\u5BB9",
+      providerInsert: "\u63D2\u5165\uFF08\u63D0\u4F9B\u65B9\uFF09",
+      providerCopy: "\u590D\u5236\uFF08\u63D0\u4F9B\u65B9\uFF09",
+      openSettings: "\u8BBE\u7F6E / \u66F4\u6539\u5185\u5BB9\u5E93"
     };
     let text = (_a = map[key]) != null ? _a : key;
     for (const arg of args) text = text.replace("%s", arg);
@@ -890,6 +1000,14 @@
       },
       saveTransformed: async () => {
       },
+      openSetup: () => {
+      },
+      providerSearch: async (query) => query.includes("\u5DE5\u4F5C\u53F0") ? [
+        { virtualId: "pv:xiaolv-speed-switch:1", providerId: "xiaolv-speed-switch", providerName: "\u5C0F\u9A74\u96F7\u5207", title: "\u5F53\u524D\u5DE5\u4F5C\u53F0", payload: "\u5FEB\u901F\u56DE\u5230\u5DE5\u4F5C\u53F0\u5E03\u5C40\uFF08\u63D0\u4F9B\u65B9\u6F14\u793A\u6570\u636E\uFF09" },
+        { virtualId: "pv:xiaolv-checkin:1", providerId: "xiaolv-checkin", providerName: "\u5C0F\u9A74\u6253\u5361", title: "\u4ECA\u65E5\u6253\u5361\u72B6\u6001", payload: "\u5DF2\u5B8C\u6210 3/4 \u9879\u4E60\u60EF\u6253\u5361\uFF08\u63D0\u4F9B\u65B9\u6F14\u793A\u6570\u636E\uFF09" }
+      ] : [],
+      insertProviderPayload: async () => true,
+      copyProviderPayload: async () => true,
       aiSemantic: async (_desc) => ({ ok: true, entries: ENTRIES.slice(0, 3) }),
       aiTransform: async (_itemId, kind) => ({
         ok: true,
@@ -904,6 +1022,7 @@
   }
   window.XlcHarness = {
     openDialog(overrides) {
+      var _a;
       const dialog = new CommonSearchDialog(makeDeps(overrides), {
         favorites: /* @__PURE__ */ new Set(["xlc-demo0000001"]),
         recents: /* @__PURE__ */ new Map([["xlc-demo0000002", 2]]),
@@ -912,7 +1031,7 @@
       dialog.open();
       const input = document.querySelector(".xlc-search-input");
       if (input) {
-        input.value = "?\u7ED9\u5BA2\u6237\u5EF6\u671F\u4E0A\u7EBF\u7684\u9053\u6B49\u56DE\u590D";
+        input.value = (_a = overrides == null ? void 0 : overrides.query) != null ? _a : "?\u7ED9\u5BA2\u6237\u5EF6\u671F\u4E0A\u7EBF\u7684\u9053\u6B49\u56DE\u590D";
         input.dispatchEvent(new Event("input"));
       }
       return dialog;

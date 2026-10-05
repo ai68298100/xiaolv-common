@@ -10,6 +10,7 @@ import {SearchEntry, SearchQuery, SearchContext} from "../model/search";
 import {CommonItem} from "../model/item";
 import {InsertMode} from "../model/actions";
 import {TransformKind} from "../service/ai";
+import {ProviderRow} from "../model/provider-section";
 
 export interface DialogDeps {
     t: (key: string, ...args: string[]) => string;
@@ -31,6 +32,11 @@ export interface DialogDeps {
     insertRaw: (markdown: string) => Promise<boolean>;
     getSort: () => "manual" | "recent" | "title";
     cycleSort: () => void;
+    openSetup: () => void;
+    /** 提供方候选（pv: 虚拟条目；绝不进入块执行器） */
+    providerSearch: (query: string) => Promise<ProviderRow[]>;
+    insertProviderPayload: (payload: string) => Promise<boolean>;
+    copyProviderPayload: (payload: string) => Promise<boolean>;
     /** AI 语义找（? 前缀触发；仅元数据出域） */
     aiSemantic: (desc: string) => Promise<{ok: true; entries: SearchEntry[]} | {ok: false; message: string}>;
     /** AI 变换（需正文出域权限） */
@@ -51,6 +57,7 @@ const TRANSFORM_KINDS: TransformKind[] = ["polish", "shorten", "formal", "transl
 export class CommonSearchDialog {
     private dialog: Dialog | null = null;
     private results: SearchEntry[] = [];
+    private providerRows: ProviderRow[] = [];
     private aiResults = false;
     private activeIndex = 0;
     private searchSeq = 0;
@@ -242,7 +249,19 @@ export class CommonSearchDialog {
 
         const footer = document.createElement("div");
         footer.className = "xlc-footer";
-        footer.textContent = isMobile ? this.deps.t("usageHintMobile") : this.deps.t("usageHint");
+        const hintText = document.createElement("span");
+        hintText.textContent = isMobile ? this.deps.t("usageHintMobile") : this.deps.t("usageHint");
+        footer.appendChild(hintText);
+        if (!isMobile) {
+            const gear = document.createElement("button");
+            gear.className = "b3-button b3-button--text xlc-btn-ghost xlc-footer-gear";
+            gear.textContent = "⚙ " + this.deps.t("openSettings");
+            gear.addEventListener("click", () => {
+                this.destroy();
+                this.deps.openSetup();
+            });
+            footer.appendChild(gear);
+        }
         root.appendChild(footer);
         return root;
     }
@@ -392,10 +411,37 @@ export class CommonSearchDialog {
         }
         if (seq !== this.searchSeq) return;
         this.activeIndex = 0;
-        if (status) status.textContent = this.results.length ? "" : this.deps.t("empty");
+        if (status) {
+            if (this.results.length) {
+                status.textContent = "";
+            } else if (query.text.trim() && !query.text.trim().startsWith("?") && this.deps.aiEnabled()) {
+                status.textContent = this.deps.t("semanticSuggestion");
+            } else {
+                status.textContent = this.deps.t("empty");
+            }
+        }
         if (footer) {
             footer.textContent = (this.deps.isMobile() ? this.deps.t("usageHintMobile") : this.deps.t("usageHint"))
                 + " ｜ " + this.deps.t("totalItems", String(total)) + (truncated ? " ⚠" : "");
+            const gear = document.createElement("button");
+            gear.className = "b3-button b3-button--text xlc-btn-ghost xlc-footer-gear";
+            gear.textContent = "⚙ " + this.deps.t("openSettings");
+            gear.addEventListener("click", () => {
+                this.destroy();
+                this.deps.openSetup();
+            });
+            footer.appendChild(gear);
+        }
+        // 提供方分区（有查询词且注册了可执行 provider 时；pv: 虚拟行不进键盘导航/执行器）
+        this.providerRows = [];
+        const q = query.text.trim();
+        if (q && !q.startsWith("?")) {
+            try {
+                this.providerRows = await this.deps.providerSearch(q);
+            } catch {
+                this.providerRows = [];
+            }
+            if (seq !== this.searchSeq) return;
         }
         this.renderList(list);
         this.updatePreview();
@@ -457,7 +503,75 @@ export class CommonSearchDialog {
             row.appendChild(star);
             list.appendChild(row);
         }
+        // 提供方分区（pv: 虚拟行；点击弹小菜单=插入/复制 payload；不进键盘导航）
+        if (this.providerRows.length > 0) {
+            const header = document.createElement("div");
+            header.className = "xlc-provider-header";
+            header.textContent = "✦ " + this.deps.t("providerSection") + " · " + this.providerRows.length;
+            list.appendChild(header);
+            for (const row of this.providerRows) {
+                const el = document.createElement("div");
+                el.className = "xlc-row xlc-row--provider";
+                el.dataset.xlcVirtualId = row.virtualId;
+                const main = document.createElement("div");
+                main.className = "xlc-row-main";
+                const title = document.createElement("div");
+                title.className = "xlc-row-title";
+                const badge = document.createElement("span");
+                badge.className = "xlc-badge xlc-badge--ai";
+                badge.textContent = row.providerName.slice(0, 12);
+                title.appendChild(badge);
+                const titleText = document.createElement("span");
+                titleText.className = "xlc-row-titletext";
+                titleText.textContent = row.title || row.payload.slice(0, 40);
+                title.appendChild(titleText);
+                main.appendChild(title);
+                const meta = document.createElement("div");
+                meta.className = "xlc-row-meta";
+                meta.textContent = row.payload.slice(0, 120);
+                main.appendChild(meta);
+                el.appendChild(main);
+                el.addEventListener("click", () => void this.showProviderMenu(row, el));
+                el.addEventListener("contextmenu", (e) => {
+                    e.preventDefault();
+                    void this.showProviderMenu(row, el);
+                });
+                list.appendChild(el);
+            }
+        }
         this.paintActive();
+    }
+
+    private async showProviderMenu(row: ProviderRow, anchor: HTMLElement): Promise<void> {
+        const menu = document.createElement("div");
+        menu.className = "xlc-menu";
+        const lbl = document.createElement("div");
+        lbl.className = "xlc-menu-lbl";
+        lbl.textContent = row.providerName + " · " + this.deps.t("providerSection");
+        menu.appendChild(lbl);
+        const sec = document.createElement("div");
+        sec.className = "xlc-menu-sec";
+        const mk = (label: string, run: () => Promise<unknown>): void => {
+            const btn = document.createElement("button");
+            btn.className = "xlc-menu-item";
+            btn.textContent = label;
+            btn.addEventListener("click", async () => {
+                this.destroy();
+                await run();
+            });
+            sec.appendChild(btn);
+        };
+        mk(this.deps.t("providerInsert"), () => this.deps.insertProviderPayload(row.payload));
+        mk(this.deps.t("providerCopy"), () => this.deps.copyProviderPayload(row.payload));
+        menu.appendChild(sec);
+        (this.dialog?.element ?? anchor).appendChild(menu);
+        const dismiss = (e: Event) => {
+            if (!menu.contains(e.target as Node)) {
+                menu.remove();
+                document.removeEventListener("pointerdown", dismiss, true);
+            }
+        };
+        document.addEventListener("pointerdown", dismiss, true);
     }
 
     private async refreshPreservingPosition(): Promise<void> {

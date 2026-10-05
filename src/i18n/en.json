@@ -157,5 +157,10 @@
   "pinyinToggle": "Pinyin search (local full-pinyin/initials matching, can disable)",
   "placeholdersToggle": "Dynamic placeholders (replace {{xlc:date}} etc. at insert/copy time)",
   "saveTransformed": "Save as new item",
-  "placeholdersHint": "Supports {{xlc:date}} {{xlc:time}} {{xlc:datetime}} {{xlc:weekday}}; replaced only at insert/copy"
+  "placeholdersHint": "Supports {{xlc:date}} {{xlc:time}} {{xlc:datetime}} {{xlc:weekday}}; replaced only at insert/copy",
+  "providerSection": "Provider content",
+  "providerInsert": "Insert (provider)",
+  "providerCopy": "Copy (provider)",
+  "openSettings": "Settings / change library",
+  "semanticSuggestion": "No local results. Try AI semantic search: prefix keywords with ?"
 }

@@ -18,6 +18,7 @@ import {SearchContext} from "./model/search";
 import {LruCache, PREVIEW_CACHE_CAPACITY} from "./model/lru";
 import {setPinyinAdapter, createNoopPinyinAdapter} from "./model/pinyin";
 import {createTinyPinyinAdapter} from "./model/pinyin-tiny";
+import {buildProviderRows} from "./model/provider-section";
 import {CapabilityDescriptor, ProviderDescriptor} from "./model/protocol";
 import {LibraryService, NewItemInput, SourceHealth} from "./service/library";
 import {ActionExecutor, HostBridge} from "./service/commands";
@@ -195,8 +196,14 @@ export default class XiaolvCommonPlugin extends Plugin {
         return t("kernelError", (err as Error)?.message ?? String(err));
     }
 
+    /** 来源失效预检节流（30s 内至多一次批量 checkBlocksExist；打开来源仍实时校验兜底） */
+    private lastHealthPrefetch = 0;
+
     /** 列表来源失效预检（批量一次 checkBlocksExist；不阻塞渲染，仅喂徽标） */
     private async prefetchSourceHealth(entries: Array<{sourceDocId?: string; sourceBlockId?: string}>): Promise<void> {
+        const now = Date.now();
+        if (now - this.lastHealthPrefetch < 30_000) return;
+        this.lastHealthPrefetch = now;
         const ids = new Set<string>();
         for (const e of entries.slice(0, 100)) {
             if (e.sourceBlockId) ids.add(e.sourceBlockId);
@@ -400,6 +407,43 @@ export default class XiaolvCommonPlugin extends Plugin {
                 } else {
                     this.notify("error", created.message);
                 }
+            },
+            openSetup: () => this.openSetup(),
+            providerSearch: async (query) => {
+                const rows = [];
+                for (const provider of this.registry.listExecutable()) {
+                    if (!provider.runtime?.search) continue;
+                    try {
+                        const hits = await provider.runtime.search(query);
+                        for (const hit of hits ?? []) {
+                            rows.push({
+                                providerId: provider.record.pluginId,
+                                providerName: provider.record.displayName,
+                                title: String(hit?.title ?? ""),
+                                payload: String(hit?.payload ?? ""),
+                            });
+                        }
+                    } catch (err) {
+                        // 提供方失败不阻断主搜索；回执如实提示
+                        this.notify("error", this.i18nFn()("providerUnavailable", provider.record.displayName) + ` (${(err as Error).message})`);
+                    }
+                }
+                return buildProviderRows(rows);
+            },
+            insertProviderPayload: async (payload) => {
+                const trimmed = (payload ?? "").trim();
+                if (!trimmed) return false;
+                if (this.host.hasActiveEditor()) {
+                    const inserted = this.host.insertMarkdown(trimmed);
+                    if (inserted) this.notify("info", this.i18nFn()("inserted", "provider"));
+                    return inserted;
+                }
+                const copied = await this.host.writeClipboard(trimmed);
+                this.notify("info", this.i18nFn()("insertNoEditor"));
+                return copied;
+            },
+            copyProviderPayload: async (payload) => {
+                return this.host.writeClipboard((payload ?? "").trim());
             },
             getTags: async () => {
                 const {collectTags} = await import("./model/search");

@@ -94,7 +94,7 @@ common.protocolCommands["xiaolv.common.open"]();          // 稳定命令 ID
 ```bash
 pnpm i
 pnpm run check   # tsc --noEmit
-pnpm test        # esbuild 转译 + node --test（109 项）
+pnpm test        # esbuild 转译 + node --test（111 项）
 pnpm run build   # dist/ + package.zip
 node scripts/render-prototype.cjs    # 原型图截图（需 Playwright Chromium）
 node scripts/render-production.cjs   # 生产 UI 效果截图（真实 dist CSS+DOM）

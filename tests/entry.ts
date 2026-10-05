@@ -12,6 +12,7 @@ import * as lru from "../src/model/lru";
 import * as pinyin from "../src/model/pinyin";
 import * as pinyinTiny from "../src/model/pinyin-tiny";
 import * as placeholders from "../src/model/placeholders";
+import * as providerSection from "../src/model/provider-section";
 import * as library from "../src/service/library";
 import * as commands from "../src/service/commands";
 import * as providers from "../src/service/providers";
@@ -27,6 +28,7 @@ export {
     pinyin,
     pinyinTiny,
     placeholders,
+    providerSection,
     transfer,
     client,
     lru,

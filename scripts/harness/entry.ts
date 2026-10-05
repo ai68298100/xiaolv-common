@@ -39,6 +39,8 @@ const T = (key: string, ...args: string[]): string => {
         totalItems: "共 %s 条",
         duplicateItem: "创建副本", insertToDoc: "插入到指定文档", insertToDocPick: "选择目标文档（输入关键词搜索）",
         saveTransformed: "存为新条目", deleteConfirm: "删除条目「%s」？",
+        providerSection: "提供方内容", providerInsert: "插入（提供方）", providerCopy: "复制（提供方）",
+        openSettings: "设置 / 更改内容库",
     };
     let text = map[key] ?? key;
     for (const arg of args) text = text.replace("%s", arg);
@@ -65,6 +67,13 @@ function makeDeps(overrides: {aiEnabled?: boolean; missing?: boolean} = {}) {
         insertToDoc: async () => true,
         duplicateItem: async () => {},
         saveTransformed: async () => {},
+        openSetup: () => {},
+        providerSearch: async (query: string) => query.includes("工作台") ? [
+            {virtualId: "pv:xiaolv-speed-switch:1", providerId: "xiaolv-speed-switch", providerName: "小驴雷切", title: "当前工作台", payload: "快速回到工作台布局（提供方演示数据）"},
+            {virtualId: "pv:xiaolv-checkin:1", providerId: "xiaolv-checkin", providerName: "小驴打卡", title: "今日打卡状态", payload: "已完成 3/4 项习惯打卡（提供方演示数据）"},
+        ] : [],
+        insertProviderPayload: async () => true,
+        copyProviderPayload: async () => true,
         aiSemantic: async (_desc: string) => ({ok: true as const, entries: ENTRIES.slice(0, 3)}),
         aiTransform: async (_itemId: string, kind: TransformKind) => ({
             ok: true as const,
@@ -80,7 +89,7 @@ function makeDeps(overrides: {aiEnabled?: boolean; missing?: boolean} = {}) {
 }
 
 (window as unknown as {XlcHarness: unknown}).XlcHarness = {
-    openDialog(overrides?: {aiEnabled?: boolean; missing?: boolean; scope?: "all" | "favorites"}): CommonSearchDialog {
+    openDialog(overrides?: {aiEnabled?: boolean; missing?: boolean; scope?: "all" | "favorites"; query?: string}): CommonSearchDialog {
         const dialog = new CommonSearchDialog(makeDeps(overrides), {
             favorites: new Set(["xlc-demo0000001"]),
             recents: new Map([["xlc-demo0000002", 2]]),
@@ -90,7 +99,7 @@ function makeDeps(overrides: {aiEnabled?: boolean; missing?: boolean} = {}) {
         // 预填搜索与选中态，让截图呈现工作状态
         const input = document.querySelector<HTMLInputElement>(".xlc-search-input");
         if (input) {
-            input.value = "?给客户延期上线的道歉回复";
+            input.value = overrides?.query ?? "?给客户延期上线的道歉回复";
             input.dispatchEvent(new Event("input"));
         }
         return dialog;

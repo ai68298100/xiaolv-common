@@ -95,6 +95,7 @@ fs.writeFileSync(path.join(OUT, "harness.html"), html);
 
     await shoot("desktop-light", {theme: "light", aiEnabled: true, missing: true});
     await shoot("desktop-dark", {theme: "dark", aiEnabled: true, missing: false});
+    await shoot("provider-light", {theme: "light", aiEnabled: true, missing: false, query: "工作台"});
     await browser.close();
     console.log("production renders done:", fs.readdirSync(OUT).filter((f) => f.startsWith("production-")).join(", "));
 })();

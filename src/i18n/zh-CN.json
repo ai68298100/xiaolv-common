@@ -157,5 +157,10 @@
   "pinyinToggle": "拼音搜索（全拼/首字母本地匹配，可关）",
   "placeholdersToggle": "动态占位符（插入时替换 {{xlc:date}} 等为当前日期时间）",
   "saveTransformed": "存为新条目",
-  "placeholdersHint": "支持 {{xlc:date}} {{xlc:time}} {{xlc:datetime}} {{xlc:weekday}}，仅插入/复制时替换"
+  "placeholdersHint": "支持 {{xlc:date}} {{xlc:time}} {{xlc:datetime}} {{xlc:weekday}}，仅插入/复制时替换",
+  "providerSection": "提供方内容",
+  "providerInsert": "插入（提供方）",
+  "providerCopy": "复制（提供方）",
+  "openSettings": "设置 / 更改内容库",
+  "semanticSuggestion": "没有本地结果。试试 AI 语义找：在关键词前加 ?"
 }
