@@ -11,6 +11,8 @@
 
 ## 快速验证（无需构建）
 
+控制台演示脚本已升级为全协议演示（注册 + 搜索 + 插入 + 复制 + 能力协商 + 注销），见 [examples/provider-demo.console.js](../examples/provider-demo.console.js)。
+
 打开思源桌面端开发者工具（Ctrl+Shift+I），粘贴仓库 [examples/provider-demo.console.js](../examples/provider-demo.console.js) 全文回车，即注册「控制台演示」提供方；打开小驴常用搜索即可看到提供方分区。
 
 ## 消费小驴常用的服务（如：打卡插件想把「今日状态」插入笔记）

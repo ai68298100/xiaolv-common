@@ -36,4 +36,27 @@
         },
     );
     console.log("[xiaolv-demo] registerProvider →", result.ok ? "成功 ✅（打开搜索输入「会议」查看提供方分区）" : `失败：${result.message}`);
+
+    // 全协议演示：搜索 / 插入 / 复制 / 打开来源 / 能力协商
+    window.__xiaolvDemo = {
+        async search(query) {
+            const r = await common.service.search({text: query || "", itemType: "", tag: "", scope: "all"});
+            console.table(r.ok ? r.data : r);
+            return r;
+        },
+        async insert(itemId, mode) {
+            return common.service.insert(itemId, {mode: mode || "insert"});
+        },
+        async copy(itemId) {
+            return common.service.copy(itemId);
+        },
+        capabilities() {
+            return common.getCapabilities();
+        },
+        uninstall() {
+            common.unregisterProvider("console-demo");
+            console.log("[xiaolv-demo] 提供方已注销");
+        },
+    };
+    console.log("[xiaolv-demo] 全协议演示挂到 __xiaolvDemo：search('道歉') / insert(id) / copy(id) / capabilities() / uninstall()");
 })();
