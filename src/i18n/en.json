@@ -180,5 +180,8 @@
   "clearSource": "Clear source reference",
   "clearSourceDone": "Source reference cleared",
   "captureBlockRefMenu": "Save block ref as item",
-  "captureLinkMenu": "Save link as item"
+  "captureLinkMenu": "Save link as item",
+  "captureImageMenu": "Save image as item",
+  "setAsLibraryMenu": "Set as common library docs",
+  "setAsLibraryConfirm": "Set the %s selected docs as your common library (replaces current config)?"
 }

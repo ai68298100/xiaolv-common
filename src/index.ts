@@ -4,6 +4,7 @@ import {
     Dialog,
     Plugin,
     showMessage,
+    confirm,
 } from "siyuan";
 import type {IMenuItem} from "siyuan";
 import {fetchSyncPost} from "siyuan";
@@ -26,7 +27,7 @@ import {AiAssistant, AiUnavailableError, SearchMetaEntry} from "./service/ai";
 import {ProviderRegistry} from "./service/providers";
 import {XiaolvCommonService} from "./service/service";
 import {CommonSearchDialog} from "./ui/dialog";
-import {CaptureDialog, confirmDelete} from "./ui/capture";
+import {CaptureDialog, confirmDelete, classifyLinkTarget} from "./ui/capture";
 import {ICONS} from "./ui/icons";
 import {openSetupDialog, openSettingsDialog, type SettingsUiContext} from "./ui/settings-dialog";
 import type {TransformKind} from "./service/ai";
@@ -50,6 +51,8 @@ export default class XiaolvCommonPlugin extends Plugin {
     private menuHandler: ((event: {detail: {menu: {addItem: (item: {icon: string; label: string; click: () => void}) => void}}}) => void) | null = null;
     private blockRefMenuHandler: ((event: {detail: {menu: {addItem: (item: {icon: string; label: string; click: () => void}) => void}; element?: Element}}) => void) | null = null;
     private linkMenuHandler: ((event: {detail: {menu: {addItem: (item: {icon: string; label: string; click: () => void}) => void}; element?: Element}}) => void) | null = null;
+    private imageMenuHandler: ((event: {detail: {menu: {addItem: (item: {icon: string; label: string; click: () => void}) => void}; element?: Element}}) => void) | null = null;
+    private docTreeMenuHandler: ((event: {detail: {menu: {addItem: (item: {icon: string; label: string; click: () => void}) => void}; elements?: Array<Element | null>; type?: string}}) => void) | null = null;
     /** 来源失效预检缓存（每次搜索刷新时批量重建；仅为列表徽标，打开来源仍实时校验） */
     private missingSources = new Set<string>();
     /** 协议命令 ID → 执行器（xiaolv.common.*，供雷切等按稳定 ID 调用） */
@@ -413,6 +416,48 @@ export default class XiaolvCommonPlugin extends Plugin {
                 });
             };
             this.eventBus.on("open-menu-link", this.linkMenuHandler);
+            // 图片右键：把图片存为图片条目（官方 detail.element = assetElement，src 即 assets/ 路径）
+            this.imageMenuHandler = (event) => {
+                const {menu, element} = event.detail;
+                const src = element?.getAttribute?.("src") ?? "";
+                const target = classifyLinkTarget(src.startsWith("assets/") ? src : "");
+                if (!target) return;
+                menu.addItem({
+                    icon: "iconXlcCommon",
+                    label: this.i18nFn()("captureImageMenu"),
+                    click: () => this.capture.captureImage(target.value, element?.getAttribute?.("title") ?? ""),
+                });
+            };
+            this.eventBus.on("open-menu-image", this.imageMenuHandler);
+            // 文档树右键：把选中文档一键设为常用库文档（doc 模式；多选取前 64 个）
+            this.docTreeMenuHandler = (event) => {
+                const {menu, elements, type} = event.detail;
+                if (type !== "items" && type !== "docs" && type !== undefined) return;
+                const ids: string[] = [];
+                for (const el of elements ?? []) {
+                    const id = el?.getAttribute?.("data-node-id") ?? "";
+                    if (id && ids.length < 64) ids.push(id);
+                }
+                if (ids.length === 0) return;
+                menu.addItem({
+                    icon: "iconXlcCommon",
+                    label: this.i18nFn()("setAsLibraryMenu"),
+                    click: () => {
+                        confirm("⚠️ " + this.i18nFn()("setupTitle"), this.i18nFn()("setAsLibraryConfirm", String(ids.length)), () => {
+                            this.applyConfig({
+                                configVersion: CONFIG_VERSION,
+                                mode: "doc",
+                                notebookIds: [],
+                                containerDocIds: ids,
+                                createdDocIds: [],
+                                configuredAt: Date.now(),
+                            });
+                            this.notify("info", this.i18nFn()("libDocCreated", `${ids.length} doc(s)`));
+                        });
+                    },
+                });
+            };
+            this.eventBus.on("open-menu-doctree", this.docTreeMenuHandler);
         } catch {
             // 事件契约变化时降级：右键入口缺席，其余入口仍可用
         }
@@ -947,6 +992,8 @@ export default class XiaolvCommonPlugin extends Plugin {
         for (const [evt, handler] of [
             ["open-menu-blockref", this.blockRefMenuHandler],
             ["open-menu-link", this.linkMenuHandler],
+            ["open-menu-image", this.imageMenuHandler],
+            ["open-menu-doctree", this.docTreeMenuHandler],
         ] as const) {
             if (handler) {
                 try {

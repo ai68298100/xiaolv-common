@@ -95,6 +95,17 @@ export class CaptureDialog {
         });
     }
 
+    /** 右键图片捕获：assets/ 图片存为图片条目（非 assets 图诚实拒绝） */
+    captureImage(assetPath: string, altText: string): void {
+        const target = classifyLinkTarget(assetPath);
+        if (!target || target.kind !== "asset") {
+            this.deps.notify("error", this.deps.t("invalidItem"));
+            return;
+        }
+        const title = (altText || target.value.split("/").pop() || target.value).slice(0, 120);
+        this.openForm(`![](${target.value})`, "image", null, {title, docId: this.deps.currentDocId() ?? undefined});
+    }
+
     /** 右键链接捕获：http(s) 外链 → url 条目；assets/ → asset 条目；其余诚实拒绝 */
     captureLink(href: string, text: string): void {
         const target = classifyLinkTarget(href);
