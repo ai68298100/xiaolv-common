@@ -1,0 +1,40 @@
+{
+  "name": "xiaolv-common",
+  "version": "0.1.0",
+  "description": "SiYuan plugin: quick recall and reuse of common content anchored to real SiYuan blocks.",
+  "main": "index.js",
+  "scripts": {
+    "dev": "webpack --config webpack.config.js --mode development",
+    "build": "webpack --config webpack.config.js --mode production",
+    "check": "tsc --noEmit",
+    "test": "node tests/run-tests.cjs"
+  },
+  "keywords": [
+    "siyuan",
+    "plugin",
+    "snippets",
+    "common-phrases",
+    "小驴常用"
+  ],
+  "author": "ai68298100",
+  "license": "MIT",
+  "packageManager": "pnpm@12.5.1",
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "devDependencies": {
+    "copy-webpack-plugin": "^14.0.0",
+    "css-loader": "^7.1.4",
+    "esbuild": "^0.25.12",
+    "esbuild-loader": "^4.4.3",
+    "mini-css-extract-plugin": "^2.10.2",
+    "sass": "^1.105.0",
+    "sass-loader": "^17.0.0",
+    "siyuan": "1.2.8",
+    "tslib": "^2.8.1",
+    "typescript": "^5.5.4",
+    "webpack": "^5.111.1",
+    "webpack-cli": "^7.0.3",
+    "zip-webpack-plugin": "^4.0.3"
+  }
+}

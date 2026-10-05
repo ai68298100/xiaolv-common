@@ -1,0 +1,204 @@
+// 样式：全部走 b3 CSS 变量（亮暗主题自动适配），禁止硬编码色值。
+// 移动端：底部 sheet 形态 + 44px 命中区 + safe-area。
+
+.xlc-dialog {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    gap: 8px;
+
+    .xlc-top {
+        display: flex;
+    }
+
+    .xlc-search-input {
+        width: 100%;
+    }
+
+    .xlc-filters {
+        display: flex;
+        gap: 6px;
+        align-items: center;
+        flex-wrap: wrap;
+
+        .b3-select {
+            max-width: 132px;
+        }
+    }
+
+    .xlc-scope-chip[data-scope="favorites"][aria-pressed="true"],
+    .xlc-scope-chip--active {
+        background-color: var(--b3-theme-primary-lighter);
+    }
+
+    .xlc-status {
+        min-height: 18px;
+        font-size: 12px;
+        color: var(--b3-theme-on-surface);
+    }
+
+    .xlc-list {
+        overflow: auto;
+        border: 1px solid var(--b3-border-color);
+        border-radius: 6px;
+        background-color: var(--b3-theme-surface);
+    }
+
+    .xlc-row {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 10px 12px;
+        min-height: 44px;
+        cursor: pointer;
+        border-bottom: 1px solid var(--b3-border-color);
+
+        &:last-child {
+            border-bottom: none;
+        }
+
+        &:hover,
+        &--active {
+            background-color: var(--b3-list-hover);
+        }
+
+        .xlc-row-icon {
+            display: flex;
+            align-items: center;
+
+            svg {
+                width: 16px;
+                height: 16px;
+                fill: none;
+                color: var(--b3-theme-on-surface);
+            }
+        }
+
+        .xlc-row-main {
+            flex: 1;
+            min-width: 0;
+
+            .xlc-row-title {
+                font-size: 14px;
+                color: var(--b3-theme-on-background);
+                overflow: hidden;
+                text-overflow: ellipsis;
+                white-space: nowrap;
+            }
+
+            .xlc-row-meta {
+                font-size: 12px;
+                color: var(--b3-theme-on-surface);
+                overflow: hidden;
+                text-overflow: ellipsis;
+                white-space: nowrap;
+            }
+        }
+
+        .xlc-row-action {
+            min-width: 44px;
+            min-height: 44px;
+            flex-shrink: 0;
+        }
+    }
+
+    .xlc-footer {
+        font-size: 12px;
+        color: var(--b3-theme-on-surface);
+        text-align: center;
+    }
+
+    .xlc-menu {
+        position: absolute;
+        inset: auto 16px 16px 16px;
+        z-index: 10;
+        display: flex;
+        flex-direction: column;
+        background-color: var(--b3-menu-background);
+        border: 1px solid var(--b3-border-color);
+        border-radius: 8px;
+        box-shadow: var(--b3-dialog-shadow);
+        overflow: hidden;
+        max-height: 70%;
+
+        .xlc-menu-preview {
+            margin: 0;
+            padding: 10px 12px;
+            max-height: 180px;
+            overflow: auto;
+            font-size: 12px;
+            color: var(--b3-theme-on-surface);
+            border-bottom: 1px solid var(--b3-border-color);
+            white-space: pre-wrap;
+            word-break: break-all;
+        }
+
+        .xlc-menu-item {
+            text-align: left;
+            min-height: 44px;
+            background: transparent;
+            border: none;
+            border-bottom: 1px solid var(--b3-border-color);
+            color: var(--b3-theme-on-background);
+            padding: 0 12px;
+            cursor: pointer;
+
+            &:last-child {
+                border-bottom: none;
+            }
+
+            &:hover {
+                background-color: var(--b3-list-hover);
+            }
+        }
+    }
+}
+
+// 移动端：底部 sheet（不依赖 hover；Safe-area 让位）
+.xlc-dialog--mobile {
+    .xlc-menu {
+        inset: auto 0 0 0;
+        border-radius: 12px 12px 0 0;
+        padding-bottom: env(safe-area-inset-bottom, 0);
+    }
+}
+
+.b3-dialog__container.xlc-sheet {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    top: auto !important;
+    margin-bottom: 0;
+    border-radius: 12px 12px 0 0;
+    transform: none !important;
+}
+
+// 表单
+.xlc-form {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+
+    .xlc-form-field {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+
+        .xlc-form-label {
+            font-size: 12px;
+            color: var(--b3-theme-on-surface);
+        }
+
+        .xlc-form-hint {
+            font-size: 11px;
+            color: var(--b3-theme-on-surface);
+        }
+    }
+
+    .xlc-form-actions {
+        display: flex;
+        justify-content: flex-end;
+        gap: 8px;
+    }
+}

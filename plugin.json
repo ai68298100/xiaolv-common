@@ -1,0 +1,45 @@
+{
+  "name": "xiaolv-common",
+  "author": "ai68298100",
+  "url": "https://github.com/ai68298100/xiaolv-common",
+  "version": "0.1.0",
+  "minAppVersion": "3.8.0",
+  "disabledInPublish": false,
+  "backends": [
+    "all"
+  ],
+  "frontends": [
+    "desktop",
+    "browser-desktop",
+    "desktop-window",
+    "mobile",
+    "browser-mobile"
+  ],
+  "displayName": {
+    "default": "LvCommon",
+    "zh-CN": "小驴常用"
+  },
+  "description": {
+    "default": "Save and recall common content (phrases, snippets, code, links, images, assets, block structures) anchored to real SiYuan blocks — with faithful source references and honest capability receipts.",
+    "zh-CN": "基于思源文档和块的常用内容快速调用器：常用语、模板、代码、链接、图片、附件与块结构，条目锚定真实思源块，来源引用可回链、失效可见。"
+  },
+  "readme": {
+    "default": "README.md",
+    "zh-CN": "README.md",
+    "en-US": "README.en-US.md"
+  },
+  "icon": "icon.png",
+  "preview": "preview.png",
+  "funding": {
+    "custom": []
+  },
+  "keywords": [
+    "常用语",
+    "common phrases",
+    "snippet",
+    "模板",
+    "template",
+    "小驴常用",
+    "xiaolv"
+  ]
+}
