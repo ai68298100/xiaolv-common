@@ -1012,6 +1012,9 @@ export default class XiaolvCommonPlugin extends Plugin {
                     : t("reindexDone", String(idx.entries.length)));
             });
         });
+        if (this.state.ai.enabled) {
+            mkBtn("✦ " + t("tagAuditBtn"), () => void this.runTagAudit());
+        }
         mkBtn(t("exportBtn"), () => {
             void this.exportBundle().then((json) => {
                 const count = (JSON.parse(json) as {items: unknown[]}).items.length;
@@ -1051,6 +1054,64 @@ export default class XiaolvCommonPlugin extends Plugin {
         root.appendChild(dataSec);
 
         body.appendChild(root);
+    }
+
+    /** AI 标签体检：仅标签清单出域；结果只展示，不自动修改任何条目 */
+    private async runTagAudit(): Promise<void> {
+        const t = this.i18nFn();
+        const idx = await this.library.ensureIndex();
+        const {collectTags} = await import("./model/search");
+        const tags = collectTags(idx.entries);
+        if (tags.length < 2) {
+            this.notify("info", t("tagAuditTooFew"));
+            return;
+        }
+        let suggestions;
+        try {
+            suggestions = await this.ai.tagAudit(tags);
+        } catch (err) {
+            this.notify("error", this.aiErrorText(err));
+            return;
+        }
+        const dialog = new Dialog({
+            title: t("tagAuditTitle"),
+            content: "",
+            width: "min(520px, 92vw)",
+            height: "auto",
+        });
+        const body = dialog.element.querySelector(".b3-dialog__content");
+        if (!body) return;
+        body.innerHTML = "";
+        const wrap = document.createElement("div");
+        wrap.className = "xlc-form";
+        if (suggestions.length === 0) {
+            const empty = document.createElement("p");
+            empty.className = "xlc-form-hint";
+            empty.textContent = t("tagAuditEmpty");
+            wrap.appendChild(empty);
+        } else {
+            for (const s of suggestions) {
+                const row = document.createElement("div");
+                row.className = "xlc-sugrow";
+                const label = document.createElement("span");
+                label.textContent = `✦ ${t(s.type === "merge" ? "tagAuditMerge" : "tagAuditRename")}：${s.tags.join(" + ")} → ${s.suggestion}${s.reason ? `（${s.reason}）` : ""}`;
+                row.appendChild(label);
+                wrap.appendChild(row);
+            }
+            const hint = document.createElement("span");
+            hint.className = "xlc-form-hint";
+            hint.textContent = t("aiOriginalPreserved");
+            wrap.appendChild(hint);
+        }
+        const actions = document.createElement("div");
+        actions.className = "xlc-form-actions";
+        const close = document.createElement("button");
+        close.className = "b3-button";
+        close.textContent = t("close");
+        close.addEventListener("click", () => dialog.destroy());
+        actions.appendChild(close);
+        wrap.appendChild(actions);
+        body.appendChild(wrap);
     }
 
     /** 导入策略确认（导入前校验已过；策略三选 → importBundleText → 汇总回执） */

@@ -90,6 +90,47 @@ export interface SearchMetaEntry {
     itemType: string;
 }
 
+// ---- 标签体检（R9）：仅元数据（标签清单）出域；只建议不自动改 ----
+
+export interface TagAuditSuggestion {
+    type: "merge" | "rename";
+    tags: string[];
+    suggestion: string;
+    reason: string;
+}
+
+export function buildTagAuditPrompt(tags: readonly string[]): string {
+    return [
+        `你是标签治理助手（prompt v${PROMPT_VERSION}）。分析以下标签清单，找出应归并的同义/近义标签或应改名的标签。`,
+        `只输出严格 JSON 数组（至多 10 条）：[{"type":"merge","tags":["a","b"],"suggestion":"合并为: c","reason":"一句话理由"},{"type":"rename","tags":["x"],"suggestion":"改为: y","reason":"…"}]。没有建议输出 []。`,
+        `标签清单：`,
+        tags.slice(0, 200).join(", "),
+    ].join("\n");
+}
+
+export function parseTagAudit(raw: string): TagAuditSuggestion[] {
+    const json = extractJson(raw);
+    if (!json) return [];
+    try {
+        const arr = JSON.parse(json) as unknown;
+        if (!Array.isArray(arr)) return [];
+        const out: TagAuditSuggestion[] = [];
+        for (const raw of arr.slice(0, 10)) {
+            if (!raw || typeof raw !== "object") continue;
+            const obj = raw as Record<string, unknown>;
+            const type = obj.type === "merge" || obj.type === "rename" ? obj.type : null;
+            const tags = Array.isArray(obj.tags) ? obj.tags.filter((t): t is string => typeof t === "string" && t.length > 0).slice(0, 10) : [];
+            const suggestion = typeof obj.suggestion === "string" ? obj.suggestion.slice(0, 200) : "";
+            const reason = typeof obj.reason === "string" ? obj.reason.slice(0, 200) : "";
+            if (!type || tags.length === 0 || !suggestion) continue;
+            out.push({type, tags, suggestion, reason});
+        }
+        return out;
+    } catch {
+        return [];
+    }
+}
+
 export function buildSemanticPickPrompt(query: string, entries: readonly SearchMetaEntry[]): string {
     const list = entries.slice(0, AI_MAX_META_ITEMS).map((e, i) =>
         `${i + 1}. [${e.itemType}] ${e.title}${e.alias ? ` / 别名:${e.alias}` : ""}${e.tags.length ? ` / 标签:${e.tags.join(",")}` : ""}${e.category ? ` / 分类:${e.category}` : ""}${e.summary ? ` / 摘要:${e.summary.slice(0, 60)}` : ""}`,
@@ -221,5 +262,12 @@ export class AiAssistant {
         const raw = await this.complete(buildSemanticPickPrompt(query, entries), false);
         const picks = parseSemanticPick(raw, Math.min(entries.length, AI_MAX_META_ITEMS));
         return picks.map((idx) => entries[idx - 1]).filter((e): e is SearchMetaEntry => !!e);
+    }
+
+    /** 标签体检：仅标签清单出域；只给建议不自动改。少于 2 个标签直接短路。 */
+    async tagAudit(tags: readonly string[]): Promise<TagAuditSuggestion[]> {
+        if (tags.length < 2) return [];
+        const raw = await this.complete(buildTagAuditPrompt(tags), false);
+        return parseTagAudit(raw);
     }
 }

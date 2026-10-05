@@ -221,6 +221,21 @@
       flex-shrink: 0;
     }
 
+    .xlc-row-ordinal {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 16px;
+        height: 16px;
+        border-radius: 4px;
+        font-size: 10.5px;
+        font-weight: 600;
+        color: var(--b3-theme-on-surface);
+        background-color: var(--b3-theme-surface);
+        border: 1px solid var(--b3-border-color);
+        flex-shrink: 0;
+    }
+
     .xlc-row-meta {
       font-size: 11.5px;
       color: var(--b3-theme-on-surface);

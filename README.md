@@ -58,6 +58,7 @@ CommonItem（思源块承载）
 | **AI 草稿** | 新建表单描述一句话 → 生成模板草稿 | 描述文本（同上） |
 | **AI 变换** | 动作菜单 ✦ 润色/缩短/正式化/译英/列表化 → 预览后选「插变换版/插原文」，**原文永不被改写** | 条目正文（同上） |
 | **AI 语义找条目** | 搜索框 `?` 前缀（如 `?给客户的道歉回复`）→ 标注「AI 找到的」 | **仅元数据**（标题/别名/标签/分类/摘要），不含正文与来源 ID |
+| **AI 标签体检** | 设置面板「✦ AI 标签体检」→ 归并/改名建议清单（只建议，不自动修改） | 仅标签清单 |
 
 另有**动态占位符**：条目中写 `{{xlc:date}} / {{xlc:time}} / {{xlc:datetime}} / {{xlc:weekday}}`，插入或复制时替换为当前日期时间（`xlc:` 命名空间不误伤思源模板；存储内容始终保留模板原文，可在设置关闭）。
 
@@ -94,7 +95,7 @@ common.protocolCommands["xiaolv.common.open"]();          // 稳定命令 ID
 ```bash
 pnpm i
 pnpm run check   # tsc --noEmit
-pnpm test        # esbuild 转译 + node --test（111 项）
+pnpm test        # esbuild 转译 + node --test（114 项）
 pnpm run build   # dist/ + package.zip
 node scripts/render-prototype.cjs    # 原型图截图（需 Playwright Chromium）
 node scripts/render-production.cjs   # 生产 UI 效果截图（真实 dist CSS+DOM）

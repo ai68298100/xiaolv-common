@@ -468,6 +468,13 @@ export class CommonSearchDialog {
             main.className = "xlc-row-main";
             const title = document.createElement("div");
             title.className = "xlc-row-title";
+            if (i < 9) {
+                const ordinal = document.createElement("span");
+                ordinal.className = "xlc-row-ordinal";
+                ordinal.textContent = String(i + 1);
+                ordinal.title = this.deps.t("usageHint");
+                title.appendChild(ordinal);
+            }
             const badge = document.createElement("span");
             badge.className = `xlc-badge xlc-badge--${entry.itemType}`;
             badge.textContent = TYPE_BADGES[entry.itemType] ?? "TXT";
@@ -866,6 +873,14 @@ export class CommonSearchDialog {
         } else if (e.key === "Escape") {
             e.preventDefault();
             this.destroy();
+        } else if (e.altKey && !e.ctrlKey && !e.metaKey && /^[1-9]$/.test(e.key)) {
+            // Alt+1~9 数字直达插入（Quicker/雷切同款；1 对应列表首行）
+            e.preventDefault();
+            const idx = Number(e.key) - 1;
+            const entry = this.results[idx];
+            if (entry) {
+                await this.runPrimary(entry);
+            }
         }
     }
 

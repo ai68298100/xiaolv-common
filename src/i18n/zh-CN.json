@@ -163,5 +163,11 @@
   "providerCopy": "复制（提供方）",
   "openSettings": "设置 / 更改内容库",
   "semanticSuggestion": "没有本地结果。试试 AI 语义找：在关键词前加 ?",
-  "indexing": "正在构建索引…"
+  "indexing": "正在构建索引…",
+  "tagAuditBtn": "AI 标签体检",
+  "tagAuditTitle": "AI 标签体检（仅建议，不自动修改）",
+  "tagAuditEmpty": "AI 未给出建议",
+  "tagAuditMerge": "归并",
+  "tagAuditRename": "改名",
+  "tagAuditTooFew": "标签不足 2 个，无需体检"
 }
