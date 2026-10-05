@@ -186,5 +186,6 @@
   "setAsLibraryConfirm": "Set the %s selected docs as your common library (replaces current config)?",
   "providerExecutable": "Active",
   "providerPendingReload": "Pending reload",
-  "providerNone": "No content providers yet (shown when other Lv plugins register)"
+  "providerNone": "No content providers yet (shown when other Lv plugins register)",
+  "insertToDocMenu": "Insert common items into this doc"
 }

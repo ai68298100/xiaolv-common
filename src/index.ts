@@ -442,6 +442,16 @@ export default class XiaolvCommonPlugin extends Plugin {
                     if (id && ids.length < 64) ids.push(id);
                 }
                 if (ids.length === 0) return;
+                // 插入定向入口：打开搜索弹窗（定向模式，Enter 插入到首个选中文档）
+                menu.addItem({
+                    icon: "iconXlcCommon",
+                    label: this.i18nFn()("insertToDocMenu"),
+                    click: () => {
+                        void this.library.getDocPath(ids[0]).then((path) => {
+                            this.openSearch({docId: ids[0], hPath: path});
+                        });
+                    },
+                });
                 menu.addItem({
                     icon: "iconXlcCommon",
                     label: this.i18nFn()("setAsLibraryMenu"),
