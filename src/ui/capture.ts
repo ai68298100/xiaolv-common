@@ -203,7 +203,7 @@ export class CaptureDialog {
         typeWrap.appendChild(typeSelect);
         form.appendChild(typeWrap);
 
-        const contentEl = field(t("type.text"), defaultText, true, "xlc-form-content");
+        const contentEl = field(t("contentLabel"), defaultText, true, "xlc-form-content");
         const titleEl = field(t("title"), overrides?.title ?? "", false, "xlc-form-title");
         const aliasEl = field(t("alias"), "", false, "xlc-form-alias");
         const tagsEl = field(t("tags"), "", false, "xlc-form-tags");

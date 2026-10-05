@@ -1,5 +1,6 @@
 {
   "pluginName": "小驴常用",
+  "contentLabel": "内容（Markdown）",
   "openSearch": "打开小驴常用",
   "saveSelection": "保存选区为常用条目",
   "insertCmd": "插入常用条目",

@@ -1,7 +1,8 @@
-// 渲染 harness 入口：把生产 CommonSearchDialog / 设置对话框暴露到 window，
+// 渲染 harness 入口：把生产 CommonSearchDialog / 设置对话框 / 捕获表单暴露到 window，
 // 由 render-production.cjs 在 Chromium 中以假数据驱动、截取真实生产 DOM+CSS 效果。
 import {CommonSearchDialog} from "../../src/ui/dialog";
 import {openSettingsDialog, type SettingsUiContext} from "../../src/ui/settings-dialog";
+import {CaptureDialog} from "../../src/ui/capture";
 import type {SearchEntry} from "../../src/model/search";
 import type {TransformKind} from "../../src/service/ai";
 
@@ -25,7 +26,8 @@ const T = (key: string, ...args: string[]): string => {
     const map: Record<string, string> = {
         pluginName: "小驴常用",
         searchPlaceholder: "搜索常用内容（? 前缀 = AI 语义找）",
-        type: "类型", tags: "标签", filterAll: "全部类型", filterFavorites: "收藏", filterRecent: "最近",
+        type: "类型", tags: "标签", tagsHint: "逗号分隔", title: "标题", alias: "别名", category: "分类", contentLabel: "内容（Markdown）", filterAll: "全部类型",
+        "type.text": "纯文本", "type.markdown": "Markdown", "type.url": "网址", "type.code": "代码", "type.image": "图片", "type.asset": "附件", "type.blockref": "块引用", "type.structure": "块结构", filterFavorites: "收藏", filterRecent: "最近",
         empty: "没有匹配的条目", usageHint: "↑↓ 选择 · Enter 插入 · Ctrl+Enter 复制 · Esc 关闭",
         usageHintMobile: "点按插入 · 长按更多",
         insert: "插入", copy: "复制", openSource: "打开来源", edit: "编辑", delete: "删除",
@@ -36,6 +38,9 @@ const T = (key: string, ...args: string[]): string => {
         kernelError: "思源接口调用失败",
         "tf.polish": "润色", "tf.shorten": "缩短", "tf.formal": "正式化", "tf.translate-en": "译为英文", "tf.bulletize": "列表化",
         more: "返回动作",
+        newItem: "新建条目", save: "保存", cancel: "取消", confirm: "确定", invalidItem: "条目数据无效",
+        aiTidy: "AI 整理", aiDraft: "AI 草稿", aiDraftDesc: "描述你想要的内容，AI 生成草稿", aiApplied: "已应用 AI 建议",
+        saved: "已保存：%s",
         "sort.manual": "手动/置顶", "sort.recent": "最近使用", "sort.title": "标题",
         totalItems: "共 %s 条",
         duplicateItem: "创建副本", insertToDoc: "插入到指定文档", insertToDocPick: "选择目标文档（输入关键词搜索）",
@@ -114,8 +119,8 @@ function makeDeps(overrides: {aiEnabled?: boolean; missing?: boolean} = {}) {
         }
         return dialog;
     },
-    openSettings(): void {
-        const ctx: SettingsUiContext = {
+        openSettings(): void {
+            const ctx: SettingsUiContext = {
             t: T,
             state: {
                 schemaVersion: 2,
@@ -146,5 +151,21 @@ function makeDeps(overrides: {aiEnabled?: boolean; missing?: boolean} = {}) {
             applyPinyinAdapter: () => {},
         } as unknown as SettingsUiContext;
         openSettingsDialog(ctx);
+    },
+    openCapture(aiOn = true): void {
+        const capture = new CaptureDialog({
+            t: T,
+            getSelectionText: () => ({text: "", blockId: null}),
+            currentDocId: () => "20240101120001-hijklmn",
+            readClipboardText: async () => "",
+            createItem: async (input) => ({ok: true, message: input.title ?? "item", itemId: "xlc-new000000001"}),
+            notify: () => {},
+            getBlockKramdown: async () => "块内容",
+            exportDocContent: async () => ({hPath: "/常用内容库", content: "# 内容"}),
+            aiEnabled: () => aiOn,
+            aiTidy: async (content: string) => ({ok: true as const, title: "AI 建议 " + content.slice(0, 6), tags: ["AI"]}),
+            aiDraft: async (desc: string) => ({ok: true as const, text: "草稿（" + desc + "）"}),
+        });
+        capture.newManual();
     },
 };

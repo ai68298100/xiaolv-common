@@ -1,5 +1,6 @@
 {
   "pluginName": "LvCommon",
+  "contentLabel": "Content (Markdown)",
   "openSearch": "Open LvCommon",
   "saveSelection": "Save selection as item",
   "insertCmd": "Insert common item",

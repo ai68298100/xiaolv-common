@@ -2014,6 +2014,329 @@
     body.appendChild(wrap);
   }
 
+  // src/ui/capture.ts
+  var import_siyuan3 = __toESM(require_stub_dom());
+  function isBlockRefTarget(blockId) {
+    return /^\d{14}-[0-9a-z]{7}$/.test(blockId);
+  }
+  function classifyLinkTarget(href) {
+    const h = (href != null ? href : "").trim();
+    if (/^https?:\/\//i.test(h)) return { kind: "url", value: h };
+    if (/^assets\/[^\s]+$/.test(h)) return { kind: "asset", value: h };
+    return null;
+  }
+  function inferTypeFromText(text) {
+    const trimmed = text.trim();
+    if (/^https?:\/\/\S+$/i.test(trimmed)) return "url";
+    if (/^```[\w+#.-]*\s*\n[\s\S]*\n```\s*$/.test(trimmed)) return "code";
+    if (/^!\[[^\]]*\]\((assets\/[^)\s]+)[^)]*\)$/.test(trimmed)) return "image";
+    if (/\]\((assets\/[^)\s]+)[^)]*\)/.test(trimmed)) return "asset";
+    if (/^#{1,6}\s|^\s*[-*+]\s|^\s*\d+\.\s|^\s*>\s|\*\*/.test(trimmed) || trimmed.includes("\n")) return "markdown";
+    return "text";
+  }
+  var CaptureDialog = class {
+    constructor(deps) {
+      this.deps = deps;
+    }
+    /** 保存当前选区（命令/顶栏入口） */
+    async saveSelection() {
+      const sel = this.deps.getSelectionText();
+      const text = sel.text.trim();
+      if (!text) {
+        void this.captureFromClipboard();
+        return;
+      }
+      this.openForm(text, inferTypeFromText(text), sel.blockId);
+    }
+    /** 从剪贴板捕获（失败诚实回执） */
+    async captureFromClipboard() {
+      try {
+        const text = (await this.deps.readClipboardText()).trim();
+        if (!text) {
+          this.deps.notify("error", this.deps.t("clipboardReadFailed"));
+          this.openForm("", "text", null);
+          return;
+        }
+        this.openForm(text.slice(0, 1e5), inferTypeFromText(text), null);
+      } catch {
+        this.deps.notify("error", this.deps.t("clipboardReadFailed"));
+        this.openForm("", "text", null);
+      }
+    }
+    /** 手动新建（空表单） */
+    newManual() {
+      this.openForm("", "text", null);
+    }
+    /** 右键块引用捕获：把被引用块存为 blockref 条目（目标块=引用目标） */
+    captureBlockRef(blockId, refText) {
+      var _a;
+      if (!isBlockRefTarget(blockId)) {
+        this.deps.notify("error", this.deps.t("invalidItem"));
+        return;
+      }
+      this.openForm("", "blockref", null, {
+        title: (refText || blockId).slice(0, 120),
+        targetBlockId: blockId,
+        docId: (_a = this.deps.currentDocId()) != null ? _a : void 0
+      });
+    }
+    /** 右键图片捕获：assets/ 图片存为图片条目（非 assets 图诚实拒绝） */
+    captureImage(assetPath, altText) {
+      var _a;
+      const target = classifyLinkTarget(assetPath);
+      if (!target || target.kind !== "asset") {
+        this.deps.notify("error", this.deps.t("invalidItem"));
+        return;
+      }
+      const title = (altText || target.value.split("/").pop() || target.value).slice(0, 120);
+      this.openForm(`![](${target.value})`, "image", null, { title, docId: (_a = this.deps.currentDocId()) != null ? _a : void 0 });
+    }
+    /** 右键链接捕获：http(s) 外链 → url 条目；assets/ → asset 条目；其余诚实拒绝 */
+    captureLink(href, text) {
+      var _a, _b;
+      const target = classifyLinkTarget(href);
+      if (!target) {
+        this.deps.notify("error", this.deps.t("invalidItem"));
+        return;
+      }
+      if (target.kind === "url") {
+        this.openForm(target.value, "url", null, { title: (text || target.value).slice(0, 120), docId: (_a = this.deps.currentDocId()) != null ? _a : void 0 });
+      } else {
+        this.openForm(`[${text || "\u8D44\u6E90"}](${target.value})`, "asset", null, { title: (text || target.value).slice(0, 120), docId: (_b = this.deps.currentDocId()) != null ? _b : void 0 });
+      }
+    }
+    /** 捕获当前块：光标所在块整体作为条目（选区文本优先级低于整块语义） */
+    async captureCurrentBlock() {
+      const blockId = this.deps.getSelectionText().blockId;
+      if (!blockId) {
+        this.deps.notify("error", this.deps.t("captureBlockNone"));
+        return;
+      }
+      const kramdown = await this.deps.getBlockKramdown(blockId);
+      if (kramdown === null || !kramdown.trim()) {
+        this.deps.notify("error", this.deps.t("kernelError", "block"));
+        return;
+      }
+      this.openForm(kramdown.slice(0, 1e5), inferTypeFromText(kramdown), blockId);
+    }
+    /** 捕获当前文档：整文档 Markdown 作为结构条目（来源 = 该文档） */
+    async captureCurrentDoc() {
+      var _a;
+      const docId = this.deps.currentDocId();
+      if (!docId) {
+        this.deps.notify("error", this.deps.t("relinkNoDoc"));
+        return;
+      }
+      const doc = await this.deps.exportDocContent(docId);
+      if (!doc) {
+        this.deps.notify("error", this.deps.t("kernelError", "doc"));
+        return;
+      }
+      const title = (_a = doc.hPath.split("/").filter(Boolean).pop()) != null ? _a : doc.hPath;
+      this.openForm(doc.content, "markdown", null, { title, docId });
+    }
+    openForm(defaultText, defaultType, sourceBlockId, overrides) {
+      var _a;
+      const t = this.deps.t;
+      const dialog = new import_siyuan3.Dialog({
+        title: t("newItem"),
+        content: "",
+        width: "min(520px, 92vw)",
+        height: "auto"
+      });
+      const body = dialog.element.querySelector(".b3-dialog__content");
+      if (!body) return;
+      body.innerHTML = "";
+      const form = document.createElement("div");
+      form.className = "xlc-form";
+      const field = (label, value, isArea, cls) => {
+        const wrap = document.createElement("label");
+        wrap.className = "xlc-form-field";
+        const cap = document.createElement("span");
+        cap.className = "xlc-form-label";
+        cap.textContent = label;
+        wrap.appendChild(cap);
+        const inputEl = isArea ? document.createElement("textarea") : document.createElement("input");
+        if (isArea) {
+          inputEl.rows = 6;
+        }
+        inputEl.className = "b3-text-field " + cls;
+        inputEl.value = value;
+        wrap.appendChild(inputEl);
+        form.appendChild(wrap);
+        return inputEl;
+      };
+      const typeWrap = document.createElement("label");
+      typeWrap.className = "xlc-form-field";
+      const typeLabel = document.createElement("span");
+      typeLabel.className = "xlc-form-label";
+      typeLabel.textContent = t("type");
+      typeWrap.appendChild(typeLabel);
+      const typeSelect = document.createElement("select");
+      typeSelect.className = "b3-select xlc-form-type";
+      for (const it of ["text", "markdown", "url", "code", "image", "asset", "blockref", "structure"]) {
+        const opt = document.createElement("option");
+        opt.value = it;
+        opt.textContent = t(`type.${it}`);
+        if (it === defaultType) opt.selected = true;
+        typeSelect.appendChild(opt);
+      }
+      typeWrap.appendChild(typeSelect);
+      form.appendChild(typeWrap);
+      const contentEl = field(t("contentLabel"), defaultText, true, "xlc-form-content");
+      const titleEl = field(t("title"), (_a = overrides == null ? void 0 : overrides.title) != null ? _a : "", false, "xlc-form-title");
+      const aliasEl = field(t("alias"), "", false, "xlc-form-alias");
+      const tagsEl = field(t("tags"), "", false, "xlc-form-tags");
+      const tagsHint = document.createElement("span");
+      tagsHint.className = "xlc-form-hint";
+      tagsHint.textContent = t("tagsHint");
+      tagsEl.parentElement.appendChild(tagsHint);
+      const categoryEl = field(t("category"), "", false, "xlc-form-category");
+      const sugrow = document.createElement("div");
+      sugrow.className = "xlc-sugrow";
+      sugrow.style.display = "none";
+      const sugText = document.createElement("span");
+      sugrow.appendChild(sugText);
+      const adoptBtn = document.createElement("button");
+      adoptBtn.className = "xlc-sugrow-adopt";
+      let suggestions = {};
+      const applySuggestions = () => {
+        var _a2;
+        if (suggestions.title) titleEl.value = suggestions.title;
+        if (suggestions.alias) aliasEl.value = suggestions.alias;
+        if ((_a2 = suggestions.tags) == null ? void 0 : _a2.length) tagsEl.value = suggestions.tags.join(", ");
+        if (suggestions.category) categoryEl.value = suggestions.category;
+        this.deps.notify("info", t("aiApplied"));
+      };
+      adoptBtn.textContent = t("confirm");
+      adoptBtn.addEventListener("click", applySuggestions);
+      sugrow.appendChild(adoptBtn);
+      form.insertBefore(sugrow, titleEl.parentElement);
+      if (this.deps.aiEnabled()) {
+        const contentLabel = contentEl.parentElement.querySelector(".xlc-form-label");
+        if (contentLabel) {
+          const tidyBtn = document.createElement("button");
+          tidyBtn.className = "xlc-form-ai";
+          tidyBtn.type = "button";
+          tidyBtn.textContent = "\u2726 " + t("aiTidy");
+          tidyBtn.addEventListener("click", () => {
+            const value = contentEl.value.trim();
+            if (!value) {
+              this.deps.notify("error", t("invalidItem"));
+              return;
+            }
+            tidyBtn.textContent = t("aiWorking");
+            void this.deps.aiTidy(value).then((result) => {
+              var _a2, _b;
+              tidyBtn.textContent = "\u2726 " + t("aiTidy");
+              if (!result.ok) {
+                this.deps.notify("error", result.message);
+                return;
+              }
+              suggestions = result;
+              const parts = [
+                result.title ? result.title : "",
+                ((_a2 = result.tags) == null ? void 0 : _a2.length) ? result.tags.join("/") : "",
+                (_b = result.category) != null ? _b : ""
+              ].filter(Boolean);
+              sugText.textContent = "\u2726 " + t("aiFound") + "\uFF1A" + parts.join(" \xB7 ");
+              sugrow.style.display = "";
+              applySuggestions();
+            });
+          });
+          contentLabel.appendChild(tidyBtn);
+        }
+        const draftWrap = document.createElement("div");
+        draftWrap.className = "xlc-form-field";
+        const draftLabel = document.createElement("span");
+        draftLabel.className = "xlc-form-label";
+        draftLabel.textContent = t("aiDraftDesc");
+        draftWrap.appendChild(draftLabel);
+        const draftRow = document.createElement("div");
+        draftRow.style.display = "flex";
+        draftRow.style.gap = "6px";
+        const draftInput = document.createElement("input");
+        draftInput.className = "b3-text-field";
+        draftInput.placeholder = t("aiDraftDesc");
+        draftRow.appendChild(draftInput);
+        const draftBtn = document.createElement("button");
+        draftBtn.className = "b3-button b3-button--text xlc-form-ai";
+        draftBtn.textContent = "\u2726 " + t("aiDraft");
+        draftBtn.addEventListener("click", () => {
+          const desc = draftInput.value.trim();
+          if (!desc) return;
+          draftBtn.textContent = t("aiWorking");
+          void this.deps.aiDraft(desc).then((result) => {
+            draftBtn.textContent = "\u2726 " + t("aiDraft");
+            if (!result.ok) {
+              this.deps.notify("error", result.message);
+              return;
+            }
+            contentEl.value = result.text;
+          });
+        });
+        draftRow.appendChild(draftBtn);
+        draftWrap.appendChild(draftRow);
+        form.insertBefore(draftWrap, form.firstChild);
+      }
+      const actions = document.createElement("div");
+      actions.className = "xlc-form-actions";
+      const cancelBtn = document.createElement("button");
+      cancelBtn.className = "b3-button b3-button--cancel";
+      cancelBtn.textContent = t("cancel");
+      cancelBtn.addEventListener("click", () => dialog.destroy());
+      const saveBtn = document.createElement("button");
+      saveBtn.className = "b3-button b3-button--text";
+      saveBtn.textContent = t("save");
+      saveBtn.addEventListener("click", () => {
+        const contentValue = contentEl.value;
+        if (!contentValue.trim()) {
+          this.deps.notify("error", t("invalidItem"));
+          return;
+        }
+        const type = typeSelect.value;
+        let markdown = contentValue;
+        if (type === "code" && !/^```/.test(contentValue.trim())) {
+          markdown = "```\n" + contentValue + "\n```";
+        } else if (type === "url") {
+          markdown = contentValue.trim();
+        }
+        const doSave = () => {
+          const docId = this.deps.currentDocId();
+          void this.deps.createItem({
+            itemType: type,
+            markdown,
+            title: titleEl.value || void 0,
+            alias: aliasEl.value || void 0,
+            tags: tagsEl.value ? tagsEl.value.split(/[,,]/).map((s) => s.trim()).filter(Boolean) : void 0,
+            category: categoryEl.value || void 0,
+            targetBlockId: overrides == null ? void 0 : overrides.targetBlockId,
+            source: docId ? { sourceDocId: docId, sourceBlockId: sourceBlockId != null ? sourceBlockId : void 0, sourceType: (overrides == null ? void 0 : overrides.docId) ? "doc-fragment" : sourceBlockId ? "selection" : "manual" } : void 0
+          }).then((result) => {
+            if (result.ok) {
+              this.deps.notify("info", t("saved", result.message));
+              dialog.destroy();
+            } else {
+              this.deps.notify("error", result.message);
+            }
+          });
+        };
+        void this.deps.findDuplicate(contentValue).then((dup) => {
+          if (!dup) {
+            doSave();
+            return;
+          }
+          (0, import_siyuan3.confirm)("\u26A0\uFE0F " + t("duplicateTitle"), t("duplicateConfirm", dup.title), () => doSave());
+        });
+      });
+      actions.appendChild(cancelBtn);
+      actions.appendChild(saveBtn);
+      form.appendChild(actions);
+      body.appendChild(form);
+      contentEl.focus();
+    }
+  };
+
   // scripts/harness/entry.ts
   var ENTRIES = [
     { id: "xlc-demo0000001", blockId: "20240101120000-aaaaaaa", libraryDocId: "20240101120001-hijklmn", itemType: "markdown", title: "\u9879\u76EE\u5EF6\u671F\u9053\u6B49\u4E0E\u8865\u507F\u65B9\u6848", alias: "\u5EF6\u671F\u9053\u6B49", tags: ["\u5BA2\u6237\u6C9F\u901A", "\u6A21\u677F"], category: "\u5BA2\u670D", summary: "\u5C0A\u656C\u7684\u738B\u603B\uFF1A\u5173\u4E8E\u672C\u671F\u4EA4\u4ED8\u5EF6\u671F\u2026\u2026", createdAt: 1, updatedAt: 2, sourceDocId: "20240101120001-hijklmn", sourceBlockId: "20240101120002-bbbbbbb" },
@@ -2036,7 +2359,20 @@
       searchPlaceholder: "\u641C\u7D22\u5E38\u7528\u5185\u5BB9\uFF08? \u524D\u7F00 = AI \u8BED\u4E49\u627E\uFF09",
       type: "\u7C7B\u578B",
       tags: "\u6807\u7B7E",
+      tagsHint: "\u9017\u53F7\u5206\u9694",
+      title: "\u6807\u9898",
+      alias: "\u522B\u540D",
+      category: "\u5206\u7C7B",
+      contentLabel: "\u5185\u5BB9\uFF08Markdown\uFF09",
       filterAll: "\u5168\u90E8\u7C7B\u578B",
+      "type.text": "\u7EAF\u6587\u672C",
+      "type.markdown": "Markdown",
+      "type.url": "\u7F51\u5740",
+      "type.code": "\u4EE3\u7801",
+      "type.image": "\u56FE\u7247",
+      "type.asset": "\u9644\u4EF6",
+      "type.blockref": "\u5757\u5F15\u7528",
+      "type.structure": "\u5757\u7ED3\u6784",
       filterFavorites: "\u6536\u85CF",
       filterRecent: "\u6700\u8FD1",
       empty: "\u6CA1\u6709\u5339\u914D\u7684\u6761\u76EE",
@@ -2064,6 +2400,16 @@
       "tf.translate-en": "\u8BD1\u4E3A\u82F1\u6587",
       "tf.bulletize": "\u5217\u8868\u5316",
       more: "\u8FD4\u56DE\u52A8\u4F5C",
+      newItem: "\u65B0\u5EFA\u6761\u76EE",
+      save: "\u4FDD\u5B58",
+      cancel: "\u53D6\u6D88",
+      confirm: "\u786E\u5B9A",
+      invalidItem: "\u6761\u76EE\u6570\u636E\u65E0\u6548",
+      aiTidy: "AI \u6574\u7406",
+      aiDraft: "AI \u8349\u7A3F",
+      aiDraftDesc: "\u63CF\u8FF0\u4F60\u60F3\u8981\u7684\u5185\u5BB9\uFF0CAI \u751F\u6210\u8349\u7A3F",
+      aiApplied: "\u5DF2\u5E94\u7528 AI \u5EFA\u8BAE",
+      saved: "\u5DF2\u4FDD\u5B58\uFF1A%s",
       "sort.manual": "\u624B\u52A8/\u7F6E\u9876",
       "sort.recent": "\u6700\u8FD1\u4F7F\u7528",
       "sort.title": "\u6807\u9898",
@@ -2213,6 +2559,26 @@
         }
       };
       openSettingsDialog(ctx);
+    },
+    openCapture(aiOn = true) {
+      const capture = new CaptureDialog({
+        t: T,
+        getSelectionText: () => ({ text: "", blockId: null }),
+        currentDocId: () => "20240101120001-hijklmn",
+        readClipboardText: async () => "",
+        createItem: async (input) => {
+          var _a;
+          return { ok: true, message: (_a = input.title) != null ? _a : "item", itemId: "xlc-new000000001" };
+        },
+        notify: () => {
+        },
+        getBlockKramdown: async () => "\u5757\u5185\u5BB9",
+        exportDocContent: async () => ({ hPath: "/\u5E38\u7528\u5185\u5BB9\u5E93", content: "# \u5185\u5BB9" }),
+        aiEnabled: () => aiOn,
+        aiTidy: async (content) => ({ ok: true, title: "AI \u5EFA\u8BAE " + content.slice(0, 6), tags: ["AI"] }),
+        aiDraft: async (desc) => ({ ok: true, text: "\u8349\u7A3F\uFF08" + desc + "\uFF09" })
+      });
+      capture.newManual();
     }
   };
 })();

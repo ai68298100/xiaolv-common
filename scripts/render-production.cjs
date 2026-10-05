@@ -32,6 +32,7 @@ esbuild.buildSync({
 const prodCss = fs.readFileSync(path.join(ROOT, "dist", "index.css"), "utf8");
 const b3Vars = `
 .b3-scope { font-family: "PingFang SC", "Microsoft YaHei", -apple-system, "Segoe UI", sans-serif; }
+.b3-dialog textarea.b3-text-field { min-height: 110px; resize: vertical; font-family: inherit; }
 .b3-scope.light {
   --b3-theme-primary: #3575f0; --b3-theme-primary-light: #7f9ff5; --b3-theme-primary-lighter: #c6d5fa;
   --b3-theme-on-primary: #fff; --b3-theme-background: #fff; --b3-theme-surface: #f7f8fa;
@@ -52,7 +53,8 @@ body { margin: 0; background: #eceef1; }
 .b3-button--small { padding: 2px 8px; }
 .b3-button--text { border-color: transparent; background: transparent; }
 .b3-select { border: 1px solid var(--b3-border-color); background: var(--b3-theme-surface); color: var(--b3-theme-on-background); }
-.b3-text-field { border: none; background: transparent; color: var(--b3-theme-on-background); outline: none; font-family: inherit; }
+.b3-text-field { border: 1px solid var(--b3-border-color); background: var(--b3-theme-surface); color: var(--b3-theme-on-background); outline: none; font-family: inherit; padding: 4px 8px; border-radius: 4px; box-sizing: border-box; }
+.b3-dialog .xlc-search .b3-text-field { border: none; background: transparent; padding: 0; }
 .xlc-dialog { position: relative; }
 .xlc-dialog .xlc-menu { position: fixed; right: 180px; bottom: 120px; left: auto; width: 320px; }
 `;
@@ -155,6 +157,56 @@ fs.writeFileSync(path.join(OUT, "harness.html"), html);
     }
     console.log("  smoke ✓ settings: 4 assertions");
     await page.screenshot({path: path.join(OUT, "production-settings-light.png")});
+    // 捕获表单（生产 CaptureDialog DOM）
+    await page.evaluate(() => {
+        const stage = document.getElementById("stage");
+        stage.className = "b3-scope light";
+        document.querySelectorAll(".b3-dialog").forEach((el) => el.remove());
+        stage.innerHTML = "";
+        window.XlcHarness.openCapture(true);
+        const dialogRoot = document.querySelector(".b3-dialog");
+        if (dialogRoot) stage.appendChild(dialogRoot);
+        const container = document.querySelector(".b3-dialog__container");
+        if (container) {
+            container.style.margin = "0 auto";
+            container.style.maxWidth = "560px";
+        }
+    });
+    await page.waitForTimeout(400);
+    const captureAssertions = await page.evaluate(() => {
+        const text = document.body.textContent || "";
+        return {
+            typeSelect: !!document.querySelector(".xlc-form-type"),
+            contentArea: !!document.querySelector(".xlc-form-content"),
+            titleField: !!document.querySelector(".xlc-form-title"),
+            saveBtn: text.includes("保存"),
+            aiTidy: !!document.querySelector(".xlc-form-ai") && text.includes("AI 整理"),
+            aiDraft: text.includes("草稿"),
+        };
+    });
+    if (Object.values(captureAssertions).some((v) => !v)) {
+        throw new Error("capture smoke failed: " + JSON.stringify(captureAssertions));
+// debug marker
+    }
+    console.log("  smoke ✓ capture: 6 assertions");
+    await page.screenshot({path: path.join(OUT, "production-capture-light.png")});
+    // 设置暗色
+    await page.evaluate(() => {
+        const stage = document.getElementById("stage");
+        stage.className = "b3-scope dark";
+        document.querySelectorAll(".b3-dialog").forEach((el) => el.remove());
+        stage.innerHTML = "";
+        window.XlcHarness.openSettings();
+        const dialogRoot = document.querySelector(".b3-dialog");
+        if (dialogRoot) stage.appendChild(dialogRoot);
+        const container = document.querySelector(".b3-dialog__container");
+        if (container) {
+            container.style.margin = "0 auto";
+            container.style.maxWidth = "620px";
+        }
+    });
+    await page.waitForTimeout(300);
+    await page.screenshot({path: path.join(OUT, "production-settings-dark.png")});
     await browser.close();
     console.log("production renders done:", fs.readdirSync(OUT).filter((f) => f.startsWith("production-")).join(", "));
 })();
