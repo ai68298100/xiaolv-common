@@ -164,6 +164,18 @@ export class LibraryService {
         }
     }
 
+    /** 追加内容到指定文档（「插入到指定文档」用；官方 appendBlock） */
+    async appendToDoc(markdown: string, docId: string): Promise<boolean> {
+        if (!markdown.trim()) return false;
+        if (!isBlockId(docId)) return false;
+        await this.kernel.request("appendBlock", {
+            data: markdown.slice(0, LIMITS.contentChars),
+            dataType: "markdown",
+            parentID: docId,
+        });
+        return true;
+    }
+
     /** 整文档导出为 Markdown（「捕获当前文档」用） */
     async exportDocContent(docId: string): Promise<Receipt<{hPath: string; content: string}>> {
         if (!isBlockId(docId)) return fail("invalid-input", "docId invalid");

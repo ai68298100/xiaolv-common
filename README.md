@@ -75,7 +75,7 @@ common.protocolCommands["xiaolv.common.open"]();          // 稳定命令 ID
 ```
 
 - 服务接口：`getCapabilities / search / get / save / update / remove / insert / copy / openSource / reindex / getRecent / getFavorites`
-- 命令 ID：`xiaolv.common.open / saveSelection / insert / copy / openSource`
+- 命令 ID：`xiaolv.common.open / saveSelection / insert / copy / openSource`；插件命令另有 捕获当前块(⌥⇧B)/捕获当前文档；接入示例见 [docs/provider-guide.md](docs/provider-guide.md)
 - 事件（window CustomEvent，detail 带 protocolVersion）：`xiaolv:common:item-created / item-updated / item-deleted / item-inserted`
 - 兼容行为：未知字段保留透传；未知能力忽略；更高主版本明确拒绝（不静默降级）。
 
@@ -92,7 +92,7 @@ common.protocolCommands["xiaolv.common.open"]();          // 稳定命令 ID
 ```bash
 pnpm i
 pnpm run check   # tsc --noEmit
-pnpm test        # esbuild 转译 + node --test（93 项）
+pnpm test        # esbuild 转译 + node --test（95 项）
 pnpm run build   # dist/ + package.zip
 node scripts/render-prototype.cjs    # 原型图截图（需 Playwright Chromium）
 node scripts/render-production.cjs   # 生产 UI 效果截图（真实 dist CSS+DOM）

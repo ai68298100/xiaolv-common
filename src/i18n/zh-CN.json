@@ -135,5 +135,22 @@
   "editContentLabel": "内容（kramdown）",
   "relinkCurrent": "来源设为当前文档",
   "relinkDone": "已重新指定来源",
-  "relinkNoDoc": "当前没有活动文档，无法指定来源"
+  "relinkNoDoc": "当前没有活动文档，无法指定来源",
+  "duplicateItem": "创建副本",
+  "duplicated": "已创建副本：%s",
+  "dataSection": "数据（导出 / 导入）",
+  "exportBtn": "导出全部条目 (JSON)",
+  "importBtn": "导入 JSON",
+  "importPolicyTitle": "选择重复处理策略",
+  "importPolicySkip": "跳过重复（保留现有）",
+  "importPolicyOverwrite": "覆盖重复",
+  "importPolicyRename": "重名并存",
+  "importPreview": "文件包含 %s 个条目，%s 条格式无效将被跳过。选择重复处理策略：",
+  "insertToDoc": "插入到指定文档",
+  "insertToDocPick": "选择目标文档（输入关键词搜索）",
+  "insertToDocDone": "已插入到「%s」",
+  "librarySection": "当前内容库",
+  "libraryNone": "未配置",
+  "reindexBtn": "重建索引",
+  "totalItems": "共 %s 条"
 }

@@ -133,3 +133,38 @@ test("exportDocContent：形状校验与非法 ID 拒绝", async () => {
     const bad = await service.exportDocContent("junk");
     assert.equal(bad.ok, false);
 });
+
+test("R4：appendToDoc 走 appendBlock；空内容/非法 ID 拒绝", async () => {
+    const calls = [];
+    const kernel = {
+        request(endpoint, payload = {}) {
+            calls.push({endpoint, payload});
+            return Promise.resolve([{doOperations: [{id: "20240101120009-xxxxxxxx"}]}]);
+        },
+    };
+    const service = new libModule.LibraryService(kernel);
+    const okCase = await service.appendToDoc("hello", "20240101120001-hijklmn");
+    assert.equal(okCase, true);
+    assert.equal(calls[0].endpoint, "appendBlock");
+    assert.equal(calls[0].payload.parentID, "20240101120001-hijklmn");
+    assert.equal(await service.appendToDoc("   ", "20240101120001-hijklmn"), false);
+    assert.equal(await service.appendToDoc("hello", "junk"), false);
+    assert.equal(calls.length, 1, "rejected inputs must not hit kernel");
+});
+
+test("R4：searchDocs 服务（空关键词短路；解析走 parseDocSearch）", async () => {
+    const calls = [];
+    const kernel = {
+        request(endpoint, payload = {}) {
+            calls.push({endpoint, payload});
+            return Promise.resolve([{path: "/20240101120000-abcdefg.sy", hPath: "/库", box: "nb", name: "库"}]);
+        },
+    };
+    const service = new libModule.LibraryService(kernel);
+    const empty = await service.searchDocs("  ");
+    assert.deepEqual(empty.data, []);
+    assert.equal(calls.length, 0, "empty keyword must short-circuit");
+    const okCase = await service.searchDocs("常用");
+    assert.equal(okCase.data[0].id, "20240101120000-abcdefg");
+    assert.equal(calls[0].payload.k, "常用");
+});

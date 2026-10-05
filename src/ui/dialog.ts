@@ -13,7 +13,11 @@ import {TransformKind} from "../service/ai";
 
 export interface DialogDeps {
     t: (key: string, ...args: string[]) => string;
-    search: (query: SearchQuery) => Promise<{entries: SearchEntry[]; truncated: boolean}>;
+    search: (query: SearchQuery) => Promise<{entries: SearchEntry[]; truncated: boolean; total: number}>;
+    /** 文档搜索（插入到指定文档的选择器） */
+    searchDocs: (k: string) => Promise<Array<{id: string; hPath: string; name: string}>>;
+    insertToDoc: (itemId: string, docId: string, hPath: string) => Promise<boolean>;
+    duplicateItem: (itemId: string) => Promise<void>;
     getTags: () => Promise<string[]>;
     preview: (itemId: string) => Promise<string>;
     runAction: (itemId: string, mode: InsertMode) => Promise<{ok: boolean; message: string}>;
@@ -345,9 +349,12 @@ export class CommonSearchDialog {
         const query = this.buildQuery();
         const list = this.dialog?.element.querySelector<HTMLElement>(".xlc-list");
         const status = this.dialog?.element.querySelector<HTMLElement>(".xlc-status");
+        const footer = this.dialog?.element.querySelector<HTMLElement>(".xlc-footer");
         const aiBanner = this.dialog?.element.querySelector<HTMLElement>(".xlc-ai-banner");
         if (!list) return;
         this.lastPreviewId = null;
+        let total = 0;
+        let truncated = false;
         try {
             const text = query.text.trim();
             if (text.startsWith("?") && text.length > 1) {
@@ -357,6 +364,7 @@ export class CommonSearchDialog {
                 if (aiResult.ok) {
                     this.results = aiResult.entries;
                     this.aiResults = true;
+                    total = aiResult.entries.length;
                 } else {
                     this.results = [];
                     this.aiResults = false;
@@ -365,9 +373,11 @@ export class CommonSearchDialog {
                 if (aiBanner) aiBanner.style.display = this.aiResults && this.results.length ? "" : "none";
                 if (aiBanner && this.aiResults) aiBanner.textContent = `✦ ${this.deps.t("aiFound")} · ${this.results.length}`;
             } else {
-                const {entries} = await this.deps.search(query);
+                const result = await this.deps.search(query);
                 if (seq !== this.searchSeq) return;
-                this.results = entries;
+                this.results = result.entries;
+                total = result.total;
+                truncated = result.truncated;
                 this.aiResults = false;
                 if (aiBanner) aiBanner.style.display = "none";
             }
@@ -381,6 +391,10 @@ export class CommonSearchDialog {
         if (seq !== this.searchSeq) return;
         this.activeIndex = 0;
         if (status) status.textContent = this.results.length ? "" : this.deps.t("empty");
+        if (footer) {
+            footer.textContent = (this.deps.isMobile() ? this.deps.t("usageHintMobile") : this.deps.t("usageHint"))
+                + " ｜ " + this.deps.t("totalItems", String(total)) + (truncated ? " ⚠" : "");
+        }
         this.renderList(list);
         this.updatePreview();
     }
@@ -580,6 +594,49 @@ export class CommonSearchDialog {
             };
             addSilent(this.deps.t("openSource"), () => this.deps.openSource(entry.id));
             addSilent(this.deps.t("edit"), () => this.deps.editItem(entry.id));
+            addSilent(this.deps.t("duplicateItem"), () => this.deps.duplicateItem(entry.id));
+            // 插入到指定文档（菜单内联文档选择器；无活动编辑器场景的主路径）
+            const toDocBtn = document.createElement("button");
+            toDocBtn.className = "xlc-menu-item";
+            toDocBtn.textContent = this.deps.t("insertToDoc");
+            toDocBtn.addEventListener("click", () => {
+                let sec = menu.querySelector<HTMLElement>(".xlc-menu-pickdoc");
+                if (sec) {
+                    sec.remove();
+                    return;
+                }
+                sec = document.createElement("div");
+                sec.className = "xlc-menu-sec xlc-menu-pickdoc";
+                sec.style.flexDirection = "column";
+                const input = document.createElement("input");
+                input.className = "b3-text-field xlc-pickdoc-input";
+                input.placeholder = this.deps.t("insertToDocPick");
+                sec.appendChild(input);
+                let seq = 0;
+                input.addEventListener("input", () => {
+                    const mySeq = ++seq;
+                    const k = input.value.trim();
+                    sec!.querySelectorAll(".xlc-pickdoc-hit").forEach((el) => el.remove());
+                    if (!k) return;
+                    void this.deps.searchDocs(k).then((hits) => {
+                        if (mySeq !== seq) return;
+                        for (const hit of hits.slice(0, 5)) {
+                            const hitBtn = document.createElement("button");
+                            hitBtn.className = "xlc-menu-item xlc-pickdoc-hit";
+                            hitBtn.textContent = hit.hPath || hit.name || hit.id;
+                            hitBtn.addEventListener("click", async () => {
+                                this.destroy();
+                                await this.deps.insertToDoc(entry.id, hit.id, hit.hPath);
+                            });
+                            sec!.appendChild(hitBtn);
+                        }
+                    });
+                });
+                const actions2 = menu.querySelectorAll(".xlc-menu-sec");
+                actions2[actions2.length - 1]?.before(sec);
+                input.focus();
+            });
+            sec2.appendChild(toDocBtn);
             addSilent(this.deps.t("delete"), () => this.deps.deleteItem(entry.id));
             menu.appendChild(sec2);
         };

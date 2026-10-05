@@ -6,12 +6,13 @@ import {
     showMessage,
     confirm,
 } from "siyuan";
+import type {IMenuItem} from "siyuan";
 import {fetchSyncPost} from "siyuan";
 import "@/styles/index.scss";
 import {LIMITS, STORAGE_KEYS} from "./constants";
 import {createKernelClient, parseExistingMap, type IKernelClient} from "./kernel/client";
 import {CommonItem} from "./model/item";
-import {ExportedItem, buildBundle, classifyConflict, validateImport, ConflictPolicy, ImportReceipt} from "./model/transfer";
+import {ExportedItem, buildBundle, classifyConflict, validateImport, ConflictPolicy, ImportIssue, ImportReceipt} from "./model/transfer";
 import {LibraryConfig, migrateState, normalizeLibraryConfig, normalizeState, PluginState} from "./model/storage";
 import {SearchContext} from "./model/search";
 import {LruCache, PREVIEW_CACHE_CAPACITY} from "./model/lru";
@@ -243,8 +244,24 @@ export default class XiaolvCommonPlugin extends Plugin {
         void t;
     }
 
-    private registerEntries(): void {
+    /**
+     * 编辑器工具栏入口（官方 Plugin.updateProtyleToolbar 覆写；宿主渲染工具栏时回调）。
+     * 桌面/移动通用：给编辑器工具栏加「常用」按钮。
+     */
+    public updateProtyleToolbar(toolbar: Array<string | IMenuItem>): Array<string | IMenuItem> {
         try {
+            return [...toolbar, {
+                name: "xiaolv-common-toolbar",
+                icon: "iconXlcCommon",
+                tip: this.i18nFn()("openSearch"),
+                click: () => this.openSearch(),
+            }];
+        } catch {
+            return toolbar;
+        }
+    }
+
+    private registerEntries(): void {        try {
             this.addTopBar({
                 icon: "iconXlcCommon",
                 title: this.i18nFn()("openSearch"),
@@ -298,7 +315,57 @@ export default class XiaolvCommonPlugin extends Plugin {
                 const results = searchEntries(idx.entries, query, this.searchContext());
                 const entries = results.map((r) => r.entry);
                 void this.prefetchSourceHealth(entries);
-                return {entries, truncated: idx.truncated};
+                return {entries, truncated: idx.truncated, total: idx.entries.length};
+            },
+            searchDocs: async (k) => {
+                const result = await this.library.searchDocs(k);
+                return result.ok ? result.data : [];
+            },
+            insertToDoc: async (itemId, docId, hPath) => {
+                const got = await this.library.getItem(itemId);
+                if (!got.ok) {
+                    this.notify("error", got.message);
+                    return false;
+                }
+                const kd = await this.library.getItemKramdown(got.data);
+                if (!kd.ok) {
+                    this.notify("error", kd.message);
+                    return false;
+                }
+                try {
+                    const inserted = await this.library.appendToDoc(kd.data, docId);
+                    if (inserted) this.notify("info", this.i18nFn()("insertToDocDone", hPath || docId));
+                    return inserted;
+                } catch (err) {
+                    this.notify("error", (err as Error).message);
+                    return false;
+                }
+            },
+            duplicateItem: async (itemId) => {
+                const got = await this.library.getItem(itemId);
+                if (!got.ok) return;
+                const kd = await this.library.getItemKramdown(got.data);
+                if (!kd.ok) {
+                    this.notify("error", kd.message);
+                    return;
+                }
+                const src = got.data;
+                const created = await this.library.createItem({
+                    itemType: src.itemType,
+                    markdown: kd.data,
+                    title: src.title ? `${src.title} 副本` : undefined,
+                    alias: src.alias || undefined,
+                    tags: src.tags,
+                    category: src.category || undefined,
+                    url: src.url || undefined,
+                    targetBlockId: src.targetBlockId || undefined,
+                    source: {...src.source},
+                });
+                if (created.ok) {
+                    this.notify("info", this.i18nFn()("duplicated", created.data.item.title));
+                } else {
+                    this.notify("error", created.message);
+                }
             },
             getTags: async () => {
                 const {collectTags} = await import("./model/search");
@@ -778,7 +845,134 @@ export default class XiaolvCommonPlugin extends Plugin {
         });
         root.appendChild(aiSec);
 
+        // 数据区：当前库 + 重建索引 + 导出/导入
+        const dataSec = document.createElement("div");
+        dataSec.className = "xlc-form-field";
+        const dataLabel = document.createElement("span");
+        dataLabel.className = "xlc-form-label";
+        dataLabel.textContent = t("dataSection");
+        dataSec.appendChild(dataLabel);
+        const libRow = document.createElement("div");
+        libRow.className = "xlc-form-hint";
+        const cfg = this.config;
+        libRow.textContent = `${t("librarySection")}：${cfg
+            ? (cfg.mode === "notebook" ? `notebook ${cfg.notebookIds.join(",")}` : `${cfg.mode} · ${cfg.containerDocIds.length}`)
+            : t("libraryNone")}`;
+        dataSec.appendChild(libRow);
+        const dataBtns = document.createElement("div");
+        dataBtns.style.display = "flex";
+        dataBtns.style.gap = "8px";
+        dataBtns.style.flexWrap = "wrap";
+        const mkBtn = (label: string, onClick: () => void): HTMLButtonElement => {
+            const btn = document.createElement("button");
+            btn.className = "b3-button";
+            btn.textContent = label;
+            btn.addEventListener("click", onClick);
+            dataBtns.appendChild(btn);
+            return btn;
+        };
+        mkBtn(t("reindexBtn"), () => {
+            this.library.reindex().then((idx) => {
+                this.notify("info", idx.truncated
+                    ? t("reindexTruncated", String(LIMITS.maxItems))
+                    : t("reindexDone", String(idx.entries.length)));
+            });
+        });
+        mkBtn(t("exportBtn"), () => {
+            void this.exportBundle().then((json) => {
+                const count = (JSON.parse(json) as {items: unknown[]}).items.length;
+                const blob = new Blob([json], {type: "application/json"});
+                const a = document.createElement("a");
+                a.href = URL.createObjectURL(blob);
+                a.download = `xiaolv-common-export-${new Date().toISOString().slice(0, 10)}.json`;
+                a.click();
+                URL.revokeObjectURL(a.href);
+                this.notify("info", t("exportDone", String(count)));
+            });
+        });
+        const importBtn = mkBtn(t("importBtn"), () => {
+            const fileInput = document.createElement("input");
+            fileInput.type = "file";
+            fileInput.accept = ".json,application/json";
+            fileInput.addEventListener("change", () => {
+                const file = fileInput.files?.[0];
+                if (!file) return;
+                if (file.size > LIMITS.maxImportBytes) {
+                    this.notify("error", t("importFailed", "file too large"));
+                    return;
+                }
+                void file.text().then((text) => {
+                    const validation = validateImport(text);
+                    if (!validation.ok || !validation.parsed) {
+                        this.notify("error", t("importFailed", validation.reason ?? "unknown"));
+                        return;
+                    }
+                    this.openImportPolicyDialog(validation.parsed, validation.issues, text);
+                });
+            });
+            fileInput.click();
+        });
+        void importBtn;
+        dataSec.appendChild(dataBtns);
+        root.appendChild(dataSec);
+
         body.appendChild(root);
+    }
+
+    /** 导入策略确认（导入前校验已过；策略三选 → importBundleText → 汇总回执） */
+    private openImportPolicyDialog(
+        parsed: {items: Array<{id: string; title: string}>; unknownTopFields?: unknown},
+        issues: ImportIssue[],
+        text: string,
+    ): void {
+        const t = this.i18nFn();
+        const dialog = new Dialog({
+            title: t("importPolicyTitle"),
+            content: "",
+            width: "min(440px, 92vw)",
+            height: "auto",
+        });
+        const body = dialog.element.querySelector(".b3-dialog__content");
+        if (!body) return;
+        body.innerHTML = "";
+        const wrap = document.createElement("div");
+        wrap.className = "xlc-form";
+        const preview = document.createElement("p");
+        preview.className = "xlc-form-hint";
+        preview.textContent = t("importPreview", String(parsed.items.length), String(issues.length));
+        wrap.appendChild(preview);
+        const run = (policy: ConflictPolicy): void => {
+            dialog.destroy();
+            void this.importBundleText(text, policy).then((receipt) => {
+                this.notify(receipt.failed > 0 ? "error" : "info", t(
+                    "importDone",
+                    String(receipt.created),
+                    String(receipt.skipped),
+                    String(receipt.overwritten),
+                    String(receipt.renamed),
+                    String(receipt.failed),
+                ));
+            }).catch((err) => {
+                this.notify("error", t("importFailed", (err as Error).message));
+            });
+        };
+        const btns = document.createElement("div");
+        btns.className = "xlc-form-actions";
+        btns.style.flexDirection = "column";
+        btns.style.alignItems = "stretch";
+        for (const [policy, label] of [
+            ["skip", t("importPolicySkip")],
+            ["overwrite", t("importPolicyOverwrite")],
+            ["rename", t("importPolicyRename")],
+        ] as Array<[ConflictPolicy, string]>) {
+            const btn = document.createElement("button");
+            btn.className = "b3-button";
+            btn.textContent = label;
+            btn.addEventListener("click", () => run(policy));
+            btns.appendChild(btn);
+        }
+        wrap.appendChild(btns);
+        body.appendChild(wrap);
     }
 
     private applyConfig(config: LibraryConfig): void {

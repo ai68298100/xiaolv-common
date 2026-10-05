@@ -135,5 +135,22 @@
   "editContentLabel": "Content (kramdown)",
   "relinkCurrent": "Set source to current doc",
   "relinkDone": "Source updated",
-  "relinkNoDoc": "No active document; cannot set source"
+  "relinkNoDoc": "No active document; cannot set source",
+  "duplicateItem": "Duplicate item",
+  "duplicated": "Duplicated: %s",
+  "dataSection": "Data (export / import)",
+  "exportBtn": "Export all items (JSON)",
+  "importBtn": "Import JSON",
+  "importPolicyTitle": "Choose conflict policy",
+  "importPolicySkip": "Skip duplicates (keep existing)",
+  "importPolicyOverwrite": "Overwrite duplicates",
+  "importPolicyRename": "Keep both (new id)",
+  "importPreview": "File contains %s items; %s invalid entries will be skipped. Choose conflict policy:",
+  "insertToDoc": "Insert to chosen doc",
+  "insertToDocPick": "Pick target doc (type to search)",
+  "insertToDocDone": "Inserted into \"%s\"",
+  "librarySection": "Current library",
+  "libraryNone": "Not configured",
+  "reindexBtn": "Rebuild index",
+  "totalItems": "%s items total"
 }
