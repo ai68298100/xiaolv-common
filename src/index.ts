@@ -14,6 +14,7 @@ import {createKernelClient, parseExistingMap, type IKernelClient} from "./kernel
 import {CommonItem} from "./model/item";
 import {buildBundle, validateImport, ConflictPolicy, ImportReceipt} from "./model/transfer";
 import {importBundle as importBundleCore} from "./service/importer";
+import {parseMarkdownPack} from "./service/import-markdown";
 import {LibraryConfig, CONFIG_VERSION, migrateState, normalizeLibraryConfig, normalizeState, PluginState} from "./model/storage";
 import {SearchContext} from "./model/search";
 import {LruCache, PREVIEW_CACHE_CAPACITY} from "./model/lru";
@@ -900,6 +901,7 @@ export default class XiaolvCommonPlugin extends Plugin {
             persistSoon: () => this.persistSoon(),
             exportBundle: () => this.exportBundle(),
             importBundleText: (text, policy) => this.importBundleText(text, policy),
+            importMarkdownItems: (items, policy) => this.importMarkdownItems(items, policy),
             fetchAssetBytes: (path) => this.fetchAssetBytes(path),
             aiErrorText: (err) => this.aiErrorText(err),
             applyPinyinAdapter: () => this.applyPinyinAdapter(),
@@ -965,6 +967,11 @@ export default class XiaolvCommonPlugin extends Plugin {
         }
         // 逐条应用与 overwrite 更新语义在 service/importer.ts（可独立单测）
         return importBundleCore(this.library, validation.parsed, policy);
+    }
+
+    async importMarkdownItems(items: Array<{id: string; title: string; itemType: string; kramdown: string}>, policy: ConflictPolicy): Promise<ImportReceipt> {
+        const {importMarkdownBundle} = await import("./service/import-markdown");
+        return importMarkdownBundle(this.library, items, policy);
     }
 
     // ---- 协议能力（雷切等消费）----

@@ -1377,6 +1377,98 @@
     return { entries, itemCount: items.length, assetCount, skippedAssets };
   }
 
+  // src/service/import-markdown.ts
+  init_constants();
+  var ITEM_COMMENT_START = "<!-- xlc-item";
+  var ITEM_COMMENT_END = "-->";
+  var TITLE_RE = /^##\s+(.+)$/;
+  function parseMetadata(lines) {
+    const fields = /* @__PURE__ */ new Map();
+    let titleHint = "";
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed === ITEM_COMMENT_START || trimmed === ITEM_COMMENT_END) continue;
+      const idx = trimmed.indexOf(":");
+      if (idx <= 0) continue;
+      fields.set(trimmed.slice(0, idx).trim(), trimmed.slice(idx + 1).trim());
+    }
+    return { fields, titleHint };
+  }
+  function parseMarkdownPack(md) {
+    const items = [];
+    const issues = [];
+    if (!md || !md.includes(ITEM_COMMENT_START)) return { items, issues };
+    const commentStarts = [];
+    const commentEnds = [];
+    let hasUnclosed = false;
+    let scan = 0;
+    while (true) {
+      const start = md.indexOf(ITEM_COMMENT_START, scan);
+      if (start === -1) break;
+      const end = md.indexOf(ITEM_COMMENT_END, start);
+      if (end === -1) {
+        hasUnclosed = true;
+        break;
+      }
+      commentStarts.push(start);
+      commentEnds.push(end + ITEM_COMMENT_END.length);
+      scan = start + ITEM_COMMENT_START.length;
+      if (commentStarts.length > LIMITS.maxItems) break;
+    }
+    const chunks = [];
+    for (let i = 0; i < commentStarts.length; i++) {
+      const lowerBound = i > 0 ? commentEnds[i - 1] : 0;
+      const titleLineStart = md.lastIndexOf("\n## ", commentStarts[i]) + 1;
+      const chunkStart = Math.max(Math.min(titleLineStart, commentStarts[i]), lowerBound);
+      const chunkEnd = i + 1 < commentStarts.length ? Math.max(md.lastIndexOf("\n## ", commentStarts[i + 1]) + 1, commentStarts[i + 1]) : md.length;
+      chunks.push(md.slice(chunkStart, chunkEnd));
+    }
+    chunks.forEach((chunk, index) => {
+      var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k;
+      const endIdx = chunk.indexOf(ITEM_COMMENT_END);
+      if (endIdx === -1) {
+        issues.push({ index, reason: "metadata-comment-unclosed" });
+        return;
+      }
+      const metaLines = chunk.slice(0, endIdx).split("\n");
+      const { fields } = parseMetadata(metaLines);
+      const id = (_a = fields.get("id")) != null ? _a : "";
+      if (!/^xlc-[0-9a-z]{10,40}$/.test(id)) {
+        issues.push({ index, reason: "invalid-id" });
+        return;
+      }
+      const itemType = (_b = fields.get("type")) != null ? _b : "text";
+      let title = "";
+      const before = chunk.slice(0, chunk.indexOf(ITEM_COMMENT_START));
+      for (const line of before.split("\n")) {
+        const m = line.match(TITLE_RE);
+        if (m) title = m[1].trim();
+      }
+      if (!title && fields.get("alias")) title = (_c = fields.get("alias")) != null ? _c : "";
+      const body = chunk.slice(endIdx + ITEM_COMMENT_END.length).replace(/^\s*\n/, "").replace(/\n\s*$/, "");
+      items.push({
+        id,
+        itemType,
+        title: title.slice(0, LIMITS.title),
+        alias: ((_d = fields.get("alias")) != null ? _d : "").slice(0, LIMITS.alias),
+        tags: ((_e = fields.get("tags")) != null ? _e : "").split(",").map((s) => s.trim()).filter(Boolean).slice(0, LIMITS.tags),
+        category: ((_f = fields.get("category")) != null ? _f : "").slice(0, LIMITS.category),
+        kramdown: body.slice(0, LIMITS.contentChars),
+        source: {
+          sourceDocId: (_g = fields.get("source-doc")) != null ? _g : "",
+          sourceBlockId: (_h = fields.get("source-block")) != null ? _h : "",
+          sourceType: (_i = fields.get("source-type")) != null ? _i : "external"
+        },
+        url: (_j = fields.get("url")) != null ? _j : "",
+        targetBlockId: (_k = fields.get("target")) != null ? _k : "",
+        createdAt: 0,
+        updatedAt: Date.now()
+      });
+    });
+    if (hasUnclosed) issues.push({ index: commentStarts.length, reason: "metadata-comment-unclosed" });
+    return { items, issues };
+  }
+
   // src/ui/settings-dialog.ts
   function openSettingsDialog(ctx) {
     const t = ctx.t;
@@ -1779,7 +1871,7 @@
     const importBtn = mkBtn(t("importBtn"), () => {
       const fileInput = document.createElement("input");
       fileInput.type = "file";
-      fileInput.accept = ".json,application/json";
+      fileInput.accept = ".json,application/json,.md,text/markdown";
       fileInput.addEventListener("change", () => {
         var _a;
         const file = (_a = fileInput.files) == null ? void 0 : _a[0];
@@ -1790,12 +1882,22 @@
         }
         void file.text().then((text) => {
           var _a2;
+          const isMd = /\.md$/i.test(file.name);
+          if (isMd) {
+            const parsed = parseMarkdownPack(text);
+            if (parsed.items.length === 0) {
+              ctx.notify("error", t("importFailed", "no xlc-item metadata found"));
+              return;
+            }
+            openImportPolicyDialog(ctx, { items: parsed.items }, parsed.issues, { kind: "markdown-pack", items: parsed.items });
+            return;
+          }
           const validation = validateImport(text);
           if (!validation.ok || !validation.parsed) {
             ctx.notify("error", t("importFailed", (_a2 = validation.reason) != null ? _a2 : "unknown"));
             return;
           }
-          openImportPolicyDialog(ctx, validation.parsed, validation.issues, text);
+          openImportPolicyDialog(ctx, validation.parsed, validation.issues, { kind: "json", text });
         });
       });
       fileInput.click();
@@ -1860,7 +1962,7 @@
     wrap.appendChild(actions);
     body.appendChild(wrap);
   }
-  function openImportPolicyDialog(ctx, parsed, issues, text) {
+  function openImportPolicyDialog(ctx, parsed, issues, source) {
     const t = ctx.t;
     const dialog = new import_siyuan2.Dialog({
       title: t("importPolicyTitle"),
@@ -1879,7 +1981,8 @@
     wrap.appendChild(preview);
     const run = (policy) => {
       dialog.destroy();
-      void ctx.importBundleText(text, policy).then((receipt) => {
+      const promise = source.kind === "json" ? ctx.importBundleText(source.text, policy) : ctx.importMarkdownItems(source.items, policy);
+      void promise.then((receipt) => {
         ctx.notify(receipt.failed > 0 ? "error" : "info", t(
           "importDone",
           String(receipt.created),

@@ -6,6 +6,7 @@ import {LIMITS} from "../constants";
 import {validateImport, ConflictPolicy, ImportIssue, ImportReceipt} from "../model/transfer";
 import {buildZip} from "../model/zip";
 import {buildMarkdownExport} from "../service/export-markdown";
+import {parseMarkdownPack} from "../service/import-markdown";
 import {LibraryService} from "../service/library";
 import {AiAssistant} from "../service/ai";
 import {ProviderRegistry} from "../service/providers";
@@ -25,6 +26,7 @@ export interface SettingsUiContext {
     persistSoon(): void;
     exportBundle(): Promise<string>;
     importBundleText(text: string, policy: ConflictPolicy): Promise<ImportReceipt>;
+    importMarkdownItems(items: Array<{id: string; title: string; itemType: string; kramdown: string}>, policy: ConflictPolicy): Promise<ImportReceipt>;
     fetchAssetBytes(assetPath: string): Promise<Uint8Array | null>;
     aiErrorText(err: unknown): string;
     applyPinyinAdapter(): void;
@@ -484,7 +486,7 @@ function buildDataSection(ctx: SettingsUiContext, root: HTMLElement): void {
     const importBtn = mkBtn(t("importBtn"), () => {
         const fileInput = document.createElement("input");
         fileInput.type = "file";
-        fileInput.accept = ".json,application/json";
+        fileInput.accept = ".json,application/json,.md,text/markdown";
         fileInput.addEventListener("change", () => {
             const file = fileInput.files?.[0];
             if (!file) return;
@@ -493,12 +495,23 @@ function buildDataSection(ctx: SettingsUiContext, root: HTMLElement): void {
                 return;
             }
             void file.text().then((text) => {
+                const isMd = /\.md$/i.test(file.name);
+                if (isMd) {
+                    // Markdown 包：解析 → 同一策略对话框 → importBundle
+                    const parsed = parseMarkdownPack(text);
+                    if (parsed.items.length === 0) {
+                        ctx.notify("error", t("importFailed", "no xlc-item metadata found"));
+                        return;
+                    }
+                    openImportPolicyDialog(ctx, {items: parsed.items}, parsed.issues, {kind: "markdown-pack", items: parsed.items});
+                    return;
+                }
                 const validation = validateImport(text);
                 if (!validation.ok || !validation.parsed) {
                     ctx.notify("error", t("importFailed", validation.reason ?? "unknown"));
                     return;
                 }
-                openImportPolicyDialog(ctx, validation.parsed, validation.issues, text);
+                openImportPolicyDialog(ctx, validation.parsed, validation.issues, {kind: "json", text});
             });
         });
         fileInput.click();
@@ -571,7 +584,7 @@ function openImportPolicyDialog(
     ctx: SettingsUiContext,
     parsed: {items: Array<{id: string; title: string}>},
     issues: ImportIssue[],
-    text: string,
+    source: {kind: "json"; text: string} | {kind: "markdown-pack"; items: Array<{id: string; title: string; itemType: string; kramdown: string}>},
 ): void {
     const t = ctx.t;
     const dialog = new Dialog({
@@ -591,7 +604,10 @@ function openImportPolicyDialog(
     wrap.appendChild(preview);
     const run = (policy: ConflictPolicy): void => {
         dialog.destroy();
-        void ctx.importBundleText(text, policy).then((receipt) => {
+        const promise = source.kind === "json"
+            ? ctx.importBundleText(source.text, policy)
+            : ctx.importMarkdownItems(source.items, policy);
+        void promise.then((receipt) => {
             ctx.notify(receipt.failed > 0 ? "error" : "info", t(
                 "importDone",
                 String(receipt.created),
