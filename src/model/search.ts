@@ -16,8 +16,10 @@ export interface SearchContext {
     favorites: ReadonlySet<string>;
     /** 逻辑 ID → 最近使用时间戳 */
     recents: ReadonlyMap<string, number>;
-    /** 手动排序（拖拽/置顶顺序），存在时优先 */
+    /** 手动排序（收藏序/置顶顺序），sort=manual 时生效 */
     manualOrder?: ReadonlyMap<string, number>;
+    /** 排序模式（title 仅在无关键词浏览时生效，有关键词保持相关度优先） */
+    sort?: "manual" | "recent" | "title";
     now: number;
 }
 
@@ -32,6 +34,8 @@ export interface ScoredResult {
     entry: SearchEntry;
     score: number;
     matchedBy: string;
+    /** 输入序（最终平级兜底：默认保持库内顺序，而非隐式标题序） */
+    order: number;
 }
 
 function normalizeText(s: string): string {
@@ -44,6 +48,7 @@ function scoreHaystack(haystack: string, needle: string, weight: number, prefixW
     if (idx === -1) return 0;
     let score = weight;
     if (idx === 0 && prefixWeight !== undefined) score += prefixWeight;
+    if (haystack === needle) score += 4; // 精确整串命中压过前缀/包含命中
     return score;
 }
 
@@ -51,7 +56,7 @@ function scoreHaystack(haystack: string, needle: string, weight: number, prefixW
  * 单词评分：标题×8（前缀+3）/ 别名×6（前缀+2）/ 标签×4 / 分类×4 / 摘要×2。
  * 拼音适配层把查询展开为等价匹配串，任一命中即按最高分计。
  */
-export function matchEntry(entry: SearchEntry, rawQuery: string): ScoredResult | null {
+export function matchEntry(entry: SearchEntry, rawQuery: string): Omit<ScoredResult, "order"> | null {
     const expansions = getPinyinAdapter().expand(rawQuery.slice(0, LIMITS.queryChars));
     if (expansions.length === 0) return null;
     const title = normalizeText(entry.title);
@@ -84,29 +89,35 @@ export function passesFilters(entry: SearchEntry, query: SearchQuery, ctx: Searc
 }
 
 function compareResults(a: ScoredResult, b: ScoredResult, ctx: SearchContext): number {
-    // 置顶（手动顺序值小者靠前，缺失视为无穷大）
-    const ma = ctx.manualOrder?.get(a.entry.id) ?? Number.MAX_SAFE_INTEGER;
-    const mb = ctx.manualOrder?.get(b.entry.id) ?? Number.MAX_SAFE_INTEGER;
-    if (ma !== mb) return ma - mb;
+    // 标题排序：仅在无关键词浏览（score 全 0）时生效，有关键词保持相关度优先
+    if (!ctx.sort || ctx.sort === "manual") {
+        const ma = ctx.manualOrder?.get(a.entry.id) ?? Number.MAX_SAFE_INTEGER;
+        const mb = ctx.manualOrder?.get(b.entry.id) ?? Number.MAX_SAFE_INTEGER;
+        if (ma !== mb) return ma - mb;
+    }
     if (b.score !== a.score) return b.score - a.score;
+    if (ctx.sort === "title" && a.score === 0 && b.score === 0) {
+        return a.entry.title.localeCompare(b.entry.title, "zh-Hans-CN");
+    }
     // 同分：最近使用 > 更新时间 > 标题稳定序
     const ra = ctx.recents.get(a.entry.id) ?? 0;
     const rb = ctx.recents.get(b.entry.id) ?? 0;
     if (rb !== ra) return rb - ra;
     if (b.entry.updatedAt !== a.entry.updatedAt) return b.entry.updatedAt - a.entry.updatedAt;
-    return a.entry.title.localeCompare(b.entry.title, "zh-Hans-CN");
+    return a.order - b.order;
 }
 
 export function searchEntries(entries: readonly SearchEntry[], query: SearchQuery, ctx: SearchContext, cap = 100): ScoredResult[] {
     const results: ScoredResult[] = [];
-    for (const entry of entries) {
+    for (let order = 0; order < entries.length; order++) {
+        const entry = entries[order];
         if (!passesFilters(entry, query, ctx)) continue;
         const text = query.text.trim();
         if (text) {
             const m = matchEntry(entry, text);
-            if (m) results.push(m);
+            if (m) results.push({...m, order});
         } else {
-            results.push({entry, score: 0, matchedBy: "none"});
+            results.push({entry, score: 0, matchedBy: "none", order});
         }
     }
     results.sort((a, b) => compareResults(a, b, ctx));
@@ -117,9 +128,15 @@ export function searchEntries(entries: readonly SearchEntry[], query: SearchQuer
 export function listByScope(entries: readonly SearchEntry[], scope: "favorites" | "recent", ctx: SearchContext, cap = 100): SearchEntry[] {
     if (scope === "favorites") {
         return entries
-            .filter((e) => ctx.favorites.has(e.id))
-            .sort((a, b) => compareResults({entry: a, score: 0, matchedBy: "none"}, {entry: b, score: 0, matchedBy: "none"}, ctx))
-            .slice(0, cap);
+            .map((entry, order) => ({entry, order}))
+            .filter(({entry}) => ctx.favorites.has(entry.id))
+            .sort((a, b) => compareResults(
+                {entry: a.entry, score: 0, matchedBy: "none", order: a.order},
+                {entry: b.entry, score: 0, matchedBy: "none", order: b.order},
+                ctx,
+            ))
+            .slice(0, cap)
+            .map(({entry}) => entry);
     }
     return entries
         .filter((e) => ctx.recents.has(e.id))

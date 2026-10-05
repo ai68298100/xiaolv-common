@@ -12,6 +12,10 @@ export interface CaptureDeps {
     readClipboardText(): Promise<string>;
     createItem(input: NewItemInput): Promise<{ok: boolean; message: string; itemId?: string}>;
     notify(kind: "info" | "error", message: string): void;
+    /** 任意块的 kramdown（捕获当前块用；失败返 null） */
+    getBlockKramdown(blockId: string): Promise<string | null>;
+    /** 整文档 Markdown（捕获当前文档用；失败返 null） */
+    exportDocContent(docId: string): Promise<{hPath: string; content: string} | null>;
     /** AI（默认关；正文出域由服务层把关） */
     aiEnabled(): boolean;
     aiTidy(content: string): Promise<{ok: true; title?: string; alias?: string; tags?: string[]; category?: string} | {ok: false; message: string}>;
@@ -64,7 +68,38 @@ export class CaptureDialog {
         this.openForm("", "text", null);
     }
 
-    openForm(defaultText: string, defaultType: ItemType, sourceBlockId: string | null): void {
+    /** 捕获当前块：光标所在块整体作为条目（选区文本优先级低于整块语义） */
+    async captureCurrentBlock(): Promise<void> {
+        const blockId = this.deps.getSelectionText().blockId;
+        if (!blockId) {
+            this.deps.notify("error", this.deps.t("captureBlockNone"));
+            return;
+        }
+        const kramdown = await this.deps.getBlockKramdown(blockId);
+        if (kramdown === null || !kramdown.trim()) {
+            this.deps.notify("error", this.deps.t("kernelError", "block"));
+            return;
+        }
+        this.openForm(kramdown.slice(0, 100_000), inferTypeFromText(kramdown), blockId);
+    }
+
+    /** 捕获当前文档：整文档 Markdown 作为结构条目（来源 = 该文档） */
+    async captureCurrentDoc(): Promise<void> {
+        const docId = this.deps.currentDocId();
+        if (!docId) {
+            this.deps.notify("error", this.deps.t("relinkNoDoc"));
+            return;
+        }
+        const doc = await this.deps.exportDocContent(docId);
+        if (!doc) {
+            this.deps.notify("error", this.deps.t("kernelError", "doc"));
+            return;
+        }
+        const title = doc.hPath.split("/").filter(Boolean).pop() ?? doc.hPath;
+        this.openForm(doc.content, "markdown", null, {title, docId});
+    }
+
+    openForm(defaultText: string, defaultType: ItemType, sourceBlockId: string | null, overrides?: {title?: string; docId?: string}): void {
         const t = this.deps.t;
         const dialog = new Dialog({
             title: t("newItem"),
@@ -117,7 +152,7 @@ export class CaptureDialog {
         form.appendChild(typeWrap);
 
         const contentEl = field(t("type.text"), defaultText, true, "xlc-form-content");
-        const titleEl = field(t("title"), "", false, "xlc-form-title");
+        const titleEl = field(t("title"), overrides?.title ?? "", false, "xlc-form-title");
         const aliasEl = field(t("alias"), "", false, "xlc-form-alias");
         const tagsEl = field(t("tags"), "", false, "xlc-form-tags");
         const tagsHint = document.createElement("span");
@@ -240,7 +275,7 @@ export class CaptureDialog {
             } else if (type === "url") {
                 markdown = contentValue.trim();
             }
-            const docId = this.deps.currentDocId();
+            const docId = overrides?.docId ?? this.deps.currentDocId();
             void this.deps.createItem({
                 itemType: type,
                 markdown,
@@ -248,7 +283,7 @@ export class CaptureDialog {
                 alias: (aliasEl as HTMLInputElement).value || undefined,
                 tags: (tagsEl as HTMLInputElement).value ? (tagsEl as HTMLInputElement).value.split(/[,,]/).map((s) => s.trim()).filter(Boolean) : undefined,
                 category: (categoryEl as HTMLInputElement).value || undefined,
-                source: docId ? {sourceDocId: docId, sourceBlockId: sourceBlockId ?? undefined, sourceType: sourceBlockId ? "selection" : "manual"} : undefined,
+                source: docId ? {sourceDocId: docId, sourceBlockId: sourceBlockId ?? undefined, sourceType: overrides?.docId ? "doc-fragment" : sourceBlockId ? "selection" : "manual"} : undefined,
             }).then((result) => {
                 if (result.ok) {
                     this.deps.notify("info", t("saved", result.message));

@@ -14,6 +14,7 @@ import {CommonItem} from "./model/item";
 import {ExportedItem, buildBundle, classifyConflict, validateImport, ConflictPolicy, ImportReceipt} from "./model/transfer";
 import {LibraryConfig, migrateState, normalizeLibraryConfig, normalizeState, PluginState} from "./model/storage";
 import {SearchContext} from "./model/search";
+import {LruCache, PREVIEW_CACHE_CAPACITY} from "./model/lru";
 import {CapabilityDescriptor, ProviderDescriptor} from "./model/protocol";
 import {LibraryService, NewItemInput, SourceHealth} from "./service/library";
 import {ActionExecutor, HostBridge} from "./service/commands";
@@ -99,6 +100,18 @@ export default class XiaolvCommonPlugin extends Plugin {
                 return {ok: true, message: result.data.item.title, itemId: result.data.item.id};
             },
             notify: this.notify,
+            getBlockKramdown: async (blockId) => {
+                const kd = await this.library.getItemKramdown({
+                    id: "xlc-proxy", blockId, libraryDocId: "", itemType: "text", title: "", alias: "",
+                    tags: [], category: "", summary: "", source: {sourceDocId: "", sourceBlockId: "", sourceType: "manual"},
+                    url: "", targetBlockId: "", createdAt: 0, updatedAt: 0, droppedFields: [],
+                });
+                return kd.ok ? kd.data : null;
+            },
+            exportDocContent: async (docId) => {
+                const result = await this.library.exportDocContent(docId);
+                return result.ok ? result.data : null;
+            },
             aiEnabled: () => this.state.ai.enabled,
             aiTidy: async (content) => {
                 try {
@@ -207,6 +220,15 @@ export default class XiaolvCommonPlugin extends Plugin {
             callback: () => void this.capture.saveSelection(),
         });
         this.addCommand({
+            langKey: "captureBlock",
+            hotkey: "⌥⇧B",
+            callback: () => void this.capture.captureCurrentBlock(),
+        });
+        this.addCommand({
+            langKey: "captureDoc",
+            callback: () => void this.capture.captureCurrentDoc(),
+        });
+        this.addCommand({
             langKey: "insertCmd",
             callback: () => this.openSearch(),
         });
@@ -248,12 +270,19 @@ export default class XiaolvCommonPlugin extends Plugin {
     // ---- 搜索界面 ----
 
     private searchContext(): SearchContext {
+        const sort = this.state.sort;
         return {
             favorites: new Set(this.state.favorites),
             recents: new Map(this.state.recents.map((r) => [r.id, r.usedAt])),
+            // 手动/置顶 = 收藏序（收藏顺序即置顶顺序）
+            manualOrder: sort === "manual" ? new Map(this.state.favorites.map((id, i) => [id, i])) : undefined,
+            sort,
             now: Date.now(),
         };
     }
+
+    /** 预览文本的有界可丢弃缓存（插入/复制仍现场取正文，不受缓存影响） */
+    private previewCache = new LruCache<string>(PREVIEW_CACHE_CAPACITY);
 
     openSearch(): void {
         if (!this.config) {
@@ -277,10 +306,21 @@ export default class XiaolvCommonPlugin extends Plugin {
                 return collectTags(idx.entries);
             },
             preview: async (itemId) => {
+                const cached = this.previewCache.get(itemId);
+                if (cached !== undefined) return cached;
                 const got = await this.library.getItem(itemId);
                 if (!got.ok) return "";
                 const kd = await this.library.getItemKramdown(got.data);
-                return kd.ok ? kd.data : "";
+                const text = kd.ok ? kd.data : "";
+                if (text) this.previewCache.set(itemId, text);
+                return text;
+            },
+            getSort: () => this.state.sort,
+            cycleSort: () => {
+                const order = ["manual", "recent", "title"] as const;
+                const idx = order.indexOf(this.state.sort);
+                this.state.sort = order[(idx + 1) % order.length];
+                this.persistSoon();
             },
             runAction: async (itemId, mode) => {
                 const got = await this.library.getItem(itemId);
@@ -373,6 +413,7 @@ export default class XiaolvCommonPlugin extends Plugin {
                 confirmDelete(this.i18nFn(), got.data.title, async () => {
                     const removed = await this.library.removeItem(itemId);
                     if (removed.ok) {
+                        this.previewCache.clear();
                         this.state.favorites = this.state.favorites.filter((id) => id !== itemId);
                         this.state.recents = this.state.recents.filter((r) => r.id !== itemId);
                         this.persistSoon();
@@ -407,12 +448,14 @@ export default class XiaolvCommonPlugin extends Plugin {
 
     // ---- 编辑 ----
 
-    private openEditDialog(item: CommonItem): void {
+    private async openEditDialog(item: CommonItem): Promise<void> {
         const t = this.i18nFn();
+        const kd = await this.library.getItemKramdown(item);
+        const initialKramdown = kd.ok ? kd.data : "";
         const dialog = new Dialog({
             title: t("edit"),
             content: "",
-            width: "min(480px, 92vw)",
+            width: "min(520px, 92vw)",
             height: "auto",
         });
         const body = dialog.element.querySelector(".b3-dialog__content");
@@ -438,6 +481,46 @@ export default class XiaolvCommonPlugin extends Plugin {
         const aliasEl = mkField(t("alias"), item.alias);
         const tagsEl = mkField(t("tags"), item.tags.join(","));
         const categoryEl = mkField(t("category"), item.category);
+        // 内容编辑（kramdown；保存走 updateBlock，保留类型语义由内容本身决定）
+        const contentWrap = document.createElement("label");
+        contentWrap.className = "xlc-form-field";
+        const contentCap = document.createElement("span");
+        contentCap.className = "xlc-form-label";
+        contentCap.textContent = t("editContentLabel");
+        contentWrap.appendChild(contentCap);
+        const contentEl = document.createElement("textarea");
+        contentEl.className = "b3-text-field";
+        contentEl.rows = 8;
+        contentEl.value = initialKramdown;
+        contentWrap.appendChild(contentEl);
+        form.appendChild(contentWrap);
+        // 来源状态与重新指定
+        const srcRow = document.createElement("div");
+        srcRow.className = "xlc-form-hint";
+        srcRow.textContent = item.source.sourceDocId
+            ? `src: ${item.source.sourceDocId}${item.source.sourceBlockId ? ` / ${item.source.sourceBlockId}` : ""}`
+            : t("sourceMissing");
+        const relinkBtn = document.createElement("button");
+        relinkBtn.className = "b3-button b3-button--text xlc-form-ai";
+        relinkBtn.textContent = t("relinkCurrent");
+        relinkBtn.addEventListener("click", () => {
+            const docId = this.host.currentDocId();
+            if (!docId) {
+                this.notify("error", t("relinkNoDoc"));
+                return;
+            }
+            void this.library.relinkSource(item.id, {sourceDocId: docId}).then((result) => {
+                if (result.ok) {
+                    this.previewCache.clear();
+                    this.notify("info", t("relinkDone"));
+                    srcRow.textContent = `src: ${docId}`;
+                } else {
+                    this.notify("error", result.message);
+                }
+            });
+        });
+        srcRow.appendChild(relinkBtn);
+        form.appendChild(srcRow);
         const actions = document.createElement("div");
         actions.className = "xlc-form-actions";
         const cancel = document.createElement("button");
@@ -453,8 +536,10 @@ export default class XiaolvCommonPlugin extends Plugin {
                 alias: aliasEl.value,
                 tags: tagsEl.value.split(/[,,]/).map((s) => s.trim()).filter(Boolean),
                 category: categoryEl.value,
+                markdown: contentEl.value !== initialKramdown ? contentEl.value : undefined,
             }).then((result) => {
                 if (result.ok) {
+                    this.previewCache.clear();
                     this.notify("info", t("updated", result.data.item.title));
                     dialog.destroy();
                 } else {
@@ -580,6 +665,48 @@ export default class XiaolvCommonPlugin extends Plugin {
                 });
             });
         });
+        // doc/tree 模式：文档选择器（searchDocs 关键词搜索 → 点选使用）
+        const pickerWrap = document.createElement("div");
+        pickerWrap.className = "xlc-form-field";
+        const pickerInput = document.createElement("input");
+        pickerInput.className = "b3-text-field";
+        pickerInput.placeholder = t("docPicker");
+        pickerWrap.appendChild(pickerInput);
+        const pickerList = document.createElement("div");
+        pickerList.className = "xlc-doclist";
+        pickerWrap.appendChild(pickerList);
+        root.appendChild(pickerWrap);
+        let pickedDoc: {id: string; hPath: string} | null = null;
+        let pickerSeq = 0;
+        pickerInput.addEventListener("input", () => {
+            const seq = ++pickerSeq;
+            const k = pickerInput.value.trim();
+            pickerList.innerHTML = "";
+            pickedDoc = null;
+            if (!k) return;
+            void this.library.searchDocs(k).then((result) => {
+                if (seq !== pickerSeq) return;
+                if (!result.ok || result.data.length === 0) {
+                    const empty = document.createElement("div");
+                    empty.className = "xlc-doclist-empty";
+                    empty.textContent = result.ok ? t("docPickerEmpty") : t("kernelError", result.message);
+                    pickerList.appendChild(empty);
+                    return;
+                }
+                for (const hit of result.data.slice(0, 8)) {
+                    const item = document.createElement("button");
+                    item.type = "button";
+                    item.className = "xlc-doclist-item";
+                    item.textContent = hit.hPath || hit.name || hit.id;
+                    item.addEventListener("click", () => {
+                        pickedDoc = {id: hit.id, hPath: hit.hPath};
+                        pickerList.querySelectorAll(".xlc-doclist-item").forEach((el) => el.classList.remove("xlc-doclist-item--on"));
+                        item.classList.add("xlc-doclist-item--on");
+                    });
+                    pickerList.appendChild(item);
+                }
+            });
+        });
         const useNotebookBtn = document.createElement("button");
         useNotebookBtn.className = "b3-button b3-button--text";
         useNotebookBtn.textContent = t("confirm");
@@ -601,13 +728,14 @@ export default class XiaolvCommonPlugin extends Plugin {
                 dialog.destroy();
                 return;
             }
-            // doc/tree 模式：手动输入库文档 ID（高级路径；后续版本接入文档选择器）
-            const docId = window.prompt("Doc ID");
-            if (!docId) return;
+            if (!pickedDoc) {
+                this.notify("error", t("docPickerEmpty"));
+                return;
+            }
             this.applyConfig({
                 mode,
                 notebookIds: [],
-                containerDocIds: [docId.trim()],
+                containerDocIds: [pickedDoc.id],
                 createdDocIds: [],
                 configuredAt: Date.now(),
             });

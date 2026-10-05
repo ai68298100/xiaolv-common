@@ -23,6 +23,8 @@ export interface DialogDeps {
     toggleFavorite: (itemId: string) => boolean;
     isFavorite: (itemId: string) => boolean;
     insertRaw: (markdown: string) => Promise<boolean>;
+    getSort: () => "manual" | "recent" | "title";
+    cycleSort: () => void;
     /** AI 语义找（? 前缀触发；仅元数据出域） */
     aiSemantic: (desc: string) => Promise<{ok: true; entries: SearchEntry[]} | {ok: false; message: string}>;
     /** AI 变换（需正文出域权限） */
@@ -164,6 +166,20 @@ export class CommonSearchDialog {
         aiBanner.className = "xlc-chip xlc-ai-banner";
         aiBanner.style.display = "none";
         filters.appendChild(aiBanner);
+        // 排序切换 chip（手动/置顶 → 最近 → 标题）
+        const sortChip = document.createElement("button");
+        sortChip.className = "xlc-chip xlc-sort-chip";
+        const paintSort = (): void => {
+            const sort = this.deps.getSort();
+            sortChip.textContent = "⇅ " + this.deps.t(`sort.${sort}`);
+        };
+        paintSort();
+        sortChip.addEventListener("click", () => {
+            this.deps.cycleSort();
+            paintSort();
+            void this.refresh();
+        });
+        filters.appendChild(sortChip);
         root.appendChild(filters);
 
         // 状态行（aria-live）

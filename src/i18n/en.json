@@ -121,5 +121,19 @@
   "aiTransport": "AI call failed",
   "aiParseFailed": "Cannot parse AI result, please retry",
   "aiApplied": "AI suggestions applied",
-  "aiOriginalPreserved": "Original content untouched"
+  "aiOriginalPreserved": "Original content untouched",
+  "captureBlock": "Capture current block",
+  "captureBlockNone": "Cursor is not inside a block; cannot locate current block",
+  "captureDoc": "Capture current document",
+  "docPicker": "Pick library doc (type to search)",
+  "docPickerEmpty": "No matching docs",
+  "docPickUse": "Use this doc",
+  "sort": "Sort",
+  "sort.manual": "Manual/pinned",
+  "sort.recent": "Recent",
+  "sort.title": "Title",
+  "editContentLabel": "Content (kramdown)",
+  "relinkCurrent": "Set source to current doc",
+  "relinkDone": "Source updated",
+  "relinkNoDoc": "No active document; cannot set source"
 }

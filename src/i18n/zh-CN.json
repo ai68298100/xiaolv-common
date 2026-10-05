@@ -121,5 +121,19 @@
   "aiTransport": "AI 调用失败",
   "aiParseFailed": "AI 结果无法解析，请重试",
   "aiApplied": "已应用 AI 建议",
-  "aiOriginalPreserved": "原文未被修改"
+  "aiOriginalPreserved": "原文未被修改",
+  "captureBlock": "捕获当前块",
+  "captureBlockNone": "光标不在块内，无法定位当前块",
+  "captureDoc": "捕获当前文档",
+  "docPicker": "选择库文档（输入关键词搜索）",
+  "docPickerEmpty": "没有匹配的文档",
+  "docPickUse": "使用此文档",
+  "sort": "排序",
+  "sort.manual": "手动/置顶",
+  "sort.recent": "最近使用",
+  "sort.title": "标题",
+  "editContentLabel": "内容（kramdown）",
+  "relinkCurrent": "来源设为当前文档",
+  "relinkDone": "已重新指定来源",
+  "relinkNoDoc": "当前没有活动文档，无法指定来源"
 }

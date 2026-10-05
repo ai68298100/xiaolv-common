@@ -23,6 +23,7 @@ export const ENDPOINTS = {
     version: "/api/system/version",
     lsNotebooks: "/api/notebook/lsNotebooks",
     listDocsByPath: "/api/filetree/listDocsByPath",
+    searchDocs: "/api/filetree/searchDocs",
     createDocWithMd: "/api/filetree/createDocWithMd",
     removeDoc: "/api/filetree/removeDoc",
     getHPathByID: "/api/filetree/getHPathByID",
@@ -151,4 +152,36 @@ export function parseDocId(data: unknown): string | null {
 
 export function parseString(data: unknown): string {
     return typeof data === "string" ? data : "";
+}
+
+export interface IDocSearchHit {
+    id: string;
+    hPath: string;
+    box: string;
+    name: string;
+}
+
+/**
+ * searchDocs 响应解析：[{path, hPath, box, name?}]。
+ * 文档 ID 从 path 末段 `/<yyyymmddHHMMSS-xxxxxxx>.sy` 解析（思源 .sy 路径约定），
+ * 解析失败的条目丢弃（不猜测 ID）。
+ */
+export function parseDocSearch(data: unknown): IDocSearchHit[] {
+    if (!Array.isArray(data)) return [];
+    const out: IDocSearchHit[] = [];
+    for (const raw of data) {
+        if (!raw || typeof raw !== "object") continue;
+        const obj = raw as Record<string, unknown>;
+        const path = typeof obj.path === "string" ? obj.path : "";
+        const m = path.match(/(\d{14}-[0-9a-z]{7})\.sy$/);
+        if (!m) continue;
+        out.push({
+            id: m[1],
+            hPath: typeof obj.hPath === "string" ? obj.hPath : "",
+            box: typeof obj.box === "string" ? obj.box : "",
+            name: typeof obj.name === "string" ? obj.name : "",
+        });
+        if (out.length >= 30) break;
+    }
+    return out;
 }

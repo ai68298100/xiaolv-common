@@ -112,6 +112,44 @@
     background-color: rgba(53, 117, 240, .07);
   }
 
+  // 文档选择器（设置引导）
+  .xlc-doclist {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    max-height: 180px;
+    overflow: auto;
+
+    .xlc-doclist-item {
+      text-align: left;
+      border: none;
+      background: transparent;
+      color: var(--b3-theme-on-background);
+      font-size: 12.5px;
+      padding: 6px 10px;
+      min-height: 32px;
+      border-radius: 6px;
+      cursor: pointer;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+
+      &:hover { background-color: var(--b3-list-hover); }
+
+      &--on {
+        background-color: var(--b3-theme-primary-lighter);
+        color: var(--b3-theme-primary);
+        font-weight: 600;
+      }
+    }
+
+    .xlc-doclist-empty {
+      font-size: 12px;
+      color: var(--b3-theme-on-surface);
+      padding: 6px 10px;
+    }
+  }
+
   // ---- 状态行 ----
   .xlc-status {
     min-height: 18px;

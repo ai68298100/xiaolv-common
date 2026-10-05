@@ -7,6 +7,7 @@ import {
     parseBatchAttrs,
     parseChildBlocks,
     parseDocId,
+    parseDocSearch,
     parseExistingMap,
     parseKramdown,
     parseString,
@@ -152,6 +153,30 @@ export class LibraryService {
         }
     }
 
+    /** 按关键词搜文档（文档选择器用；ID 从 .sy path 解析，解析失败条目丢弃） */
+    async searchDocs(keyword: string): Promise<Receipt<Array<{id: string; hPath: string; box: string; name: string}>>> {
+        const k = keyword.trim().slice(0, 96);
+        if (!k) return ok([]);
+        try {
+            return ok(parseDocSearch(await this.kernel.request("searchDocs", {k})));
+        } catch (err) {
+            return toFailureReceipt(err);
+        }
+    }
+
+    /** 整文档导出为 Markdown（「捕获当前文档」用） */
+    async exportDocContent(docId: string): Promise<Receipt<{hPath: string; content: string}>> {
+        if (!isBlockId(docId)) return fail("invalid-input", "docId invalid");
+        try {
+            const data = await this.kernel.request<{hPath?: unknown; content?: unknown}>("exportMdContent", {id: docId});
+            const content = typeof data?.content === "string" ? data.content : "";
+            if (!content) return fail("not-found", "doc content unavailable");
+            return ok({hPath: typeof data?.hPath === "string" ? data.hPath : "", content: content.slice(0, LIMITS.contentChars)});
+        } catch (err) {
+            return toFailureReceipt(err);
+        }
+    }
+
     // ---- 索引构建 ----
 
     private async resolveDocIds(): Promise<{docIds: string[]; errors: string[]}> {
@@ -207,43 +232,53 @@ export class LibraryService {
         let truncated = false;
         let docsScanned = 0;
 
-        for (const docId of docIds) {
-            if (items.size >= maxItems) {
-                truncated = true;
-                break;
+        // 有界并发扫文档（并发 4，缩短大库索引耗时）；结果按原 doc 顺序落位，保证索引顺序确定
+        const perDoc: Array<Array<{child: {id: string; type: string; subtype?: string}; attrs: Record<string, string>}>> = docIds.map(() => []);
+        let cursor = 0;
+        const workerCount = Math.min(4, Math.max(1, docIds.length));
+        const worker = async (): Promise<void> => {
+            while (cursor < docIds.length) {
+                const index = cursor++;
+                const docId = docIds[index];
+                docsScanned++;
+                let children;
+                try {
+                    children = parseChildBlocks(await this.kernel.request("getChildBlocks", {id: docId}));
+                } catch (err) {
+                    errors.push(`doc ${docId}: ${(err as Error).message}`);
+                    continue;
+                }
+                if (children.length === 0) continue;
+                let attrsByBlock: Record<string, Record<string, string>> = {};
+                try {
+                    attrsByBlock = parseBatchAttrs(await this.kernel.request("batchGetBlockAttrs", {
+                        ids: children.map((c) => c.id),
+                    }));
+                } catch (err) {
+                    errors.push(`attrs ${docId}: ${(err as Error).message}`);
+                    continue;
+                }
+                perDoc[index] = children.map((child) => ({child, attrs: attrsByBlock[child.id] ?? {}}));
             }
-            docsScanned++;
-            let children;
-            try {
-                children = parseChildBlocks(await this.kernel.request("getChildBlocks", {id: docId}));
-            } catch (err) {
-                errors.push(`doc ${docId}: ${(err as Error).message}`);
-                continue;
-            }
-            if (children.length === 0) continue;
-            let attrsByBlock: Record<string, Record<string, string>> = {};
-            try {
-                attrsByBlock = parseBatchAttrs(await this.kernel.request("batchGetBlockAttrs", {
-                    ids: children.map((c) => c.id),
-                }));
-            } catch (err) {
-                errors.push(`attrs ${docId}: ${(err as Error).message}`);
-                continue;
-            }
-            for (const child of children) {
+        };
+        await Promise.all(Array.from({length: workerCount}, () => worker()));
+
+        // 单遍按原 doc 顺序落位；无 custom-xlc-id 的块不是条目（用户普通内容混排安全）
+        outer: for (let d = 0; d < perDoc.length; d++) {
+            for (const {child, attrs} of perDoc[d]) {
+                if (items.size >= maxItems) {
+                    truncated = true;
+                    break outer;
+                }
                 const item = normalizeCommonItem({
                     blockId: child.id,
-                    libraryDocId: docId,
-                    attrs: attrsByBlock[child.id] ?? {},
+                    libraryDocId: docIds[d],
+                    attrs,
                     blockType: child.type,
                     subtype: child.subtype,
                     kramdown: "",
                 });
-                if (!item) continue; // 无 custom-xlc-id 的块不是条目（用户普通内容混排安全）
-                if (items.size >= maxItems) {
-                    truncated = true;
-                    break;
-                }
+                if (!item) continue;
                 items.set(item.id, item);
                 entries.push(toSearchEntry(item));
             }

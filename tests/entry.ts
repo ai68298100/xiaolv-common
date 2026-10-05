@@ -8,6 +8,7 @@ import * as search from "../src/model/search";
 import * as pinyin from "../src/model/pinyin";
 import * as transfer from "../src/model/transfer";
 import * as client from "../src/kernel/client";
+import * as lru from "../src/model/lru";
 import * as library from "../src/service/library";
 import * as commands from "../src/service/commands";
 import * as providers from "../src/service/providers";
@@ -23,6 +24,7 @@ export {
     pinyin,
     transfer,
     client,
+    lru,
     library,
     commands,
     providers,
