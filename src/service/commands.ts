@@ -153,6 +153,11 @@ export class ActionExecutor {
     /** 对输出载荷应用动态占位符（插入 markdown 与剪贴板文本；存储内容不受影响）。
      *  仅当文本含 title/path 占位符时才取当前文档（避免多余内核往返）。
      *  code 条目跳过替换：代码中的 {{xlc:…}} 是字面文本（例如演示模板的代码），绝不能被改写。 */
+    /** 公开渲染入口：定向插入（insertToDoc）与 provider payload 共用（R50/R51 语义统一）。 */
+    async renderForInsert(text: string, item?: CommonItem): Promise<string> {
+        return (await this.applyOutput(text, item)) ?? text;
+    }
+
     private async applyOutput(text: string | undefined, item?: CommonItem): Promise<string | undefined> {
         if (text === undefined) return undefined;
         if (item?.itemType === "code") return text;

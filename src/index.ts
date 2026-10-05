@@ -535,7 +535,8 @@ export default class XiaolvCommonPlugin extends Plugin {
                         this.notify("error", kd.message);
                         return false;
                     }
-                    markdown = kd.data;
+                    // 占位符语义与活动编辑器路径一致（R51：定向插入同样渲染 {{xlc:…}}）
+                    markdown = await this.executor.renderForInsert(kd.data, item);
                 }
                 try {
                     const inserted = await this.library.appendToDoc(markdown, docId);
