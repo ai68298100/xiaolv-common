@@ -524,13 +524,21 @@ export default class XiaolvCommonPlugin extends Plugin {
                     this.notify("error", got.message);
                     return false;
                 }
-                const kd = await this.library.getItemKramdown(got.data);
-                if (!kd.ok) {
-                    this.notify("error", kd.message);
-                    return false;
+                const item = got.data;
+                // blockref 条目：插引用语法（而非条目块自身的空 kramdown）
+                let markdown: string;
+                if (item.itemType === "blockref" && item.targetBlockId) {
+                    markdown = `((${item.targetBlockId} '${(item.title || "ref").replace(/'/g, "\\'")}'))`;
+                } else {
+                    const kd = await this.library.getItemKramdown(item);
+                    if (!kd.ok) {
+                        this.notify("error", kd.message);
+                        return false;
+                    }
+                    markdown = kd.data;
                 }
                 try {
-                    const inserted = await this.library.appendToDoc(kd.data, docId);
+                    const inserted = await this.library.appendToDoc(markdown, docId);
                     if (inserted) this.notify("info", this.i18nFn()("insertToDocDone", hPath || docId));
                     return inserted;
                 } catch (err) {
