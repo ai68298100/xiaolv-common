@@ -140,6 +140,8 @@
       this.previewSeq = 0;
       this.currentScope = "all";
       this.lastPreviewId = null;
+      /** 动作菜单 document 监听兜底清理（destroy 时调用；防键盘关弹窗残留监听） */
+      this.menuDismiss = null;
       this.inputDebounce = null;
       this.ctx = ctx;
     }
@@ -310,16 +312,14 @@
       const hintText = document.createElement("span");
       hintText.textContent = isMobile ? this.deps.t("usageHintMobile") : this.deps.t("usageHint");
       footer.appendChild(hintText);
-      if (!isMobile) {
-        const gear = document.createElement("button");
-        gear.className = "b3-button b3-button--text xlc-btn-ghost xlc-footer-gear";
-        gear.textContent = "\u2699 " + this.deps.t("openSettings");
-        gear.addEventListener("click", () => {
-          this.destroy();
-          this.deps.openSetup();
-        });
-        footer.appendChild(gear);
-      }
+      const gear = document.createElement("button");
+      gear.className = "b3-button b3-button--text xlc-btn-ghost xlc-footer-gear";
+      gear.textContent = "\u2699 " + this.deps.t("openSettings");
+      gear.addEventListener("click", () => {
+        this.destroy();
+        this.deps.openSetup();
+      });
+      footer.appendChild(gear);
       root.appendChild(footer);
       return root;
     }
@@ -909,8 +909,13 @@
       const dismiss = (e) => {
         if (!menu.contains(e.target)) {
           menu.remove();
+          this.menuDismiss = null;
           document.removeEventListener("pointerdown", dismiss, true);
         }
+      };
+      this.menuDismiss = () => {
+        menu.remove();
+        document.removeEventListener("pointerdown", dismiss, true);
       };
       document.addEventListener("pointerdown", dismiss, true);
     }
@@ -965,6 +970,10 @@
     destroy() {
       var _a;
       if (this.inputDebounce) clearTimeout(this.inputDebounce);
+      if (this.menuDismiss) {
+        this.menuDismiss();
+        this.menuDismiss = null;
+      }
       (_a = this.dialog) == null ? void 0 : _a.destroy();
       this.dialog = null;
     }

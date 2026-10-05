@@ -66,6 +66,8 @@ export class CommonSearchDialog {
     private ctx: SearchContext;
     private currentScope: "all" | "favorites" | "recent" = "all";
     private lastPreviewId: string | null = null;
+    /** 动作菜单 document 监听兜底清理（destroy 时调用；防键盘关弹窗残留监听） */
+    private menuDismiss: (() => void) | null = null;
     private inputDebounce: ReturnType<typeof setTimeout> | null = null;
 
     constructor(private readonly deps: DialogDeps, ctx: SearchContext) {
@@ -256,16 +258,15 @@ export class CommonSearchDialog {
         const hintText = document.createElement("span");
         hintText.textContent = isMobile ? this.deps.t("usageHintMobile") : this.deps.t("usageHint");
         footer.appendChild(hintText);
-        if (!isMobile) {
-            const gear = document.createElement("button");
-            gear.className = "b3-button b3-button--text xlc-btn-ghost xlc-footer-gear";
-            gear.textContent = "⚙ " + this.deps.t("openSettings");
-            gear.addEventListener("click", () => {
-                this.destroy();
-                this.deps.openSetup();
-            });
-            footer.appendChild(gear);
-        }
+        // 设置入口双端可达（移动端无顶栏/命令面板，此处是唯一设置路径）
+        const gear = document.createElement("button");
+        gear.className = "b3-button b3-button--text xlc-btn-ghost xlc-footer-gear";
+        gear.textContent = "⚙ " + this.deps.t("openSettings");
+        gear.addEventListener("click", () => {
+            this.destroy();
+            this.deps.openSetup();
+        });
+        footer.appendChild(gear);
         root.appendChild(footer);
         return root;
     }
@@ -880,8 +881,14 @@ export class CommonSearchDialog {
         const dismiss = (e: Event) => {
             if (!menu.contains(e.target as Node)) {
                 menu.remove();
+                this.menuDismiss = null;
                 document.removeEventListener("pointerdown", dismiss, true);
             }
+        };
+        // destroy() 时兜底清理（弹窗经键盘关闭而菜单未点掉的场景）
+        this.menuDismiss = () => {
+            menu.remove();
+            document.removeEventListener("pointerdown", dismiss, true);
         };
         document.addEventListener("pointerdown", dismiss, true);
     }
@@ -937,6 +944,10 @@ export class CommonSearchDialog {
 
     destroy(): void {
         if (this.inputDebounce) clearTimeout(this.inputDebounce);
+        if (this.menuDismiss) {
+            this.menuDismiss();
+            this.menuDismiss = null;
+        }
         this.dialog?.destroy();
         this.dialog = null;
     }
