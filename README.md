@@ -4,11 +4,19 @@
 
 > 独立运行，不依赖小驴雷切；同时提供 `xiaolv-common/v1` 协议供小驴系列插件联动。
 
-## 界面速览（生产 DOM+CSS 渲染，亮/暗/窄容器四图见 docs/design/）
+## 界面速览（全部为生产 DOM+CSS 渲染截图，见 docs/design/）
 
-![桌面搜索（双栏预览）](docs/design/production-desktop-light.png)
+![桌面搜索（双栏预览，亮色）](docs/design/production-desktop-light.png)
+
+![桌面搜索（暗色）](docs/design/production-desktop-dark.png)
+
+![捕获表单（AI 草稿/整理）](docs/design/production-capture-light.png)
+
+![设置（AI/搜索/提供方/数据）](docs/design/production-settings-light.png)
 
 ![提供方分区](docs/design/production-provider-light.png)
+
+![窄容器单列降级](docs/design/production-narrow-light.png)
 
 ## 定位边界
 
