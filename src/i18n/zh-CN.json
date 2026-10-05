@@ -152,5 +152,7 @@
   "librarySection": "当前内容库",
   "libraryNone": "未配置",
   "reindexBtn": "重建索引",
-  "totalItems": "共 %s 条"
+  "totalItems": "共 %s 条",
+  "searchSection": "搜索",
+  "pinyinToggle": "拼音搜索（全拼/首字母本地匹配，可关）"
 }

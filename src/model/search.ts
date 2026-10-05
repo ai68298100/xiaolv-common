@@ -28,6 +28,9 @@ export type SearchEntry = Pick<CommonItem, "id" | "blockId" | "libraryDocId" | "
     /** 来源引用（失效检测预检用；不参与搜索打分，绝不出域给 AI） */
     sourceDocId?: string;
     sourceBlockId?: string;
+    /** 拼音注解（索引期由适配器生成；noop 适配器下不存在） */
+    py?: string;
+    pyi?: string;
 };
 
 export interface ScoredResult {
@@ -73,6 +76,9 @@ export function matchEntry(entry: SearchEntry, rawQuery: string): Omit<ScoredRes
             {score: Math.max(0, ...tags.map((t) => scoreHaystack(t, q, 4))), matchedBy: "tags"},
             {score: scoreHaystack(category, q, 4), matchedBy: "category"},
             {score: scoreHaystack(summary, q, 2), matchedBy: "summary"},
+            // 拼音注解（适配器启用时才存在）：全拼/首字母低权重命中
+            {score: entry.py ? scoreHaystack(entry.py, q, 3) : 0, matchedBy: "pinyin"},
+            {score: entry.pyi ? scoreHaystack(entry.pyi, q, 3, 2) : 0, matchedBy: "pinyin-initials"},
         ];
         const top = candidates.reduce((a, b) => (b.score > a.score ? b : a), candidates[0]);
         if (top.score > 0 && (!best || top.score > best.score)) best = top;

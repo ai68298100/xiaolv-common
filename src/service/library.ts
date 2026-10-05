@@ -23,6 +23,7 @@ import {
 } from "../model/item";
 import {LibraryConfig} from "../model/storage";
 import {SearchEntry} from "../model/search";
+import {getPinyinAdapter} from "../model/pinyin";
 
 export interface IndexBuildResult {
     entries: SearchEntry[];
@@ -214,25 +215,48 @@ export class LibraryService {
         if (config.mode === "doc") {
             return {docIds: config.containerDocIds.slice(0, LIMITS.maxDocs), errors: []};
         }
-        // tree 模式：容器文档 + 一层子文档展开（有界；更深层暂不展开，如实计入 truncated 之外的限制）
+        // tree 模式：容器文档 + BFS 展开至多 3 层子文档（有界：总文档数 ≤ maxDocs，超出如实报错）
         const docIds: string[] = [];
         const errors: string[] = [];
-        for (const root of config.containerDocIds.slice(0, LIMITS.maxDocs)) {
+        const treeCap = LIMITS.maxDocs;
+        const queue: Array<{box: string; path: string}> = [];
+        for (const root of config.containerDocIds.slice(0, treeCap)) {
             docIds.push(root);
             try {
                 const info = await this.kernel.request<{box?: unknown; path?: unknown}>("getBlockInfo", {id: root});
                 const box = typeof info?.box === "string" ? info.box : "";
                 const path = typeof info?.path === "string" ? info.path : "";
-                if (!box || !path) continue;
-                const data = await this.kernel.request<{files?: unknown}>("listDocsByPath", {notebook: box, path});
-                const files = Array.isArray(data?.files) ? data.files : [];
-                for (const f of files) {
-                    const id = (f as {id?: unknown}).id;
-                    if (typeof id === "string" && isBlockId(id)) docIds.push(id);
-                }
+                if (box && path) queue.push({box, path});
             } catch (err) {
                 errors.push(`tree ${root}: ${(err as Error).message}`);
             }
+        }
+        const TREE_MAX_DEPTH = 3;
+        let depth = 0;
+        while (queue.length > 0 && depth < TREE_MAX_DEPTH && docIds.length < treeCap) {
+            const level = queue.splice(0, queue.length);
+            for (const node of level) {
+                if (docIds.length >= treeCap) break;
+                try {
+                    const data = await this.kernel.request<{files?: unknown}>("listDocsByPath", {notebook: node.box, path: node.path});
+                    const files = Array.isArray(data?.files) ? data.files : [];
+                    for (const f of files) {
+                        if (docIds.length >= treeCap) {
+                            errors.push("tree truncated: document count reached cap");
+                            break;
+                        }
+                        const id = (f as {id?: unknown}).id;
+                        const childPath = (f as {path?: unknown}).path;
+                        if (typeof id === "string" && isBlockId(id)) {
+                            docIds.push(id);
+                            if (typeof childPath === "string" && childPath) queue.push({box: node.box, path: childPath});
+                        }
+                    }
+                } catch (err) {
+                    errors.push(`tree ${node.path}: ${(err as Error).message}`);
+                }
+            }
+            depth++;
         }
         return {docIds: Array.from(new Set(docIds)), errors};
     }
@@ -291,8 +315,18 @@ export class LibraryService {
                     kramdown: "",
                 });
                 if (!item) continue;
+                // 拼音注解（仅当适配器具备首字母能力；noop 适配器零开销零字段）
+                const searchEntry = toSearchEntry(item);
+                const adapter = getPinyinAdapter();
+                if (adapter.capabilities.initials) {
+                    const anno = adapter.annotate({title: item.title, alias: item.alias});
+                    if (anno) {
+                        searchEntry.py = anno.py;
+                        searchEntry.pyi = anno.pyi;
+                    }
+                }
                 items.set(item.id, item);
-                entries.push(toSearchEntry(item));
+                entries.push(searchEntry);
             }
         }
         return {entries, items, truncated, docsScanned, errors};

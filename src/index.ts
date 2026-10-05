@@ -16,6 +16,8 @@ import {ExportedItem, buildBundle, classifyConflict, validateImport, ConflictPol
 import {LibraryConfig, migrateState, normalizeLibraryConfig, normalizeState, PluginState} from "./model/storage";
 import {SearchContext} from "./model/search";
 import {LruCache, PREVIEW_CACHE_CAPACITY} from "./model/lru";
+import {setPinyinAdapter, createNoopPinyinAdapter} from "./model/pinyin";
+import {createTinyPinyinAdapter} from "./model/pinyin-tiny";
 import {CapabilityDescriptor, ProviderDescriptor} from "./model/protocol";
 import {LibraryService, NewItemInput, SourceHealth} from "./service/library";
 import {ActionExecutor, HostBridge} from "./service/commands";
@@ -71,6 +73,8 @@ export default class XiaolvCommonPlugin extends Plugin {
     private bootServices(): void {
         const kernel = createKernelClient({syncPost: fetchSyncPost as never});
         this.kernelClient = kernel;
+        // 拼音适配器装配（ADR 0004/R5：tiny-pinyin 本地注解，设置可关；关闭即 noop 零开销）
+        this.applyPinyinAdapter();
         this.library = new LibraryService(kernel);
         if (this.config) this.library.setConfig(this.config);
         this.host = new HostBridge(this.app);
@@ -161,6 +165,11 @@ export default class XiaolvCommonPlugin extends Plugin {
             });
             return text;
         };
+    }
+
+    /** 拼音适配器装配：开关变化/启动时调用；切换后需 reindex 重建注解 */
+    private applyPinyinAdapter(): void {
+        setPinyinAdapter(this.state.search.pinyin ? createTinyPinyinAdapter() : createNoopPinyinAdapter());
     }
 
     private notify = (kind: "info" | "error", message: string): void => {
@@ -844,6 +853,33 @@ export default class XiaolvCommonPlugin extends Plugin {
             if (!aiEnabledBox.checked) aiShareBox.checked = false;
         });
         root.appendChild(aiSec);
+
+        // 搜索设置区（拼音：本地注解，无出域）
+        const searchSec = document.createElement("div");
+        searchSec.className = "xlc-form-field";
+        const searchLabel = document.createElement("span");
+        searchLabel.className = "xlc-form-label";
+        searchLabel.textContent = t("searchSection");
+        searchSec.appendChild(searchLabel);
+        const pinyinRow = document.createElement("label");
+        pinyinRow.className = "xlc-setting-row";
+        const pinyinBox = document.createElement("input");
+        pinyinBox.type = "checkbox";
+        pinyinBox.checked = this.state.search.pinyin;
+        pinyinBox.addEventListener("change", () => {
+            this.state.search.pinyin = pinyinBox.checked;
+            this.applyPinyinAdapter();
+            this.persistSoon();
+            void this.library.reindex().then((idx) => {
+                this.notify("info", t("reindexDone", String(idx.entries.length)));
+            });
+        });
+        const pinyinCap = document.createElement("span");
+        pinyinCap.textContent = t("pinyinToggle");
+        pinyinRow.appendChild(pinyinBox);
+        pinyinRow.appendChild(pinyinCap);
+        searchSec.appendChild(pinyinRow);
+        root.appendChild(searchSec);
 
         // 数据区：当前库 + 重建索引 + 导出/导入
         const dataSec = document.createElement("div");

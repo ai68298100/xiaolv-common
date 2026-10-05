@@ -152,6 +152,42 @@ test("R4：appendToDoc 走 appendBlock；空内容/非法 ID 拒绝", async () =
     assert.equal(calls.length, 1, "rejected inputs must not hit kernel");
 });
 
+test("R5：tree 模式 BFS 多层展开（root+3 层子文档；第 4 层不展开）", async () => {
+    const NB = "20240101";
+    const ROOT = "20240101120001-hijklmn";
+    const C1 = "20240101120002-aaaaaaa";
+    const G1 = "20240101120004-ccccccc";
+    const GG1 = "20240101120005-ddddddd";
+    const GGG1 = "20240101120006-eeeeeee";
+    const fetched = [];
+    const kernel = {
+        request(endpoint, payload = {}) {
+            if (endpoint === "getBlockInfo" && payload.id === ROOT) return Promise.resolve({box: NB, path: "/root.sy"});
+            if (endpoint === "listDocsByPath") {
+                if (payload.path === "/root.sy") return Promise.resolve({files: [{id: C1, path: "/root/c1.sy"}]});
+                if (payload.path === "/root/c1.sy") return Promise.resolve({files: [{id: G1, path: "/root/c1/g1.sy"}]});
+                if (payload.path === "/root/c1/g1.sy") return Promise.resolve({files: [{id: GG1, path: "/root/c1/g1/gg1.sy"}]});
+                if (payload.path === "/root/c1/g1/gg1.sy") return Promise.resolve({files: [{id: GGG1, path: "/root/c1/g1/gg1/ggg1.sy"}]});
+                return Promise.resolve({files: []});
+            }
+            if (endpoint === "getChildBlocks") {
+                fetched.push(payload.id);
+                return Promise.resolve([]);
+            }
+            return Promise.resolve(null);
+        },
+    };
+    const service = new libModule.LibraryService(kernel);
+    service.setConfig({mode: "tree", notebookIds: [], containerDocIds: [ROOT], createdDocIds: [], configuredAt: 1});
+    await service.buildIndex();
+    // root + 3 层子文档（c1/g1/gg1）全部展开；ggg1 是第 4 层子文档，不展开
+    assert.ok(fetched.includes(ROOT));
+    assert.ok(fetched.includes(C1));
+    assert.ok(fetched.includes(G1));
+    assert.ok(fetched.includes(GG1));
+    assert.ok(!fetched.includes(GGG1));
+});
+
 test("R4：searchDocs 服务（空关键词短路；解析走 parseDocSearch）", async () => {
     const calls = [];
     const kernel = {

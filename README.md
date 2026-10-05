@@ -92,7 +92,7 @@ common.protocolCommands["xiaolv.common.open"]();          // 稳定命令 ID
 ```bash
 pnpm i
 pnpm run check   # tsc --noEmit
-pnpm test        # esbuild 转译 + node --test（95 项）
+pnpm test        # esbuild 转译 + node --test（102 项）
 pnpm run build   # dist/ + package.zip
 node scripts/render-prototype.cjs    # 原型图截图（需 Playwright Chromium）
 node scripts/render-production.cjs   # 生产 UI 效果截图（真实 dist CSS+DOM）
@@ -103,7 +103,7 @@ node scripts/render-production.cjs   # 生产 UI 效果截图（真实 dist CSS+
 ## 已知限制（诚实清单）
 
 - **桌面/Android 真机验收未完成**（内核令牌未授权 + 无真机会话，见 BLOCKERS B-001/B-002/B-003）：移动端插入自动降级为复制；图片位图复制降级为 Markdown 链接。
-- 拼音搜索：适配层已就位，默认实现仅原词匹配（ADR 0004），首字母/全拼待评估 tiny-pinyin。
+- 拼音搜索：已接入 tiny-pinyin（本地注解，设置可关，ADR 0004/R5）；多音字按常用读音。
 - 库文档树模式只展开一层子文档；条目索引上限 2000（超出截断并明示，数据仍安全在库中）。
 - 导入冲突按逻辑 ID 判定（无内容级 diff）。
 - 「选择现有文档」目前为手动输入文档 ID（高级路径），文档选择器待宿主公开 API 评估。

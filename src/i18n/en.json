@@ -152,5 +152,7 @@
   "librarySection": "Current library",
   "libraryNone": "Not configured",
   "reindexBtn": "Rebuild index",
-  "totalItems": "%s items total"
+  "totalItems": "%s items total",
+  "searchSection": "Search",
+  "pinyinToggle": "Pinyin search (local full-pinyin/initials matching, can disable)"
 }

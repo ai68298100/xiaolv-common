@@ -69,6 +69,11 @@ export interface AiPrefs {
     shareContent: boolean;
 }
 
+export interface SearchPrefs {
+    /** 拼音搜索（全拼/首字母注解；默认开，可在设置关闭） */
+    pinyin: boolean;
+}
+
 export interface PluginState {
     schemaVersion: number;
     favorites: string[];
@@ -80,6 +85,7 @@ export interface PluginState {
     };
     providers: ProviderRecord[];
     ai: AiPrefs;
+    search: SearchPrefs;
 }
 
 export function normalizeState(raw: unknown): PluginState {
@@ -140,6 +146,10 @@ export function normalizeState(raw: unknown): PluginState {
         ai: {
             enabled: obj.ai !== null && typeof obj.ai === "object" && (obj.ai as AiPrefs).enabled === true,
             shareContent: obj.ai !== null && typeof obj.ai === "object" && (obj.ai as AiPrefs).shareContent === true,
+        },
+        // 拼音搜索默认开（本地注解，无出域；可关）
+        search: {
+            pinyin: !(obj.search !== null && typeof obj.search === "object" && (obj.search as SearchPrefs).pinyin === false),
         },
     };
 }
