@@ -530,12 +530,14 @@ export default class XiaolvCommonPlugin extends Plugin {
             insertProviderPayload: async (payload) => {
                 const trimmed = (payload ?? "").trim();
                 if (!trimmed) return false;
+                // 与库条目一致的占位符语义（R24 定案）：插入前渲染 {{xlc:…}}
+                const rendered = (await this.executor.renderProviderOutput(trimmed)) ?? trimmed;
                 if (this.host.hasActiveEditor()) {
-                    const inserted = this.host.insertMarkdown(trimmed);
+                    const inserted = this.host.insertMarkdown(rendered);
                     if (inserted) this.notify("info", this.i18nFn()("inserted", "provider"));
                     return inserted;
                 }
-                const copied = await this.host.writeClipboard(trimmed);
+                const copied = await this.host.writeClipboard(rendered);
                 this.notify("info", this.i18nFn()("insertNoEditor"));
                 return copied;
             },

@@ -144,6 +144,12 @@ export class ActionExecutor {
         private readonly placeholders?: IPlaceholderHook,
     ) {}
 
+    /** provider payload 渲染（xiaolv-common/v1 语义定案）：与库条目一致，插入前应用动态占位符。
+     *  提供方如需字面花括号，请使用非 xlc 命名空间。 */
+    async renderProviderOutput(text: string): Promise<string | undefined> {
+        return this.applyOutput(text);
+    }
+
     /** 对输出载荷应用动态占位符（插入 markdown 与剪贴板文本；存储内容不受影响）。
      *  仅当文本含 title/path 占位符时才取当前文档（避免多余内核往返）。
      *  code 条目跳过替换：代码中的 {{xlc:…}} 是字面文本（例如演示模板的代码），绝不能被改写。 */

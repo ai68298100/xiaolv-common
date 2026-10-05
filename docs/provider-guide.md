@@ -76,6 +76,10 @@ common?.registerProvider(
 common?.unregisterProvider("xiaolv-speed-switch");
 ```
 
+## 占位符语义（R24 定案）
+
+提供方 payload 在**插入/复制时由消费端（小驴常用）统一渲染动态占位符**（`{{xlc:date}}` 等，与库条目一致）；关闭占位符开关则原样插入。需要字面花括号的提供方请使用非 `xlc:` 命名空间。
+
 ## 生命周期语义
 
 | 事件 | 行为 |
