@@ -1,7 +1,7 @@
 // 渲染 harness 入口：把生产 CommonSearchDialog / 设置对话框 / 捕获表单暴露到 window，
 // 由 render-production.cjs 在 Chromium 中以假数据驱动、截取真实生产 DOM+CSS 效果。
 import {CommonSearchDialog} from "../../src/ui/dialog";
-import {openSettingsDialog, type SettingsUiContext} from "../../src/ui/settings-dialog";
+import {openSettingsDialog, openSetupDialog, type SettingsUiContext} from "../../src/ui/settings-dialog";
 import {CaptureDialog} from "../../src/ui/capture";
 import type {SearchEntry} from "../../src/model/search";
 import type {TransformKind} from "../../src/service/ai";
@@ -54,7 +54,7 @@ const T = (key: string, ...args: string[]): string => {
         reindexBtn: "重建索引", clearRecents: "清空最近使用", clearRecentsConfirm: "清空最近使用记录？",
         exportBtn: "导出全部条目 (JSON)", importBtn: "导入 JSON", exportMdBtn: "导出 Markdown 包（含资源）",
         tagAuditBtn: "AI 标签体检",
-        setupTitle: "选择常用内容库", setupPickDoc: "选择现有文档", setupNotebook: "按笔记本",
+        setupTitle: "选择常用内容库", setupHint: "条目将以真实块的形式保存在你选择的文档中（可在思源中正常编辑）。创建新文档前会明确提示，不会静默写入。", setupPickDoc: "选择现有文档", setupNotebook: "按笔记本",
         setupNewDoc: "创建新库文档", setupNewDocName: "常用内容库", docPicker: "选择库文档", docPickerEmpty: "没有匹配的文档",
     };
     let text = map[key] ?? key;
@@ -156,6 +156,35 @@ function makeDeps(overrides: {aiEnabled?: boolean; missing?: boolean} = {}) {
             applyPinyinAdapter: () => {},
         } as unknown as SettingsUiContext;
         openSettingsDialog(ctx);
+    },
+    openSetup(): void {
+        const ctx: SettingsUiContext = {
+            t: T,
+            state: {
+                schemaVersion: 2,
+                favorites: [], recents: [], sort: "manual",
+                uiPrefs: {lastTypeFilter: "", lastTagFilter: ""},
+                providers: [], ai: {enabled: false, shareContent: false}, search: {pinyin: true, placeholders: true},
+            },
+            getConfig: () => null,
+            library: {
+                listNotebooks: async () => ({ok: true, data: [{id: "20240101", name: "笔记"}]}),
+                searchDocs: async () => [],
+                reindex: async () => ({entries: [], items: new Map(), truncated: false, docsScanned: 0, errors: [], builtAt: 1}),
+            },
+            ai: {updateSettings: () => {}, getSettings: () => ({enabled: false, shareContent: false})},
+            registry: {list: () => [], listExecutable: () => []},
+            notify: () => {},
+            applyConfig: () => {},
+            persistSoon: () => {},
+            exportBundle: async () => "{}",
+            importBundleText: async () => ({total: 0, created: 0, skipped: 0, overwritten: 0, renamed: 0, failed: 0, lines: []}),
+            importMarkdownItems: async () => ({total: 0, created: 0, skipped: 0, overwritten: 0, renamed: 0, failed: 0, lines: []}),
+            fetchAssetBytes: async () => null,
+            aiErrorText: (err) => String(err),
+            applyPinyinAdapter: () => {},
+        } as unknown as SettingsUiContext;
+        openSetupDialog(ctx);
     },
     openCapture(aiOn = true): void {
         const capture = new CaptureDialog({

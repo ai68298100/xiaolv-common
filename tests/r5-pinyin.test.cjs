@@ -103,6 +103,12 @@ test("buildIndex 接线 tiny 适配器：索引携带拼音注解", async () => 
     }
 });
 
+test("R44：lastQuery 归一化（200 截断/非字符串回空串）", () => {
+    assert.equal(storage.normalizeState({search: {pinyin: true, lastQuery: "q".repeat(500)}}).search.lastQuery.length, 200);
+    assert.equal(storage.normalizeState({search: {lastQuery: 42}}).search.lastQuery, "");
+    assert.equal(storage.normalizeState({}).search.lastQuery, "");
+});
+
 test("性能基准：2000 条注解索引单词搜索 < 200ms（best-of-3；预算含并行套件调度噪声，O(n²) 退化仍必红）", () => {
     const adapter = pinyinTiny.createTinyPinyinAdapter();
     const entries = [];

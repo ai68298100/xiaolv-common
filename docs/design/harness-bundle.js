@@ -1518,6 +1518,26 @@
   }
 
   // src/ui/settings-dialog.ts
+  function openSetupDialog(ctx) {
+    const t = ctx.t;
+    const dialog = new import_siyuan2.Dialog({
+      title: t("setupTitle"),
+      content: "",
+      width: "min(520px, 92vw)",
+      height: "auto"
+    });
+    const body = dialog.element.querySelector(".b3-dialog__content");
+    if (!body) return;
+    body.innerHTML = "";
+    const root = document.createElement("div");
+    root.className = "xlc-form";
+    const hint = document.createElement("p");
+    hint.className = "xlc-form-hint";
+    hint.textContent = t("setupHint");
+    root.appendChild(hint);
+    buildLibraryPickerSection(ctx, root, () => dialog.destroy());
+    body.appendChild(root);
+  }
   function openSettingsDialog(ctx) {
     const t = ctx.t;
     const dialog = new import_siyuan2.Dialog({
@@ -2501,6 +2521,7 @@
       exportMdBtn: "\u5BFC\u51FA Markdown \u5305\uFF08\u542B\u8D44\u6E90\uFF09",
       tagAuditBtn: "AI \u6807\u7B7E\u4F53\u68C0",
       setupTitle: "\u9009\u62E9\u5E38\u7528\u5185\u5BB9\u5E93",
+      setupHint: "\u6761\u76EE\u5C06\u4EE5\u771F\u5B9E\u5757\u7684\u5F62\u5F0F\u4FDD\u5B58\u5728\u4F60\u9009\u62E9\u7684\u6587\u6863\u4E2D\uFF08\u53EF\u5728\u601D\u6E90\u4E2D\u6B63\u5E38\u7F16\u8F91\uFF09\u3002\u521B\u5EFA\u65B0\u6587\u6863\u524D\u4F1A\u660E\u786E\u63D0\u793A\uFF0C\u4E0D\u4F1A\u9759\u9ED8\u5199\u5165\u3002",
       setupPickDoc: "\u9009\u62E9\u73B0\u6709\u6587\u6863",
       setupNotebook: "\u6309\u7B14\u8BB0\u672C",
       setupNewDoc: "\u521B\u5EFA\u65B0\u5E93\u6587\u6863",
@@ -2623,6 +2644,44 @@
         }
       };
       openSettingsDialog(ctx);
+    },
+    openSetup() {
+      const ctx = {
+        t: T,
+        state: {
+          schemaVersion: 2,
+          favorites: [],
+          recents: [],
+          sort: "manual",
+          uiPrefs: { lastTypeFilter: "", lastTagFilter: "" },
+          providers: [],
+          ai: { enabled: false, shareContent: false },
+          search: { pinyin: true, placeholders: true }
+        },
+        getConfig: () => null,
+        library: {
+          listNotebooks: async () => ({ ok: true, data: [{ id: "20240101", name: "\u7B14\u8BB0" }] }),
+          searchDocs: async () => [],
+          reindex: async () => ({ entries: [], items: /* @__PURE__ */ new Map(), truncated: false, docsScanned: 0, errors: [], builtAt: 1 })
+        },
+        ai: { updateSettings: () => {
+        }, getSettings: () => ({ enabled: false, shareContent: false }) },
+        registry: { list: () => [], listExecutable: () => [] },
+        notify: () => {
+        },
+        applyConfig: () => {
+        },
+        persistSoon: () => {
+        },
+        exportBundle: async () => "{}",
+        importBundleText: async () => ({ total: 0, created: 0, skipped: 0, overwritten: 0, renamed: 0, failed: 0, lines: [] }),
+        importMarkdownItems: async () => ({ total: 0, created: 0, skipped: 0, overwritten: 0, renamed: 0, failed: 0, lines: [] }),
+        fetchAssetBytes: async () => null,
+        aiErrorText: (err) => String(err),
+        applyPinyinAdapter: () => {
+        }
+      };
+      openSetupDialog(ctx);
     },
     openCapture(aiOn = true) {
       const capture = new CaptureDialog({

@@ -157,6 +157,37 @@ fs.writeFileSync(path.join(OUT, "harness.html"), html);
     }
     console.log("  smoke ✓ settings: 4 assertions");
     await page.screenshot({path: path.join(OUT, "production-settings-light.png")});
+    // 首跑引导（库选择器，全新安装第一屏）
+    await page.evaluate(() => {
+        const stage = document.getElementById("stage");
+        stage.className = "b3-scope light";
+        document.querySelectorAll(".b3-dialog").forEach((el) => el.remove());
+        stage.innerHTML = "";
+        window.XlcHarness.openSetup();
+        const dialogRoot = document.querySelector(".b3-dialog");
+        if (dialogRoot) stage.appendChild(dialogRoot);
+        const container = document.querySelector(".b3-dialog__container");
+        if (container) {
+            container.style.margin = "0 auto";
+            container.style.maxWidth = "560px";
+        }
+    });
+    await page.waitForTimeout(400);
+    const setupAssertions = await page.evaluate(() => {
+        const text = document.body.textContent || "";
+        return {
+            hint: text.includes("真实块"),
+            modeSelect: !!document.querySelector(".xlc-form select"),
+            notebook: text.includes("按笔记本"),
+            createBtn: text.includes("创建新库文档"),
+            docPicker: (document.querySelector("input[placeholder]")?.getAttribute("placeholder") ?? "").includes("选择库文档") || !!document.querySelector(".xlc-doclist"),
+        };
+    });
+    if (Object.values(setupAssertions).some((v) => !v)) {
+        throw new Error("setup smoke failed: " + JSON.stringify(setupAssertions));
+    }
+    console.log("  smoke ✓ setup: 5 assertions");
+    await page.screenshot({path: path.join(OUT, "production-setup-light.png")});
     // 捕获表单（生产 CaptureDialog DOM）
     await page.evaluate(() => {
         const stage = document.getElementById("stage");
