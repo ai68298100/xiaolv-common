@@ -256,6 +256,8 @@ export default class XiaolvCommonPlugin extends Plugin {
 
     /** 来源失效预检节流（30s 内至多一次批量 checkBlocksExist；打开来源仍实时校验兜底） */
     private lastHealthPrefetch = 0;
+    /** 提供方失败通知记忆（每提供方每会话一次；成功即清除） */
+    private providerFailureSeen = new Set<string>();
 
     /** 列表来源失效预检（批量一次 checkBlocksExist；不阻塞渲染，仅喂徽标） */
     private async prefetchSourceHealth(entries: Array<{sourceDocId?: string; sourceBlockId?: string}>): Promise<void> {
@@ -584,6 +586,8 @@ export default class XiaolvCommonPlugin extends Plugin {
                             provider.runtime.search(query),
                             new Promise<never>((_, reject) => setTimeout(() => reject(new Error("provider timeout")), 3000)),
                         ]);
+                        // 成功一次即清除失败通知记忆（恢复后正常提示）
+                        this.providerFailureSeen.delete(provider.record.pluginId);
                         for (const hit of hits ?? []) {
                             rows.push({
                                 providerId: provider.record.pluginId,
@@ -593,8 +597,11 @@ export default class XiaolvCommonPlugin extends Plugin {
                             });
                         }
                     } catch (err) {
-                        // 提供方失败不阻断主搜索；回执如实提示
-                        this.notify("error", this.i18nFn()("providerUnavailable", provider.record.displayName) + ` (${(err as Error).message})`);
+                        // 提供方失败不阻断主搜索；通知每提供方每会话仅一次（防刷新通知轰炸），恢复成功后清记忆
+                        if (!this.providerFailureSeen.has(provider.record.pluginId)) {
+                            this.providerFailureSeen.add(provider.record.pluginId);
+                            this.notify("error", this.i18nFn()("providerUnavailable", provider.record.displayName) + ` (${(err as Error).message})`);
+                        }
                     }
                 }
                 return buildProviderRows(rows);
