@@ -435,6 +435,10 @@ export class LibraryService {
         const now = Date.now();
         let logicalId = input.logicalId ?? newLogicalId(now);
         if (!/^xlc-[0-9a-z]{10,40}$/.test(logicalId)) logicalId = newLogicalId(now);
+        // 防御：同逻辑 ID 已存在 → 明确冲突（调用方应走 updateItem/先删后建），绝不静默双块
+        if (this.index?.items.has(logicalId)) {
+            return fail("conflict", `logical id already exists: ${logicalId}`);
+        }
         const attrs: Record<string, string> = {
             [ATTR.id]: logicalId,
             [ATTR.type]: input.itemType,
@@ -487,7 +491,7 @@ export class LibraryService {
         return ok({item});
     }
 
-    async updateItem(itemId: string, patch: Partial<Pick<NewItemInput, "title" | "alias" | "tags" | "category" | "markdown" | "itemType">>): Promise<Receipt<{item: CommonItem}>> {
+    async updateItem(itemId: string, patch: Partial<Pick<NewItemInput, "title" | "alias" | "tags" | "category" | "markdown" | "itemType" | "url" | "targetBlockId">>): Promise<Receipt<{item: CommonItem}>> {
         const got = await this.getItem(itemId);
         if (!got.ok) return {ok: false, reason: got.reason, message: got.message};
         const item = got.data;
@@ -498,6 +502,8 @@ export class LibraryService {
         if (patch.alias !== undefined) attrs[ATTR.alias] = patch.alias.slice(0, LIMITS.alias);
         if (patch.tags !== undefined) attrs[ATTR.tags] = patch.tags.slice(0, LIMITS.tags).join(",");
         if (patch.category !== undefined) attrs[ATTR.category] = patch.category.slice(0, LIMITS.category);
+        if (patch.url !== undefined) attrs[ATTR.url] = patch.url.slice(0, 2048);
+        if (patch.targetBlockId !== undefined && isBlockId(patch.targetBlockId)) attrs[ATTR.target] = patch.targetBlockId;
         try {
             await this.kernel.request("setBlockAttrs", {id: item.blockId, attrs});
             if (typeof patch.markdown === "string" && patch.markdown) {

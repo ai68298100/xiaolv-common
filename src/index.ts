@@ -11,7 +11,8 @@ import "@/styles/index.scss";
 import {LIMITS, STORAGE_KEYS} from "./constants";
 import {createKernelClient, parseExistingMap, type IKernelClient} from "./kernel/client";
 import {CommonItem} from "./model/item";
-import {ExportedItem, buildBundle, classifyConflict, validateImport, ConflictPolicy, ImportReceipt} from "./model/transfer";
+import {buildBundle, validateImport, ConflictPolicy, ImportReceipt} from "./model/transfer";
+import {importBundle as importBundleCore} from "./service/importer";
 import {LibraryConfig, CONFIG_VERSION, migrateState, normalizeLibraryConfig, normalizeState, PluginState} from "./model/storage";
 import {SearchContext} from "./model/search";
 import {LruCache, PREVIEW_CACHE_CAPACITY} from "./model/lru";
@@ -886,55 +887,8 @@ export default class XiaolvCommonPlugin extends Plugin {
         if (!validation.ok || !validation.parsed) {
             throw new Error(validation.reason ?? "invalid");
         }
-        const idx = await this.library.ensureIndex();
-        const receipt: ImportReceipt = {total: 0, created: 0, skipped: 0, overwritten: 0, renamed: 0, failed: 0, lines: []};
-        for (const incoming of validation.parsed.items) {
-            receipt.total++;
-            const decision = classifyConflict(incoming.id, idx.items.has(incoming.id), policy);
-            try {
-                if (decision.kind === "skip") {
-                    receipt.skipped++;
-                    receipt.lines.push({id: incoming.id, title: incoming.title, action: "skip", ok: true});
-                    continue;
-                }
-                const targetId = decision.kind === "rename" ? decision.newId : incoming.id;
-                const applied = await this.applyImportedItem(incoming, targetId);
-                if (!applied) {
-                    receipt.failed++;
-                    continue;
-                }
-                if (decision.kind === "overwrite") receipt.overwritten++;
-                else if (decision.kind === "rename") receipt.renamed++;
-                else receipt.created++;
-            } catch (err) {
-                receipt.failed++;
-                receipt.lines.push({id: incoming.id, title: incoming.title, action: decision.kind, ok: false, error: (err as Error).message});
-            }
-        }
-        await this.library.reindex();
-        return receipt;
-    }
-
-    /** 单条导入应用：正文写块 + 属性写回（含原逻辑 ID / 来源引用）。失败抛错由调用方计数。 */
-    private async applyImportedItem(incoming: ExportedItem, logicalId: string | undefined): Promise<boolean> {
-        const input: NewItemInput = {
-            itemType: isKnownType(incoming.itemType) ? incoming.itemType : "text",
-            markdown: incoming.kramdown,
-            title: incoming.title || undefined,
-            alias: incoming.alias || undefined,
-            tags: incoming.tags,
-            category: incoming.category || undefined,
-            url: incoming.url || undefined,
-            targetBlockId: incoming.targetBlockId || undefined,
-            source: {
-                sourceDocId: incoming.source.sourceDocId || "",
-                sourceBlockId: incoming.source.sourceBlockId || "",
-                sourceType: (incoming.source.sourceType as never) || "external",
-            },
-        };
-        if (logicalId) input.logicalId = logicalId;
-        const created = await this.library.createItem(input);
-        return created.ok;
+        // 逐条应用与 overwrite 更新语义在 service/importer.ts（可独立单测）
+        return importBundleCore(this.library, validation.parsed, policy);
     }
 
     // ---- 协议能力（雷切等消费）----
@@ -981,8 +935,4 @@ function getSelectionInfo(): {text: string; blockId: string | null} {
     const el = node as Element | null;
     const block = el?.closest?.("[data-node-id]") as HTMLElement | null;
     return {text, blockId: block?.getAttribute("data-node-id") ?? null};
-}
-
-function isKnownType(v: string): v is NewItemInput["itemType"] {
-    return ["text", "markdown", "url", "code", "image", "asset", "blockref", "structure"].includes(v);
 }
