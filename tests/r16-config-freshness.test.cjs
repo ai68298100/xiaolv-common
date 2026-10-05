@@ -31,9 +31,10 @@ test("索引 builtAt：每次构建刷新（新鲜度判定依据）", async () 
     await new Promise((r) => setTimeout(r, 5));
     const second = await service.reindex();
     assert.ok(second.builtAt >= first.builtAt);
-    // ensureIndex 命中缓存（同一对象）；带 maxAge=0 时强制重建（新对象）
+    // ensureIndex 命中缓存（同一对象）；带 maxAge=0 时（经过真实时间流逝后）强制重建（新对象）
     const cached = await service.ensureIndex();
     assert.equal(cached, second);
+    await new Promise((r) => setTimeout(r, 3));
     const refreshed = await service.ensureIndex(0);
     assert.notEqual(refreshed, second);
     assert.ok(refreshed.builtAt >= second.builtAt);
