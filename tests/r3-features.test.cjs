@@ -188,6 +188,36 @@ test("R5：tree 模式 BFS 多层展开（root+3 层子文档；第 4 层不展�
     assert.ok(!fetched.includes(GGG1));
 });
 
+test("R18：clearSource 以空串删除来源属性（思源空串删属性语义），条目本体不变", async () => {
+    const calls = [];
+    const B1 = "20240101120000-aaaaaaa";
+    const kernel = {
+        request(endpoint, payload = {}) {
+            calls.push({endpoint, payload});
+            if (endpoint === "getChildBlocks") return Promise.resolve([{id: B1, type: "p"}]);
+            if (endpoint === "batchGetBlockAttrs") {
+                const out = {};
+                for (const id of payload.ids ?? []) out[id] = {"custom-xlc-id": "xlc-clearsrc01", "custom-xlc-src-doc": "20240101120001-hijklmn"};
+                return Promise.resolve(out);
+            }
+            if (endpoint === "getBlockAttrs") {
+                return calls.filter((c) => c.endpoint === "setBlockAttrs").length > 0
+                    ? Promise.resolve({"custom-xlc-id": "xlc-clearsrc01"})
+                    : Promise.resolve({"custom-xlc-id": "xlc-clearsrc01", "custom-xlc-src-doc": "20240101120001-hijklmn"});
+            }
+            return Promise.resolve(null);
+        },
+    };
+    const service = new libModule.LibraryService(kernel);
+    service.setConfig({mode: "doc", notebookIds: [], containerDocIds: ["20240101120001-hijklmn"], createdDocIds: [], configuredAt: 1});
+    const result = await service.clearSource("xlc-clearsrc01");
+    assert.ok(result.ok);
+    assert.equal(result.data.item.source.sourceDocId, "");
+    const setCall = calls.find((c) => c.endpoint === "setBlockAttrs");
+    assert.equal(setCall.payload.attrs["custom-xlc-src-doc"], "");
+    assert.equal(setCall.payload.attrs["custom-xlc-src-block"], "");
+});
+
 test("R4：searchDocs 服务（空关键词短路；解析走 parseDocSearch）", async () => {
     const calls = [];
     const kernel = {

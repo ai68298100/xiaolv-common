@@ -90,7 +90,7 @@
   "unknownType": "Unknown type",
   "previewUnavailable": "No preview",
   "recentUsed": "Recent",
-  "usageHint": "↑↓ select · Enter insert · Ctrl+C copy · Esc close",
+  "usageHint": "↑↓ select · Enter insert · Ctrl+Enter copy · Alt+1~9 jump · Esc close",
   "usageHintMobile": "Tap to insert · long-press for more",
   "more": "More",
   "copyFailed": "Copy failed: %s",
@@ -175,5 +175,8 @@
   "exportMdDone": "Exported %s items (assets %s, skipped %s)",
   "clearRecents": "Clear recent",
   "clearRecentsConfirm": "Clear recent-usage history (items themselves untouched)?",
-  "clearRecentsDone": "Recent history cleared"
+  "clearRecentsDone": "Recent history cleared",
+  "insertMenu": "Insert common item…",
+  "clearSource": "Clear source reference",
+  "clearSourceDone": "Source reference cleared"
 }

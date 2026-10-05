@@ -527,6 +527,23 @@ export class LibraryService {
         return ok({blockId: got.data.blockId});
     }
 
+    /** 清除来源引用（用户显式操作；空串删除自定义属性，条目本体不受影响） */
+    async clearSource(itemId: string): Promise<Receipt<{item: CommonItem}>> {
+        const got = await this.getItem(itemId);
+        if (!got.ok) return {ok: false, reason: got.reason, message: got.message};
+        try {
+            await this.kernel.request("setBlockAttrs", {
+                id: got.data.blockId,
+                attrs: {[ATTR.srcDoc]: "", [ATTR.srcBlock]: ""},
+            });
+        } catch (err) {
+            return toFailureReceipt(err);
+        }
+        this.index = null;
+        const refreshed = await this.getItem(itemId);
+        return refreshed.ok ? ok({item: refreshed.data}) : {ok: false, reason: refreshed.reason, message: refreshed.message};
+    }
+
     /** 恢复来源：把指定文档/块设为条目新来源（用户显式操作，非自动改写）。 */
     async relinkSource(itemId: string, source: {sourceDocId: string; sourceBlockId?: string}): Promise<Receipt<{item: CommonItem}>> {
         if (!isBlockId(source.sourceDocId)) return fail("invalid-input", "sourceDocId invalid");

@@ -368,9 +368,14 @@ export default class XiaolvCommonPlugin extends Plugin {
         }
         try {
             // 编辑器右键菜单（官方 eventBus open-menu-content；plugin-sample 同款用法）：
-            // 右键即「保存为常用条目 / 捕获当前块」——最自然的捕获路径
+            // 右键即「插入常用条目… / 保存为常用条目 / 捕获当前块」——最自然的捕获与调用路径
             this.menuHandler = (event) => {
                 const {menu} = event.detail;
+                menu.addItem({
+                    icon: "iconXlcCommon",
+                    label: this.i18nFn()("insertMenu"),
+                    click: () => this.openSearch(),
+                });
                 menu.addItem({
                     icon: "iconXlcCommon",
                     label: this.i18nFn()("saveSelection"),
@@ -758,6 +763,23 @@ export default class XiaolvCommonPlugin extends Plugin {
             });
         });
         srcRow.appendChild(relinkBtn);
+        if (item.source.sourceDocId || item.source.sourceBlockId) {
+            const clearBtn = document.createElement("button");
+            clearBtn.className = "b3-button b3-button--text xlc-form-ai";
+            clearBtn.textContent = t("clearSource");
+            clearBtn.addEventListener("click", () => {
+                void this.library.clearSource(item.id).then((result) => {
+                    if (result.ok) {
+                        this.previewCache.clear();
+                        this.notify("info", t("clearSourceDone"));
+                        srcRow.textContent = t("sourceMissing");
+                    } else {
+                        this.notify("error", result.message);
+                    }
+                });
+            });
+            srcRow.appendChild(clearBtn);
+        }
         form.appendChild(srcRow);
         const actions = document.createElement("div");
         actions.className = "xlc-form-actions";
