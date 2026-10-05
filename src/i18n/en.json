@@ -187,5 +187,6 @@
   "providerExecutable": "Active",
   "providerPendingReload": "Pending reload",
   "providerNone": "No content providers yet (shown when other Lv plugins register)",
-  "insertToDocMenu": "Insert common items into this doc"
+  "insertToDocMenu": "Insert common items into this doc",
+  "blockrefNeedsTarget": "Block-ref items need a target block: use right-click on a block ref instead"
 }

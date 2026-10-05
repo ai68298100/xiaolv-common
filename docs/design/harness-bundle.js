@@ -2372,6 +2372,10 @@
           return;
         }
         const type = typeSelect.value;
+        if (type === "blockref" && !(overrides == null ? void 0 : overrides.targetBlockId)) {
+          this.deps.notify("error", t("blockrefNeedsTarget"));
+          return;
+        }
         let markdown = contentValue;
         if (type === "code" && !/^```/.test(contentValue.trim())) {
           markdown = "```\n" + contentValue + "\n```";

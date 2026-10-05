@@ -331,6 +331,11 @@ export class CaptureDialog {
                 return;
             }
             const type = typeSelect.value as ItemType;
+            // blockref 条目必须有目标块——手动表单无法提供，引导用右键块引用捕获
+            if (type === "blockref" && !overrides?.targetBlockId) {
+                this.deps.notify("error", t("blockrefNeedsTarget"));
+                return;
+            }
             let markdown = contentValue;
             if (type === "code" && !/^```/.test(contentValue.trim())) {
                 markdown = "```\n" + contentValue + "\n```";

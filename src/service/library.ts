@@ -491,7 +491,8 @@ export class LibraryService {
         return ok({item});
     }
 
-    async updateItem(itemId: string, patch: Partial<Pick<NewItemInput, "title" | "alias" | "tags" | "category" | "markdown" | "itemType" | "url" | "targetBlockId">>): Promise<Receipt<{item: CommonItem}>> {
+    async updateItem(itemId: string, patch: Partial<Pick<NewItemInput, "title" | "alias" | "tags" | "category" | "markdown" | "url" | "targetBlockId">>): Promise<Receipt<{item: CommonItem}>> {
+        // 注：不含 itemType——类型变化需删旧建新（见 applyOverwriteImport），原地改类型会语义错位
         const got = await this.getItem(itemId);
         if (!got.ok) return {ok: false, reason: got.reason, message: got.message};
         const item = got.data;

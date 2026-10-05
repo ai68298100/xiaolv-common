@@ -187,5 +187,6 @@
   "providerExecutable": "可执行",
   "providerPendingReload": "待重载",
   "providerNone": "暂无内容提供方（其他小驴插件注册后显示）",
-  "insertToDocMenu": "插入常用条目到此文档"
+  "insertToDocMenu": "插入常用条目到此文档",
+  "blockrefNeedsTarget": "块引用条目需要目标块：请改用右键块引用捕获"
 }
