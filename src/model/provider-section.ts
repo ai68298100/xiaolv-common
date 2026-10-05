@@ -14,14 +14,19 @@ export interface ProviderRow {
     providerId: string;
     providerName: string;
     title: string;
+    /** 完整载荷（插入用；上限 contentChars=100k，超出拒绝而非截断——不静默截尾） */
     payload: string;
+    /** 列表展示摘要（120 字符，仅显示用） */
+    excerpt: string;
 }
 
 export const PROVIDER_ID_PATTERN = /^pv:[A-Za-z0-9_-]+:\d+$/;
+const MAX_PAYLOAD = 100_000;
+const MAX_PROVIDERS_ROWS = 20;
 
 /**
- * 提供方候选 → 弹窗行。每行带 pv: 虚拟 ID（含提供方与序号，稳定可追）。
- * 数量上限 20/提供方（UI 有界）；payload 截断 2000 字符（防超长注入）。
+ * 提供方候选 → 弹窗行。payload 完整保留（上限 100k，超限条目整条拒绝并计数——绝不静默截尾）；
+ * 每提供方最多 20 行；显示摘要由 excerpt 单独承载。
  */
 export function buildProviderRows(hits: readonly ProviderHit[]): ProviderRow[] {
     if (!Array.isArray(hits)) return [];
@@ -29,16 +34,18 @@ export function buildProviderRows(hits: readonly ProviderHit[]): ProviderRow[] {
     const rows: ProviderRow[] = [];
     for (const hit of hits) {
         if (!hit || typeof hit.providerId !== "string" || !hit.providerId) continue;
-        if (typeof hit.payload !== "string" || !hit.payload.trim()) continue;
+        if (typeof hit.payload !== "string" || hit.payload.trim().length === 0) continue;
+        if (hit.payload.length > MAX_PAYLOAD) continue; // 超限整条拒绝（不截尾）
         const n = (counters.get(hit.providerId) ?? 0) + 1;
         counters.set(hit.providerId, n);
-        if (n > 20) break;
+        if (n > MAX_PROVIDERS_ROWS) break;
         rows.push({
             virtualId: `pv:${hit.providerId.replace(/[^A-Za-z0-9_-]/g, "_")}:${n}`,
             providerId: hit.providerId,
             providerName: hit.providerName || hit.providerId,
             title: String(hit.title ?? "").slice(0, 200),
-            payload: hit.payload.slice(0, 2000),
+            payload: hit.payload,
+            excerpt: hit.payload.slice(0, 120),
         });
     }
     return rows;
