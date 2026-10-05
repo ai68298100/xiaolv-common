@@ -47,6 +47,8 @@ export default class XiaolvCommonPlugin extends Plugin {
     private config!: LibraryConfig | null;
     private searchDialog: CommonSearchDialog | null = null;
     private saveTimer: ReturnType<typeof setTimeout> | null = null;
+    /** 右键菜单处理器引用（onunload 解绑） */
+    private menuHandler: ((event: {detail: {menu: {addItem: (item: {icon: string; label: string; click: () => void}) => void}}}) => void) | null = null;
     /** 来源失效预检缓存（每次搜索刷新时批量重建；仅为列表徽标，打开来源仍实时校验） */
     private missingSources = new Set<string>();
     /** 协议命令 ID → 执行器（xiaolv.common.*，供雷切等按稳定 ID 调用） */
@@ -363,6 +365,26 @@ export default class XiaolvCommonPlugin extends Plugin {
             });
         } catch {
             // 旧宿主无此 API：顶栏/命令入口仍可用
+        }
+        try {
+            // 编辑器右键菜单（官方 eventBus open-menu-content；plugin-sample 同款用法）：
+            // 右键即「保存为常用条目 / 捕获当前块」——最自然的捕获路径
+            this.menuHandler = (event) => {
+                const {menu} = event.detail;
+                menu.addItem({
+                    icon: "iconXlcCommon",
+                    label: this.i18nFn()("saveSelection"),
+                    click: () => void this.capture.saveSelection(),
+                });
+                menu.addItem({
+                    icon: "iconXlcCommon",
+                    label: this.i18nFn()("captureBlock"),
+                    click: () => void this.capture.captureCurrentBlock(),
+                });
+            };
+            this.eventBus.on("open-menu-content", this.menuHandler);
+        } catch {
+            // 事件契约变化时降级：右键入口缺席，其余入口仍可用
         }
     }
 
@@ -1428,6 +1450,14 @@ export default class XiaolvCommonPlugin extends Plugin {
 
     onunload(): void {
         // 事件总线/监听全部随 dialog destroy 释放；侧车已节流持久化
+        if (this.menuHandler) {
+            try {
+                this.eventBus.off("open-menu-content", this.menuHandler);
+            } catch {
+                // 宿主事件总线已销毁：忽略
+            }
+            this.menuHandler = null;
+        }
         this.searchDialog?.destroy();
         if (this.saveTimer) clearTimeout(this.saveTimer);
         void this.saveData(STORAGE_KEYS.state, this.state);

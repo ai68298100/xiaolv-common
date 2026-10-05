@@ -9,6 +9,10 @@
 - 不把函数回调写进持久化数据：provider 的持久化记录只含标量（pluginId/displayName/protocolVersion/registeredAt）；运行时行为（runtime.search）每次重载后由 provider 重新注册。
 - provider 卸载：小驴常用保留注册记录、条目标记「提供方不可用」，不删除任何数据；重载后 provider 重新 register 即恢复。
 
+## 快速验证（无需构建）
+
+打开思源桌面端开发者工具（Ctrl+Shift+I），粘贴仓库 [examples/provider-demo.console.js](../examples/provider-demo.console.js) 全文回车，即注册「控制台演示」提供方；打开小驴常用搜索即可看到提供方分区。
+
 ## 消费小驴常用的服务（如：打卡插件想把「今日状态」插入笔记）
 
 ```ts
