@@ -68,7 +68,7 @@ fs.writeFileSync(path.join(OUT, "harness.html"), html);
     await page.goto("file:///" + path.join(OUT, "harness.html").replace(/\\/g, "/"));
     await page.waitForFunction(() => Boolean(window.XlcHarness));
 
-    const shoot = async (name, opts) => {
+    const shoot = async (name, opts, assertions) => {
         await page.evaluate((o) => {
             const stage = document.getElementById("stage");
             stage.className = "b3-scope " + o.theme;
@@ -90,15 +90,43 @@ fs.writeFileSync(path.join(OUT, "harness.html"), html);
             }
         }, opts);
         await page.waitForTimeout(800);
+        if (assertions) {
+            const results = await page.evaluate(assertions);
+            const failed = Object.entries(results).filter(([, ok]) => !ok);
+            if (failed.length > 0) {
+                throw new Error(`UI smoke FAILED on ${name}: ${failed.map(([k]) => k).join(", ")}`);
+            }
+            console.log(`  smoke ✓ ${name}: ${Object.keys(results).length} assertions`);
+        }
         await page.screenshot({path: path.join(OUT, `production-${name}.png`)});
     };
 
-    await shoot("desktop-light", {theme: "light", aiEnabled: true, missing: true});
-    await shoot("desktop-dark", {theme: "dark", aiEnabled: true, missing: false});
-    await shoot("provider-light", {theme: "light", aiEnabled: true, missing: false, query: "工作台"});
+    await shoot("desktop-light", {theme: "light", aiEnabled: true, missing: true}, () => ({
+        rows: document.querySelectorAll(".xlc-list .xlc-row[data-xlc-index]").length >= 3,
+        badges: document.querySelectorAll(".xlc-badge").length >= 3,
+        panePreview: (document.querySelector(".xlc-pane-body")?.textContent ?? "").includes("王总"),
+        sourceWarn: (document.querySelector(".xlc-pane-warn")?.textContent ?? "").includes("来源"),
+        aiBanner: (document.querySelector(".xlc-ai-banner")?.textContent ?? "").includes("3"),
+        ordinals: document.querySelectorAll(".xlc-row-ordinal").length >= 3,
+    }));
+    await shoot("desktop-dark", {theme: "dark", aiEnabled: true, missing: false}, () => ({
+        rows: document.querySelectorAll(".xlc-row[data-xlc-index]").length >= 3,
+        pane: !!document.querySelector(".xlc-pane"),
+    }));
+    await shoot("provider-light", {theme: "light", aiEnabled: true, missing: false, query: "工作台"}, () => ({
+        providerHeader: (document.querySelector(".xlc-provider-header")?.textContent ?? "").includes("提供方内容"),
+        providerRows: document.querySelectorAll(".xlc-row--provider").length >= 1,
+        footerGear: (document.querySelector(".xlc-footer-gear")?.textContent ?? "").includes("设置"),
+    }));
     // 窄容器（<620px）：单列降级（预览隐藏）
     await page.setViewportSize({width: 420, height: 720});
-    await shoot("narrow-light", {theme: "light", aiEnabled: true, missing: false});
+    await shoot("narrow-light", {theme: "light", aiEnabled: true, missing: false}, () => ({
+        singleColumn: (() => {
+            const pane = document.querySelector(".xlc-pane");
+            return !pane || getComputedStyle(pane).display === "none";
+        })(),
+        rows: document.querySelectorAll(".xlc-row[data-xlc-index]").length >= 1,
+    }));
     await page.setViewportSize({width: 1280, height: 720});
     await browser.close();
     console.log("production renders done:", fs.readdirSync(OUT).filter((f) => f.startsWith("production-")).join(", "));

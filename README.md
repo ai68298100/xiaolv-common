@@ -98,7 +98,7 @@ pnpm run check   # tsc --noEmit
 pnpm test        # esbuild 转译 + node --test（114 项）
 pnpm run build   # dist/ + package.zip
 node scripts/render-prototype.cjs    # 原型图截图（需 Playwright Chromium）
-node scripts/render-production.cjs   # 生产 UI 效果截图（真实 dist CSS+DOM）
+pnpm run test:ui                # 生产 UI 冒烟门禁（13 项 DOM 断言 + 截图，需 Playwright Chromium）
 ```
 
 系列协议见 [AGENTS.md](AGENTS.md)；路线见 [ROADMAP.md](ROADMAP.md)；阻塞见 [BLOCKERS.md](BLOCKERS.md)；取舍见 [docs/adr/](docs/adr/)；宿主 API 能力矩阵见 [docs/host-contract.md](docs/host-contract.md)。

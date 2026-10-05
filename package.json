@@ -7,7 +7,8 @@
     "dev": "webpack --config webpack.config.js --mode development",
     "build": "webpack --config webpack.config.js --mode production",
     "check": "tsc --noEmit",
-    "test": "node tests/run-tests.cjs"
+    "test": "node tests/run-tests.cjs",
+    "test:ui": "node scripts/render-production.cjs"
   },
   "keywords": [
     "siyuan",
