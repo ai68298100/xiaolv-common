@@ -112,7 +112,7 @@ export function parseMarkdownPack(md: string): MarkdownPackParseResult {
 /** Markdown 包逐条应用（与 JSON 导入共用 classifyConflict/overwrite 语义），完成后重建索引。 */
 export async function importMarkdownBundle(
     library: LibraryService,
-    items: Array<{id: string; title: string; itemType: string; kramdown: string}>,
+    items: Array<{id: string; title: string; itemType: string; kramdown: string; tags?: string[]; category?: string; source?: {sourceDocId?: string; sourceBlockId?: string}}>,
     policy: "skip" | "overwrite" | "rename",
 ): Promise<ImportReceipt> {
     const receipt: ImportReceipt = {total: 0, created: 0, skipped: 0, overwritten: 0, renamed: 0, failed: 0, lines: []};
@@ -132,11 +132,17 @@ export async function importMarkdownBundle(
     return receipt;
 }
 
-async function applyMarkdownItem(library: LibraryService, incoming: {id: string; title: string; itemType: string; kramdown: string}, logicalId: string | undefined): Promise<boolean> {
+async function applyMarkdownItem(library: LibraryService, incoming: {id: string; title: string; itemType: string; kramdown: string; tags?: string[]; category?: string; source?: {sourceDocId?: string; sourceBlockId?: string}}, logicalId: string | undefined): Promise<boolean> {
     const input: NewItemInput = {
         itemType: isKnownMdType(incoming.itemType) ? incoming.itemType : "text",
         markdown: incoming.kramdown,
         title: incoming.title || undefined,
+        tags: incoming.tags,
+        category: incoming.category || undefined,
+        source: {
+            sourceDocId: incoming.source?.sourceDocId ?? "",
+            sourceBlockId: incoming.source?.sourceBlockId ?? "",
+        },
     };
     if (logicalId) input.logicalId = logicalId;
     const created = await library.createItem(input);

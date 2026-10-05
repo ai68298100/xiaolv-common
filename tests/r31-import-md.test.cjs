@@ -1,3 +1,4 @@
+const DOC = "20240101120001-hijklmn";
 // R31：Markdown 包解析——与 buildMarkdownExport 严格互逆（元数据注释为界）、占位符字面保持、坏块计数。
 const test = require("node:test");
 const assert = require("node:assert");
@@ -114,3 +115,33 @@ test("renderItemMetadata 与解析器互逆", () => {
     assert.deepEqual(parsed.items[0].tags, ["a"]);
     assert.equal(parsed.items[0].source.sourceDocId, "20240101120001-hijklmn");
 });
+
+test("R32：importMarkdownBundle 全字段保真（tags/category/source 不再丢弃）", async () => {
+    const {LibraryService} = require("./.build/entry.cjs").library;
+    const B1 = "20240101120000-aaaaaaa";
+    const calls = [];
+    const kernel = {
+        request(endpoint, payload = {}) {
+            calls.push({endpoint, payload});
+            if (endpoint === "getChildBlocks") return Promise.resolve([]);
+            if (endpoint === "appendBlock") return Promise.resolve([{doOperations: [{id: B1}]}]);
+            return Promise.resolve(null);
+        },
+    };
+    const library = new LibraryService(kernel);
+    library.setConfig({configVersion: 1, mode: "doc", notebookIds: [], containerDocIds: [DOC], createdDocIds: [], configuredAt: 1});
+    const items = [{
+        id: "xlc-full0000001", title: "全字段", itemType: "text", kramdown: "正文",
+        tags: ["工作", "常用"], category: "客服",
+        source: {sourceDocId: "20240101120001-hijklmn", sourceBlockId: "20240101120000-aaaaaaa"},
+    }];
+    const receipt = await importMarkdown.importMarkdownBundle(library, items, "skip");
+    assert.equal(receipt.created, 1);
+    const setCall = calls.find((c) => c.endpoint === "setBlockAttrs");
+    assert.ok(setCall, "setBlockAttrs must be called");
+    assert.equal(setCall.payload.attrs["custom-xlc-tags"], "工作,常用");
+    assert.equal(setCall.payload.attrs["custom-xlc-category"], "客服");
+    assert.equal(setCall.payload.attrs["custom-xlc-src-doc"], "20240101120001-hijklmn");
+    assert.equal(setCall.payload.attrs["custom-xlc-src-block"], "20240101120000-aaaaaaa");
+});
+
