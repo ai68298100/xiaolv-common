@@ -4,7 +4,6 @@ import {
     Dialog,
     Plugin,
     showMessage,
-    confirm,
 } from "siyuan";
 import type {IMenuItem} from "siyuan";
 import {fetchSyncPost} from "siyuan";
@@ -12,7 +11,7 @@ import "@/styles/index.scss";
 import {LIMITS, STORAGE_KEYS} from "./constants";
 import {createKernelClient, parseExistingMap, type IKernelClient} from "./kernel/client";
 import {CommonItem} from "./model/item";
-import {ExportedItem, buildBundle, classifyConflict, validateImport, ConflictPolicy, ImportIssue, ImportReceipt} from "./model/transfer";
+import {ExportedItem, buildBundle, classifyConflict, validateImport, ConflictPolicy, ImportReceipt} from "./model/transfer";
 import {LibraryConfig, CONFIG_VERSION, migrateState, normalizeLibraryConfig, normalizeState, PluginState} from "./model/storage";
 import {SearchContext} from "./model/search";
 import {LruCache, PREVIEW_CACHE_CAPACITY} from "./model/lru";
@@ -28,8 +27,7 @@ import {XiaolvCommonService} from "./service/service";
 import {CommonSearchDialog} from "./ui/dialog";
 import {CaptureDialog, confirmDelete} from "./ui/capture";
 import {ICONS} from "./ui/icons";
-import {buildZip} from "./model/zip";
-import {buildMarkdownExport} from "./service/export-markdown";
+import {openSetupDialog, openSettingsDialog, type SettingsUiContext} from "./ui/settings-dialog";
 import type {TransformKind} from "./service/ai";
 
 type TFn = (key: string, ...args: string[]) => string;
@@ -815,449 +813,32 @@ export default class XiaolvCommonPlugin extends Plugin {
 
     // ---- 首次引导 / 设置 ----
 
+    private settingsContext(): SettingsUiContext {
+        return {
+            t: this.i18nFn(),
+            state: this.state,
+            getConfig: () => this.config,
+            library: this.library,
+            ai: this.ai,
+            notify: this.notify,
+            applyConfig: (config) => this.applyConfig(config),
+            persistSoon: () => this.persistSoon(),
+            exportBundle: () => this.exportBundle(),
+            importBundleText: (text, policy) => this.importBundleText(text, policy),
+            fetchAssetBytes: (path) => this.fetchAssetBytes(path),
+            aiErrorText: (err) => this.aiErrorText(err),
+            applyPinyinAdapter: () => this.applyPinyinAdapter(),
+        };
+    }
+
     /** 首次引导（仅库选择；完整设置见 openSettings） */
     openSetup(): void {
-        const t = this.i18nFn();
-        const dialog = new Dialog({
-            title: t("setupTitle"),
-            content: "",
-            width: "min(520px, 92vw)",
-            height: "auto",
-        });
-        const body = dialog.element.querySelector(".b3-dialog__content");
-        if (!body) return;
-        body.innerHTML = "";
-        const root = document.createElement("div");
-        root.className = "xlc-form";
-
-        const hint = document.createElement("p");
-        hint.className = "xlc-form-hint";
-        hint.textContent = t("setupHint");
-        root.appendChild(hint);
-        this.buildLibraryPickerSection(root, () => dialog.destroy());
-        body.appendChild(root);
+        openSetupDialog(this.settingsContext());
     }
 
     /** 完整设置：库管理（含更改库）+ AI + 搜索 + 数据 */
     openSettings(): void {
-        const t = this.i18nFn();
-        const dialog = new Dialog({
-            title: t("openSettings"),
-            content: "",
-            width: "min(560px, 92vw)",
-            height: "auto",
-        });
-        const body = dialog.element.querySelector(".b3-dialog__content");
-        if (!body) return;
-        body.innerHTML = "";
-        const root = document.createElement("div");
-        root.className = "xlc-form";
-
-        // 库管理：状态行 + 「更改内容库」展开选择器
-        const libSec = document.createElement("div");
-        libSec.className = "xlc-form-field";
-        const libLabel = document.createElement("span");
-        libLabel.className = "xlc-form-label";
-        libLabel.textContent = t("librarySection");
-        libSec.appendChild(libLabel);
-        const libStatus = document.createElement("div");
-        libStatus.className = "xlc-form-hint";
-        const cfg = this.config;
-        libStatus.textContent = cfg
-            ? (cfg.mode === "notebook" ? `notebook ${cfg.notebookIds.join(",")}` : `${cfg.mode} · ${cfg.containerDocIds.length} doc(s)`)
-            : t("libraryNone");
-        libSec.appendChild(libStatus);
-        const changeBtn = document.createElement("button");
-        changeBtn.className = "b3-button";
-        changeBtn.textContent = t("openSettingsChangeLib");
-        const pickerHost = document.createElement("div");
-        pickerHost.style.display = "none";
-        changeBtn.addEventListener("click", () => {
-            const show = pickerHost.style.display === "none";
-            pickerHost.style.display = show ? "" : "none";
-            if (show && pickerHost.childElementCount === 0) {
-                this.buildLibraryPickerSection(pickerHost, () => dialog.destroy());
-            }
-        });
-        libSec.appendChild(changeBtn);
-        libSec.appendChild(pickerHost);
-        root.appendChild(libSec);
-
-        this.buildAiSection(root);
-        this.buildSearchSection(root);
-        this.buildDataSection(root);
-        body.appendChild(root);
-    }
-
-    /** 库选择器（首跑引导与「更改库」共用；onConfigured 在配置落地后回调） */
-    private buildLibraryPickerSection(root: HTMLElement, onConfigured: () => void): void {
-        const t = this.i18nFn();
-
-        // 模式选择
-        const modeWrap = document.createElement("div");
-        modeWrap.className = "xlc-form-field";
-        const modeLabel = document.createElement("span");
-        modeLabel.className = "xlc-form-label";
-        modeLabel.textContent = t("setupTitle");
-        modeWrap.appendChild(modeLabel);
-        const modeSelect = document.createElement("select");
-        modeSelect.className = "b3-select";
-        const modes: Array<{v: "doc" | "tree" | "notebook"; label: string}> = [
-            {v: "doc", label: t("setupPickDoc")},
-            {v: "tree", label: t("setupPickDoc") + " (+子文档)"},
-            {v: "notebook", label: t("setupNotebook")},
-        ];
-        for (const m of modes) {
-            const opt = document.createElement("option");
-            opt.value = m.v;
-            opt.textContent = m.label;
-            modeSelect.appendChild(opt);
-        }
-        modeWrap.appendChild(modeSelect);
-        root.appendChild(modeWrap);
-
-        // 笔记本下拉
-        const nbWrap = document.createElement("div");
-        nbWrap.className = "xlc-form-field";
-        const nbLabel = document.createElement("span");
-        nbLabel.className = "xlc-form-label";
-        nbLabel.textContent = t("setupNotebook");
-        nbWrap.appendChild(nbLabel);
-        const nbSelect = document.createElement("select");
-        nbSelect.className = "b3-select";
-        nbWrap.appendChild(nbSelect);
-        root.appendChild(nbWrap);
-        void this.library.listNotebooks().then((result) => {
-            if (!result.ok) {
-                this.notify("error", t("kernelError", result.message));
-                return;
-            }
-            for (const nb of result.data) {
-                const opt = document.createElement("option");
-                opt.value = nb.id;
-                opt.textContent = nb.name;
-                nbSelect.appendChild(opt);
-            }
-        });
-
-        // 新建文档名
-        const nameWrap = document.createElement("div");
-        nameWrap.className = "xlc-form-field";
-        const nameLabel = document.createElement("span");
-        nameLabel.className = "xlc-form-label";
-        nameLabel.textContent = t("setupNewDoc");
-        nameWrap.appendChild(nameLabel);
-        const nameInput = document.createElement("input");
-        nameInput.className = "b3-text-field";
-        nameInput.value = t("setupNewDocName");
-        nameWrap.appendChild(nameInput);
-        root.appendChild(nameWrap);
-
-        const actions = document.createElement("div");
-        actions.className = "xlc-form-actions";
-        const createBtn = document.createElement("button");
-        createBtn.className = "b3-button b3-button--text";
-        createBtn.textContent = t("setupNewDoc");
-        createBtn.addEventListener("click", () => {
-            const notebookId = nbSelect.value;
-            const title = nameInput.value.trim();
-            if (!notebookId || !title) {
-                this.notify("error", t("invalidItem"));
-                return;
-            }
-            // 创建前明确确认（不静默写入）
-            confirm("⚠️ " + t("setupTitle"), t("setupConfirmCreate", title), () => {
-                void this.library.createLibraryDoc(notebookId, title).then((result) => {
-                    if (!result.ok) {
-                        this.notify("error", t("kernelError", result.message));
-                        return;
-                    }
-                    this.applyConfig({
-                        configVersion: CONFIG_VERSION,
-                        mode: "doc",
-                        notebookIds: [],
-                        containerDocIds: [result.data.docId],
-                        createdDocIds: [result.data.docId],
-                        configuredAt: Date.now(),
-                    });
-                    this.notify("info", t("libDocCreated", title));
-                    onConfigured();
-                });
-            });
-        });
-        // doc/tree 模式：文档选择器（searchDocs 关键词搜索 → 点选使用）
-        const pickerWrap = document.createElement("div");
-        pickerWrap.className = "xlc-form-field";
-        const pickerInput = document.createElement("input");
-        pickerInput.className = "b3-text-field";
-        pickerInput.placeholder = t("docPicker");
-        pickerWrap.appendChild(pickerInput);
-        const pickerList = document.createElement("div");
-        pickerList.className = "xlc-doclist";
-        pickerWrap.appendChild(pickerList);
-        root.appendChild(pickerWrap);
-        let pickedDoc: {id: string; hPath: string} | null = null;
-        let pickerSeq = 0;
-        pickerInput.addEventListener("input", () => {
-            const seq = ++pickerSeq;
-            const k = pickerInput.value.trim();
-            pickerList.innerHTML = "";
-            pickedDoc = null;
-            if (!k) return;
-            void this.library.searchDocs(k).then((result) => {
-                if (seq !== pickerSeq) return;
-                if (!result.ok || result.data.length === 0) {
-                    const empty = document.createElement("div");
-                    empty.className = "xlc-doclist-empty";
-                    empty.textContent = result.ok ? t("docPickerEmpty") : t("kernelError", result.message);
-                    pickerList.appendChild(empty);
-                    return;
-                }
-                for (const hit of result.data.slice(0, 8)) {
-                    const item = document.createElement("button");
-                    item.type = "button";
-                    item.className = "xlc-doclist-item";
-                    item.textContent = hit.hPath || hit.name || hit.id;
-                    item.addEventListener("click", () => {
-                        pickedDoc = {id: hit.id, hPath: hit.hPath};
-                        pickerList.querySelectorAll(".xlc-doclist-item").forEach((el) => el.classList.remove("xlc-doclist-item--on"));
-                        item.classList.add("xlc-doclist-item--on");
-                    });
-                    pickerList.appendChild(item);
-                }
-            });
-        });
-        const useNotebookBtn = document.createElement("button");
-        useNotebookBtn.className = "b3-button b3-button--text";
-        useNotebookBtn.textContent = t("confirm");
-        useNotebookBtn.addEventListener("click", () => {
-            const mode = modeSelect.value as LibraryConfig["mode"];
-            if (mode === "notebook") {
-                const notebookId = nbSelect.value;
-                if (!notebookId) {
-                    this.notify("error", t("invalidItem"));
-                    return;
-                }
-                this.applyConfig({
-                    configVersion: CONFIG_VERSION,
-                    mode: "notebook",
-                    notebookIds: [notebookId],
-                    containerDocIds: [],
-                    createdDocIds: [],
-                    configuredAt: Date.now(),
-                });
-                onConfigured();
-                return;
-            }
-            if (!pickedDoc) {
-                this.notify("error", t("docPickerEmpty"));
-                return;
-            }
-            this.applyConfig({
-                configVersion: CONFIG_VERSION,
-                mode,
-                notebookIds: [],
-                containerDocIds: [pickedDoc.id],
-                createdDocIds: [],
-                configuredAt: Date.now(),
-            });
-            onConfigured();
-        });
-        actions.appendChild(createBtn);
-        actions.appendChild(useNotebookBtn);
-        root.appendChild(actions);
-    }
-
-    private buildAiSection(root: HTMLElement): void {
-        const t = this.i18nFn();
-        // AI 设置区（默认关；开启即视为同意元数据出域；正文出域单独开关）
-        const aiSec = document.createElement("div");
-        aiSec.className = "xlc-form-field";
-        const aiLabel = document.createElement("span");
-        aiLabel.className = "xlc-form-label";
-        aiLabel.textContent = t("aiSection");
-        aiSec.appendChild(aiLabel);
-        const aiRow = (key: "enabled" | "shareContent", text: string): HTMLInputElement => {
-            const row = document.createElement("label");
-            row.className = "xlc-setting-row";
-            const box = document.createElement("input");
-            box.type = "checkbox";
-            box.checked = this.state.ai[key];
-            box.addEventListener("change", () => {
-                this.state.ai[key] = box.checked;
-                if (key === "enabled" && !box.checked) this.state.ai.shareContent = false;
-                this.ai.updateSettings(this.state.ai);
-                this.persistSoon();
-            });
-            const cap = document.createElement("span");
-            cap.textContent = text;
-            row.appendChild(box);
-            row.appendChild(cap);
-            aiSec.appendChild(row);
-            return box;
-        };
-        const aiEnabledBox = aiRow("enabled", t("aiEnabled"));
-        const aiShareBox = aiRow("shareContent", t("aiShareContent"));
-        aiEnabledBox.addEventListener("change", () => {
-            if (!aiEnabledBox.checked) aiShareBox.checked = false;
-        });
-        root.appendChild(aiSec);
-    }
-
-    private buildSearchSection(root: HTMLElement): void {
-        const t = this.i18nFn();
-        // 搜索设置区（拼音：本地注解，无出域）
-        const searchSec = document.createElement("div");
-        searchSec.className = "xlc-form-field";
-        const searchLabel = document.createElement("span");
-        searchLabel.className = "xlc-form-label";
-        searchLabel.textContent = t("searchSection");
-        searchSec.appendChild(searchLabel);
-        const pinyinRow = document.createElement("label");
-        pinyinRow.className = "xlc-setting-row";
-        const pinyinBox = document.createElement("input");
-        pinyinBox.type = "checkbox";
-        pinyinBox.checked = this.state.search.pinyin;
-        pinyinBox.addEventListener("change", () => {
-            this.state.search.pinyin = pinyinBox.checked;
-            this.applyPinyinAdapter();
-            this.persistSoon();
-            void this.library.reindex().then((idx) => {
-                this.notify("info", t("reindexDone", String(idx.entries.length)));
-            });
-        });
-        const pinyinCap = document.createElement("span");
-        pinyinCap.textContent = t("pinyinToggle");
-        pinyinRow.appendChild(pinyinBox);
-        pinyinRow.appendChild(pinyinCap);
-        searchSec.appendChild(pinyinRow);
-        // 占位符开关
-        const phRow = document.createElement("label");
-        phRow.className = "xlc-setting-row";
-        const phBox = document.createElement("input");
-        phBox.type = "checkbox";
-        phBox.checked = this.state.search.placeholders;
-        phBox.addEventListener("change", () => {
-            this.state.search.placeholders = phBox.checked;
-            this.persistSoon();
-        });
-        const phCap = document.createElement("span");
-        phCap.textContent = t("placeholdersToggle");
-        phRow.appendChild(phBox);
-        phRow.appendChild(phCap);
-        searchSec.appendChild(phRow);
-        const phHint = document.createElement("span");
-        phHint.className = "xlc-form-hint";
-        phHint.textContent = t("placeholdersHint");
-        searchSec.appendChild(phHint);
-        root.appendChild(searchSec);
-    }
-
-    private buildDataSection(root: HTMLElement): void {
-        const t = this.i18nFn();
-        // 数据区：当前库 + 重建索引 + 导出/导入
-        const dataSec = document.createElement("div");
-        dataSec.className = "xlc-form-field";
-        const dataLabel = document.createElement("span");
-        dataLabel.className = "xlc-form-label";
-        dataLabel.textContent = t("dataSection");
-        dataSec.appendChild(dataLabel);
-        const libRow = document.createElement("div");
-        libRow.className = "xlc-form-hint";
-        const cfg = this.config;
-        libRow.textContent = `${t("librarySection")}：${cfg
-            ? (cfg.mode === "notebook" ? `notebook ${cfg.notebookIds.join(",")}` : `${cfg.mode} · ${cfg.containerDocIds.length}`)
-            : t("libraryNone")}`;
-        dataSec.appendChild(libRow);
-        const dataBtns = document.createElement("div");
-        dataBtns.style.display = "flex";
-        dataBtns.style.gap = "8px";
-        dataBtns.style.flexWrap = "wrap";
-        const mkBtn = (label: string, onClick: () => void): HTMLButtonElement => {
-            const btn = document.createElement("button");
-            btn.className = "b3-button";
-            btn.textContent = label;
-            btn.addEventListener("click", onClick);
-            dataBtns.appendChild(btn);
-            return btn;
-        };
-        mkBtn(t("reindexBtn"), () => {
-            this.library.reindex().then((idx) => {
-                this.notify("info", idx.truncated
-                    ? t("reindexTruncated", String(LIMITS.maxItems))
-                    : t("reindexDone", String(idx.entries.length)));
-            });
-        });
-        mkBtn(t("clearRecents"), () => {
-            confirm("⚠️ " + t("clearRecents"), t("clearRecentsConfirm"), () => {
-                this.state.recents = [];
-                this.persistSoon();
-                this.notify("info", t("clearRecentsDone"));
-            });
-        });
-        if (this.state.ai.enabled) {
-            mkBtn("✦ " + t("tagAuditBtn"), () => void this.runTagAudit());
-        }
-        mkBtn(t("exportBtn"), () => {
-            void this.exportBundle().then((json) => {
-                const count = (JSON.parse(json) as {items: unknown[]}).items.length;
-                const blob = new Blob([json], {type: "application/json"});
-                const a = document.createElement("a");
-                a.href = URL.createObjectURL(blob);
-                a.download = `xiaolv-common-export-${new Date().toISOString().slice(0, 10)}.json`;
-                a.click();
-                URL.revokeObjectURL(a.href);
-                this.notify("info", t("exportDone", String(count)));
-            });
-        });
-        mkBtn(t("exportMdBtn"), () => {
-            void (async () => {
-                const idx = await this.library.ensureIndex();
-                const items: CommonItem[] = [];
-                const kramdownById = new Map<string, string>();
-                for (const item of idx.items.values()) {
-                    const kd = await this.library.getItemKramdown(item);
-                    if (kd.ok) {
-                        items.push(item);
-                        kramdownById.set(item.id, kd.data);
-                    }
-                }
-                const result = await buildMarkdownExport(items, kramdownById, (assetPath) => this.fetchAssetBytes(assetPath));
-                const zip = buildZip(result.entries);
-                const blob = new Blob([zip as unknown as BlobPart], {type: "application/zip"});
-                const a = document.createElement("a");
-                a.href = URL.createObjectURL(blob);
-                a.download = `xiaolv-common-md-${new Date().toISOString().slice(0, 10)}.zip`;
-                a.click();
-                URL.revokeObjectURL(a.href);
-                this.notify("info", t("exportMdDone", String(result.itemCount), String(result.assetCount), String(result.skippedAssets.length)));
-            })();
-        });
-        const importBtn = mkBtn(t("importBtn"), () => {
-            const fileInput = document.createElement("input");
-            fileInput.type = "file";
-            fileInput.accept = ".json,application/json";
-            fileInput.addEventListener("change", () => {
-                const file = fileInput.files?.[0];
-                if (!file) return;
-                if (file.size > LIMITS.maxImportBytes) {
-                    this.notify("error", t("importFailed", "file too large"));
-                    return;
-                }
-                void file.text().then((text) => {
-                    const validation = validateImport(text);
-                    if (!validation.ok || !validation.parsed) {
-                        this.notify("error", t("importFailed", validation.reason ?? "unknown"));
-                        return;
-                    }
-                    this.openImportPolicyDialog(validation.parsed, validation.issues, text);
-                });
-            });
-            fileInput.click();
-        });
-        void importBtn;
-        dataSec.appendChild(dataBtns);
-        root.appendChild(dataSec);
+        openSettingsDialog(this.settingsContext());
     }
 
     /** 资源字节获取：/api/file/getFile 为二进制端点，fetchSyncPost 信封不适用，
@@ -1271,120 +852,6 @@ export default class XiaolvCommonPlugin extends Plugin {
         } catch {
             return null;
         }
-    }
-
-    /** AI 标签体检：仅标签清单出域；结果只展示，不自动修改任何条目 */
-    private async runTagAudit(): Promise<void> {
-        const t = this.i18nFn();
-        const idx = await this.library.ensureIndex();
-        const {collectTags} = await import("./model/search");
-        const tags = collectTags(idx.entries);
-        if (tags.length < 2) {
-            this.notify("info", t("tagAuditTooFew"));
-            return;
-        }
-        let suggestions;
-        try {
-            suggestions = await this.ai.tagAudit(tags);
-        } catch (err) {
-            this.notify("error", this.aiErrorText(err));
-            return;
-        }
-        const dialog = new Dialog({
-            title: t("tagAuditTitle"),
-            content: "",
-            width: "min(520px, 92vw)",
-            height: "auto",
-        });
-        const body = dialog.element.querySelector(".b3-dialog__content");
-        if (!body) return;
-        body.innerHTML = "";
-        const wrap = document.createElement("div");
-        wrap.className = "xlc-form";
-        if (suggestions.length === 0) {
-            const empty = document.createElement("p");
-            empty.className = "xlc-form-hint";
-            empty.textContent = t("tagAuditEmpty");
-            wrap.appendChild(empty);
-        } else {
-            for (const s of suggestions) {
-                const row = document.createElement("div");
-                row.className = "xlc-sugrow";
-                const label = document.createElement("span");
-                label.textContent = `✦ ${t(s.type === "merge" ? "tagAuditMerge" : "tagAuditRename")}：${s.tags.join(" + ")} → ${s.suggestion}${s.reason ? `（${s.reason}）` : ""}`;
-                row.appendChild(label);
-                wrap.appendChild(row);
-            }
-            const hint = document.createElement("span");
-            hint.className = "xlc-form-hint";
-            hint.textContent = t("aiOriginalPreserved");
-            wrap.appendChild(hint);
-        }
-        const actions = document.createElement("div");
-        actions.className = "xlc-form-actions";
-        const close = document.createElement("button");
-        close.className = "b3-button";
-        close.textContent = t("close");
-        close.addEventListener("click", () => dialog.destroy());
-        actions.appendChild(close);
-        wrap.appendChild(actions);
-        body.appendChild(wrap);
-    }
-
-    /** 导入策略确认（导入前校验已过；策略三选 → importBundleText → 汇总回执） */
-    private openImportPolicyDialog(
-        parsed: {items: Array<{id: string; title: string}>; unknownTopFields?: unknown},
-        issues: ImportIssue[],
-        text: string,
-    ): void {
-        const t = this.i18nFn();
-        const dialog = new Dialog({
-            title: t("importPolicyTitle"),
-            content: "",
-            width: "min(440px, 92vw)",
-            height: "auto",
-        });
-        const body = dialog.element.querySelector(".b3-dialog__content");
-        if (!body) return;
-        body.innerHTML = "";
-        const wrap = document.createElement("div");
-        wrap.className = "xlc-form";
-        const preview = document.createElement("p");
-        preview.className = "xlc-form-hint";
-        preview.textContent = t("importPreview", String(parsed.items.length), String(issues.length));
-        wrap.appendChild(preview);
-        const run = (policy: ConflictPolicy): void => {
-            dialog.destroy();
-            void this.importBundleText(text, policy).then((receipt) => {
-                this.notify(receipt.failed > 0 ? "error" : "info", t(
-                    "importDone",
-                    String(receipt.created),
-                    String(receipt.skipped),
-                    String(receipt.overwritten),
-                    String(receipt.renamed),
-                    String(receipt.failed),
-                ));
-            }).catch((err) => {
-                this.notify("error", t("importFailed", (err as Error).message));
-            });
-        };
-        const btns = document.createElement("div");
-        btns.className = "xlc-form-actions";
-        btns.style.flexDirection = "column";
-        btns.style.alignItems = "stretch";
-        for (const [policy, label] of [
-            ["skip", t("importPolicySkip")],
-            ["overwrite", t("importPolicyOverwrite")],
-            ["rename", t("importPolicyRename")],
-        ] as Array<[ConflictPolicy, string]>) {
-            const btn = document.createElement("button");
-            btn.className = "b3-button";
-            btn.textContent = label;
-            btn.addEventListener("click", () => run(policy));
-            btns.appendChild(btn);
-        }
-        wrap.appendChild(btns);
-        body.appendChild(wrap);
     }
 
     private applyConfig(config: LibraryConfig): void {
