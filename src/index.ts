@@ -104,6 +104,29 @@ export default class XiaolvCommonPlugin extends Plugin {
             state: this.state,
             onStateChange: () => this.persistSoon(),
         });
+        try {
+            // 思源智能体能力（3.8.x）：按关键词搜常用条目——只读 localRead，输出仅元数据
+            this.addAgentCapability({
+                name: "xiaolv_common_search",
+                title: "搜索小驴常用条目",
+                description: "按关键词搜索用户的常用内容条目（标题/类型/标签）。只读；不含条目正文。",
+                inputSchema: {
+                    type: "object",
+                    properties: {query: {type: "string", description: "搜索关键词"}},
+                    required: ["query"],
+                },
+                effects: {localRead: true},
+                handler: async (args) => {
+                    try {
+                        return await this.service.searchForAgent(args?.query);
+                    } catch (err) {
+                        return {error: (err as Error).message};
+                    }
+                },
+            });
+        } catch {
+            // 旧宿主无 addAgentCapability：智能体能力缺席，不影响插件本体
+        }
         this.capture = new CaptureDialog({
             t: this.i18nFn(),
             getSelectionText: () => getSelectionInfo(),
@@ -144,6 +167,15 @@ export default class XiaolvCommonPlugin extends Plugin {
                     return {ok: true as const, text: await this.ai.draft(description)};
                 } catch (err) {
                     return {ok: false as const, message: this.aiErrorText(err)};
+                }
+            },
+            findDuplicate: async (content) => {
+                try {
+                    const idx = await this.library.ensureIndex();
+                    const {findDuplicateByContent} = await import("./model/dedupe");
+                    return findDuplicateByContent(content, idx.entries);
+                } catch {
+                    return null; // 去重检查失败不阻断保存
                 }
             },
         });

@@ -15,6 +15,7 @@ import * as pinyinTiny from "../src/model/pinyin-tiny";
 import * as placeholders from "../src/model/placeholders";
 import * as providerSection from "../src/model/provider-section";
 import * as exportMarkdown from "../src/service/export-markdown";
+import * as dedupe from "../src/model/dedupe";
 import * as library from "../src/service/library";
 import * as commands from "../src/service/commands";
 import * as providers from "../src/service/providers";
@@ -32,6 +33,7 @@ export {
     placeholders,
     providerSection,
     exportMarkdown,
+    dedupe,
     transfer,
     client,
     lru,

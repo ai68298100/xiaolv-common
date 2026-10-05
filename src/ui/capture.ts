@@ -3,7 +3,6 @@
 import {Dialog, confirm} from "siyuan";
 import {ItemType} from "../model/item";
 import {NewItemInput} from "../service/library";
-
 export interface CaptureDeps {
     t: (key: string, ...args: string[]) => string;
     /** 当前选区纯文本（官方选区 API + data-node-id 块定位，见 ADR 0003 DOM 边界） */
@@ -20,6 +19,8 @@ export interface CaptureDeps {
     aiEnabled(): boolean;
     aiTidy(content: string): Promise<{ok: true; title?: string; alias?: string; tags?: string[]; category?: string} | {ok: false; message: string}>;
     aiDraft(description: string): Promise<{ok: true; text: string} | {ok: false; message: string}>;
+    /** 捕获去重：与索引内容同文的既有条目（无则 null） */
+    findDuplicate(content: string): Promise<{id: string; title: string} | null>;
 }
 
 /** 选区 → 条目类型推断 */
@@ -275,22 +276,32 @@ export class CaptureDialog {
             } else if (type === "url") {
                 markdown = contentValue.trim();
             }
-            const docId = overrides?.docId ?? this.deps.currentDocId();
-            void this.deps.createItem({
-                itemType: type,
-                markdown,
-                title: (titleEl as HTMLInputElement).value || undefined,
-                alias: (aliasEl as HTMLInputElement).value || undefined,
-                tags: (tagsEl as HTMLInputElement).value ? (tagsEl as HTMLInputElement).value.split(/[,,]/).map((s) => s.trim()).filter(Boolean) : undefined,
-                category: (categoryEl as HTMLInputElement).value || undefined,
-                source: docId ? {sourceDocId: docId, sourceBlockId: sourceBlockId ?? undefined, sourceType: overrides?.docId ? "doc-fragment" : sourceBlockId ? "selection" : "manual"} : undefined,
-            }).then((result) => {
-                if (result.ok) {
-                    this.deps.notify("info", t("saved", result.message));
-                    dialog.destroy();
-                } else {
-                    this.deps.notify("error", result.message);
+            const doSave = (): void => {
+                const docId = this.deps.currentDocId();
+                void this.deps.createItem({
+                    itemType: type,
+                    markdown,
+                    title: (titleEl as HTMLInputElement).value || undefined,
+                    alias: (aliasEl as HTMLInputElement).value || undefined,
+                    tags: (tagsEl as HTMLInputElement).value ? (tagsEl as HTMLInputElement).value.split(/[,,]/).map((s) => s.trim()).filter(Boolean) : undefined,
+                    category: (categoryEl as HTMLInputElement).value || undefined,
+                    source: docId ? {sourceDocId: docId, sourceBlockId: sourceBlockId ?? undefined, sourceType: overrides?.docId ? "doc-fragment" : sourceBlockId ? "selection" : "manual"} : undefined,
+                }).then((result) => {
+                    if (result.ok) {
+                        this.deps.notify("info", t("saved", result.message));
+                        dialog.destroy();
+                    } else {
+                        this.deps.notify("error", result.message);
+                    }
+                });
+            };
+            // 去重防护：同文条目已存在 → 明确确认（不静默重复入库）
+            void this.deps.findDuplicate(contentValue).then((dup) => {
+                if (!dup) {
+                    doSave();
+                    return;
                 }
+                confirm("⚠️ " + t("duplicateTitle"), t("duplicateConfirm", dup.title), () => doSave());
             });
         });
         actions.appendChild(cancelBtn);

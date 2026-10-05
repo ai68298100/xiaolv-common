@@ -240,6 +240,29 @@ export class XiaolvCommonService {
     envelope() {
         return envelope();
     }
+
+    /**
+     * Agent 能力处理器：思源智能体按关键词搜常用条目（只读、仅元数据出域）。
+     * 输出绝不含 summary/正文（防止经 LLM 的数据外溢——门禁锁定）。
+     */
+    async searchForAgent(rawQuery: unknown): Promise<{result: string; structuredContent: unknown}> {
+        const query = typeof rawQuery === "string" ? rawQuery.slice(0, 200) : "";
+        const idx = await this.deps.library.ensureIndex();
+        const {searchEntries} = await import("../model/search");
+        const results = searchEntries(idx.entries, {text: query, scope: "all"}, this.searchCtx(), 10);
+        const items = results.map((r) => ({
+            id: r.entry.id,
+            title: r.entry.title,
+            itemType: r.entry.itemType,
+            tags: [...r.entry.tags],
+        }));
+        return {
+            result: items.length
+                ? `${items.length} 条匹配：${items.map((i) => i.title).join("、")}`
+                : "没有匹配的条目",
+            structuredContent: {items},
+        };
+    }
 }
 
 function normalizeQuery(query: SearchQuery): SearchQuery {

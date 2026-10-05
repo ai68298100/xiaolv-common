@@ -50,6 +50,8 @@ CommonItem（思源块承载）
 
 ## AI 能力（默认关，ADR 0005）
 
+> 思源智能体已注册只读能力 `xiaolv_common_search`（按关键词搜条目，仅返回标题/类型/标签元数据，`localRead` 声明，不含正文）——在思源「设置→人工智能」的智能体中可直接调用。
+
 使用你在思源 **设置→人工智能** 配置的模型，插件不保存任何密钥：
 
 | 功能 | 入口 | 出域内容 |
@@ -95,7 +97,7 @@ common.protocolCommands["xiaolv.common.open"]();          // 稳定命令 ID
 ```bash
 pnpm i
 pnpm run check   # tsc --noEmit
-pnpm test        # esbuild 转译 + node --test（122 项）
+pnpm test        # esbuild 转译 + node --test（124 项）
 pnpm run build   # dist/ + package.zip
 node scripts/render-prototype.cjs    # 原型图截图（需 Playwright Chromium）
 pnpm run test:ui                # 生产 UI 冒烟门禁（13 项 DOM 断言 + 截图，需 Playwright Chromium）
