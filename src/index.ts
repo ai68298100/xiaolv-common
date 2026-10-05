@@ -421,7 +421,9 @@ export default class XiaolvCommonPlugin extends Plugin {
                 const results = searchEntries(idx.entries, query, this.searchContext());
                 const entries = results.map((r) => r.entry);
                 void this.prefetchSourceHealth(entries);
-                return {entries, truncated: idx.truncated, total: idx.entries.length, loading};
+                // 全库加载失败时透传首条错误（诚实失败优先于「无条目」）
+                const error = entries.length === 0 && idx.errors.length > 0 ? idx.errors[0] : undefined;
+                return {entries, truncated: idx.truncated, total: idx.entries.length, loading, error};
             },
             searchDocs: async (k) => {
                 const result = await this.library.searchDocs(k);
@@ -1162,6 +1164,13 @@ export default class XiaolvCommonPlugin extends Plugin {
                 this.notify("info", idx.truncated
                     ? t("reindexTruncated", String(LIMITS.maxItems))
                     : t("reindexDone", String(idx.entries.length)));
+            });
+        });
+        mkBtn(t("clearRecents"), () => {
+            confirm("⚠️ " + t("clearRecents"), t("clearRecentsConfirm"), () => {
+                this.state.recents = [];
+                this.persistSoon();
+                this.notify("info", t("clearRecentsDone"));
             });
         });
         if (this.state.ai.enabled) {

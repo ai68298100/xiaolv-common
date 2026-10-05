@@ -19,6 +19,23 @@ test("门禁：库配置未来版本拒绝降级读取（绝不静默改写）",
     assert.equal(storage.normalizeLibraryConfig({configVersion: 2, mode: "notebook", notebookIds: ["20240101"]}), null);
 });
 
+test("门禁：ensureIndex 并发去重——并行调用只构建一次", async () => {
+    let builds = 0;
+    const kernel = {request: (endpoint) => {
+        if (endpoint === "getChildBlocks") {
+            builds++;
+            return new Promise((resolve) => setTimeout(() => resolve([]), 5));
+        }
+        return Promise.resolve(null);
+    }};
+    const service = new libModule.LibraryService(kernel);
+    service.setConfig({configVersion: 1, mode: "doc", notebookIds: [], containerDocIds: ["20240101120001-hijklmn"], createdDocIds: [], configuredAt: 1});
+    const [a, b, c] = await Promise.all([service.ensureIndex(0), service.ensureIndex(0), service.ensureIndex(0)]);
+    assert.equal(a, b);
+    assert.equal(b, c);
+    assert.equal(builds, 1, `concurrent ensure must build once, got ${builds}`);
+});
+
 test("索引 builtAt：每次构建刷新（新鲜度判定依据）", async () => {
     const kernel = {request: (endpoint) => {
         if (endpoint === "getChildBlocks") return Promise.resolve([]);

@@ -111,13 +111,23 @@ export class LibraryService {
     }
 
     /** 索引（可丢弃缓存）。为空或超过 maxAgeMs 时重建（SWR：陈旧索引透明刷新）。 */
+    /** 索引（可丢弃缓存）。为空或超过 maxAgeMs 时重建（SWR）。
+     *  并发去重：重建进行中时共用同一 Promise（双开弹窗/预热竞争只建一次）。 */
+    private buildingPromise: Promise<IndexBuildResult> | null = null;
+
     async ensureIndex(maxAgeMs?: number): Promise<IndexBuildResult> {
         if (this.index) {
             const fresh = typeof maxAgeMs !== "number" || Date.now() - this.index.builtAt <= maxAgeMs;
             if (fresh) return this.index;
         }
-        this.index = await this.buildIndex();
-        return this.index;
+        if (!this.buildingPromise) {
+            this.buildingPromise = this.buildIndex().finally(() => {
+                this.buildingPromise = null;
+            });
+        }
+        const result = await this.buildingPromise;
+        this.index = result;
+        return result;
     }
 
     /** 当前缓存索引（可能为 null；调用方据此展示 loading 态） */

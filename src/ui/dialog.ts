@@ -14,7 +14,7 @@ import {ProviderRow} from "../model/provider-section";
 
 export interface DialogDeps {
     t: (key: string, ...args: string[]) => string;
-    search: (query: SearchQuery) => Promise<{entries: SearchEntry[]; truncated: boolean; total: number; loading?: boolean}>;
+    search: (query: SearchQuery) => Promise<{entries: SearchEntry[]; truncated: boolean; total: number; loading?: boolean; error?: string}>;
     /** 文档搜索（插入到指定文档的选择器） */
     searchDocs: (k: string) => Promise<Array<{id: string; hPath: string; name: string}>>;
     insertToDoc: (itemId: string, docId: string, hPath: string) => Promise<boolean>;
@@ -381,6 +381,7 @@ export class CommonSearchDialog {
         let total = 0;
         let truncated = false;
         let loading = false;
+        let loadError: string | undefined;
         try {
             const text = query.text.trim();
             if (text.startsWith("?") && text.length > 1) {
@@ -405,6 +406,7 @@ export class CommonSearchDialog {
                 total = result.total;
                 truncated = result.truncated;
                 loading = result.loading === true;
+                loadError = result.error;
                 this.aiResults = false;
                 if (aiBanner) aiBanner.style.display = "none";
             }
@@ -421,6 +423,8 @@ export class CommonSearchDialog {
         if (status) {
             if (this.results.length) {
                 status.textContent = "";
+            } else if (loadError) {
+                status.textContent = this.deps.t("kernelError", loadError);
             } else if (loading) {
                 status.textContent = this.deps.t("indexing");
             } else if (query.text.trim() && !query.text.trim().startsWith("?") && this.deps.aiEnabled()) {

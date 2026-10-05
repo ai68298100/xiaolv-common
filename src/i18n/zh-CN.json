@@ -172,5 +172,8 @@
   "tagAuditTooFew": "标签不足 2 个，无需体检",
   "openSettingsChangeLib": "更改内容库",
   "exportMdBtn": "导出 Markdown 包（含资源）",
-  "exportMdDone": "已导出 %s 个条目（资源 %s，跳过 %s）"
+  "exportMdDone": "已导出 %s 个条目（资源 %s，跳过 %s）",
+  "clearRecents": "清空最近使用",
+  "clearRecentsConfirm": "清空最近使用记录（不影响条目本身）？",
+  "clearRecentsDone": "已清空最近使用"
 }

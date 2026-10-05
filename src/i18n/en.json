@@ -172,5 +172,8 @@
   "tagAuditTooFew": "Fewer than 2 tags; nothing to audit",
   "openSettingsChangeLib": "Change library",
   "exportMdBtn": "Export Markdown pack (with assets)",
-  "exportMdDone": "Exported %s items (assets %s, skipped %s)"
+  "exportMdDone": "Exported %s items (assets %s, skipped %s)",
+  "clearRecents": "Clear recent",
+  "clearRecentsConfirm": "Clear recent-usage history (items themselves untouched)?",
+  "clearRecentsDone": "Recent history cleared"
 }
