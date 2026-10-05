@@ -58,6 +58,7 @@ export class CommonSearchDialog {
     private dialog: Dialog | null = null;
     private results: SearchEntry[] = [];
     private providerRows: ProviderRow[] = [];
+    private activeProvider = -1;
     private aiResults = false;
     private activeIndex = 0;
     private searchSeq = 0;
@@ -416,6 +417,7 @@ export class CommonSearchDialog {
         }
         if (seq !== this.searchSeq) return;
         this.activeIndex = 0;
+        this.activeProvider = -1;
         if (status) {
             if (this.results.length) {
                 status.textContent = "";
@@ -602,14 +604,34 @@ export class CommonSearchDialog {
         if (list) this.renderList(list);
     }
 
+    /** 统一导航位：0..results.length-1 为库条目，之后为提供方行 */
+    private setNav(pos: number): void {
+        if (pos < this.results.length) {
+            this.activeIndex = pos;
+            this.activeProvider = -1;
+        } else {
+            this.activeIndex = Math.max(Math.min(pos, Math.max(this.results.length - 1, 0)), 0);
+            this.activeProvider = pos - this.results.length;
+        }
+    }
+
+    private navPosition(): number {
+        return this.activeProvider >= 0 ? this.results.length + this.activeProvider : this.activeIndex;
+    }
+
     private paintActive(): void {
         const list = this.dialog?.element.querySelector<HTMLElement>(".xlc-list");
         if (!list) return;
-        Array.from(list.children).forEach((child, i) => {
-            child.classList.toggle("xlc-row--active", i === this.activeIndex);
-            child.setAttribute("aria-selected", i === this.activeIndex ? "true" : "false");
+        const rows = Array.from(list.children) as HTMLElement[];
+        rows.forEach((child, i) => {
+            const isReal = i < this.results.length;
+            const active = isReal
+                ? this.activeProvider < 0 && i === this.activeIndex
+                : this.activeProvider >= 0 && i - this.results.length === this.activeProvider;
+            child.classList.toggle("xlc-row--active", active);
+            if (isReal) child.setAttribute("aria-selected", active ? "true" : "false");
         });
-        const active = list.children[this.activeIndex] as HTMLElement | undefined;
+        const active = rows[this.navPosition()] as HTMLElement | undefined;
         active?.scrollIntoView({block: "nearest"});
     }
 
@@ -618,14 +640,25 @@ export class CommonSearchDialog {
     }
 
     private updatePreview(forceId?: string): void {
-        const entry = this.results[this.activeIndex];
-        const id = forceId ?? entry?.id ?? null;
         const paneBody = this.dialog?.element.querySelector<HTMLElement>(".xlc-pane-body");
         const paneTitle = this.dialog?.element.querySelector<HTMLElement>(".xlc-pane-title");
         const paneWarn = this.dialog?.element.querySelector<HTMLElement>(".xlc-pane-warn");
         const paneAi = this.dialog?.element.querySelector<HTMLElement>(".xlc-pane-ai");
-        if (!paneBody || !id || id === this.lastPreviewId) return;
-        this.lastPreviewId = id;
+        if (!paneBody || !paneTitle || !paneWarn || !paneAi) return;
+        // 提供方行：预览直接展示 payload（无内核取用、无来源语义）
+        if (this.activeProvider >= 0) {
+            const row = this.providerRows[this.activeProvider];
+            if (!row) return;
+            this.lastPreviewId = row.virtualId;
+            paneTitle.textContent = row.title || row.providerName;
+            paneAi.style.display = "none";
+            paneWarn.style.display = "none";
+            paneBody.textContent = row.payload;
+            return;
+        }
+        const entry = this.results[this.activeIndex];
+        const id = forceId ?? entry?.id ?? null;
+        if (!id || id === this.lastPreviewId) return;
         const seq = ++this.previewSeq;
         if (paneTitle) paneTitle.textContent = entry?.title ?? "";
         if (paneAi) paneAi.style.display = this.aiResults ? "" : "none";
@@ -854,20 +887,34 @@ export class CommonSearchDialog {
         if (!list) return;
         if (e.key === "ArrowDown") {
             e.preventDefault();
-            this.activeIndex = Math.min(this.activeIndex + 1, Math.max(this.results.length - 1, 0));
+            const total = this.results.length + this.providerRows.length;
+            if (total > 0) this.setNav(Math.min(this.navPosition() + 1, total - 1));
             this.paintActive();
             this.updatePreview();
         } else if (e.key === "ArrowUp") {
             e.preventDefault();
-            this.activeIndex = Math.max(this.activeIndex - 1, 0);
+            this.setNav(Math.max(this.navPosition() - 1, 0));
             this.paintActive();
             this.updatePreview();
         } else if (e.key === "Enter" && !e.ctrlKey && !e.metaKey) {
             e.preventDefault();
+            if (this.activeProvider >= 0) {
+                const row = this.providerRows[this.activeProvider];
+                if (row) {
+                    this.destroy();
+                    await this.deps.insertProviderPayload(row.payload);
+                }
+                return;
+            }
             const entry = this.results[this.activeIndex];
             if (entry) await this.runPrimary(entry);
         } else if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
             e.preventDefault();
+            if (this.activeProvider >= 0) {
+                const row = this.providerRows[this.activeProvider];
+                if (row) await this.deps.copyProviderPayload(row.payload);
+                return;
+            }
             const entry = this.results[this.activeIndex];
             if (entry) await this.deps.runAction(entry.id, "copy");
         } else if (e.key === "Escape") {

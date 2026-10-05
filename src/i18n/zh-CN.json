@@ -169,5 +169,6 @@
   "tagAuditEmpty": "AI 未给出建议",
   "tagAuditMerge": "归并",
   "tagAuditRename": "改名",
-  "tagAuditTooFew": "标签不足 2 个，无需体检"
+  "tagAuditTooFew": "标签不足 2 个，无需体检",
+  "openSettingsChangeLib": "更改内容库"
 }

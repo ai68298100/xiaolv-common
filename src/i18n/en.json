@@ -169,5 +169,6 @@
   "tagAuditEmpty": "No suggestions from AI",
   "tagAuditMerge": "Merge",
   "tagAuditRename": "Rename",
-  "tagAuditTooFew": "Fewer than 2 tags; nothing to audit"
+  "tagAuditTooFew": "Fewer than 2 tags; nothing to audit",
+  "openSettingsChangeLib": "Change library"
 }

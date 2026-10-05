@@ -438,7 +438,7 @@ export default class XiaolvCommonPlugin extends Plugin {
                     this.notify("error", created.message);
                 }
             },
-            openSetup: () => this.openSetup(),
+            openSetup: () => (this.config ? this.openSettings() : this.openSetup()),
             providerSearch: async (query) => {
                 const rows = [];
                 for (const provider of this.registry.listExecutable()) {
@@ -734,6 +734,7 @@ export default class XiaolvCommonPlugin extends Plugin {
 
     // ---- 首次引导 / 设置 ----
 
+    /** 首次引导（仅库选择；完整设置见 openSettings） */
     openSetup(): void {
         const t = this.i18nFn();
         const dialog = new Dialog({
@@ -752,6 +753,64 @@ export default class XiaolvCommonPlugin extends Plugin {
         hint.className = "xlc-form-hint";
         hint.textContent = t("setupHint");
         root.appendChild(hint);
+        this.buildLibraryPickerSection(root, () => dialog.destroy());
+        body.appendChild(root);
+    }
+
+    /** 完整设置：库管理（含更改库）+ AI + 搜索 + 数据 */
+    openSettings(): void {
+        const t = this.i18nFn();
+        const dialog = new Dialog({
+            title: t("openSettings"),
+            content: "",
+            width: "min(560px, 92vw)",
+            height: "auto",
+        });
+        const body = dialog.element.querySelector(".b3-dialog__content");
+        if (!body) return;
+        body.innerHTML = "";
+        const root = document.createElement("div");
+        root.className = "xlc-form";
+
+        // 库管理：状态行 + 「更改内容库」展开选择器
+        const libSec = document.createElement("div");
+        libSec.className = "xlc-form-field";
+        const libLabel = document.createElement("span");
+        libLabel.className = "xlc-form-label";
+        libLabel.textContent = t("librarySection");
+        libSec.appendChild(libLabel);
+        const libStatus = document.createElement("div");
+        libStatus.className = "xlc-form-hint";
+        const cfg = this.config;
+        libStatus.textContent = cfg
+            ? (cfg.mode === "notebook" ? `notebook ${cfg.notebookIds.join(",")}` : `${cfg.mode} · ${cfg.containerDocIds.length} doc(s)`)
+            : t("libraryNone");
+        libSec.appendChild(libStatus);
+        const changeBtn = document.createElement("button");
+        changeBtn.className = "b3-button";
+        changeBtn.textContent = t("openSettingsChangeLib");
+        const pickerHost = document.createElement("div");
+        pickerHost.style.display = "none";
+        changeBtn.addEventListener("click", () => {
+            const show = pickerHost.style.display === "none";
+            pickerHost.style.display = show ? "" : "none";
+            if (show && pickerHost.childElementCount === 0) {
+                this.buildLibraryPickerSection(pickerHost, () => dialog.destroy());
+            }
+        });
+        libSec.appendChild(changeBtn);
+        libSec.appendChild(pickerHost);
+        root.appendChild(libSec);
+
+        this.buildAiSection(root);
+        this.buildSearchSection(root);
+        this.buildDataSection(root);
+        body.appendChild(root);
+    }
+
+    /** 库选择器（首跑引导与「更改库」共用；onConfigured 在配置落地后回调） */
+    private buildLibraryPickerSection(root: HTMLElement, onConfigured: () => void): void {
+        const t = this.i18nFn();
 
         // 模式选择
         const modeWrap = document.createElement("div");
@@ -840,7 +899,7 @@ export default class XiaolvCommonPlugin extends Plugin {
                         configuredAt: Date.now(),
                     });
                     this.notify("info", t("libDocCreated", title));
-                    dialog.destroy();
+                    onConfigured();
                 });
             });
         });
@@ -904,7 +963,7 @@ export default class XiaolvCommonPlugin extends Plugin {
                     createdDocIds: [],
                     configuredAt: Date.now(),
                 });
-                dialog.destroy();
+                onConfigured();
                 return;
             }
             if (!pickedDoc) {
@@ -918,12 +977,15 @@ export default class XiaolvCommonPlugin extends Plugin {
                 createdDocIds: [],
                 configuredAt: Date.now(),
             });
-            dialog.destroy();
+            onConfigured();
         });
         actions.appendChild(createBtn);
         actions.appendChild(useNotebookBtn);
         root.appendChild(actions);
+    }
 
+    private buildAiSection(root: HTMLElement): void {
+        const t = this.i18nFn();
         // AI 设置区（默认关；开启即视为同意元数据出域；正文出域单独开关）
         const aiSec = document.createElement("div");
         aiSec.className = "xlc-form-field";
@@ -956,7 +1018,10 @@ export default class XiaolvCommonPlugin extends Plugin {
             if (!aiEnabledBox.checked) aiShareBox.checked = false;
         });
         root.appendChild(aiSec);
+    }
 
+    private buildSearchSection(root: HTMLElement): void {
+        const t = this.i18nFn();
         // 搜索设置区（拼音：本地注解，无出域）
         const searchSec = document.createElement("div");
         searchSec.className = "xlc-form-field";
@@ -1002,7 +1067,10 @@ export default class XiaolvCommonPlugin extends Plugin {
         phHint.textContent = t("placeholdersHint");
         searchSec.appendChild(phHint);
         root.appendChild(searchSec);
+    }
 
+    private buildDataSection(root: HTMLElement): void {
+        const t = this.i18nFn();
         // 数据区：当前库 + 重建索引 + 导出/导入
         const dataSec = document.createElement("div");
         dataSec.className = "xlc-form-field";
@@ -1076,8 +1144,6 @@ export default class XiaolvCommonPlugin extends Plugin {
         void importBtn;
         dataSec.appendChild(dataBtns);
         root.appendChild(dataSec);
-
-        body.appendChild(root);
     }
 
     /** AI 标签体检：仅标签清单出域；结果只展示，不自动修改任何条目 */
