@@ -57,7 +57,6 @@
   "relinkPrompt": "Set the current document as the new source of this item?",
   "sourceMissing": "Source missing",
   "assetMissing": "Asset missing",
-  "ok": "Failed",
   "inserted": "Inserted: %s",
   "copied": "Copied: %s",
   "copiedRichPending": "Copied markdown link; bitmap copy pending device verification",

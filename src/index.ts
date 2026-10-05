@@ -816,6 +816,12 @@ export default class XiaolvCommonPlugin extends Plugin {
         srcRow.textContent = item.source.sourceDocId
             ? `src: ${item.source.sourceDocId}${item.source.sourceBlockId ? ` / ${item.source.sourceBlockId}` : ""}`
             : t("sourceMissing");
+        // 异步补全为可读路径（内核权威 hPath；失败保持 ID 显示）
+        if (item.source.sourceDocId) {
+            void this.library.getDocPath(item.source.sourceDocId).then((path) => {
+                if (path) srcRow.textContent = `来源：${path}${item.source.sourceBlockId ? ` / 块 ${item.source.sourceBlockId}` : ""}`;
+            });
+        }
         const relinkBtn = document.createElement("button");
         relinkBtn.className = "b3-button b3-button--text xlc-form-ai";
         relinkBtn.textContent = t("relinkCurrent");
@@ -829,7 +835,9 @@ export default class XiaolvCommonPlugin extends Plugin {
                 if (result.ok) {
                     this.previewCache.clear();
                     this.notify("info", t("relinkDone"));
-                    srcRow.textContent = `src: ${docId}`;
+                    void this.library.getDocPath(docId).then((path) => {
+                        srcRow.textContent = path ? `来源：${path}` : `src: ${docId}`;
+                    });
                 } else {
                     this.notify("error", result.message);
                 }

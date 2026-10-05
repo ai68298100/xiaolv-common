@@ -57,7 +57,6 @@
   "relinkPrompt": "将当前文档设为该条目的新来源？",
   "sourceMissing": "来源失效",
   "assetMissing": "资源缺失",
-  "ok": "失败",
   "inserted": "已插入：%s",
   "copied": "已复制：%s",
   "copiedRichPending": "已复制 Markdown 链接；位图复制待真机验证",
