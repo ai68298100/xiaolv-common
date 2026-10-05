@@ -39,7 +39,7 @@ const T = (key: string, ...args: string[]): string => {
         "tf.polish": "润色", "tf.shorten": "缩短", "tf.formal": "正式化", "tf.translate-en": "译为英文", "tf.bulletize": "列表化",
         more: "返回动作",
         newItem: "新建条目", save: "保存", cancel: "取消", confirm: "确定", invalidItem: "条目数据无效",
-        aiTidy: "AI 整理", aiDraft: "AI 草稿", aiDraftDesc: "描述你想要的内容，AI 生成草稿", aiApplied: "已应用 AI 建议",
+        aiTidy: "AI 整理", aiDraft: "AI 草稿", aiDraftDesc: "描述你想要的内容，AI 生成草稿", aiApplied: "已应用 AI 建议", aiTransform: "AI 变换",
         saved: "已保存：%s",
         "sort.manual": "手动/置顶", "sort.recent": "最近使用", "sort.title": "标题",
         totalItems: "共 %s 条",

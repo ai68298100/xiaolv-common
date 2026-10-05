@@ -370,6 +370,17 @@
       search.appendChild(qMark);
       search.appendChild(input);
       top.appendChild(search);
+      if (!isMobile) {
+        const kbdRow = document.createElement("div");
+        kbdRow.className = "xlc-kbdrow";
+        for (const hint of ["\u2191\u2193", "\u21A9 \u63D2\u5165", "\u2303\u21A9 \u590D\u5236", "Esc"]) {
+          const kbd = document.createElement("span");
+          kbd.className = "xlc-kbd";
+          kbd.textContent = hint;
+          kbdRow.appendChild(kbd);
+        }
+        top.appendChild(kbdRow);
+      }
       root.appendChild(top);
       const filters = document.createElement("div");
       filters.className = "xlc-filters";
@@ -431,7 +442,7 @@
       const aiBanner = document.createElement("span");
       aiBanner.className = "xlc-chip xlc-ai-banner";
       aiBanner.style.display = "none";
-      filters.appendChild(aiBanner);
+      filters.insertBefore(aiBanner, filters.firstChild);
       const sortChip = document.createElement("button");
       sortChip.className = "xlc-chip xlc-sort-chip";
       const paintSort = () => {
@@ -538,6 +549,13 @@
         const entry = this.results[this.activeIndex];
         if (entry) void this.deps.runAction(entry.id, "copy");
       });
+      const aiBtn = document.createElement("button");
+      aiBtn.className = "b3-button xlc-btn-ai";
+      aiBtn.textContent = "\u2726 " + this.deps.t("aiTransform");
+      aiBtn.addEventListener("click", () => {
+        const entry = this.results[this.activeIndex];
+        if (entry) void this.showActionMenu(entry);
+      });
       const spacer = document.createElement("span");
       spacer.className = "xlc-foot-spacer";
       const source = document.createElement("button");
@@ -555,6 +573,7 @@
         if (entry) void this.deps.editItem(entry.id);
       });
       foot.appendChild(insert);
+      foot.appendChild(aiBtn);
       foot.appendChild(copy);
       foot.appendChild(spacer);
       foot.appendChild(source);
@@ -2494,6 +2513,7 @@
       aiDraft: "AI \u8349\u7A3F",
       aiDraftDesc: "\u63CF\u8FF0\u4F60\u60F3\u8981\u7684\u5185\u5BB9\uFF0CAI \u751F\u6210\u8349\u7A3F",
       aiApplied: "\u5DF2\u5E94\u7528 AI \u5EFA\u8BAE",
+      aiTransform: "AI \u53D8\u6362",
       saved: "\u5DF2\u4FDD\u5B58\uFF1A%s",
       "sort.manual": "\u624B\u52A8/\u7F6E\u9876",
       "sort.recent": "\u6700\u8FD1\u4F7F\u7528",

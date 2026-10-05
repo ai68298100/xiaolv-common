@@ -29,7 +29,31 @@
   color: var(--b3-theme-on-background);
 
   // ---- 搜索框（聚焦描边 + ? 语义提示）----
-  .xlc-top { display: flex; }
+  .xlc-top {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  // 头部快捷键提示 chips（桌面）
+  .xlc-kbdrow {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    flex-shrink: 0;
+  }
+
+  .xlc-kbd {
+    font-size: 11px;
+    line-height: 18px;
+    color: var(--b3-theme-on-surface);
+    border: 1px solid var(--b3-border-color);
+    border-bottom-width: 2px;
+    border-radius: 4px;
+    padding: 0 6px;
+    white-space: nowrap;
+    user-select: none;
+  }
 
   .xlc-search {
     flex: 1;
@@ -329,6 +353,17 @@
     flex-wrap: wrap;
 
     .xlc-foot-spacer { flex: 1; }
+
+    // 主色只给核心动作；AI 变换描边高亮（原型窗格底部第二按钮）
+    .xlc-btn-ai {
+      border-color: var(--b3-theme-primary-light);
+      color: var(--b3-theme-primary);
+      background-color: transparent;
+
+      &:hover {
+        background-color: var(--b3-theme-primary-lighter);
+      }
+    }
 
     .xlc-btn-primary {
       background-color: var(--b3-theme-primary);

@@ -166,6 +166,18 @@ export class CommonSearchDialog {
         search.appendChild(qMark);
         search.appendChild(input);
         top.appendChild(search);
+        // 头部快捷键提示（桌面；原型头部右侧 kbd chips）
+        if (!isMobile) {
+            const kbdRow = document.createElement("div");
+            kbdRow.className = "xlc-kbdrow";
+            for (const hint of ["↑↓", "↩ 插入", "⌃↩ 复制", "Esc"]) {
+                const kbd = document.createElement("span");
+                kbd.className = "xlc-kbd";
+                kbd.textContent = hint;
+                kbdRow.appendChild(kbd);
+            }
+            top.appendChild(kbdRow);
+        }
         root.appendChild(top);
 
         // 筛选 chips 行
@@ -228,11 +240,11 @@ export class CommonSearchDialog {
             });
             filters.appendChild(chip);
         }
-        // AI 语义结果横幅（? 查询命中时显示）
+        // AI 语义结果横幅（? 查询命中时显示；原型顺序=筛选行首位）
         const aiBanner = document.createElement("span");
         aiBanner.className = "xlc-chip xlc-ai-banner";
         aiBanner.style.display = "none";
-        filters.appendChild(aiBanner);
+        filters.insertBefore(aiBanner, filters.firstChild);
         // 排序切换 chip（手动/置顶 → 最近 → 标题）
         const sortChip = document.createElement("button");
         sortChip.className = "xlc-chip xlc-sort-chip";
@@ -350,6 +362,14 @@ export class CommonSearchDialog {
             const entry = this.results[this.activeIndex];
             if (entry) void this.deps.runAction(entry.id, "copy");
         });
+        // AI 变换：打开动作菜单（含 AI 变换分区；原型窗格底部第三按钮）
+        const aiBtn = document.createElement("button");
+        aiBtn.className = "b3-button xlc-btn-ai";
+        aiBtn.textContent = "✦ " + this.deps.t("aiTransform");
+        aiBtn.addEventListener("click", () => {
+            const entry = this.results[this.activeIndex];
+            if (entry) void this.showActionMenu(entry);
+        });
         const spacer = document.createElement("span");
         spacer.className = "xlc-foot-spacer";
         const source = document.createElement("button");
@@ -367,6 +387,7 @@ export class CommonSearchDialog {
             if (entry) void this.deps.editItem(entry.id);
         });
         foot.appendChild(insert);
+        foot.appendChild(aiBtn);
         foot.appendChild(copy);
         foot.appendChild(spacer);
         foot.appendChild(source);
