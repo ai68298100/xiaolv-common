@@ -12,6 +12,10 @@ export interface CaptureDeps {
     readClipboardText(): Promise<string>;
     createItem(input: NewItemInput): Promise<{ok: boolean; message: string; itemId?: string}>;
     notify(kind: "info" | "error", message: string): void;
+    /** AI（默认关；正文出域由服务层把关） */
+    aiEnabled(): boolean;
+    aiTidy(content: string): Promise<{ok: true; title?: string; alias?: string; tags?: string[]; category?: string} | {ok: false; message: string}>;
+    aiDraft(description: string): Promise<{ok: true; text: string} | {ok: false; message: string}>;
 }
 
 /** 选区 → 条目类型推断 */
@@ -121,6 +125,98 @@ export class CaptureDialog {
         tagsHint.textContent = t("tagsHint");
         (tagsEl.parentElement as HTMLElement).appendChild(tagsHint);
         const categoryEl = field(t("category"), "", false, "xlc-form-category");
+
+        // AI 草稿行（启用 AI 时展示）：描述 → 生成草稿填入内容
+        // AI 建议行（AI 整理后展示，全部采纳）
+        const sugrow = document.createElement("div");
+        sugrow.className = "xlc-sugrow";
+        sugrow.style.display = "none";
+        const sugText = document.createElement("span");
+        sugrow.appendChild(sugText);
+        const adoptBtn = document.createElement("button");
+        adoptBtn.className = "xlc-sugrow-adopt";
+        let suggestions: {title?: string; alias?: string; tags?: string[]; category?: string} = {};
+        const applySuggestions = (): void => {
+            if (suggestions.title) (titleEl as HTMLInputElement).value = suggestions.title;
+            if (suggestions.alias) (aliasEl as HTMLInputElement).value = suggestions.alias;
+            if (suggestions.tags?.length) (tagsEl as HTMLInputElement).value = suggestions.tags.join(", ");
+            if (suggestions.category) (categoryEl as HTMLInputElement).value = suggestions.category;
+            this.deps.notify("info", t("aiApplied"));
+        };
+        adoptBtn.textContent = t("confirm");
+        adoptBtn.addEventListener("click", applySuggestions);
+        sugrow.appendChild(adoptBtn);
+        form.insertBefore(sugrow, titleEl.parentElement as Node);
+
+        if (this.deps.aiEnabled()) {
+            // 内容标签行加「✦ AI 整理」
+            const contentLabel = (contentEl.parentElement as HTMLElement).querySelector(".xlc-form-label");
+            if (contentLabel) {
+                const tidyBtn = document.createElement("button");
+                tidyBtn.className = "xlc-form-ai";
+                tidyBtn.type = "button";
+                tidyBtn.textContent = "✦ " + t("aiTidy");
+                tidyBtn.addEventListener("click", () => {
+                    const value = (contentEl as HTMLTextAreaElement).value.trim();
+                    if (!value) {
+                        this.deps.notify("error", t("invalidItem"));
+                        return;
+                    }
+                    tidyBtn.textContent = t("aiWorking");
+                    void this.deps.aiTidy(value).then((result) => {
+                        tidyBtn.textContent = "✦ " + t("aiTidy");
+                        if (!result.ok) {
+                            this.deps.notify("error", result.message);
+                            return;
+                        }
+                        suggestions = result;
+                        const parts = [
+                            result.title ? result.title : "",
+                            result.tags?.length ? result.tags.join("/") : "",
+                            result.category ?? "",
+                        ].filter(Boolean);
+                        sugText.textContent = "✦ " + t("aiFound") + "：" + parts.join(" · ");
+                        sugrow.style.display = "";
+                        applySuggestions();
+                    });
+                });
+                contentLabel.appendChild(tidyBtn);
+            }
+
+            // AI 草稿行
+            const draftWrap = document.createElement("div");
+            draftWrap.className = "xlc-form-field";
+            const draftLabel = document.createElement("span");
+            draftLabel.className = "xlc-form-label";
+            draftLabel.textContent = t("aiDraftDesc");
+            draftWrap.appendChild(draftLabel);
+            const draftRow = document.createElement("div");
+            draftRow.style.display = "flex";
+            draftRow.style.gap = "6px";
+            const draftInput = document.createElement("input");
+            draftInput.className = "b3-text-field";
+            draftInput.placeholder = t("aiDraftDesc");
+            draftRow.appendChild(draftInput);
+            const draftBtn = document.createElement("button");
+            draftBtn.className = "b3-button b3-button--text xlc-form-ai";
+            draftBtn.textContent = "✦ " + t("aiDraft");
+            draftBtn.addEventListener("click", () => {
+                const desc = draftInput.value.trim();
+                if (!desc) return;
+                draftBtn.textContent = t("aiWorking");
+                void this.deps.aiDraft(desc).then((result) => {
+                    draftBtn.textContent = "✦ " + t("aiDraft");
+                    if (!result.ok) {
+                        this.deps.notify("error", result.message);
+                        return;
+                    }
+                    (contentEl as HTMLTextAreaElement).value = result.text;
+                });
+            });
+            draftRow.appendChild(draftBtn);
+            draftWrap.appendChild(draftRow);
+            form.insertBefore(draftWrap, form.firstChild);
+        }
 
         const actions = document.createElement("div");
         actions.className = "xlc-form-actions";

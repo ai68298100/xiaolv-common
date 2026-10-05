@@ -1,204 +1,484 @@
-// 样式：全部走 b3 CSS 变量（亮暗主题自动适配），禁止硬编码色值。
-// 移动端：底部 sheet 形态 + 44px 命中区 + safe-area。
+// 样式（质感基准：docs/design/prototype.html）：
+// 全部走 b3 CSS 变量（亮暗主题自动适配），禁止硬编码色值；
+// 10px 圆角、双层阴影、类型彩色徽标（b3 派生淡彩）、AI 主色高光、8px 间距网格。
+// 移动端：底部 sheet + safe-area + 44px 命中区。
 
 .xlc-dialog {
-    display: flex;
-    flex-direction: column;
-    height: 100%;
-    gap: 8px;
+  --xlc-radius: 10px;
+  --xlc-badge-text: #4a8a4a;
+  --xlc-badge-text-bg: rgba(94, 168, 94, .13);
+  --xlc-badge-md: var(--b3-theme-primary);
+  --xlc-badge-md-bg: rgba(53, 117, 240, .09);
+  --xlc-badge-url: #b0680a;
+  --xlc-badge-url-bg: rgba(232, 152, 45, .13);
+  --xlc-badge-code: #8a5ad0;
+  --xlc-badge-code-bg: rgba(150, 105, 224, .13);
+  --xlc-badge-image: #3a9ab5;
+  --xlc-badge-image-bg: rgba(80, 175, 200, .13);
+  --xlc-badge-file: #8a8a93;
+  --xlc-badge-file-bg: rgba(140, 140, 150, .14);
+  --xlc-badge-ref: #d05a8a;
+  --xlc-badge-ref-bg: rgba(220, 110, 155, .13);
+  --xlc-badge-warn: #c2503a;
+  --xlc-badge-warn-bg: rgba(226, 106, 80, .12);
 
-    .xlc-top {
-        display: flex;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  gap: 8px;
+  color: var(--b3-theme-on-background);
+
+  // ---- 搜索框（聚焦描边 + ? 语义提示）----
+  .xlc-top { display: flex; }
+
+  .xlc-search {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background-color: var(--b3-theme-surface);
+    border: 1.5px solid transparent;
+    border-radius: 8px;
+    padding: 0 10px;
+    height: 36px;
+
+    &:focus-within {
+      border-color: var(--b3-theme-primary);
+      background-color: var(--b3-theme-background);
+
+      .xlc-search-q { opacity: 1; }
+    }
+
+    .xlc-search-q {
+      color: var(--b3-theme-primary);
+      font-weight: 600;
+      opacity: .55;
+      user-select: none;
     }
 
     .xlc-search-input {
-        width: 100%;
+      flex: 1;
+      border: none;
+      background: transparent;
+      box-shadow: none;
+      padding: 0;
+      height: auto;
+      font-size: 13.5px;
+    }
+  }
+
+  // ---- 筛选 chips ----
+  .xlc-filters {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+    flex-wrap: wrap;
+
+    .b3-select {
+      max-width: 128px;
+      border-radius: 999px;
+      padding: 2px 26px 2px 12px;
+      height: 26px;
+      font-size: 12px;
+      color: var(--b3-theme-on-surface);
+    }
+  }
+
+  .xlc-chip {
+    border: 1px solid var(--b3-border-color);
+    background: transparent;
+    color: var(--b3-theme-on-surface);
+    border-radius: 999px;
+    padding: 2px 11px;
+    font-size: 12px;
+    line-height: 20px;
+    min-height: 26px;
+    cursor: pointer;
+
+    &:hover { border-color: var(--b3-theme-primary-light); }
+
+    &--on {
+      background-color: var(--b3-theme-primary-lighter);
+      border-color: transparent;
+      color: var(--b3-theme-primary);
+      font-weight: 600;
+    }
+  }
+
+  .xlc-ai-banner {
+    align-self: flex-start;
+    border: 1px dashed var(--b3-theme-primary-light);
+    color: var(--b3-theme-primary);
+    background-color: rgba(53, 117, 240, .07);
+  }
+
+  // ---- 状态行 ----
+  .xlc-status {
+    min-height: 18px;
+    font-size: 12px;
+    color: var(--b3-theme-on-surface);
+  }
+
+  // ---- 双栏主体 ----
+  .xlc-body {
+    flex: 1;
+    display: flex;
+    min-height: 0;
+    border: 1px solid var(--b3-border-color);
+    border-radius: var(--xlc-radius);
+    background-color: var(--b3-theme-surface);
+    overflow: hidden;
+  }
+
+  .xlc-list {
+    width: 320px;
+    flex-shrink: 0;
+    overflow: auto;
+    border-right: 1px solid var(--b3-border-color);
+  }
+
+  .xlc-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 9px 12px;
+    min-height: 44px;
+    cursor: pointer;
+    border-bottom: 1px solid var(--b3-border-color);
+
+    &:last-child { border-bottom: none; }
+
+    &:hover { background-color: var(--b3-list-hover); }
+
+    &--active {
+      background-color: var(--b3-list-hover);
+      box-shadow: inset 3px 0 0 var(--b3-theme-primary);
     }
 
-    .xlc-filters {
-        display: flex;
-        gap: 6px;
-        align-items: center;
-        flex-wrap: wrap;
-
-        .b3-select {
-            max-width: 132px;
-        }
+    .xlc-row-main {
+      flex: 1;
+      min-width: 0;
     }
 
-    .xlc-scope-chip[data-scope="favorites"][aria-pressed="true"],
-    .xlc-scope-chip--active {
-        background-color: var(--b3-theme-primary-lighter);
+    .xlc-row-title {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 13px;
+      font-weight: 500;
+      margin-bottom: 2px;
+      overflow: hidden;
     }
 
-    .xlc-status {
-        min-height: 18px;
-        font-size: 12px;
-        color: var(--b3-theme-on-surface);
+    .xlc-row-titletext {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      color: var(--b3-theme-on-background);
     }
 
-    .xlc-list {
-        overflow: auto;
-        border: 1px solid var(--b3-border-color);
-        border-radius: 6px;
-        background-color: var(--b3-theme-surface);
+    .xlc-row-favmark {
+      color: #e8a020;
+      font-size: 12px;
+      flex-shrink: 0;
     }
 
-    .xlc-row {
-        display: flex;
-        align-items: center;
-        gap: 8px;
-        padding: 10px 12px;
-        min-height: 44px;
-        cursor: pointer;
-        border-bottom: 1px solid var(--b3-border-color);
-
-        &:last-child {
-            border-bottom: none;
-        }
-
-        &:hover,
-        &--active {
-            background-color: var(--b3-list-hover);
-        }
-
-        .xlc-row-icon {
-            display: flex;
-            align-items: center;
-
-            svg {
-                width: 16px;
-                height: 16px;
-                fill: none;
-                color: var(--b3-theme-on-surface);
-            }
-        }
-
-        .xlc-row-main {
-            flex: 1;
-            min-width: 0;
-
-            .xlc-row-title {
-                font-size: 14px;
-                color: var(--b3-theme-on-background);
-                overflow: hidden;
-                text-overflow: ellipsis;
-                white-space: nowrap;
-            }
-
-            .xlc-row-meta {
-                font-size: 12px;
-                color: var(--b3-theme-on-surface);
-                overflow: hidden;
-                text-overflow: ellipsis;
-                white-space: nowrap;
-            }
-        }
-
-        .xlc-row-action {
-            min-width: 44px;
-            min-height: 44px;
-            flex-shrink: 0;
-        }
+    .xlc-row-meta {
+      font-size: 11.5px;
+      color: var(--b3-theme-on-surface);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
     }
 
-    .xlc-footer {
-        font-size: 12px;
-        color: var(--b3-theme-on-surface);
-        text-align: center;
+    .xlc-row-action {
+      min-width: 36px;
+      min-height: 36px;
+      flex-shrink: 0;
+      border: none;
+      background: transparent;
+      color: var(--b3-theme-on-surface);
+      font-size: 14px;
+    }
+  }
+
+  // ---- 类型徽标（原型同款淡彩）----
+  .xlc-badge {
+    display: inline-block;
+    font-size: 10.5px;
+    font-weight: 600;
+    padding: 0 7px;
+    border-radius: 999px;
+    line-height: 17px;
+    letter-spacing: .3px;
+    flex-shrink: 0;
+
+    &--text      { color: var(--xlc-badge-text); background-color: var(--xlc-badge-text-bg); }
+    &--markdown  { color: var(--xlc-badge-md); background-color: var(--xlc-badge-md-bg); }
+    &--url       { color: var(--xlc-badge-url); background-color: var(--xlc-badge-url-bg); }
+    &--code      { color: var(--xlc-badge-code); background-color: var(--xlc-badge-code-bg); }
+    &--image     { color: var(--xlc-badge-image); background-color: var(--xlc-badge-image-bg); }
+    &--asset     { color: var(--xlc-badge-file); background-color: var(--xlc-badge-file-bg); }
+    &--blockref  { color: var(--xlc-badge-ref); background-color: var(--xlc-badge-ref-bg); }
+    &--structure { color: var(--xlc-badge-md); background-color: var(--xlc-badge-md-bg); }
+    &--warn      { color: var(--xlc-badge-warn); background-color: var(--xlc-badge-warn-bg); }
+    &--ai        { color: var(--b3-theme-primary); background-color: rgba(53, 117, 240, .09); }
+  }
+
+  // ---- 右侧预览窗格 ----
+  .xlc-pane {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    background-color: var(--b3-theme-background);
+  }
+
+  .xlc-pane-head {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 14px 4px;
+
+    .xlc-pane-title {
+      font-weight: 600;
+      font-size: 13.5px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+  }
+
+  .xlc-pane-warn {
+    margin: 4px 14px 6px;
+    padding: 6px 10px;
+    border-radius: 6px;
+    font-size: 12px;
+    color: var(--xlc-badge-warn);
+    background-color: var(--xlc-badge-warn-bg);
+  }
+
+  .xlc-pane-body {
+    flex: 1;
+    overflow: auto;
+    padding: 4px 14px;
+    font-size: 12.5px;
+    line-height: 1.75;
+    white-space: pre-wrap;
+    word-break: break-word;
+    color: var(--b3-theme-on-background);
+  }
+
+  .xlc-pane-foot {
+    display: flex;
+    gap: 6px;
+    padding: 8px 14px 12px;
+    flex-wrap: wrap;
+
+    .xlc-foot-spacer { flex: 1; }
+
+    .xlc-btn-primary {
+      background-color: var(--b3-theme-primary);
+      border-color: var(--b3-theme-primary);
+      color: var(--b3-theme-on-primary);
     }
 
-    .xlc-menu {
-        position: absolute;
-        inset: auto 16px 16px 16px;
-        z-index: 10;
-        display: flex;
-        flex-direction: column;
-        background-color: var(--b3-menu-background);
-        border: 1px solid var(--b3-border-color);
-        border-radius: 8px;
-        box-shadow: var(--b3-dialog-shadow);
-        overflow: hidden;
-        max-height: 70%;
-
-        .xlc-menu-preview {
-            margin: 0;
-            padding: 10px 12px;
-            max-height: 180px;
-            overflow: auto;
-            font-size: 12px;
-            color: var(--b3-theme-on-surface);
-            border-bottom: 1px solid var(--b3-border-color);
-            white-space: pre-wrap;
-            word-break: break-all;
-        }
-
-        .xlc-menu-item {
-            text-align: left;
-            min-height: 44px;
-            background: transparent;
-            border: none;
-            border-bottom: 1px solid var(--b3-border-color);
-            color: var(--b3-theme-on-background);
-            padding: 0 12px;
-            cursor: pointer;
-
-            &:last-child {
-                border-bottom: none;
-            }
-
-            &:hover {
-                background-color: var(--b3-list-hover);
-            }
-        }
+    .xlc-btn-ghost {
+      border: none;
+      background: transparent;
+      color: var(--b3-theme-on-surface);
     }
+  }
+
+  // ---- 底部提示 ----
+  .xlc-footer {
+    font-size: 11.5px;
+    color: var(--b3-theme-on-surface);
+    text-align: center;
+  }
+
+  // ---- 动作菜单（分组 + AI 变换）----
+  .xlc-menu {
+    position: absolute;
+    inset: auto 16px 16px 16px;
+    z-index: 10;
+    display: flex;
+    flex-direction: column;
+    background-color: var(--b3-menu-background);
+    border: 1px solid var(--b3-border-color);
+    border-radius: 12px;
+    box-shadow: var(--b3-dialog-shadow);
+    overflow: auto;
+    max-height: 72%;
+
+    .xlc-menu-lbl {
+      font-size: 11px;
+      color: var(--b3-theme-on-surface);
+      padding: 10px 12px 2px;
+    }
+
+    .xlc-menu-preview {
+      margin: 8px;
+      padding: 8px 10px;
+      max-height: 150px;
+      overflow: auto;
+      font-size: 12px;
+      line-height: 1.7;
+      font-family: inherit;
+      color: var(--b3-theme-on-background);
+      background-color: var(--b3-theme-surface);
+      border: 1px solid var(--b3-border-color);
+      border-radius: 8px;
+      white-space: pre-wrap;
+      word-break: break-all;
+    }
+
+    .xlc-menu-sec {
+      padding: 4px 8px 6px;
+      border-bottom: 1px solid var(--b3-border-color);
+      display: flex;
+      flex-wrap: wrap;
+      gap: 2px;
+
+      &:last-child { border-bottom: none; }
+
+      &--ai { background-color: rgba(53, 117, 240, .04); }
+    }
+
+    .xlc-menu-item {
+      text-align: left;
+      min-height: 36px;
+      width: 100%;
+      background: transparent;
+      border: none;
+      border-radius: 7px;
+      color: var(--b3-theme-on-background);
+      padding: 6px 10px;
+      font-size: 13px;
+      cursor: pointer;
+
+      &:hover { background-color: var(--b3-list-hover); }
+
+      &--ai { color: var(--b3-theme-primary); }
+    }
+  }
 }
 
-// 移动端：底部 sheet（不依赖 hover；Safe-area 让位）
+// 桌面窄容器：单列降级（预览隐藏）
+@media (max-width: 620px) {
+  .xlc-dialog:not(.xlc-dialog--mobile) {
+    .xlc-list { width: 100%; border-right: none; }
+    .xlc-pane { display: none; }
+  }
+}
+
+// 移动端：底部 sheet（不依赖 hover；safe-area 让位）
 .xlc-dialog--mobile {
-    .xlc-menu {
-        inset: auto 0 0 0;
-        border-radius: 12px 12px 0 0;
-        padding-bottom: env(safe-area-inset-bottom, 0);
-    }
+  .xlc-menu {
+    inset: auto 0 0 0;
+    border-radius: 16px 16px 0 0;
+    padding-bottom: env(safe-area-inset-bottom, 0);
+    max-height: 78%;
+  }
+
+  .xlc-body {
+    border: none;
+    background: transparent;
+  }
+
+  .xlc-list {
+    width: 100%;
+    border-right: none;
+    border: 1px solid var(--b3-border-color);
+    border-radius: var(--xlc-radius);
+  }
 }
 
 .b3-dialog__container.xlc-sheet {
-    position: fixed;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    top: auto !important;
-    margin-bottom: 0;
-    border-radius: 12px 12px 0 0;
-    transform: none !important;
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  top: auto !important;
+  margin-bottom: 0;
+  border-radius: 16px 16px 0 0;
+  transform: none !important;
+  padding-bottom: env(safe-area-inset-bottom, 0);
 }
 
-// 表单
+// ---- 表单（捕获/编辑）----
 .xlc-form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+
+  .xlc-form-field {
     display: flex;
     flex-direction: column;
-    gap: 10px;
+    gap: 4px;
 
-    .xlc-form-field {
-        display: flex;
-        flex-direction: column;
-        gap: 4px;
+    .xlc-form-label {
+      font-size: 12px;
+      color: var(--b3-theme-on-surface);
 
-        .xlc-form-label {
-            font-size: 12px;
-            color: var(--b3-theme-on-surface);
-        }
+      .xlc-form-ai {
+        color: var(--b3-theme-primary);
+        cursor: pointer;
+        border: none;
+        background: transparent;
+        font-size: 12px;
+        padding: 0 0 0 6px;
 
-        .xlc-form-hint {
-            font-size: 11px;
-            color: var(--b3-theme-on-surface);
-        }
+        &:hover { text-decoration: underline; }
+      }
     }
 
-    .xlc-form-actions {
-        display: flex;
-        justify-content: flex-end;
-        gap: 8px;
+    .xlc-form-hint {
+      font-size: 11px;
+      color: var(--b3-theme-on-surface);
     }
+  }
+
+  .xlc-sugrow {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+    font-size: 12px;
+    color: var(--b3-theme-primary);
+    background-color: rgba(53, 117, 240, .07);
+    border: 1px dashed var(--b3-theme-primary-light);
+    border-radius: 8px;
+    padding: 6px 10px;
+
+    .xlc-sugrow-adopt {
+      margin-left: auto;
+      border: 1px solid var(--b3-theme-primary-light);
+      color: var(--b3-theme-primary);
+      background: transparent;
+      border-radius: 6px;
+      padding: 2px 10px;
+      font-size: 12px;
+      cursor: pointer;
+    }
+  }
+
+  .xlc-form-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+  }
+}
+
+// ---- 设置开关行 ----
+.xlc-setting-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: 12.5px;
+  color: var(--b3-theme-on-background);
+
+  input[type="checkbox"] {
+    margin-top: 2px;
+    flex-shrink: 0;
+  }
 }

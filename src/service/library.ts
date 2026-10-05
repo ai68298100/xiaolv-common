@@ -65,6 +65,8 @@ function toSearchEntry(item: CommonItem): SearchEntry {
         summary: item.summary,
         createdAt: item.createdAt,
         updatedAt: item.updatedAt,
+        sourceDocId: item.source.sourceDocId,
+        sourceBlockId: item.source.sourceBlockId,
     };
 }
 

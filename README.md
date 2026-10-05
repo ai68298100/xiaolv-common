@@ -48,6 +48,19 @@ CommonItem（思源块承载）
 
 资源缺失时：插入/打开诚实失败，复制链接仍可用；来源块/文档删除显示「来源失效」。
 
+## AI 能力（默认关，ADR 0005）
+
+使用你在思源 **设置→人工智能** 配置的模型，插件不保存任何密钥：
+
+| 功能 | 入口 | 出域内容 |
+| --- | --- | --- |
+| **AI 整理** | 捕获表单「✦ AI 整理」→ 自动填标题/标签/分类建议，逐项采纳 | 条目正文（需开启「允许读取完整正文」） |
+| **AI 草稿** | 新建表单描述一句话 → 生成模板草稿 | 描述文本（同上） |
+| **AI 变换** | 动作菜单 ✦ 润色/缩短/正式化/译英/列表化 → 预览后选「插变换版/插原文」，**原文永不被改写** | 条目正文（同上） |
+| **AI 语义找条目** | 搜索框 `?` 前缀（如 `?给客户的道歉回复`）→ 标注「AI 找到的」 | **仅元数据**（标题/别名/标签/分类/摘要），不含正文与来源 ID |
+
+未配置模型/超时/空响应均诚实提示；总开关与正文出域开关在引导面板「AI 助手」区，任何输入下默认关闭（门禁测试锁定）。
+
 ## xiaolv-common/v1 协议
 
 ```js
@@ -79,8 +92,10 @@ common.protocolCommands["xiaolv.common.open"]();          // 稳定命令 ID
 ```bash
 pnpm i
 pnpm run check   # tsc --noEmit
-pnpm test        # esbuild 转译 + node --test（78 项）
+pnpm test        # esbuild 转译 + node --test（87 项）
 pnpm run build   # dist/ + package.zip
+node scripts/render-prototype.cjs    # 原型图截图（需 Playwright Chromium）
+node scripts/render-production.cjs   # 生产 UI 效果截图（真实 dist CSS+DOM）
 ```
 
 系列协议见 [AGENTS.md](AGENTS.md)；路线见 [ROADMAP.md](ROADMAP.md)；阻塞见 [BLOCKERS.md](BLOCKERS.md)；取舍见 [docs/adr/](docs/adr/)；宿主 API 能力矩阵见 [docs/host-contract.md](docs/host-contract.md)。

@@ -62,6 +62,13 @@ export interface ProviderRecord {
 
 // ---- 顶层状态 ----
 
+export interface AiPrefs {
+    /** AI 总开关（默认关；使用宿主思源「设置→人工智能」的模型） */
+    enabled: boolean;
+    /** 允许发送完整正文给 AI（元数据级功能不需要） */
+    shareContent: boolean;
+}
+
 export interface PluginState {
     schemaVersion: number;
     favorites: string[];
@@ -72,6 +79,7 @@ export interface PluginState {
         lastTagFilter: string;
     };
     providers: ProviderRecord[];
+    ai: AiPrefs;
 }
 
 export function normalizeState(raw: unknown): PluginState {
@@ -128,6 +136,11 @@ export function normalizeState(raw: unknown): PluginState {
             lastTagFilter: typeof prefsRaw.lastTagFilter === "string" ? prefsRaw.lastTagFilter.slice(0, LIMITS.category) : "",
         },
         providers,
+        // AI 硬边界：任何输入下默认都关（门禁测试锁定）
+        ai: {
+            enabled: obj.ai !== null && typeof obj.ai === "object" && (obj.ai as AiPrefs).enabled === true,
+            shareContent: obj.ai !== null && typeof obj.ai === "object" && (obj.ai as AiPrefs).shareContent === true,
+        },
     };
 }
 

@@ -19,9 +19,17 @@ export const CAPABILITIES = [
     "recent",
     "favorites",
     "providers",
+    "ai",
 ] as const;
 
 export type Capability = (typeof CAPABILITIES)[number];
+
+export interface CapabilityAi {
+    tidy: boolean;
+    draft: boolean;
+    transform: boolean;
+    semanticSearch: boolean;
+}
 
 export interface CapabilityDescriptor {
     name: Capability;
@@ -31,6 +39,8 @@ export interface CapabilityDescriptor {
     insertModes: readonly InsertPlan["mode"][];
     /** 未验证的宿主边界与降级方式（如实声明，不做假能力） */
     limitations: string[];
+    /** ai 能力专属声明（v1 增量字段，消费方可忽略） */
+    ai?: CapabilityAi;
 }
 
 export interface ProtocolEnvelope {

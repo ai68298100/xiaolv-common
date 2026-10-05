@@ -1,0 +1,478 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>小驴常用 · 界面原型 v1（2026-10-06）</title>
+<style>
+/* ============ 原型设计基准 ============
+   原则：与思源 b3 视觉融合为基线（变量语义一致），在此之上做克制的精致化：
+   10px 圆角、双层阴影、类型彩色徽标（b3 派生淡彩）、AI 紫罗兰高光、8px 间距网格。
+   本文件是生产 UI 的质感基准（src/styles/index.scss 须达到同等效果）。 */
+:root {
+  --font: "PingFang SC", "Microsoft YaHei", -apple-system, "Segoe UI", sans-serif;
+  --radius: 10px;
+}
+/* 亮色主题（对齐思源 daylight 语义） */
+.t-light {
+  --b3-theme-primary: #3575f0;
+  --b3-theme-primary-light: #7f9ff5;
+  --b3-theme-primary-lighter: #c6d5fa;
+  --b3-theme-on-primary: #fff;
+  --b3-theme-background: #ffffff;
+  --b3-theme-surface: #f7f8fa;
+  --b3-theme-on-background: #1f2329;
+  --b3-theme-on-surface: #7d8085;
+  --b3-border-color: #e5e7eb;
+  --b3-list-hover: #eef1f6;
+  --b3-menu-background: #ffffff;
+  --shadow: 0 8px 32px rgba(31,35,41,.14), 0 2px 8px rgba(31,35,41,.08);
+  --badge-text-bg: rgba(53,117,240,.08);
+}
+/* 暗色主题（对齐思源 mid-night 语义） */
+.t-dark {
+  --b3-theme-primary: #5a8af2;
+  --b3-theme-primary-light: #3d4a66;
+  --b3-theme-primary-lighter: #2c3a55;
+  --b3-theme-on-primary: #fff;
+  --b3-theme-background: #1e1e1f;
+  --b3-theme-surface: #26262a;
+  --b3-theme-on-background: #dcdcdc;
+  --b3-theme-on-surface: #8a8a93;
+  --b3-border-color: #36363a;
+  --b3-list-hover: #2c2c31;
+  --b3-menu-background: #26262a;
+  --shadow: 0 8px 32px rgba(0,0,0,.5), 0 2px 8px rgba(0,0,0,.35);
+  --badge-text-bg: rgba(90,138,242,.14);
+}
+* { box-sizing: border-box; margin: 0; }
+body { font-family: var(--font); background: #eceef1; padding: 32px; display: flex; flex-wrap: wrap; gap: 40px; }
+body > section > h2 { font-size: 13px; color: #666; margin: 0 0 10px 4px; font-weight: 600; }
+.pair { display: flex; gap: 24px; }
+.frame {
+  width: 760px; height: 520px; border-radius: 14px; overflow: hidden;
+  box-shadow: 0 2px 12px rgba(0,0,0,.12); position: relative;
+  display: flex; flex-direction: column; font-size: 13px; color: var(--b3-theme-on-background);
+}
+.frame.dark { }
+.badge { font-size: 11px; padding: 1px 8px; border-radius: 999px; line-height: 18px; white-space: nowrap; }
+.badge.text  { color:#4a8a4a; background:rgba(94,168,94,.13); }
+.badge.md    { color:#3575f0; background:var(--badge-text-bg); }
+.badge.url   { color:#b0680a; background:rgba(232,152,45,.13); }
+.badge.code  { color:#8a5ad0; background:rgba(150,105,224,.13); }
+.badge.image { color:#3a9ab5; background:rgba(80,175,200,.13); }
+.badge.asset { color:#8a8a93; background:rgba(140,140,150,.14); }
+.badge.ref   { color:#d05a8a; background:rgba(220,110,155,.13); }
+.badge.warn  { color:#c2503a; background:rgba(226,106,80,.13); }
+.badge.ai    { color:var(--b3-theme-primary); background:var(--badge-text-bg); }
+.ai-chip { display:inline-flex; align-items:center; gap:4px; color:var(--b3-theme-primary); font-size:11px; }
+button { font-family: var(--font); cursor: pointer; }
+.btn {
+  border: 1px solid var(--b3-border-color); background: var(--b3-theme-background); color: var(--b3-theme-on-background);
+  border-radius: 8px; padding: 5px 12px; font-size: 12.5px;
+}
+.btn.primary { background: var(--b3-theme-primary); border-color: var(--b3-theme-primary); color: var(--b3-theme-on-primary); }
+.btn.ai { border-color: var(--b3-theme-primary-light); color: var(--b3-theme-primary); background: var(--badge-text-bg); }
+.btn.ghost { border: none; background: transparent; color: var(--b3-theme-on-surface); }
+
+/* ---------- 屏1：桌面搜索弹窗（双栏 + 预览） ---------- */
+.dlg {
+  width: 720px; margin: 20px auto 0; height: 480px; background: var(--b3-theme-background);
+  border-radius: var(--radius); box-shadow: var(--shadow); display: flex; flex-direction: column; overflow: hidden;
+  border: 1px solid var(--b3-border-color);
+}
+.dlg-head { display:flex; align-items:center; gap:8px; padding: 12px 14px 8px; }
+.dlg-title { font-weight: 600; font-size: 14px; margin-right: auto; }
+.kbd { font-size:11px; color: var(--b3-theme-on-surface); border:1px solid var(--b3-border-color); border-bottom-width:2px; border-radius:4px; padding:0 5px; }
+.search {
+  margin: 0 14px; display:flex; align-items:center; gap:8px;
+  background: var(--b3-theme-surface); border: 1.5px solid transparent; border-radius: 8px; padding: 0 10px; height: 36px;
+}
+.search:focus-within { border-color: var(--b3-theme-primary); background: var(--b3-theme-background); }
+.search .q { color: var(--b3-theme-primary); font-weight:600; }
+.search input { flex:1; border:none; outline:none; background:transparent; color:var(--b3-theme-on-background); font-size:13.5px; font-family:var(--font); }
+.filters { display:flex; align-items:center; gap:6px; padding: 8px 14px; flex-wrap: wrap; }
+.chip {
+  border:1px solid var(--b3-border-color); background:transparent; color:var(--b3-theme-on-surface);
+  border-radius:999px; padding:2px 11px; font-size:12px; line-height:20px;
+}
+.chip.on { background: var(--b3-theme-primary-lighter); border-color: transparent; color: var(--b3-theme-primary); font-weight: 600; }
+.chip.ai-chip { border-style: dashed; }
+.dlg-body { flex:1; display:flex; min-height:0; border-top:1px solid var(--b3-border-color); }
+.list { width: 330px; overflow:auto; border-right:1px solid var(--b3-border-color); }
+.row {
+  display:flex; gap:9px; padding: 9px 12px; align-items:flex-start; border-bottom:1px solid var(--b3-border-color); cursor:pointer;
+}
+.row:hover { background: var(--b3-list-hover); }
+.row.on { background: var(--b3-list-hover); box-shadow: inset 3px 0 0 var(--b3-theme-primary); }
+.row .tt { font-size:13px; font-weight:500; margin-bottom:2px; display:flex; align-items:center; gap:6px; }
+.row .tt .t { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.row .meta { font-size:11.5px; color:var(--b3-theme-on-surface); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.row .star { margin-left:auto; color:var(--b3-theme-on-surface); font-size:13px; }
+.row .star.fav { color:#e8a020; }
+.pane { flex:1; display:flex; flex-direction:column; min-width:0; }
+.pane-head { padding:10px 14px 6px; display:flex; align-items:center; gap:8px; }
+.pane-title { font-weight:600; font-size:13.5px; }
+.pane-body { flex:1; overflow:auto; padding: 4px 14px; font-size:12.5px; line-height:1.75; color:var(--b3-theme-on-background); white-space:pre-wrap; }
+.pane-foot { padding:8px 14px 12px; display:flex; gap:6px; flex-wrap:wrap; }
+.pane-foot .spacer { flex:1; }
+.srcwarn { margin: 4px 14px 8px; padding:6px 10px; border-radius:6px; background:rgba(226,106,80,.08); color:#c2503a; font-size:12px; }
+.dlg-foot { padding:7px 14px; font-size:11.5px; color:var(--b3-theme-on-surface); border-top:1px solid var(--b3-border-color); display:flex; gap:12px; }
+
+/* ---------- 屏2：动作菜单（含 AI 变换） ---------- */
+.menu-wrap { position:relative; width:760px; height:520px; }
+.menu {
+  position:absolute; right:150px; top:96px; width: 300px;
+  background: var(--b3-menu-background); border:1px solid var(--b3-border-color); border-radius:12px;
+  box-shadow: var(--shadow); overflow:hidden;
+}
+.menu .sec { padding:6px 8px; border-bottom:1px solid var(--b3-border-color); display:flex; gap:4px; flex-wrap:wrap; }
+.menu .sec:last-child { border-bottom:none; }
+.mi {
+  display:flex; width:100%; align-items:center; gap:8px; padding:8px 10px; border:none; background:transparent;
+  color:var(--b3-theme-on-background); font-size:13px; border-radius:7px; text-align:left;
+}
+.mi:hover { background: var(--b3-list-hover); }
+.mi .ic { width:16px; text-align:center; color:var(--b3-theme-on-surface); }
+.mi.ai { color: var(--b3-theme-primary); }
+.menu .preview {
+  max-height:130px; overflow:auto; margin:8px; padding:8px 10px; font-size:12px; line-height:1.7; color:var(--b3-theme-on-background);
+  background:var(--b3-theme-surface); border:1px solid var(--b3-border-color); border-radius:8px; white-space:pre-wrap;
+}
+.menu .lbl { font-size:11px; color:var(--b3-theme-on-surface); padding:8px 12px 0; }
+
+/* ---------- 屏3：捕获表单（AI 整理 + 草稿） ---------- */
+.form { width: 460px; margin: 24px auto 0; background:var(--b3-theme-background); border-radius:12px; box-shadow:var(--shadow); border:1px solid var(--b3-border-color); padding:18px 20px 16px; height:472px; overflow:auto; }
+.form h3 { font-size:15px; margin-bottom:12px; }
+.fld { margin-bottom:11px; }
+.fld label { display:block; font-size:11.5px; color:var(--b3-theme-on-surface); margin-bottom:4px; }
+.fld .opt { color:var(--b3-theme-primary); margin-left:6px; cursor:pointer; }
+.inp, textarea.inp {
+  width:100%; border:1px solid var(--b3-border-color); border-radius:8px; background:var(--b3-theme-surface);
+  color:var(--b3-theme-on-background); padding:7px 10px; font-size:13px; font-family:var(--font); outline:none;
+}
+.inp:focus { border-color: var(--b3-theme-primary); }
+.sugrow { display:flex; gap:6px; align-items:center; background:var(--badge-text-bg); border:1px dashed var(--b3-theme-primary-light); border-radius:8px; padding:6px 10px; font-size:12px; color:var(--b3-theme-primary); margin-bottom:11px; }
+.form-foot { display:flex; justify-content:flex-end; gap:8px; margin-top:14px; }
+.hintline { font-size:11px; color:var(--b3-theme-on-surface); margin-top:2px; }
+
+/* ---------- 屏4：移动端 sheet ---------- */
+.phone { width: 340px; height: 640px; border-radius: 24px; background: var(--b3-theme-background); position:relative; overflow:hidden; box-shadow: 0 2px 12px rgba(0,0,0,.18); border:1px solid var(--b3-border-color); display:flex; flex-direction:column; }
+.ph-status { height:34px; display:flex; align-items:center; justify-content:space-between; padding:0 18px; font-size:11px; color:var(--b3-theme-on-surface); }
+.ph-editor { flex:1; padding:12px 14px; color:var(--b3-theme-on-surface); font-size:12px; }
+.ph-editor .h { height:10px; border-radius:5px; background:var(--b3-theme-surface); margin-bottom:8px; }
+.sheet-mask { position:absolute; inset:0; background:rgba(0,0,0,.32); }
+.sheet {
+  position:absolute; left:0; right:0; bottom:0; background:var(--b3-menu-background);
+  border-radius:16px 16px 0 0; box-shadow:var(--shadow); padding:6px 14px calc(10px + env(safe-area-inset-bottom,14px));
+  display:flex; flex-direction:column; max-height:78%;
+}
+.grabber { width:36px; height:4px; border-radius:2px; background:var(--b3-border-color); margin:4px auto 8px; }
+.sheet .search { margin:0 0 8px; }
+.ph-sec { font-size:11px; color:var(--b3-theme-on-surface); margin:6px 2px; }
+.sheet .row { border-radius:10px; border-bottom:none; margin-bottom:2px; padding:10px; min-height:52px; }
+.sheet-foot { display:flex; gap:8px; padding-top:8px; }
+.sheet-foot .btn { flex:1; padding:9px 0; font-size:13px; border-radius:10px; }
+</style>
+</head>
+<body>
+
+<!-- ======== 屏 1：桌面搜索弹窗（双栏 + AI 语义） ======== -->
+<section>
+<h2>屏 1 · 桌面搜索弹窗（双栏预览 · 语义找 · 筛选 chips）</h2>
+<div class="pair">
+<div class="frame t-light">
+  <div class="dlg">
+    <div class="dlg-head">
+      <span class="dlg-title">小驴常用</span>
+      <span class="kbd">↑↓</span><span class="kbd">↩ 插入</span><span class="kbd">⌃↩ 复制</span><span class="kbd">Esc</span>
+    </div>
+    <div class="search"><span class="q">?</span><input value="给客户延期上线 的道歉回复" placeholder="搜索常用内容（? 前缀 = AI 语义找）"></div>
+    <div class="filters">
+      <button class="chip ai-chip ai" style="color:var(--b3-theme-primary)">✦ AI 找到的 · 5 条</button>
+      <button class="chip">类型 ▾</button><button class="chip">标签 ▾</button>
+      <button class="chip">★ 收藏</button><button class="chip">🕐 最近</button>
+    </div>
+    <div class="dlg-body">
+      <div class="list">
+        <div class="row on">
+          <div style="flex:1;min-width:0">
+            <div class="tt"><span class="badge md">MD</span><span class="t">项目延期道歉与补偿方案</span></div>
+            <div class="meta">尊敬的王总：关于本期交付延期…</div>
+          </div>
+          <span class="star fav">★</span>
+        </div>
+        <div class="row">
+          <div style="flex:1;min-width:0">
+            <div class="tt"><span class="badge text">TXT</span><span class="t">延期简短版（IM 用）</span></div>
+            <div class="meta">您好，本次迭代因联调超期，上线推迟 2 天…</div>
+          </div>
+          <span class="star">☆</span>
+        </div>
+        <div class="row">
+          <div style="flex:1;min-width:0">
+            <div class="tt"><span class="badge md">MD</span><span class="t">客服投诉标准回复流程</span><span class="ai-chip">✦</span></div>
+            <div class="meta">第一步 先致歉安抚，第二步 同步进展…</div>
+          </div>
+          <span class="star">☆</span>
+        </div>
+        <div class="row">
+          <div style="flex:1;min-width:0">
+            <div class="tt"><span class="badge url">URL</span><span class="t">SLA 赔付标准文档</span></div>
+            <div class="meta">https://wiki.example.com/sla</div>
+          </div>
+          <span class="star">☆</span>
+        </div>
+      </div>
+      <div class="pane">
+        <div class="pane-head"><span class="pane-title">项目延期道歉与补偿方案</span><span class="badge ai">✦ AI 找到的</span></div>
+        <div class="srcwarn">⚠ 来源块已不存在（原文档被重组）· 点按可重新指定来源</div>
+        <div class="pane-body">尊敬的王总：
+
+    关于本期「会员系统」交付延期，我们深表歉意。经复盘，主要原因为第三方支付联调超期。目前联调已完成 92%，预计推迟 2 个工作日上线。
+
+    为弥补影响，我们提供以下补偿：
+  1. 本期服务费减免 5%；
+  2. 上线后 48 小时专属值守；
+  3. 下期迭代优先排入贵方需求。
+
+  再次感谢理解与支持，有任何问题随时联系我。</div>
+        <div class="pane-foot">
+          <button class="btn primary">插入</button>
+          <button class="btn ai">✦ AI 变换</button>
+          <button class="btn">复制</button>
+          <span class="spacer"></span>
+          <button class="btn ghost">打开来源</button><button class="btn ghost">编辑</button>
+        </div>
+      </div>
+    </div>
+    <div class="dlg-foot"><span>共 128 条 · 索引 3 秒前</span><span>思源块真源 · 失效可见</span></div>
+  </div>
+</div>
+<div class="frame t-dark">
+  <div class="dlg">
+    <div class="dlg-head"><span class="dlg-title">小驴常用</span><span class="kbd">↑↓</span><span class="kbd">↩ 插入</span><span class="kbd">Esc</span></div>
+    <div class="search"><span class="q">?</span><input value="给客户延期上线 的道歉回复"></div>
+    <div class="filters">
+      <button class="chip ai-chip">✦ AI 找到的 · 5 条</button>
+      <button class="chip on">全部类型</button><button class="chip">★ 收藏</button>
+    </div>
+    <div class="dlg-body">
+      <div class="list">
+        <div class="row on">
+          <div style="flex:1;min-width:0">
+            <div class="tt"><span class="badge md">MD</span><span class="t">项目延期道歉与补偿方案</span></div>
+            <div class="meta">尊敬的王总：关于本期交付延期…</div>
+          </div><span class="star fav">★</span>
+        </div>
+        <div class="row">
+          <div style="flex:1;min-width:0">
+            <div class="tt"><span class="badge text">TXT</span><span class="t">延期简短版（IM 用）</span></div>
+            <div class="meta">您好，本次迭代因联调超期…</div>
+          </div><span class="star">☆</span>
+        </div>
+      </div>
+      <div class="pane">
+        <div class="pane-head"><span class="pane-title">项目延期道歉与补偿方案</span><span class="badge ai">✦ AI 找到的</span></div>
+        <div class="pane-body">尊敬的王总：
+
+    关于本期「会员系统」交付延期，我们深表歉意。预计推迟 2 个工作日上线…</div>
+        <div class="pane-foot">
+          <button class="btn primary">插入</button>
+          <button class="btn ai">✦ AI 变换</button>
+          <button class="btn">复制</button>
+          <span class="spacer"></span>
+          <button class="btn ghost">打开来源</button>
+        </div>
+      </div>
+    </div>
+    <div class="dlg-foot"><span>共 128 条</span><span>AI 由思源 设置→人工智能 提供</span></div>
+  </div>
+</div>
+</div>
+</section>
+
+<!-- ======== 屏 2：动作菜单（AI 变换） ======== -->
+<section>
+<h2>屏 2 · 动作菜单（分组动作 + AI 变换预览，原文保护）</h2>
+<div class="pair">
+<div class="frame t-light">
+  <div class="menu-wrap">
+    <div class="menu">
+      <div class="lbl">项目延期道歉与补偿方案 · AI 变换</div>
+      <div class="sec">
+        <button class="mi ai"><span class="ic">✦</span>润色</button>
+        <button class="mi ai"><span class="ic">✦</span>缩短</button>
+        <button class="mi ai"><span class="ic">✦</span>正式化</button>
+        <button class="mi ai"><span class="ic">✦</span>译为英文</button>
+        <button class="mi ai"><span class="ic">✦</span>列表化</button>
+      </div>
+      <div class="preview">Apologize sincerely for the delay of the "Membership System" delivery this phase. Root cause: third-party payment integration overrun. Integration is 92% complete; launch postponed by 2 business days…
+
+（变换预览 · 仅内存，不改原文）</div>
+      <div class="sec">
+        <button class="mi"><span class="ic">＋</span><b>插入变换结果</b></button>
+        <button class="mi"><span class="ic">⧉</span>复制变换结果</button>
+        <button class="mi"><span class="ic">↩</span>插入原文</button>
+      </div>
+      <div class="sec">
+        <button class="mi"><span class="ic">↗</span>打开来源</button>
+        <button class="mi"><span class="ic">✎</span>编辑</button>
+        <button class="mi"><span class="ic">🗑</span>删除</button>
+      </div>
+    </div>
+  </div>
+</div>
+<div class="frame t-dark">
+  <div class="menu-wrap">
+    <div class="menu">
+      <div class="lbl">常用结束语 · 动作</div>
+      <div class="sec">
+        <button class="mi"><span class="ic">＋</span><b>插入</b></button>
+        <button class="mi"><span class="ic">⧉</span>复制</button>
+        <button class="mi"><span class="ic">✦</span>AI 变换 ▾</button>
+      </div>
+      <div class="sec">
+        <button class="mi"><span class="ic">↗</span>打开来源</button>
+        <button class="mi"><span class="ic">✎</span>编辑</button>
+        <button class="mi"><span class="ic">🗑</span>删除</button>
+      </div>
+      <div class="preview" style="color:var(--b3-theme-on-surface)">预览：祝好，
+李明 | 项目组
+185-0000-0000（原文 300 字，此处截断展示）</div>
+    </div>
+  </div>
+</div>
+</div>
+</section>
+
+<!-- ======== 屏 3：捕获表单（AI 整理 + AI 草稿） ======== -->
+<section>
+<h2>屏 3 · 捕获表单（类型推断 · AI 整理建议 · AI 草稿）</h2>
+<div class="pair">
+<div class="frame t-light">
+  <div class="form">
+    <h3>新建条目 · 小驴常用</h3>
+    <div class="fld">
+      <label>AI 草稿 <span class="opt">✦ 描述需求，AI 生成</span></label>
+      <input class="inp" value="一封给客户的项目延期通知模板">
+    </div>
+    <div class="fld">
+      <label>内容</label>
+      <textarea class="inp" rows="6">尊敬的 __客户名称__：
+
+关于 __项目名称__ 的交付计划调整，我们深表歉意。主要原因：__原因__。当前进度：__百分比__，预计推迟 __天数__ 个工作日。
+
+补偿方案：
+1. __补偿项 1__
+2. __补偿项 2__
+
+再次感谢理解与支持。</textarea>
+    </div>
+    <div class="sugrow">✦ AI 建议：<b>项目延期通知模板</b> · 标签 客户沟通/模板 · 分类 客服<button class="btn ai" style="margin-left:auto;padding:2px 10px">全部采纳</button></div>
+    <div class="fld"><label>标题</label><input class="inp" value="项目延期通知模板"></div>
+    <div style="display:flex;gap:10px">
+      <div class="fld" style="flex:1"><label>标签（逗号分隔）</label><input class="inp" value="客户沟通, 模板"></div>
+      <div class="fld" style="width:130px"><label>分类</label><input class="inp" value="客服"></div>
+    </div>
+    <div class="hintline">条目将保存为真实思源块 · 库：常用内容库 · 可在属性面板修改</div>
+    <div class="form-foot"><button class="btn">取消</button><button class="btn primary">保存条目</button></div>
+  </div>
+</div>
+<div class="frame t-dark">
+  <div class="form">
+    <h3>新建条目 · 小驴常用</h3>
+    <div class="fld">
+      <label>AI 草稿 <span class="opt">✦ 描述需求，AI 生成</span></label>
+      <input class="inp" value="周报开头三句话模板">
+    </div>
+    <div class="fld"><label>内容</label>
+      <textarea class="inp" rows="6">本周进展：
+1. __事项__（状态：__进度__）
+2. __事项__（状态：__进度__）
+
+风险与依赖：__风险__
+下周计划：__计划__</textarea>
+    </div>
+    <div class="sugrow">✦ AI 建议：<b>周报开头模板</b> · 标签 周报/写作 · 分类 模板<button class="btn ai" style="margin-left:auto;padding:2px 10px">全部采纳</button></div>
+    <div class="fld"><label>标题</label><input class="inp" value="周报开头模板"></div>
+    <div class="hintline">AI 使用思源 设置→人工智能 的模型 · 正文出域可随时关闭</div>
+    <div class="form-foot"><button class="btn">取消</button><button class="btn primary">保存条目</button></div>
+  </div>
+</div>
+</div>
+</section>
+
+<!-- ======== 屏 4：移动端 sheet ======== -->
+<section>
+<h2>屏 4 · 移动端底部 sheet（触控优先 · 插入降级诚实提示）</h2>
+<div class="pair">
+<div class="phone t-light">
+  <div class="ph-status"><span>9:41</span><span>📶 🔋</span></div>
+  <div class="ph-editor">
+    <div class="h" style="width:42%"></div><div class="h"></div><div class="h" style="width:88%"></div><div class="h" style="width:70%"></div>
+    <div style="margin-top:16px;color:var(--b3-theme-on-surface)">↓ 点击工具栏「常用」呼出</div>
+  </div>
+  <div class="sheet-mask"></div>
+  <div class="sheet">
+    <div class="grabber"></div>
+    <div class="search"><input placeholder="搜索常用内容"></div>
+    <div class="ph-sec">最近使用</div>
+    <div class="row on">
+      <div style="flex:1;min-width:0">
+        <div class="tt"><span class="badge text">TXT</span><span class="t">会议纪要开头</span></div>
+        <div class="meta">时间：__ 地点：__ 与会：__</div>
+      </div><span class="star fav">★</span>
+    </div>
+    <div class="row">
+      <div style="flex:1;min-width:0">
+        <div class="tt"><span class="badge code">CODE</span><span class="t">SQL 分页模板</span></div>
+        <div class="meta">SELECT * FROM t LIMIT …</div>
+      </div><span class="star">☆</span>
+    </div>
+    <div class="row">
+      <div style="flex:1;min-width:0">
+        <div class="tt"><span class="badge ref">REF</span><span class="t">产品需求模板（引用）</span></div>
+        <div class="meta">引用到「产品模板库」</div>
+      </div><span class="star">☆</span>
+    </div>
+    <div class="sheet-foot">
+      <button class="btn">＋ 新建</button>
+      <button class="btn primary">插入选中</button>
+    </div>
+    <div class="ph-sec" style="text-align:center">移动端直接插入待真机验证 · 将复制到剪贴板</div>
+  </div>
+</div>
+<div class="phone t-dark">
+  <div class="ph-status"><span>9:41</span><span>📶 🔋</span></div>
+  <div class="ph-editor">
+    <div class="h" style="width:42%"></div><div class="h"></div><div class="h" style="width:88%"></div>
+  </div>
+  <div class="sheet-mask"></div>
+  <div class="sheet">
+    <div class="grabber"></div>
+    <div class="search"><input placeholder="搜索常用内容（? = AI 找）"></div>
+    <div class="ph-sec">★ 收藏</div>
+    <div class="row on">
+      <div style="flex:1;min-width:0">
+        <div class="tt"><span class="badge md">MD</span><span class="t">会议纪要开头</span></div>
+        <div class="meta">时间：__ 地点：__</div>
+      </div><span class="star fav">★</span>
+    </div>
+    <div class="row">
+      <div style="flex:1;min-width:0">
+        <div class="tt"><span class="badge image">IMG</span><span class="t">产品截图-登录页</span></div>
+        <div class="meta">assets/login-20240611.png</div>
+      </div><span class="star">☆</span>
+    </div>
+    <div class="sheet-foot">
+      <button class="btn">＋ 新建</button>
+      <button class="btn ai">✦ AI 找</button>
+      <button class="btn primary">复制选中</button>
+    </div>
+  </div>
+</div>
+</div>
+</section>
+
+</body>
+</html>

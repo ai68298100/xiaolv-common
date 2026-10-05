@@ -22,7 +22,11 @@ export interface SearchContext {
 }
 
 // 索引条目：内容真源在库文档，这里只允许有界摘要与元数据
-export type SearchEntry = Pick<CommonItem, "id" | "blockId" | "libraryDocId" | "itemType" | "title" | "alias" | "tags" | "category" | "summary" | "createdAt" | "updatedAt">;
+export type SearchEntry = Pick<CommonItem, "id" | "blockId" | "libraryDocId" | "itemType" | "title" | "alias" | "tags" | "category" | "summary" | "createdAt" | "updatedAt"> & {
+    /** 来源引用（失效检测预检用；不参与搜索打分，绝不出域给 AI） */
+    sourceDocId?: string;
+    sourceBlockId?: string;
+};
 
 export interface ScoredResult {
     entry: SearchEntry;

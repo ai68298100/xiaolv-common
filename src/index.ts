@@ -9,33 +9,39 @@ import {
 import {fetchSyncPost} from "siyuan";
 import "@/styles/index.scss";
 import {LIMITS, STORAGE_KEYS} from "./constants";
-import {createKernelClient} from "./kernel/client";
+import {createKernelClient, parseExistingMap, type IKernelClient} from "./kernel/client";
 import {CommonItem} from "./model/item";
 import {ExportedItem, buildBundle, classifyConflict, validateImport, ConflictPolicy, ImportReceipt} from "./model/transfer";
 import {LibraryConfig, migrateState, normalizeLibraryConfig, normalizeState, PluginState} from "./model/storage";
 import {SearchContext} from "./model/search";
 import {CapabilityDescriptor, ProviderDescriptor} from "./model/protocol";
-import {LibraryService, NewItemInput} from "./service/library";
+import {LibraryService, NewItemInput, SourceHealth} from "./service/library";
 import {ActionExecutor, HostBridge} from "./service/commands";
+import {AiAssistant, AiUnavailableError, SearchMetaEntry} from "./service/ai";
 import {ProviderRegistry} from "./service/providers";
 import {XiaolvCommonService} from "./service/service";
 import {CommonSearchDialog} from "./ui/dialog";
 import {CaptureDialog, confirmDelete} from "./ui/capture";
 import {ICONS} from "./ui/icons";
+import type {TransformKind} from "./service/ai";
 
 type TFn = (key: string, ...args: string[]) => string;
 
 export default class XiaolvCommonPlugin extends Plugin {
+    private kernelClient!: IKernelClient;
     private library!: LibraryService;
     private host!: HostBridge;
     private executor!: ActionExecutor;
     private registry!: ProviderRegistry;
+    private ai!: AiAssistant;
     private service!: XiaolvCommonService;
     private capture!: CaptureDialog;
     private state!: PluginState;
     private config!: LibraryConfig | null;
     private searchDialog: CommonSearchDialog | null = null;
     private saveTimer: ReturnType<typeof setTimeout> | null = null;
+    /** 来源失效预检缓存（每次搜索刷新时批量重建；仅为列表徽标，打开来源仍实时校验） */
+    private missingSources = new Set<string>();
     /** 协议命令 ID → 执行器（xiaolv.common.*，供雷切等按稳定 ID 调用） */
     public readonly protocolCommands: Record<string, (payload?: unknown) => Promise<unknown>> = {};
 
@@ -62,16 +68,19 @@ export default class XiaolvCommonPlugin extends Plugin {
 
     private bootServices(): void {
         const kernel = createKernelClient({syncPost: fetchSyncPost as never});
+        this.kernelClient = kernel;
         this.library = new LibraryService(kernel);
         if (this.config) this.library.setConfig(this.config);
         this.host = new HostBridge(this.app);
         this.registry = new ProviderRegistry();
         this.registry.restore(this.state.providers);
+        this.ai = new AiAssistant({request: (endpoint, payload) => kernel.request(endpoint as never, payload ?? {})}, this.state.ai);
         this.executor = new ActionExecutor(this.library, this.host, this.notify, (item) => this.service.touchRecent(item.id));
         this.service = new XiaolvCommonService({
             library: this.library,
             executor: this.executor,
             registry: this.registry,
+            ai: this.ai,
             state: this.state,
             onStateChange: () => this.persistSoon(),
         });
@@ -90,6 +99,21 @@ export default class XiaolvCommonPlugin extends Plugin {
                 return {ok: true, message: result.data.item.title, itemId: result.data.item.id};
             },
             notify: this.notify,
+            aiEnabled: () => this.state.ai.enabled,
+            aiTidy: async (content) => {
+                try {
+                    return {ok: true as const, ...await this.ai.tidy(content)};
+                } catch (err) {
+                    return {ok: false as const, message: this.aiErrorText(err)};
+                }
+            },
+            aiDraft: async (description) => {
+                try {
+                    return {ok: true as const, text: await this.ai.draft(description)};
+                } catch (err) {
+                    return {ok: false as const, message: this.aiErrorText(err)};
+                }
+            },
         });
         // 协议命令面（稳定 ID；雷切等通过 app.plugins 获取本插件后调用）
         this.protocolCommands["xiaolv.common.open"] = async () => {
@@ -128,6 +152,38 @@ export default class XiaolvCommonPlugin extends Plugin {
     private notify = (kind: "info" | "error", message: string): void => {
         showMessage(message, 4000, kind === "error" ? "error" : "info");
     };
+
+    /** AI 错误 → 诚实文案（区分未启用/未配置/权限/超时/解析失败） */
+    private aiErrorText(err: unknown): string {
+        const t = this.i18nFn();
+        if (err instanceof AiUnavailableError) {
+            switch (err.reason) {
+                case "disabled": return t("aiDisabled");
+                case "not-configured": return t("aiNotConfigured");
+                case "empty-response": return t("aiEmpty");
+                case "timeout": return t("aiTimeout");
+                case "content-not-allowed": return t("aiContentNotAllowed");
+                default: return t("aiTransport");
+            }
+        }
+        return t("kernelError", (err as Error)?.message ?? String(err));
+    }
+
+    /** 列表来源失效预检（批量一次 checkBlocksExist；不阻塞渲染，仅喂徽标） */
+    private async prefetchSourceHealth(entries: Array<{sourceDocId?: string; sourceBlockId?: string}>): Promise<void> {
+        const ids = new Set<string>();
+        for (const e of entries.slice(0, 100)) {
+            if (e.sourceBlockId) ids.add(e.sourceBlockId);
+            if (e.sourceDocId) ids.add(e.sourceDocId);
+        }
+        if (ids.size === 0) return;
+        try {
+            const map = parseExistingMap(await this.kernelClient.request("checkBlocksExist", {ids: Array.from(ids)}));
+            this.missingSources = new Set(Object.entries(map).filter(([, ok]) => !ok).map(([id]) => id));
+        } catch {
+            // 预检失败不打扰用户：徽标缺席，打开来源时仍有实时校验兜底
+        }
+    }
 
     private persistSoon(): void {
         if (this.saveTimer) clearTimeout(this.saveTimer);
@@ -211,7 +267,9 @@ export default class XiaolvCommonPlugin extends Plugin {
                 const idx = await this.library.ensureIndex();
                 const {searchEntries} = await import("./model/search");
                 const results = searchEntries(idx.entries, query, this.searchContext());
-                return {entries: results.map((r) => r.entry), truncated: idx.truncated};
+                const entries = results.map((r) => r.entry);
+                void this.prefetchSourceHealth(entries);
+                return {entries, truncated: idx.truncated};
             },
             getTags: async () => {
                 const {collectTags} = await import("./model/search");
@@ -255,6 +313,54 @@ export default class XiaolvCommonPlugin extends Plugin {
                 }
                 this.notify("info", this.i18nFn()("sourceOpened"));
                 return {ok: true, message: "opened"};
+            },
+            insertRaw: async (markdown) => {
+                const trimmed = (markdown ?? "").trim();
+                if (!trimmed) return false;
+                if (this.host.hasActiveEditor()) {
+                    const inserted = this.host.insertMarkdown(trimmed);
+                    this.notify("info", this.i18nFn()("aiOriginalPreserved"));
+                    return inserted;
+                }
+                const copied = await this.host.writeClipboard(trimmed);
+                this.notify("info", this.i18nFn()("insertNoEditor"));
+                return copied;
+            },
+            aiEnabled: () => this.state.ai.enabled,
+            aiSemantic: async (desc) => {
+                try {
+                    const idx = await this.library.ensureIndex();
+                    const meta: SearchMetaEntry[] = idx.entries.map((e) => ({
+                        id: e.id,
+                        title: e.title,
+                        alias: e.alias,
+                        tags: e.tags,
+                        category: e.category,
+                        summary: e.summary,
+                        itemType: e.itemType,
+                    }));
+                    const picked = await this.ai.semanticPick(desc, meta);
+                    const byId = new Map(idx.entries.map((e) => [e.id, e]));
+                    return {ok: true as const, entries: picked.map((p) => byId.get(p.id)).filter((e): e is NonNullable<typeof e> => !!e)};
+                } catch (err) {
+                    return {ok: false as const, message: this.aiErrorText(err)};
+                }
+            },
+            aiTransform: async (itemId, kind: TransformKind) => {
+                try {
+                    const got = await this.library.getItem(itemId);
+                    if (!got.ok) return {ok: false as const, message: got.message};
+                    const kd = await this.library.getItemKramdown(got.data);
+                    if (!kd.ok) return {ok: false as const, message: kd.message};
+                    return {ok: true as const, text: await this.ai.transform(kind, kd.data)};
+                } catch (err) {
+                    return {ok: false as const, message: this.aiErrorText(err)};
+                }
+            },
+            isSourceMissing: (entry) => {
+                const block = entry.sourceBlockId;
+                const doc = entry.sourceDocId;
+                return (!!block && this.missingSources.has(block)) || (!!doc && this.missingSources.has(doc) && !entry.sourceBlockId);
             },
             editItem: async (itemId) => {
                 const got = await this.library.getItem(itemId);
@@ -510,6 +616,40 @@ export default class XiaolvCommonPlugin extends Plugin {
         actions.appendChild(createBtn);
         actions.appendChild(useNotebookBtn);
         root.appendChild(actions);
+
+        // AI 设置区（默认关；开启即视为同意元数据出域；正文出域单独开关）
+        const aiSec = document.createElement("div");
+        aiSec.className = "xlc-form-field";
+        const aiLabel = document.createElement("span");
+        aiLabel.className = "xlc-form-label";
+        aiLabel.textContent = t("aiSection");
+        aiSec.appendChild(aiLabel);
+        const aiRow = (key: "enabled" | "shareContent", text: string): HTMLInputElement => {
+            const row = document.createElement("label");
+            row.className = "xlc-setting-row";
+            const box = document.createElement("input");
+            box.type = "checkbox";
+            box.checked = this.state.ai[key];
+            box.addEventListener("change", () => {
+                this.state.ai[key] = box.checked;
+                if (key === "enabled" && !box.checked) this.state.ai.shareContent = false;
+                this.ai.updateSettings(this.state.ai);
+                this.persistSoon();
+            });
+            const cap = document.createElement("span");
+            cap.textContent = text;
+            row.appendChild(box);
+            row.appendChild(cap);
+            aiSec.appendChild(row);
+            return box;
+        };
+        const aiEnabledBox = aiRow("enabled", t("aiEnabled"));
+        const aiShareBox = aiRow("shareContent", t("aiShareContent"));
+        aiEnabledBox.addEventListener("change", () => {
+            if (!aiEnabledBox.checked) aiShareBox.checked = false;
+        });
+        root.appendChild(aiSec);
+
         body.appendChild(root);
     }
 

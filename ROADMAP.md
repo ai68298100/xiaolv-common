@@ -1,7 +1,19 @@
 # 小驴常用开发路线
 
 > 定位：基于思源文档和块的常用内容快速调用器（参考 Quicker「常用语」，深度融合思源）。条目锚定真实思源块，来源可回链、失效可见；不复制正文进私有库。
-> 状态：v0.1.0 开发中（2026-10-06 立项）。当期账本：[docs/dev-plan-2026-10-06.md](docs/dev-plan-2026-10-06.md)。
+> 精准定位与功能-效果总表：[docs/positioning.md](docs/positioning.md)。UI 质感基准：[docs/design/prototype.html](docs/design/prototype.html)（生产渲染证据 docs/design/production-*.png）。
+> 状态：v0.1.0 开发中。当期账本：[docs/dev-plan-2026-10-06.md](docs/dev-plan-2026-10-06.md)。
+
+## R2：AI 融入与原型质感（2026-10-06，用户指令立项）
+
+- [x] AI 服务（宿主模型，插件零密钥）：整理建议/草稿生成/调用时变换/语义找条目（ADR 0005）
+- [x] AI 硬边界：默认关（门禁+负向验证）、正文出域双开关、仅元数据语义找、原文不可变、诚实失败
+- [x] 界面接线：捕获表单 ✦AI 整理/草稿、搜索 ? 语义找、动作菜单 ✦变换（预览三选）、设置开关区
+- [x] 原型图四屏×双主题（搜索弹窗/动作菜单/捕获表单/移动 sheet）+ 截图渲染
+- [x] 生产 UI 升级到原型质感：双栏预览、类型彩色徽标、筛选 chips、来源失效横幅、底部 sheet
+- [x] 生产效果证据：真实 dist CSS+DOM 渲染截图（docs/design/production-desktop-light/dark.png）
+- [ ] 真实思源 AI 端到端（依赖 B-001 令牌：宿主配置模型后全链路）
+- [ ] AI 标签体检（P5 后）
 
 ## 不可回退的约束
 

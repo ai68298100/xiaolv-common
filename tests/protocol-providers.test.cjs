@@ -66,6 +66,7 @@ test("provider 持久化只含标量（不把函数回调写进存储）", () =>
 function makeService() {
     const { XiaolvCommonService } = require("./.build/entry.cjs").service;
     const { LibraryService } = require("./.build/entry.cjs").library;
+    const { AiAssistant } = require("./.build/entry.cjs").ai;
     const kernel = {
         request(endpoint) {
             if (endpoint === "getChildBlocks") return Promise.resolve([]);
@@ -74,11 +75,12 @@ function makeService() {
     };
     const library = new LibraryService(kernel);
     library.setConfig({mode: "doc", notebookIds: [], containerDocIds: ["20240101120001-hijklmn"], createdDocIds: [], configuredAt: 1});
-    const state = {schemaVersion: 2, favorites: [], recents: [], sort: "manual", uiPrefs: {lastTypeFilter: "", lastTagFilter: ""}, providers: []};
+    const state = {schemaVersion: 2, favorites: [], recents: [], sort: "manual", uiPrefs: {lastTypeFilter: "", lastTagFilter: ""}, providers: [], ai: {enabled: false, shareContent: false}};
     return new XiaolvCommonService({
         library,
         executor: {run: async () => ({ok: true, mode: "insert", message: "inserted", downgraded: false, pendingVerification: []}), openSource: async () => ({ok: true, mode: "open-source", message: "opened", downgraded: false, pendingVerification: []})},
         registry: new ProviderRegistry(),
+        ai: new AiAssistant({request: async () => ({code: 0, data: null})}, state.ai),
         state,
         onStateChange: () => {},
     });

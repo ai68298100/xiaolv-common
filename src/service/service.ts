@@ -1,11 +1,12 @@
 // XiaolvCommonService：xiaolv-common/v1 对外服务接口（跨插件协议面）。
 // 不抛异常：全部返回 ActionResult；内部组装 library/executor/registry/sidecar。
-import {CAPABILITIES, ActionResult, CapabilityDescriptor, CommonItemRef, ProviderDescriptor, envelope, failureEnvelope, negotiateProtocol, normalizeSaveInput, successEnvelope} from "../model/protocol";
+import {CAPABILITIES, ActionResult, CapabilityAi, CapabilityDescriptor, CommonItemRef, ProviderDescriptor, envelope, failureEnvelope, negotiateProtocol, normalizeSaveInput, successEnvelope} from "../model/protocol";
 import {SearchQuery, SearchContext, searchEntries, listByScope} from "../model/search";
 import {InsertMode} from "../model/actions";
 import {CommonItem, isItemType} from "../model/item";
 import {PluginState} from "../model/storage";
 import {ActionExecutor} from "./commands";
+import {AiAssistant} from "./ai";
 import {LibraryService} from "./library";
 import {ProviderRegistry} from "./providers";
 
@@ -13,6 +14,7 @@ export interface ServiceDeps {
     library: LibraryService;
     executor: ActionExecutor;
     registry: ProviderRegistry;
+    ai: AiAssistant;
     /** 侧车读写（由插件入口提供 saveData 节流） */
     state: PluginState;
     onStateChange: () => void;
@@ -31,19 +33,39 @@ export class XiaolvCommonService {
     }
 
     getCapabilities(): CapabilityDescriptor[] {
-        return CAPABILITIES.map((name) => ({
-            name,
-            supportedSurfaces: ["desktop", "mobile"],
-            // 移动端插入未验证（B-002）；复制/打开来源为主路径
-            mobileSafe: name !== "insert",
-            itemTypes: ["text", "markdown", "url", "code", "image", "asset", "blockref", "structure"],
-            insertModes: ["insert", "copy", "copy-content", "insert-ref", "insert-embed", "open"],
-            limitations: name === "insert"
-                ? ["mobile-insert-unverified: 移动端直接插入待真机验证，当前自动降级为复制"]
-                : name === "copy"
-                    ? ["bitmap-clipboard-unverified: 图片位图写系统剪贴板待真机验证，复制走 Markdown 链接"]
-                    : [],
-        }));
+        const ai = this.deps.ai;
+        return CAPABILITIES.map((name) => {
+            const base: CapabilityDescriptor = {
+                name,
+                supportedSurfaces: ["desktop", "mobile"],
+                // 移动端插入未验证（B-002）；复制/打开来源为主路径
+                mobileSafe: name !== "insert",
+                itemTypes: ["text", "markdown", "url", "code", "image", "asset", "blockref", "structure"],
+                insertModes: ["insert", "copy", "copy-content", "insert-ref", "insert-embed", "open"],
+                limitations: name === "insert"
+                    ? ["mobile-insert-unverified: 移动端直接插入待真机验证，当前自动降级为复制"]
+                    : name === "copy"
+                        ? ["bitmap-clipboard-unverified: 图片位图写系统剪贴板待真机验证，复制走 Markdown 链接"]
+                        : [],
+            };
+            if (name === "ai") {
+                base.mobileSafe = true;
+                base.itemTypes = [];
+                base.insertModes = [];
+                base.ai = {
+                    tidy: ai.getSettings().enabled && ai.getSettings().shareContent,
+                    draft: ai.getSettings().enabled && ai.getSettings().shareContent,
+                    transform: ai.getSettings().enabled && ai.getSettings().shareContent,
+                    semanticSearch: ai.getSettings().enabled,
+                };
+                base.limitations = [
+                    "host-ai-only: 使用思源 设置→人工智能 的模型，插件不保存密钥",
+                    "metadata-only-semantic: 语义找条目仅发送元数据（标题/别名/标签/分类/摘要）",
+                    "kernel-chat-cache: /api/ai/chatGPT 带内核级会话缓存，一次性任务以自包含 prompt 缓解",
+                ];
+            }
+            return base;
+        });
     }
 
     private searchCtx(): SearchContext {

@@ -40,6 +40,9 @@ export const ENDPOINTS = {
     batchGetBlockAttrs: "/api/attr/batchGetBlockAttrs",
     setBlockAttrs: "/api/attr/setBlockAttrs",
     exportMdContent: "/api/export/exportMdContent",
+    // AI（宿主「设置→人工智能」的模型；插件不存密钥。router.go L663/L673）
+    chatGPT: "/api/ai/chatGPT",
+    listModels: "/api/ai/listModels",
 } as const;
 
 export type EndpointName = keyof typeof ENDPOINTS;

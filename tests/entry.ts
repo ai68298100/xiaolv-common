@@ -12,6 +12,7 @@ import * as library from "../src/service/library";
 import * as commands from "../src/service/commands";
 import * as providers from "../src/service/providers";
 import * as service from "../src/service/service";
+import * as ai from "../src/service/ai";
 
 export {
     item,
@@ -26,4 +27,5 @@ export {
     commands,
     providers,
     service,
+    ai,
 };
