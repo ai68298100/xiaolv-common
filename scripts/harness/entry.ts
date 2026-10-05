@@ -1,6 +1,7 @@
-// 渲染 harness 入口：把生产 CommonSearchDialog 暴露到 window，
+// 渲染 harness 入口：把生产 CommonSearchDialog / 设置对话框暴露到 window，
 // 由 render-production.cjs 在 Chromium 中以假数据驱动、截取真实生产 DOM+CSS 效果。
 import {CommonSearchDialog} from "../../src/ui/dialog";
+import {openSettingsDialog, type SettingsUiContext} from "../../src/ui/settings-dialog";
 import type {SearchEntry} from "../../src/model/search";
 import type {TransformKind} from "../../src/service/ai";
 
@@ -40,7 +41,16 @@ const T = (key: string, ...args: string[]): string => {
         duplicateItem: "创建副本", insertToDoc: "插入到指定文档", insertToDocPick: "选择目标文档（输入关键词搜索）",
         saveTransformed: "存为新条目", deleteConfirm: "删除条目「%s」？",
         providerSection: "提供方内容", providerInsert: "插入（提供方）", providerCopy: "复制（提供方）",
-        openSettings: "设置 / 更改内容库",
+        providerExecutable: "可执行", providerPendingReload: "待重载",
+        openSettings: "设置 / 更改内容库", openSettingsChangeLib: "更改内容库",
+        aiSection: "AI 助手", aiEnabled: "启用 AI 助手", aiShareContent: "允许 AI 读取条目完整正文",
+        searchSection: "搜索", pinyinToggle: "拼音搜索", placeholdersToggle: "动态占位符", placeholdersHint: "支持 {{xlc:date}} 等",
+        dataSection: "数据（导出 / 导入）", librarySection: "当前内容库", libraryNone: "未配置",
+        reindexBtn: "重建索引", clearRecents: "清空最近使用", clearRecentsConfirm: "清空最近使用记录？",
+        exportBtn: "导出全部条目 (JSON)", importBtn: "导入 JSON", exportMdBtn: "导出 Markdown 包（含资源）",
+        tagAuditBtn: "AI 标签体检",
+        setupTitle: "选择常用内容库", setupPickDoc: "选择现有文档", setupNotebook: "按笔记本",
+        setupNewDoc: "创建新库文档", setupNewDocName: "常用内容库", docPicker: "选择库文档", docPickerEmpty: "没有匹配的文档",
     };
     let text = map[key] ?? key;
     for (const arg of args) text = text.replace("%s", arg);
@@ -103,5 +113,38 @@ function makeDeps(overrides: {aiEnabled?: boolean; missing?: boolean} = {}) {
             input.dispatchEvent(new Event("input"));
         }
         return dialog;
+    },
+    openSettings(): void {
+        const ctx: SettingsUiContext = {
+            t: T,
+            state: {
+                schemaVersion: 2,
+                favorites: [], recents: [], sort: "manual",
+                uiPrefs: {lastTypeFilter: "", lastTagFilter: ""},
+                providers: [{pluginId: "xiaolv-checkin", displayName: "小驴打卡", protocolVersion: 1, registeredAt: 1}],
+                ai: {enabled: true, shareContent: true},
+                search: {pinyin: true, placeholders: true},
+            },
+            getConfig: () => ({configVersion: 1, mode: "doc", notebookIds: [], containerDocIds: ["20240101120001-hijklmn"], createdDocIds: [], configuredAt: 1}),
+            library: {
+                listNotebooks: async () => ({ok: true, data: [{id: "20240101", name: "笔记"}]}),
+                searchDocs: async (k: string) => k ? [{id: "20240101120001-hijklmn", hPath: "/常用内容库", box: "nb", name: "常用内容库"}] : [],
+                reindex: async () => ({entries: [], items: new Map(), truncated: false, docsScanned: 1, errors: [], builtAt: 1}),
+            },
+            ai: {updateSettings: () => {}, getSettings: () => ({enabled: true, shareContent: true})},
+            registry: {
+                list: () => [{record: {pluginId: "xiaolv-checkin", displayName: "小驴打卡", protocolVersion: 1, registeredAt: 1}}],
+                listExecutable: () => [],
+            },
+            notify: () => {},
+            applyConfig: () => {},
+            persistSoon: () => {},
+            exportBundle: async () => "{}",
+            importBundleText: async () => ({total: 0, created: 0, skipped: 0, overwritten: 0, renamed: 0, failed: 0, lines: []}),
+            fetchAssetBytes: async () => null,
+            aiErrorText: (err) => String(err),
+            applyPinyinAdapter: () => {},
+        } as unknown as SettingsUiContext;
+        openSettingsDialog(ctx);
     },
 };

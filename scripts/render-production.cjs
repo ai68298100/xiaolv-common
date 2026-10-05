@@ -128,6 +128,33 @@ fs.writeFileSync(path.join(OUT, "harness.html"), html);
         rows: document.querySelectorAll(".xlc-row[data-xlc-index]").length >= 1,
     }));
     await page.setViewportSize({width: 1280, height: 720});
+    // 设置对话框（生产 settings-dialog DOM）
+    await page.evaluate(() => {
+        const stage = document.getElementById("stage");
+        stage.className = "b3-scope light";
+        document.querySelectorAll(".b3-dialog").forEach((el) => el.remove());
+        stage.innerHTML = "";
+        window.XlcHarness.openSettings();
+        const dialogRoot = document.querySelector(".b3-dialog");
+        if (dialogRoot) stage.appendChild(dialogRoot);
+        const container = document.querySelector(".b3-dialog__container");
+        if (container) {
+            container.style.margin = "0 auto";
+            container.style.maxWidth = "620px";
+        }
+    });
+    await page.waitForTimeout(400);
+    const settingsAssertions = await page.evaluate(() => ({
+        sections: ["AI 助手", "搜索", "数据", "提供方内容"].every((s) => document.body.textContent.includes(s)),
+        toggles: document.querySelectorAll(".xlc-setting-row input[type=checkbox]").length >= 3,
+        providerRow: (document.body.textContent || "").includes("小驴打卡"),
+        dataButtons: (document.body.textContent || "").includes("重建索引") && (document.body.textContent || "").includes("导出"),
+    }));
+    if (Object.values(settingsAssertions).some((v) => !v)) {
+        throw new Error("settings smoke failed: " + JSON.stringify(settingsAssertions));
+    }
+    console.log("  smoke ✓ settings: 4 assertions");
+    await page.screenshot({path: path.join(OUT, "production-settings-light.png")});
     await browser.close();
     console.log("production renders done:", fs.readdirSync(OUT).filter((f) => f.startsWith("production-")).join(", "));
 })();
