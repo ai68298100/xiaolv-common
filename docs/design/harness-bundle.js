@@ -374,11 +374,18 @@
         opt.textContent = this.deps.t(`type.${t}`);
         typeSelect.appendChild(opt);
       }
-      typeSelect.addEventListener("change", () => void this.refresh());
+      const savedFilters = this.deps.getFilters();
+      if (savedFilters.type) typeSelect.value = savedFilters.type;
+      typeSelect.addEventListener("change", () => {
+        var _a;
+        this.deps.setFilters({ type: typeSelect.value, tag: (_a = tagSelect == null ? void 0 : tagSelect.value) != null ? _a : "" });
+        void this.refresh();
+      });
       filters.appendChild(typeSelect);
       const tagSelect = document.createElement("select");
       tagSelect.className = "b3-select xlc-tag-select";
       tagSelect.setAttribute("aria-label", this.deps.t("tags"));
+      if (savedFilters.tag) tagSelect.value = savedFilters.tag;
       void this.deps.getTags().then((tags) => {
         const first = document.createElement("option");
         first.value = "";
@@ -390,8 +397,12 @@
           opt.textContent = tag;
           tagSelect.appendChild(opt);
         }
+        if (savedFilters.tag && tags.includes(savedFilters.tag)) tagSelect.value = savedFilters.tag;
       });
-      tagSelect.addEventListener("change", () => void this.refresh());
+      tagSelect.addEventListener("change", () => {
+        this.deps.setFilters({ type: typeSelect.value, tag: tagSelect.value });
+        void this.refresh();
+      });
       filters.appendChild(tagSelect);
       for (const scope of ["favorites", "recent"]) {
         const chip = document.createElement("button");
@@ -2504,6 +2515,9 @@
       duplicateItem: async () => {
       },
       saveTransformed: async () => {
+      },
+      getFilters: () => ({ type: "", tag: "" }),
+      setFilters: () => {
       },
       openSetup: () => {
       },

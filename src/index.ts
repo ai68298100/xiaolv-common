@@ -11,7 +11,7 @@ import {fetchSyncPost} from "siyuan";
 import "@/styles/index.scss";
 import {LIMITS, STORAGE_KEYS} from "./constants";
 import {createKernelClient, parseExistingMap, type IKernelClient} from "./kernel/client";
-import {CommonItem} from "./model/item";
+import {CommonItem, isItemType} from "./model/item";
 import {buildBundle, validateImport, ConflictPolicy, ImportReceipt} from "./model/transfer";
 import {importBundle as importBundleCore} from "./service/importer";
 import {parseMarkdownPack} from "./service/import-markdown";
@@ -627,6 +627,15 @@ export default class XiaolvCommonPlugin extends Plugin {
                 const {collectTags} = await import("./model/search");
                 const idx = await this.library.ensureIndex();
                 return collectTags(idx.entries);
+            },
+            getFilters: () => ({
+                type: this.state.uiPrefs.lastTypeFilter,
+                tag: this.state.uiPrefs.lastTagFilter,
+            }),
+            setFilters: (f) => {
+                this.state.uiPrefs.lastTypeFilter = (f.type === "" || isItemType(f.type) ? f.type : "") as typeof this.state.uiPrefs.lastTypeFilter;
+                this.state.uiPrefs.lastTagFilter = f.tag.slice(0, 64);
+                this.persistSoon();
             },
             preview: async (itemId) => {
                 const cached = this.previewCache.get(itemId);

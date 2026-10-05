@@ -27,6 +27,9 @@ export interface DialogDeps {
     openSource: (itemId: string) => Promise<{ok: boolean; message: string}>;
     editItem: (itemId: string) => Promise<void>;
     deleteItem: (itemId: string) => Promise<void>;
+    /** 筛选状态持久化（类型/标签跨会话记忆；state.uiPrefs 承载） */
+    getFilters: () => {type: string; tag: string};
+    setFilters: (f: {type: string; tag: string}) => void;
     toggleFavorite: (itemId: string) => boolean;
     isFavorite: (itemId: string) => boolean;
     insertRaw: (markdown: string) => Promise<boolean>;
@@ -161,12 +164,19 @@ export class CommonSearchDialog {
             opt.textContent = this.deps.t(`type.${t}`);
             typeSelect.appendChild(opt);
         }
-        typeSelect.addEventListener("change", () => void this.refresh());
+        // 跨会话筛选记忆：预填上次选择
+        const savedFilters = this.deps.getFilters();
+        if (savedFilters.type) typeSelect.value = savedFilters.type;
+        typeSelect.addEventListener("change", () => {
+            this.deps.setFilters({type: typeSelect.value, tag: tagSelect?.value ?? ""});
+            void this.refresh();
+        });
         filters.appendChild(typeSelect);
 
         const tagSelect = document.createElement("select");
         tagSelect.className = "b3-select xlc-tag-select";
         tagSelect.setAttribute("aria-label", this.deps.t("tags"));
+        if (savedFilters.tag) tagSelect.value = savedFilters.tag;
         void this.deps.getTags().then((tags) => {
             const first = document.createElement("option");
             first.value = "";
@@ -178,8 +188,12 @@ export class CommonSearchDialog {
                 opt.textContent = tag;
                 tagSelect.appendChild(opt);
             }
+            if (savedFilters.tag && tags.includes(savedFilters.tag)) tagSelect.value = savedFilters.tag;
         });
-        tagSelect.addEventListener("change", () => void this.refresh());
+        tagSelect.addEventListener("change", () => {
+            this.deps.setFilters({type: typeSelect.value, tag: tagSelect.value});
+            void this.refresh();
+        });
         filters.appendChild(tagSelect);
 
         for (const scope of ["favorites", "recent"] as const) {
