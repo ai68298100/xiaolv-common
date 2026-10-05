@@ -11,6 +11,7 @@ import * as client from "../src/kernel/client";
 import * as lru from "../src/model/lru";
 import * as pinyin from "../src/model/pinyin";
 import * as pinyinTiny from "../src/model/pinyin-tiny";
+import * as placeholders from "../src/model/placeholders";
 import * as library from "../src/service/library";
 import * as commands from "../src/service/commands";
 import * as providers from "../src/service/providers";
@@ -25,6 +26,7 @@ export {
     search,
     pinyin,
     pinyinTiny,
+    placeholders,
     transfer,
     client,
     lru,

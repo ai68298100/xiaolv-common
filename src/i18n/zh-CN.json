@@ -154,5 +154,8 @@
   "reindexBtn": "重建索引",
   "totalItems": "共 %s 条",
   "searchSection": "搜索",
-  "pinyinToggle": "拼音搜索（全拼/首字母本地匹配，可关）"
+  "pinyinToggle": "拼音搜索（全拼/首字母本地匹配，可关）",
+  "placeholdersToggle": "动态占位符（插入时替换 {{xlc:date}} 等为当前日期时间）",
+  "saveTransformed": "存为新条目",
+  "placeholdersHint": "支持 {{xlc:date}} {{xlc:time}} {{xlc:datetime}} {{xlc:weekday}}，仅插入/复制时替换"
 }

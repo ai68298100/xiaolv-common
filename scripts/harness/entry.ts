@@ -20,7 +20,7 @@ const PREVIEWS: Record<string, string> = {
     "xlc-demo0000005": "https://wiki.example.com/sla",
 };
 
-const T = (key: string): string => {
+const T = (key: string, ...args: string[]): string => {
     const map: Record<string, string> = {
         pluginName: "小驴常用",
         searchPlaceholder: "搜索常用内容（? 前缀 = AI 语义找）",
@@ -35,15 +35,21 @@ const T = (key: string): string => {
         kernelError: "思源接口调用失败",
         "tf.polish": "润色", "tf.shorten": "缩短", "tf.formal": "正式化", "tf.translate-en": "译为英文", "tf.bulletize": "列表化",
         more: "返回动作",
+        "sort.manual": "手动/置顶", "sort.recent": "最近使用", "sort.title": "标题",
+        totalItems: "共 %s 条",
+        duplicateItem: "创建副本", insertToDoc: "插入到指定文档", insertToDocPick: "选择目标文档（输入关键词搜索）",
+        saveTransformed: "存为新条目", deleteConfirm: "删除条目「%s」？",
     };
-    return map[key] ?? key;
+    let text = map[key] ?? key;
+    for (const arg of args) text = text.replace("%s", arg);
+    return text;
 };
 
 function makeDeps(overrides: {aiEnabled?: boolean; missing?: boolean} = {}) {
     const aiOn = overrides.aiEnabled ?? true;
     return {
         t: T,
-        search: async () => ({entries: ENTRIES, truncated: false}),
+        search: async () => ({entries: ENTRIES, truncated: false, total: 128}),
         getTags: async () => ["客户沟通", "模板", "开发"],
         preview: async (itemId: string) => PREVIEWS[itemId] ?? "",
         runAction: async () => ({ok: true, message: "inserted"}),
@@ -53,7 +59,13 @@ function makeDeps(overrides: {aiEnabled?: boolean; missing?: boolean} = {}) {
         toggleFavorite: () => true,
         isFavorite: (id: string) => id === "xlc-demo0000001",
         insertRaw: async () => true,
-        aiSemantic: async (desc: string) => ({ok: true as const, entries: ENTRIES.slice(0, 3)}),
+        getSort: (): "manual" | "recent" | "title" => "manual",
+        cycleSort: () => {},
+        searchDocs: async (k: string) => k ? [{id: "20240101120001-hijklmn", hPath: "/常用内容库", name: "常用内容库"}] : [],
+        insertToDoc: async () => true,
+        duplicateItem: async () => {},
+        saveTransformed: async () => {},
+        aiSemantic: async (_desc: string) => ({ok: true as const, entries: ENTRIES.slice(0, 3)}),
         aiTransform: async (_itemId: string, kind: TransformKind) => ({
             ok: true as const,
             text: kind === "translate-en"

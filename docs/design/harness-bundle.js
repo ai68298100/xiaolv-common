@@ -241,6 +241,19 @@
       aiBanner.className = "xlc-chip xlc-ai-banner";
       aiBanner.style.display = "none";
       filters.appendChild(aiBanner);
+      const sortChip = document.createElement("button");
+      sortChip.className = "xlc-chip xlc-sort-chip";
+      const paintSort = () => {
+        const sort = this.deps.getSort();
+        sortChip.textContent = "\u21C5 " + this.deps.t(`sort.${sort}`);
+      };
+      paintSort();
+      sortChip.addEventListener("click", () => {
+        this.deps.cycleSort();
+        paintSort();
+        void this.refresh();
+      });
+      filters.appendChild(sortChip);
       root.appendChild(filters);
       const status = document.createElement("div");
       status.className = "xlc-status";
@@ -393,14 +406,17 @@
       return { text, itemType, tag, scope: this.currentScope };
     }
     async refresh() {
-      var _a, _b, _c;
+      var _a, _b, _c, _d;
       const seq = ++this.searchSeq;
       const query = this.buildQuery();
       const list = (_a = this.dialog) == null ? void 0 : _a.element.querySelector(".xlc-list");
       const status = (_b = this.dialog) == null ? void 0 : _b.element.querySelector(".xlc-status");
-      const aiBanner = (_c = this.dialog) == null ? void 0 : _c.element.querySelector(".xlc-ai-banner");
+      const footer = (_c = this.dialog) == null ? void 0 : _c.element.querySelector(".xlc-footer");
+      const aiBanner = (_d = this.dialog) == null ? void 0 : _d.element.querySelector(".xlc-ai-banner");
       if (!list) return;
       this.lastPreviewId = null;
+      let total = 0;
+      let truncated = false;
       try {
         const text = query.text.trim();
         if (text.startsWith("?") && text.length > 1) {
@@ -409,6 +425,7 @@
           if (aiResult.ok) {
             this.results = aiResult.entries;
             this.aiResults = true;
+            total = aiResult.entries.length;
           } else {
             this.results = [];
             this.aiResults = false;
@@ -417,9 +434,11 @@
           if (aiBanner) aiBanner.style.display = this.aiResults && this.results.length ? "" : "none";
           if (aiBanner && this.aiResults) aiBanner.textContent = `\u2726 ${this.deps.t("aiFound")} \xB7 ${this.results.length}`;
         } else {
-          const { entries } = await this.deps.search(query);
+          const result = await this.deps.search(query);
           if (seq !== this.searchSeq) return;
-          this.results = entries;
+          this.results = result.entries;
+          total = result.total;
+          truncated = result.truncated;
           this.aiResults = false;
           if (aiBanner) aiBanner.style.display = "none";
         }
@@ -433,6 +452,9 @@
       if (seq !== this.searchSeq) return;
       this.activeIndex = 0;
       if (status) status.textContent = this.results.length ? "" : this.deps.t("empty");
+      if (footer) {
+        footer.textContent = (this.deps.isMobile() ? this.deps.t("usageHintMobile") : this.deps.t("usageHint")) + " \uFF5C " + this.deps.t("totalItems", String(total)) + (truncated ? " \u26A0" : "");
+      }
       this.renderList(list);
       this.updatePreview();
     }
@@ -620,6 +642,49 @@
         };
         addSilent(this.deps.t("openSource"), () => this.deps.openSource(entry.id));
         addSilent(this.deps.t("edit"), () => this.deps.editItem(entry.id));
+        addSilent(this.deps.t("duplicateItem"), () => this.deps.duplicateItem(entry.id));
+        const toDocBtn = document.createElement("button");
+        toDocBtn.className = "xlc-menu-item";
+        toDocBtn.textContent = this.deps.t("insertToDoc");
+        toDocBtn.addEventListener("click", () => {
+          var _a2;
+          let sec = menu.querySelector(".xlc-menu-pickdoc");
+          if (sec) {
+            sec.remove();
+            return;
+          }
+          sec = document.createElement("div");
+          sec.className = "xlc-menu-sec xlc-menu-pickdoc";
+          sec.style.flexDirection = "column";
+          const input = document.createElement("input");
+          input.className = "b3-text-field xlc-pickdoc-input";
+          input.placeholder = this.deps.t("insertToDocPick");
+          sec.appendChild(input);
+          let seq = 0;
+          input.addEventListener("input", () => {
+            const mySeq = ++seq;
+            const k = input.value.trim();
+            sec.querySelectorAll(".xlc-pickdoc-hit").forEach((el) => el.remove());
+            if (!k) return;
+            void this.deps.searchDocs(k).then((hits) => {
+              if (mySeq !== seq) return;
+              for (const hit of hits.slice(0, 5)) {
+                const hitBtn = document.createElement("button");
+                hitBtn.className = "xlc-menu-item xlc-pickdoc-hit";
+                hitBtn.textContent = hit.hPath || hit.name || hit.id;
+                hitBtn.addEventListener("click", async () => {
+                  this.destroy();
+                  await this.deps.insertToDoc(entry.id, hit.id, hit.hPath);
+                });
+                sec.appendChild(hitBtn);
+              }
+            });
+          });
+          const actions2 = menu.querySelectorAll(".xlc-menu-sec");
+          (_a2 = actions2[actions2.length - 1]) == null ? void 0 : _a2.before(sec);
+          input.focus();
+        });
+        sec2.appendChild(toDocBtn);
         addSilent(this.deps.t("delete"), () => this.deps.deleteItem(entry.id));
         menu.appendChild(sec2);
       };
@@ -654,6 +719,16 @@
         mk(this.deps.t("aiInsertOriginal"), async () => {
           await this.deps.runAction(entry.id, entry.itemType === "blockref" ? "insert-ref" : "insert");
         });
+        const saveNewBtn = document.createElement("button");
+        saveNewBtn.className = "xlc-menu-item";
+        saveNewBtn.textContent = this.deps.t("saveTransformed");
+        saveNewBtn.addEventListener("click", async () => {
+          var _a2;
+          const transformed = (_a2 = box.dataset.transformed) != null ? _a2 : "";
+          this.destroy();
+          await this.deps.saveTransformed(entry.id, kind, transformed);
+        });
+        sec.appendChild(saveNewBtn);
         menu.appendChild(sec);
         const secBack = document.createElement("div");
         secBack.className = "xlc-menu-sec";
@@ -737,7 +812,7 @@
     "xlc-demo0000004": "\uFF08\u5F15\u7528\u8BED\u6CD5\u9884\u89C8\uFF09((20240101120002-bbbbbbb '\u4EA7\u54C1\u9700\u6C42\u6A21\u677F'))",
     "xlc-demo0000005": "https://wiki.example.com/sla"
   };
-  var T = (key) => {
+  var T = (key, ...args) => {
     var _a;
     const map = {
       pluginName: "\u5C0F\u9A74\u5E38\u7528",
@@ -771,16 +846,27 @@
       "tf.formal": "\u6B63\u5F0F\u5316",
       "tf.translate-en": "\u8BD1\u4E3A\u82F1\u6587",
       "tf.bulletize": "\u5217\u8868\u5316",
-      more: "\u8FD4\u56DE\u52A8\u4F5C"
+      more: "\u8FD4\u56DE\u52A8\u4F5C",
+      "sort.manual": "\u624B\u52A8/\u7F6E\u9876",
+      "sort.recent": "\u6700\u8FD1\u4F7F\u7528",
+      "sort.title": "\u6807\u9898",
+      totalItems: "\u5171 %s \u6761",
+      duplicateItem: "\u521B\u5EFA\u526F\u672C",
+      insertToDoc: "\u63D2\u5165\u5230\u6307\u5B9A\u6587\u6863",
+      insertToDocPick: "\u9009\u62E9\u76EE\u6807\u6587\u6863\uFF08\u8F93\u5165\u5173\u952E\u8BCD\u641C\u7D22\uFF09",
+      saveTransformed: "\u5B58\u4E3A\u65B0\u6761\u76EE",
+      deleteConfirm: "\u5220\u9664\u6761\u76EE\u300C%s\u300D\uFF1F"
     };
-    return (_a = map[key]) != null ? _a : key;
+    let text = (_a = map[key]) != null ? _a : key;
+    for (const arg of args) text = text.replace("%s", arg);
+    return text;
   };
   function makeDeps(overrides = {}) {
     var _a;
     const aiOn = (_a = overrides.aiEnabled) != null ? _a : true;
     return {
       t: T,
-      search: async () => ({ entries: ENTRIES, truncated: false }),
+      search: async () => ({ entries: ENTRIES, truncated: false, total: 128 }),
       getTags: async () => ["\u5BA2\u6237\u6C9F\u901A", "\u6A21\u677F", "\u5F00\u53D1"],
       preview: async (itemId) => {
         var _a2;
@@ -795,7 +881,16 @@
       toggleFavorite: () => true,
       isFavorite: (id) => id === "xlc-demo0000001",
       insertRaw: async () => true,
-      aiSemantic: async (desc) => ({ ok: true, entries: ENTRIES.slice(0, 3) }),
+      getSort: () => "manual",
+      cycleSort: () => {
+      },
+      searchDocs: async (k) => k ? [{ id: "20240101120001-hijklmn", hPath: "/\u5E38\u7528\u5185\u5BB9\u5E93", name: "\u5E38\u7528\u5185\u5BB9\u5E93" }] : [],
+      insertToDoc: async () => true,
+      duplicateItem: async () => {
+      },
+      saveTransformed: async () => {
+      },
+      aiSemantic: async (_desc) => ({ ok: true, entries: ENTRIES.slice(0, 3) }),
       aiTransform: async (_itemId, kind) => ({
         ok: true,
         text: kind === "translate-en" ? 'Dear Mr. Wang:\n\nWe sincerely apologize for the delay of the "Membership System" delivery. Root cause: third-party payment integration overrun. Integration is 92% complete; launch postponed by 2 business days.\n\nCompensation: 5% fee reduction; 48h dedicated support after launch; priority scheduling next iteration.' : "\u5C0A\u656C\u7684\u738B\u603B\uFF1A\n\n\u672C\u671F\u300C\u4F1A\u5458\u7CFB\u7EDF\u300D\u56E0\u7B2C\u4E09\u65B9\u652F\u4ED8\u8054\u8C03\u8D85\u671F\u800C\u5EF6\u671F\uFF0C\u6211\u4EEC\u6DF1\u8868\u6B49\u610F\u3002\u8054\u8C03\u5DF2\u5B8C\u6210 92%\uFF0C\u9884\u8BA1\u63A8\u8FDF 2 \u4E2A\u5DE5\u4F5C\u65E5\u4E0A\u7EBF\u3002\n\n\u8865\u507F\u65B9\u6848\uFF1A\u672C\u671F\u670D\u52A1\u8D39\u51CF\u514D 5%\uFF1B\u4E0A\u7EBF\u540E 48 \u5C0F\u65F6\u4E13\u5C5E\u503C\u5B88\uFF1B\u4E0B\u671F\u9700\u6C42\u4F18\u5148\u6392\u671F\u3002"

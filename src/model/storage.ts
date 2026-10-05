@@ -72,6 +72,8 @@ export interface AiPrefs {
 export interface SearchPrefs {
     /** 拼音搜索（全拼/首字母注解；默认开，可在设置关闭） */
     pinyin: boolean;
+    /** 动态占位符（插入/复制时替换 {{xlc:date}} 等；默认开，存储内容始终保留模板原文） */
+    placeholders: boolean;
 }
 
 export interface PluginState {
@@ -150,6 +152,7 @@ export function normalizeState(raw: unknown): PluginState {
         // 拼音搜索默认开（本地注解，无出域；可关）
         search: {
             pinyin: !(obj.search !== null && typeof obj.search === "object" && (obj.search as SearchPrefs).pinyin === false),
+            placeholders: !(obj.search !== null && typeof obj.search === "object" && (obj.search as SearchPrefs).placeholders === false),
         },
     };
 }

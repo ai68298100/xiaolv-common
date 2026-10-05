@@ -81,7 +81,10 @@ export default class XiaolvCommonPlugin extends Plugin {
         this.registry = new ProviderRegistry();
         this.registry.restore(this.state.providers);
         this.ai = new AiAssistant({request: (endpoint, payload) => kernel.request(endpoint as never, payload ?? {})}, this.state.ai);
-        this.executor = new ActionExecutor(this.library, this.host, this.notify, (item) => this.service.touchRecent(item.id));
+        this.executor = new ActionExecutor(this.library, this.host, this.notify, (item) => this.service.touchRecent(item.id), {
+            enabled: () => this.state.search.placeholders,
+            now: () => new Date(),
+        });
         this.service = new XiaolvCommonService({
             library: this.library,
             executor: this.executor,
@@ -372,6 +375,28 @@ export default class XiaolvCommonPlugin extends Plugin {
                 });
                 if (created.ok) {
                     this.notify("info", this.i18nFn()("duplicated", created.data.item.title));
+                } else {
+                    this.notify("error", created.message);
+                }
+            },
+            saveTransformed: async (itemId, kind, text) => {
+                const trimmed = (text ?? "").trim();
+                if (!trimmed) return;
+                const got = await this.library.getItem(itemId);
+                if (!got.ok) {
+                    this.notify("error", got.message);
+                    return;
+                }
+                const created = await this.library.createItem({
+                    itemType: "markdown",
+                    markdown: trimmed,
+                    title: `${got.data.title} · ${this.i18nFn()(`tf.${kind}`)}`,
+                    tags: got.data.tags,
+                    category: got.data.category || undefined,
+                    source: {sourceDocId: got.data.libraryDocId, sourceBlockId: got.data.blockId, sourceType: "external"},
+                });
+                if (created.ok) {
+                    this.notify("info", this.i18nFn()("saved", created.data.item.title));
                 } else {
                     this.notify("error", created.message);
                 }
@@ -879,6 +904,25 @@ export default class XiaolvCommonPlugin extends Plugin {
         pinyinRow.appendChild(pinyinBox);
         pinyinRow.appendChild(pinyinCap);
         searchSec.appendChild(pinyinRow);
+        // 占位符开关
+        const phRow = document.createElement("label");
+        phRow.className = "xlc-setting-row";
+        const phBox = document.createElement("input");
+        phBox.type = "checkbox";
+        phBox.checked = this.state.search.placeholders;
+        phBox.addEventListener("change", () => {
+            this.state.search.placeholders = phBox.checked;
+            this.persistSoon();
+        });
+        const phCap = document.createElement("span");
+        phCap.textContent = t("placeholdersToggle");
+        phRow.appendChild(phBox);
+        phRow.appendChild(phCap);
+        searchSec.appendChild(phRow);
+        const phHint = document.createElement("span");
+        phHint.className = "xlc-form-hint";
+        phHint.textContent = t("placeholdersHint");
+        searchSec.appendChild(phHint);
         root.appendChild(searchSec);
 
         // 数据区：当前库 + 重建索引 + 导出/导入

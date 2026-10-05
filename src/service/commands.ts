@@ -4,8 +4,15 @@ import type {App} from "siyuan";
 import {getActiveEditor, openTab} from "siyuan";
 import {EVENTS} from "../constants";
 import {ActionContext, InsertMode, InsertPlan, OpenTarget, planAction, planOpenSource} from "../model/actions";
+import {applyPlaceholders} from "../model/placeholders";
 import {CommonItem} from "../model/item";
 import {LibraryService, Receipt, SourceHealth} from "./library";
+
+/** 占位符应用钩子：由入口注入（读设置 + 当前时间）；未注入则原样保留 */
+export interface IPlaceholderHook {
+    enabled(): boolean;
+    now(): Date;
+}
 
 export interface IHostBridge {
     /** 桌面端活动编辑器是否存在（getActiveEditor 官方 API） */
@@ -132,7 +139,19 @@ export class ActionExecutor {
         private readonly host: IHostBridge,
         private readonly notify: (kind: "info" | "error", message: string) => void,
         private readonly onItemUsed?: (item: CommonItem) => void,
+        private readonly placeholders?: IPlaceholderHook,
     ) {}
+
+    /** 对输出载荷应用动态占位符（插入 markdown 与剪贴板文本；存储内容不受影响） */
+    private applyOutput(text: string | undefined): string | undefined {
+        if (text === undefined) return undefined;
+        if (!this.placeholders) return text;
+        try {
+            return applyPlaceholders(text, this.placeholders.now(), this.placeholders.enabled());
+        } catch {
+            return text;
+        }
+    }
 
     private async resolveContent(item: CommonItem): Promise<{kramdown: string; sourceMissing: boolean; assetMissing: boolean} | null> {
         const kramdown = await this.library.getItemKramdown(item);
@@ -184,7 +203,7 @@ export class ActionExecutor {
             };
         }
         if (plan.mode === "insert" || plan.mode === "insert-ref" || plan.mode === "insert-embed") {
-            const md = plan.markdown ?? "";
+            const md = this.applyOutput(plan.markdown) ?? "";
             if (!md) {
                 return {ok: false, mode: plan.mode, message: "empty-plan", downgraded: plan.downgraded, pendingVerification: plan.pendingVerification};
             }
@@ -216,7 +235,7 @@ export class ActionExecutor {
             };
         }
         if (plan.mode === "copy" || plan.mode === "copy-content") {
-            const text = plan.clipboardText ?? "";
+            const text = this.applyOutput(plan.clipboardText) ?? "";
             const copied = await this.host.writeClipboard(text);
             return {
                 ok: copied,

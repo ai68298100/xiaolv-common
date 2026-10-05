@@ -18,6 +18,8 @@ export interface DialogDeps {
     searchDocs: (k: string) => Promise<Array<{id: string; hPath: string; name: string}>>;
     insertToDoc: (itemId: string, docId: string, hPath: string) => Promise<boolean>;
     duplicateItem: (itemId: string) => Promise<void>;
+    /** AI 变换结果存为新条目（来源=原条目；原条目不被修改） */
+    saveTransformed: (itemId: string, kind: TransformKind, text: string) => Promise<void>;
     getTags: () => Promise<string[]>;
     preview: (itemId: string) => Promise<string>;
     runAction: (itemId: string, mode: InsertMode) => Promise<{ok: boolean; message: string}>;
@@ -672,6 +674,15 @@ export class CommonSearchDialog {
             mk(this.deps.t("aiInsertOriginal"), async () => {
                 await this.deps.runAction(entry.id, entry.itemType === "blockref" ? "insert-ref" : "insert");
             });
+            const saveNewBtn = document.createElement("button");
+            saveNewBtn.className = "xlc-menu-item";
+            saveNewBtn.textContent = this.deps.t("saveTransformed");
+            saveNewBtn.addEventListener("click", async () => {
+                const transformed = box.dataset.transformed ?? "";
+                this.destroy();
+                await this.deps.saveTransformed(entry.id, kind, transformed);
+            });
+            sec.appendChild(saveNewBtn);
             menu.appendChild(sec);
             const secBack = document.createElement("div");
             secBack.className = "xlc-menu-sec";

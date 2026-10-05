@@ -154,5 +154,8 @@
   "reindexBtn": "Rebuild index",
   "totalItems": "%s items total",
   "searchSection": "Search",
-  "pinyinToggle": "Pinyin search (local full-pinyin/initials matching, can disable)"
+  "pinyinToggle": "Pinyin search (local full-pinyin/initials matching, can disable)",
+  "placeholdersToggle": "Dynamic placeholders (replace {{xlc:date}} etc. at insert/copy time)",
+  "saveTransformed": "Save as new item",
+  "placeholdersHint": "Supports {{xlc:date}} {{xlc:time}} {{xlc:datetime}} {{xlc:weekday}}; replaced only at insert/copy"
 }
