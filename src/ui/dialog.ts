@@ -43,7 +43,7 @@ export interface DialogDeps {
     openSetup: () => void;
     /** 提供方候选（pv: 虚拟条目；绝不进入块执行器） */
     providerSearch: (query: string) => Promise<ProviderRow[]>;
-    insertProviderPayload: (payload: string) => Promise<boolean>;
+    insertProviderPayload: (payload: string, target?: {docId: string; hPath: string}) => Promise<boolean>;
     copyProviderPayload: (payload: string) => Promise<boolean>;
     /** AI 语义找（? 前缀触发；仅元数据出域） */
     aiSemantic: (desc: string) => Promise<{ok: true; entries: SearchEntry[]} | {ok: false; message: string}>;
@@ -630,7 +630,7 @@ export class CommonSearchDialog {
             });
             sec.appendChild(btn);
         };
-        mk(this.deps.t("providerInsert"), () => this.deps.insertProviderPayload(row.payload));
+        mk(this.deps.t("providerInsert"), () => this.deps.insertProviderPayload(row.payload, this.insertTarget ?? undefined));
         mk(this.deps.t("providerCopy"), () => this.deps.copyProviderPayload(row.payload));
         menu.appendChild(sec);
         (this.dialog?.element ?? anchor).appendChild(menu);

@@ -807,7 +807,10 @@
         });
         sec.appendChild(btn);
       };
-      mk(this.deps.t("providerInsert"), () => this.deps.insertProviderPayload(row.payload));
+      mk(this.deps.t("providerInsert"), () => {
+        var _a2;
+        return this.deps.insertProviderPayload(row.payload, (_a2 = this.insertTarget) != null ? _a2 : void 0);
+      });
       mk(this.deps.t("providerCopy"), () => this.deps.copyProviderPayload(row.payload));
       menu.appendChild(sec);
       ((_b = (_a = this.dialog) == null ? void 0 : _a.element) != null ? _b : anchor).appendChild(menu);
