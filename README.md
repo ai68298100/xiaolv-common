@@ -4,6 +4,12 @@
 
 > 独立运行，不依赖小驴雷切；同时提供 `xiaolv-common/v1` 协议供小驴系列插件联动。
 
+## 界面速览（生产 DOM+CSS 渲染，亮/暗/窄容器四图见 docs/design/）
+
+![桌面搜索（双栏预览）](docs/design/production-desktop-light.png)
+
+![提供方分区](docs/design/production-provider-light.png)
+
 ## 定位边界
 
 **是**：思源内的常用内容保存与快速复用（搜索 → 预览 → 插入 / 复制 / 打开来源）。
@@ -97,7 +103,7 @@ common.protocolCommands["xiaolv.common.open"]();          // 稳定命令 ID
 ```bash
 pnpm i
 pnpm run check   # tsc --noEmit
-pnpm test        # esbuild 转译 + node --test（124 项）
+pnpm test        # esbuild 转译 + node --test（126 项）
 pnpm run build   # dist/ + package.zip
 node scripts/render-prototype.cjs    # 原型图截图（需 Playwright Chromium）
 pnpm run test:ui                # 生产 UI 冒烟门禁（13 项 DOM 断言 + 截图，需 Playwright Chromium）

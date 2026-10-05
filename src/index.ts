@@ -13,7 +13,7 @@ import {LIMITS, STORAGE_KEYS} from "./constants";
 import {createKernelClient, parseExistingMap, type IKernelClient} from "./kernel/client";
 import {CommonItem} from "./model/item";
 import {ExportedItem, buildBundle, classifyConflict, validateImport, ConflictPolicy, ImportIssue, ImportReceipt} from "./model/transfer";
-import {LibraryConfig, migrateState, normalizeLibraryConfig, normalizeState, PluginState} from "./model/storage";
+import {LibraryConfig, CONFIG_VERSION, migrateState, normalizeLibraryConfig, normalizeState, PluginState} from "./model/storage";
 import {SearchContext} from "./model/search";
 import {LruCache, PREVIEW_CACHE_CAPACITY} from "./model/lru";
 import {setPinyinAdapter, createNoopPinyinAdapter} from "./model/pinyin";
@@ -415,7 +415,8 @@ export default class XiaolvCommonPlugin extends Plugin {
             t: this.i18nFn(),
             search: async (query) => {
                 const loading = !this.library.getIndex();
-                const idx = await this.library.ensureIndex();
+                // SWR：索引超过 5 分钟透明重建（重建期间弹窗状态行显示「正在构建索引…」）
+                const idx = await this.library.ensureIndex(5 * 60_000);
                 const {searchEntries} = await import("./model/search");
                 const results = searchEntries(idx.entries, query, this.searchContext());
                 const entries = results.map((r) => r.entry);
@@ -948,6 +949,7 @@ export default class XiaolvCommonPlugin extends Plugin {
                         return;
                     }
                     this.applyConfig({
+                        configVersion: CONFIG_VERSION,
                         mode: "doc",
                         notebookIds: [],
                         containerDocIds: [result.data.docId],
@@ -1013,6 +1015,7 @@ export default class XiaolvCommonPlugin extends Plugin {
                     return;
                 }
                 this.applyConfig({
+                    configVersion: CONFIG_VERSION,
                     mode: "notebook",
                     notebookIds: [notebookId],
                     containerDocIds: [],
@@ -1027,6 +1030,7 @@ export default class XiaolvCommonPlugin extends Plugin {
                 return;
             }
             this.applyConfig({
+                configVersion: CONFIG_VERSION,
                 mode,
                 notebookIds: [],
                 containerDocIds: [pickedDoc.id],

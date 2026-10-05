@@ -8,6 +8,8 @@ import {isBlockId, isItemType, ItemType} from "./item";
 export type LibraryMode = "doc" | "tree" | "notebook";
 
 export interface LibraryConfig {
+    /** 配置结构版本（R16 起：未来版本拒绝降级读取，防静默破坏） */
+    configVersion: number;
     mode: LibraryMode;
     /** doc/tree：容器根文档；notebook：笔记本 ID */
     notebookIds: string[];
@@ -17,11 +19,16 @@ export interface LibraryConfig {
     configuredAt: number;
 }
 
+export const CONFIG_VERSION = 1;
+
 const NOTEBOOK_ID_RE = /^\d{8,14}$/;
 
 export function normalizeLibraryConfig(raw: unknown): LibraryConfig | null {
     if (!raw || typeof raw !== "object") return null;
     const obj = raw as Record<string, unknown>;
+    // 未来配置版本：拒绝降级读取（返回 null → UI 提示重新设置），绝不静默改写
+    const configVersion = typeof obj.configVersion === "number" ? Math.floor(obj.configVersion) : CONFIG_VERSION;
+    if (configVersion > CONFIG_VERSION) return null;
     const mode = obj.mode === "doc" || obj.mode === "tree" || obj.mode === "notebook" ? obj.mode : null;
     if (!mode) return null;
     const ids = (v: unknown, predicate: (x: unknown) => boolean, cap: number): string[] => {
@@ -35,6 +42,7 @@ export function normalizeLibraryConfig(raw: unknown): LibraryConfig | null {
     if (mode === "notebook" && notebookIds.length === 0) return null;
     const configuredAt = Number(obj.configuredAt);
     return {
+        configVersion: CONFIG_VERSION,
         mode,
         notebookIds,
         containerDocIds,

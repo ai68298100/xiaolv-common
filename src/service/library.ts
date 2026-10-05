@@ -32,6 +32,8 @@ export interface IndexBuildResult {
     truncated: boolean;
     docsScanned: number;
     errors: string[];
+    /** 构建时间（新鲜度判定用；可丢弃缓存语义的一部分） */
+    builtAt: number;
 }
 
 export type ReceiptReason = "kernel-error" | "timeout" | "invalid-input" | "not-found" | "conflict";
@@ -108,14 +110,18 @@ export class LibraryService {
         this.index = null; // 库配置变化必须重建索引
     }
 
-    /** 索引（可丢弃缓存）。为空时才请求内核；reindex() 强制重建。 */
-    getIndex(): IndexBuildResult | null {
+    /** 索引（可丢弃缓存）。为空或超过 maxAgeMs 时重建（SWR：陈旧索引透明刷新）。 */
+    async ensureIndex(maxAgeMs?: number): Promise<IndexBuildResult> {
+        if (this.index) {
+            const fresh = typeof maxAgeMs !== "number" || Date.now() - this.index.builtAt <= maxAgeMs;
+            if (fresh) return this.index;
+        }
+        this.index = await this.buildIndex();
         return this.index;
     }
 
-    async ensureIndex(): Promise<IndexBuildResult> {
-        if (this.index) return this.index;
-        this.index = await this.buildIndex();
+    /** 当前缓存索引（可能为 null；调用方据此展示 loading 态） */
+    getIndex(): IndexBuildResult | null {
         return this.index;
     }
 
@@ -339,7 +345,7 @@ export class LibraryService {
                 entries.push(searchEntry);
             }
         }
-        return {entries, items, truncated, docsScanned, errors};
+        return {entries, items, truncated, docsScanned, errors, builtAt: Date.now()};
     }
 
     // ---- 单条目读取 ----
