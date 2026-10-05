@@ -15,11 +15,6 @@ export interface MarkdownExportResult {
     skippedAssets: string[];
 }
 
-function safeBasename(assetPath: string): string {
-    const base = assetPath.split("/").pop() ?? assetPath;
-    return base.replace(/[^\w.\-\u4e00-\u9fff]/g, "_").slice(0, 120) || "asset";
-}
-
 export async function buildMarkdownExport(
     items: readonly CommonItem[],
     kramdownById: ReadonlyMap<string, string>,
@@ -28,6 +23,7 @@ export async function buildMarkdownExport(
     const entries: ZipEntry[] = [];
     const skippedAssets: string[] = [];
     const assetEntries = new Map<string, ZipEntry>();
+    const usedNames = new Set<string>(["items.md"]);
     let assetCount = 0;
     const mdParts: string[] = [
         "# 小驴常用 · 条目导出",
@@ -55,7 +51,9 @@ export async function buildMarkdownExport(
             if (assetPath && !assetEntries.has(assetPath)) {
                 const bytes = await fetchAssetBytes(assetPath);
                 if (bytes && bytes.length > 0) {
-                    const name = `assets/${safeBasename(assetPath)}`;
+                    // 条目名 = 完整相对路径（与 kramdown 链接天然一致，永不重名；路径已过安全校验）
+                    const name = assetPath;
+                    usedNames.add(name);
                     assetEntries.set(assetPath, {name, data: bytes});
                     assetCount++;
                 } else {

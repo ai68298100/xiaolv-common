@@ -1314,25 +1314,24 @@
 
   // src/model/actions.ts
   init_constants();
-  var ASSET_PATH_RE = /^(assets\/[\w\-. @]+)$/;
+  var ASSET_PATH_RE = /^(assets\/[^\s/][^\s]*|assets\/[^\s/])$/;
+  function isValidAssetPath(path) {
+    return ASSET_PATH_RE.test(path) && !path.includes("..");
+  }
   function extractAssetPath(kramdown) {
     const m = kramdown.match(/\]\((assets\/[^)\s]+)[^)]*\)/);
     if (!m) return null;
-    return ASSET_PATH_RE.test(m[1]) ? m[1] : null;
+    return isValidAssetPath(m[1]) ? m[1] : null;
   }
 
   // src/service/export-markdown.ts
   init_constants();
-  function safeBasename(assetPath) {
-    var _a;
-    const base = (_a = assetPath.split("/").pop()) != null ? _a : assetPath;
-    return base.replace(/[^\w.\-\u4e00-\u9fff]/g, "_").slice(0, 120) || "asset";
-  }
   async function buildMarkdownExport(items, kramdownById, fetchAssetBytes) {
     var _a;
     const entries = [];
     const skippedAssets = [];
     const assetEntries = /* @__PURE__ */ new Map();
+    const usedNames = /* @__PURE__ */ new Set(["items.md"]);
     let assetCount = 0;
     const mdParts = [
       "# \u5C0F\u9A74\u5E38\u7528 \xB7 \u6761\u76EE\u5BFC\u51FA",
@@ -1359,7 +1358,8 @@
         if (assetPath && !assetEntries.has(assetPath)) {
           const bytes = await fetchAssetBytes(assetPath);
           if (bytes && bytes.length > 0) {
-            const name = `assets/${safeBasename(assetPath)}`;
+            const name = assetPath;
+            usedNames.add(name);
             assetEntries.set(assetPath, { name, data: bytes });
             assetCount++;
           } else {

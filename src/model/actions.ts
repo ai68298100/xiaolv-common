@@ -46,12 +46,17 @@ export interface ActionContext {
     };
 }
 
-const ASSET_PATH_RE = /^(assets\/[\w\-. @]+)$/;
+// assets/ 单段或多级子路径均可（R35：子目录资源此前被误拒）；禁 .. 穿越；禁止空白
+const ASSET_PATH_RE = /^(assets\/[^\s/][^\s]*|assets\/[^\s/])$/;
+
+export function isValidAssetPath(path: string): boolean {
+    return ASSET_PATH_RE.test(path) && !path.includes("..");
+}
 
 export function extractAssetPath(kramdown: string): string | null {
     const m = kramdown.match(/\]\((assets\/[^)\s]+)[^)]*\)/);
     if (!m) return null;
-    return ASSET_PATH_RE.test(m[1]) ? m[1] : null;
+    return isValidAssetPath(m[1]) ? m[1] : null;
 }
 
 export function extractCodeFence(kramdown: string): {language: string; code: string} | null {

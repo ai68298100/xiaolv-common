@@ -116,6 +116,31 @@ test("renderItemMetadata 与解析器互逆", () => {
     assert.equal(parsed.items[0].source.sourceDocId, "20240101120001-hijklmn");
 });
 
+test("R35：ZIP 条目名=完整相对路径（子目录资源不重名）+ 确定性输出", async () => {
+    const enc = (str) => new TextEncoder().encode(str);
+    const mk = (id, kramdown) => ({
+        id, blockId: "20240101120000-aaaaaaa", libraryDocId: DOC, itemType: "image",
+        title: id, alias: "", tags: [], category: "", summary: "",
+        source: {sourceDocId: "", sourceBlockId: "", sourceType: "manual"},
+        url: "", targetBlockId: "", createdAt: 0, updatedAt: 0, droppedFields: [],
+    });
+    const items = [
+        mk("xlc-z0000000001", "![](assets/a/pic.png)"),
+        mk("xlc-z0000000002", "![](assets/b/pic.png)"),
+    ];
+    const kd = new Map([["xlc-z0000000001", "![](assets/a/pic.png)"], ["xlc-z0000000002", "![](assets/b/pic.png)"]]);
+    const result = await exportMarkdown.buildMarkdownExport(items, kd, async (p) => enc(p.includes("a/") ? "BIN" : "BIN2"));
+    const names = result.entries.map((e) => e.name).sort();
+    assert.deepEqual(names, ["assets/a/pic.png", "assets/b/pic.png", "items.md"], "full relative paths, no collision");
+    // 确定性：同输入两次构建，条目名与字节完全一致（固定 DOS 时间戳）
+    const again = await exportMarkdown.buildMarkdownExport(items, kd, async (p) => enc(p.includes("a/") ? "BIN" : "BIN2"));
+    assert.equal(again.entries.length, result.entries.length);
+    for (let i = 0; i < result.entries.length; i++) {
+        assert.equal(again.entries[i].name, result.entries[i].name);
+        assert.deepEqual(Array.from(again.entries[i].data), Array.from(result.entries[i].data));
+    }
+});
+
 test("R32：importMarkdownBundle 全字段保真（tags/category/source 不再丢弃）", async () => {
     const {LibraryService} = require("./.build/entry.cjs").library;
     const B1 = "20240101120000-aaaaaaa";
