@@ -8,6 +8,18 @@ const {lru, library: libModule, search: searchModule, client} = {
     client: require("./.build/entry.cjs").client,
 };
 
+test("R41：LRU TTL 过期视为未命中（同步变更防陈旧）", () => {
+    const cache = new lru.LruCache(3, 30);
+    cache.set("k", "v");
+    assert.equal(cache.get("k"), "v");
+    return new Promise((r) => setTimeout(r, 40)).then(() => {
+        assert.equal(cache.get("k"), undefined, "expired entry must miss");
+        assert.equal(cache.size, 0, "expired entry removed lazily on read");
+        cache.set("k", "v2");
+        assert.equal(cache.get("k"), "v2");
+    });
+});
+
 test("门禁：LRU 容量硬上限（超容淘汰最久未用）", () => {
     const cache = new lru.LruCache(3);
     cache.set("a", 1);

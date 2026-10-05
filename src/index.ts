@@ -17,7 +17,7 @@ import {importBundle as importBundleCore} from "./service/importer";
 import {parseMarkdownPack} from "./service/import-markdown";
 import {LibraryConfig, CONFIG_VERSION, migrateState, normalizeLibraryConfig, normalizeState, PluginState} from "./model/storage";
 import {SearchContext} from "./model/search";
-import {LruCache, PREVIEW_CACHE_CAPACITY} from "./model/lru";
+import {LruCache, PREVIEW_CACHE_CAPACITY, PREVIEW_CACHE_TTL_MS} from "./model/lru";
 import {setPinyinAdapter, createNoopPinyinAdapter} from "./model/pinyin";
 import {createTinyPinyinAdapter} from "./model/pinyin-tiny";
 import {buildProviderRows} from "./model/provider-section";
@@ -480,8 +480,8 @@ export default class XiaolvCommonPlugin extends Plugin {
         };
     }
 
-    /** 预览文本的有界可丢弃缓存（插入/复制仍现场取正文，不受缓存影响） */
-    private previewCache = new LruCache<string>(PREVIEW_CACHE_CAPACITY);
+    /** 预览文本的有界可丢弃缓存（60s TTL：同步变更后预览最多陈旧一分钟；插入/复制仍现场取正文） */
+    private previewCache = new LruCache<string>(PREVIEW_CACHE_CAPACITY, PREVIEW_CACHE_TTL_MS);
 
     openSearch(): void {
         if (!this.config) {
