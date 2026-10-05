@@ -165,6 +165,16 @@ export class LibraryService {
         }
     }
 
+    /** 当前文档完整路径（{{xlc:path}} 占位符用） */
+    async getDocPath(docId: string): Promise<string> {
+        if (!isBlockId(docId)) return "";
+        try {
+            return parseString(await this.kernel.request("getFullHPathByID", {id: docId}));
+        } catch {
+            return "";
+        }
+    }
+
     /** 追加内容到指定文档（「插入到指定文档」用；官方 appendBlock） */
     async appendToDoc(markdown: string, docId: string): Promise<boolean> {
         if (!markdown.trim()) return false;

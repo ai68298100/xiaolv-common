@@ -85,6 +85,14 @@ export default class XiaolvCommonPlugin extends Plugin {
         this.executor = new ActionExecutor(this.library, this.host, this.notify, (item) => this.service.touchRecent(item.id), {
             enabled: () => this.state.search.placeholders,
             now: () => new Date(),
+            currentDoc: async () => {
+                const docId = this.host.currentDocId();
+                if (!docId) return null;
+                // 标题用内核权威 hPath 末段（不读内部 DOM，ADR 0003）
+                const path = await this.library.getDocPath(docId);
+                if (!path) return {title: "", path: ""};
+                return {title: path.split("/").filter(Boolean).pop() ?? path, path};
+            },
         });
         this.service = new XiaolvCommonService({
             library: this.library,
@@ -310,6 +318,18 @@ export default class XiaolvCommonPlugin extends Plugin {
         } catch {
             // 移动端工具栏 API 缺失：降级为命令触发
         }
+        try {
+            // 文档面包屑入口（官方 addBreadcrumbButton；callback 带该页签 protyle）：
+            // 插入目标 = 当前活动编辑器，从面包屑点入时通常即该文档
+            this.addBreadcrumbButton({
+                id: "xiaolv-common-breadcrumb",
+                icon: "iconXlcCommon",
+                title: this.i18nFn()("openSearch"),
+                callback: () => this.openSearch(),
+            });
+        } catch {
+            // 旧宿主无此 API：顶栏/命令入口仍可用
+        }
     }
 
     // ---- 搜索界面 ----
@@ -424,7 +444,11 @@ export default class XiaolvCommonPlugin extends Plugin {
                 for (const provider of this.registry.listExecutable()) {
                     if (!provider.runtime?.search) continue;
                     try {
-                        const hits = await provider.runtime.search(query);
+                        // 3s 超时保护：挂起的提供方不得卡住弹窗
+                        const hits = await Promise.race([
+                            provider.runtime.search(query),
+                            new Promise<never>((_, reject) => setTimeout(() => reject(new Error("provider timeout")), 3000)),
+                        ]);
                         for (const hit of hits ?? []) {
                             rows.push({
                                 providerId: provider.record.pluginId,

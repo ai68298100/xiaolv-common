@@ -8,10 +8,12 @@ import {applyPlaceholders} from "../model/placeholders";
 import {CommonItem} from "../model/item";
 import {LibraryService, Receipt, SourceHealth} from "./library";
 
-/** 占位符应用钩子：由入口注入（读设置 + 当前时间）；未注入则原样保留 */
+/** 占位符应用钩子：由入口注入（读设置 + 当前时间 + 当前文档）；未注入则原样保留 */
 export interface IPlaceholderHook {
     enabled(): boolean;
     now(): Date;
+    /** 当前文档（{{xlc:title}}/{{xlc:path}}）；无活动文档返回 null */
+    currentDoc(): Promise<{title: string; path: string} | null>;
 }
 
 export interface IHostBridge {
@@ -142,12 +144,17 @@ export class ActionExecutor {
         private readonly placeholders?: IPlaceholderHook,
     ) {}
 
-    /** 对输出载荷应用动态占位符（插入 markdown 与剪贴板文本；存储内容不受影响） */
-    private applyOutput(text: string | undefined): string | undefined {
+    /** 对输出载荷应用动态占位符（插入 markdown 与剪贴板文本；存储内容不受影响）。
+     * 仅当文本含 title/path 占位符时才取当前文档（避免多余内核往返）。 */
+    private async applyOutput(text: string | undefined): Promise<string | undefined> {
         if (text === undefined) return undefined;
         if (!this.placeholders) return text;
         try {
-            return applyPlaceholders(text, this.placeholders.now(), this.placeholders.enabled());
+            if (!this.placeholders.enabled()) return text;
+            const {listPlaceholders} = await import("../model/placeholders");
+            const needsDoc = listPlaceholders(text).some((k) => k === "title" || k === "path");
+            const doc = needsDoc ? await this.placeholders.currentDoc() : null;
+            return applyPlaceholders(text, this.placeholders.now(), true, doc);
         } catch {
             return text;
         }
@@ -203,7 +210,7 @@ export class ActionExecutor {
             };
         }
         if (plan.mode === "insert" || plan.mode === "insert-ref" || plan.mode === "insert-embed") {
-            const md = this.applyOutput(plan.markdown) ?? "";
+            const md = (await this.applyOutput(plan.markdown)) ?? "";
             if (!md) {
                 return {ok: false, mode: plan.mode, message: "empty-plan", downgraded: plan.downgraded, pendingVerification: plan.pendingVerification};
             }
@@ -235,7 +242,7 @@ export class ActionExecutor {
             };
         }
         if (plan.mode === "copy" || plan.mode === "copy-content") {
-            const text = this.applyOutput(plan.clipboardText) ?? "";
+            const text = (await this.applyOutput(plan.clipboardText)) ?? "";
             const copied = await this.host.writeClipboard(text);
             return {
                 ok: copied,
