@@ -18,6 +18,10 @@
 
 ![窄容器单列降级](docs/design/production-narrow-light.png)
 
+![捕获表单（AI 草稿/整理）](docs/design/production-capture-light.png)
+
+![设置（暗色）](docs/design/production-settings-dark.png)
+
 ## 定位边界
 
 **是**：思源内的常用内容保存与快速复用（搜索 → 预览 → 插入 / 复制 / 打开来源）。
