@@ -145,9 +145,11 @@ export class ActionExecutor {
     ) {}
 
     /** 对输出载荷应用动态占位符（插入 markdown 与剪贴板文本；存储内容不受影响）。
-     * 仅当文本含 title/path 占位符时才取当前文档（避免多余内核往返）。 */
-    private async applyOutput(text: string | undefined): Promise<string | undefined> {
+     *  仅当文本含 title/path 占位符时才取当前文档（避免多余内核往返）。
+     *  code 条目跳过替换：代码中的 {{xlc:…}} 是字面文本（例如演示模板的代码），绝不能被改写。 */
+    private async applyOutput(text: string | undefined, item?: CommonItem): Promise<string | undefined> {
         if (text === undefined) return undefined;
+        if (item?.itemType === "code") return text;
         if (!this.placeholders) return text;
         try {
             if (!this.placeholders.enabled()) return text;
@@ -210,7 +212,7 @@ export class ActionExecutor {
             };
         }
         if (plan.mode === "insert" || plan.mode === "insert-ref" || plan.mode === "insert-embed") {
-            const md = (await this.applyOutput(plan.markdown)) ?? "";
+            const md = (await this.applyOutput(plan.markdown, item)) ?? "";
             if (!md) {
                 return {ok: false, mode: plan.mode, message: "empty-plan", downgraded: plan.downgraded, pendingVerification: plan.pendingVerification};
             }
@@ -242,7 +244,7 @@ export class ActionExecutor {
             };
         }
         if (plan.mode === "copy" || plan.mode === "copy-content") {
-            const text = (await this.applyOutput(plan.clipboardText)) ?? "";
+            const text = (await this.applyOutput(plan.clipboardText, item)) ?? "";
             const copied = await this.host.writeClipboard(text);
             return {
                 ok: copied,
