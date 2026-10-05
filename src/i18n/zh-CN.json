@@ -183,5 +183,7 @@
   "captureLinkMenu": "存链接为常用条目",
   "captureImageMenu": "存图片为常用条目",
   "setAsLibraryMenu": "设为常用库文档",
-  "setAsLibraryConfirm": "将选中的 %s 个文档设为常用内容库（替换现有库配置）？"
+  "setAsLibraryConfirm": "将选中的 %s 个文档设为常用内容库（替换现有库配置）？",
+  "providerExecutable": "可执行",
+  "providerPendingReload": "待重载"
 }

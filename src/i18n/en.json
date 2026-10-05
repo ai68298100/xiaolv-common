@@ -183,5 +183,7 @@
   "captureLinkMenu": "Save link as item",
   "captureImageMenu": "Save image as item",
   "setAsLibraryMenu": "Set as common library docs",
-  "setAsLibraryConfirm": "Set the %s selected docs as your common library (replaces current config)?"
+  "setAsLibraryConfirm": "Set the %s selected docs as your common library (replaces current config)?",
+  "providerExecutable": "Active",
+  "providerPendingReload": "Pending reload"
 }

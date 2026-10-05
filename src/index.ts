@@ -894,6 +894,7 @@ export default class XiaolvCommonPlugin extends Plugin {
             getConfig: () => this.config,
             library: this.library,
             ai: this.ai,
+            registry: this.registry,
             notify: this.notify,
             applyConfig: (config) => this.applyConfig(config),
             persistSoon: () => this.persistSoon(),

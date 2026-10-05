@@ -8,6 +8,7 @@ import {buildZip} from "../model/zip";
 import {buildMarkdownExport} from "../service/export-markdown";
 import {LibraryService} from "../service/library";
 import {AiAssistant} from "../service/ai";
+import {ProviderRegistry} from "../service/providers";
 import {CommonItem} from "../model/item";
 
 type TFn = (key: string, ...args: string[]) => string;
@@ -18,6 +19,7 @@ export interface SettingsUiContext {
     getConfig(): LibraryConfig | null;
     library: LibraryService;
     ai: AiAssistant;
+    registry: ProviderRegistry;
     notify(kind: "info" | "error", message: string): void;
     applyConfig(config: LibraryConfig): void;
     persistSoon(): void;
@@ -98,8 +100,41 @@ export function openSettingsDialog(ctx: SettingsUiContext): void {
 
     buildAiSection(ctx, root);
     buildSearchSection(ctx, root);
+    buildProviderSection(ctx, root);
     buildDataSection(ctx, root);
     body.appendChild(root);
+}
+
+/** 内容提供方列表：注册状态一目了然（可执行 = 本次会话已接线；待重载 = 提供方需重新 register） */
+function buildProviderSection(ctx: SettingsUiContext, root: HTMLElement): void {
+    const t = ctx.t;
+    const provSec = document.createElement("div");
+    provSec.className = "xlc-form-field";
+    const provLabel = document.createElement("span");
+    provLabel.className = "xlc-form-label";
+    provLabel.textContent = t("providerSection");
+    provSec.appendChild(provLabel);
+    const providers = ctx.registry.list();
+    if (providers.length === 0) {
+        const empty = document.createElement("div");
+        empty.className = "xlc-form-hint";
+        empty.textContent = t("libraryNone");
+        provSec.appendChild(empty);
+    } else {
+        for (const p of providers) {
+            const row = document.createElement("div");
+            row.className = "xlc-setting-row";
+            const status = document.createElement("span");
+            status.className = "xlc-badge " + (p.runtime ? "xlc-badge--text" : "xlc-badge--warn");
+            status.textContent = p.runtime ? t("providerExecutable") : t("providerPendingReload");
+            const cap = document.createElement("span");
+            cap.textContent = `${p.record.displayName}（v${p.record.protocolVersion}）`;
+            row.appendChild(status);
+            row.appendChild(cap);
+            provSec.appendChild(row);
+        }
+    }
+    root.appendChild(provSec);
 }
 
 /** 库选择器（首跑引导与「更改库」共用；onConfigured 在配置落地后回调） */
