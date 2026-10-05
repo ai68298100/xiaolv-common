@@ -28,6 +28,8 @@ import {XiaolvCommonService} from "./service/service";
 import {CommonSearchDialog} from "./ui/dialog";
 import {CaptureDialog, confirmDelete} from "./ui/capture";
 import {ICONS} from "./ui/icons";
+import {buildZip} from "./model/zip";
+import {buildMarkdownExport} from "./service/export-markdown";
 import type {TransformKind} from "./service/ai";
 
 type TFn = (key: string, ...args: string[]) => string;
@@ -1119,6 +1121,29 @@ export default class XiaolvCommonPlugin extends Plugin {
                 this.notify("info", t("exportDone", String(count)));
             });
         });
+        mkBtn(t("exportMdBtn"), () => {
+            void (async () => {
+                const idx = await this.library.ensureIndex();
+                const items: CommonItem[] = [];
+                const kramdownById = new Map<string, string>();
+                for (const item of idx.items.values()) {
+                    const kd = await this.library.getItemKramdown(item);
+                    if (kd.ok) {
+                        items.push(item);
+                        kramdownById.set(item.id, kd.data);
+                    }
+                }
+                const result = await buildMarkdownExport(items, kramdownById, (assetPath) => this.fetchAssetBytes(assetPath));
+                const zip = buildZip(result.entries);
+                const blob = new Blob([zip as unknown as BlobPart], {type: "application/zip"});
+                const a = document.createElement("a");
+                a.href = URL.createObjectURL(blob);
+                a.download = `xiaolv-common-md-${new Date().toISOString().slice(0, 10)}.zip`;
+                a.click();
+                URL.revokeObjectURL(a.href);
+                this.notify("info", t("exportMdDone", String(result.itemCount), String(result.assetCount), String(result.skippedAssets.length)));
+            })();
+        });
         const importBtn = mkBtn(t("importBtn"), () => {
             const fileInput = document.createElement("input");
             fileInput.type = "file";
@@ -1144,6 +1169,19 @@ export default class XiaolvCommonPlugin extends Plugin {
         void importBtn;
         dataSec.appendChild(dataBtns);
         root.appendChild(dataSec);
+    }
+
+    /** 资源字节获取：/api/file/getFile 为二进制端点，fetchSyncPost 信封不适用，
+     *  使用同源 fetch（思源前端鉴权走 cookie，随同源请求自动携带）。失败返回 null。 */
+    private async fetchAssetBytes(assetPath: string): Promise<Uint8Array | null> {
+        if (!/^assets\/[\w\-. @\u4e00-\u9fff]+$/.test(assetPath)) return null;
+        try {
+            const res = await fetch(`/api/file/getFile?path=${encodeURIComponent(assetPath)}`);
+            if (!res.ok) return null;
+            return new Uint8Array(await res.arrayBuffer());
+        } catch {
+            return null;
+        }
     }
 
     /** AI 标签体检：仅标签清单出域；结果只展示，不自动修改任何条目 */

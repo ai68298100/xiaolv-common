@@ -170,5 +170,7 @@
   "tagAuditMerge": "归并",
   "tagAuditRename": "改名",
   "tagAuditTooFew": "标签不足 2 个，无需体检",
-  "openSettingsChangeLib": "更改内容库"
+  "openSettingsChangeLib": "更改内容库",
+  "exportMdBtn": "导出 Markdown 包（含资源）",
+  "exportMdDone": "已导出 %s 个条目（资源 %s，跳过 %s）"
 }

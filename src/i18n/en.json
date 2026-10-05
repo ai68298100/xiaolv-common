@@ -170,5 +170,7 @@
   "tagAuditMerge": "Merge",
   "tagAuditRename": "Rename",
   "tagAuditTooFew": "Fewer than 2 tags; nothing to audit",
-  "openSettingsChangeLib": "Change library"
+  "openSettingsChangeLib": "Change library",
+  "exportMdBtn": "Export Markdown pack (with assets)",
+  "exportMdDone": "Exported %s items (assets %s, skipped %s)"
 }

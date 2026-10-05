@@ -9,10 +9,12 @@ import * as pinyin from "../src/model/pinyin";
 import * as transfer from "../src/model/transfer";
 import * as client from "../src/kernel/client";
 import * as lru from "../src/model/lru";
+import * as zip from "../src/model/zip";
 import * as pinyin from "../src/model/pinyin";
 import * as pinyinTiny from "../src/model/pinyin-tiny";
 import * as placeholders from "../src/model/placeholders";
 import * as providerSection from "../src/model/provider-section";
+import * as exportMarkdown from "../src/service/export-markdown";
 import * as library from "../src/service/library";
 import * as commands from "../src/service/commands";
 import * as providers from "../src/service/providers";
@@ -29,9 +31,11 @@ export {
     pinyinTiny,
     placeholders,
     providerSection,
+    exportMarkdown,
     transfer,
     client,
     lru,
+    zip,
     library,
     commands,
     providers,
