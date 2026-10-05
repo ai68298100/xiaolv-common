@@ -140,6 +140,7 @@
   // src/model/search.ts
   var search_exports = {};
   __export(search_exports, {
+    applyBasicFilters: () => applyBasicFilters,
     collectTags: () => collectTags,
     listByScope: () => listByScope,
     matchEntry: () => matchEntry,
@@ -190,6 +191,9 @@
     if (query.category && entry.category !== query.category) return false;
     if (query.scope === "favorites" && !ctx.favorites.has(entry.id)) return false;
     return true;
+  }
+  function applyBasicFilters(entries, query, ctx) {
+    return entries.filter((e) => passesFilters(e, { text: "", itemType: query.itemType, tag: query.tag, scope: query.scope }, ctx));
   }
   function compareResults(a, b, ctx) {
     var _a, _b, _c, _d, _e, _f;
@@ -603,7 +607,7 @@
       return { text, itemType, tag, scope: this.currentScope };
     }
     async refresh() {
-      var _a, _b, _c, _d;
+      var _a, _b, _c, _d, _e, _f;
       const seq = ++this.searchSeq;
       const query = this.buildQuery();
       const list = (_a = this.dialog) == null ? void 0 : _a.element.querySelector(".xlc-list");
@@ -619,7 +623,7 @@
       try {
         const text = query.text.trim();
         if (text.startsWith("?") && text.length > 1) {
-          const aiResult = await this.deps.aiSemantic(text.slice(1));
+          const aiResult = await this.deps.aiSemantic(text.slice(1), { itemType: (_e = query.itemType) != null ? _e : "", tag: (_f = query.tag) != null ? _f : "", scope: this.currentScope });
           if (seq !== this.searchSeq) return;
           if (aiResult.ok) {
             this.results = aiResult.entries;

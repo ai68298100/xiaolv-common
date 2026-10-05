@@ -94,6 +94,11 @@ export function passesFilters(entry: SearchEntry, query: SearchQuery, ctx: Searc
     return true;
 }
 
+/** 仅筛选不过滤打分（`?` 语义找的候选预过滤用——语义找忽略文本但必须尊重类型/标签/收藏范围） */
+export function applyBasicFilters(entries: readonly SearchEntry[], query: Pick<SearchQuery, "itemType" | "tag" | "scope">, ctx: SearchContext): SearchEntry[] {
+    return entries.filter((e) => passesFilters(e, {text: "", itemType: query.itemType, tag: query.tag, scope: query.scope}, ctx));
+}
+
 function compareResults(a: ScoredResult, b: ScoredResult, ctx: SearchContext): number {
     // 标题排序：仅在无关键词浏览（score 全 0）时生效，有关键词保持相关度优先
     if (!ctx.sort || ctx.sort === "manual") {

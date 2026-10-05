@@ -735,10 +735,14 @@ export default class XiaolvCommonPlugin extends Plugin {
                 return copied;
             },
             aiEnabled: () => this.state.ai.enabled,
-            aiSemantic: async (desc) => {
+            aiSemantic: async (desc, filters) => {
                 try {
                     const idx = await this.library.ensureIndex();
-                    const meta: SearchMetaEntry[] = idx.entries.map((e) => ({
+                    const {applyBasicFilters} = await import("./model/search");
+                    // 语义找候选先按类型/标签/收藏范围过滤（与普通搜索的筛选语义一致）
+                    const safeItemType = filters.itemType && isItemType(filters.itemType) ? filters.itemType : "";
+                    const scoped = applyBasicFilters(idx.entries, {itemType: safeItemType, tag: filters.tag, scope: filters.scope}, this.searchContext());
+                    const meta: SearchMetaEntry[] = scoped.map((e) => ({
                         id: e.id,
                         title: e.title,
                         alias: e.alias,
@@ -748,8 +752,8 @@ export default class XiaolvCommonPlugin extends Plugin {
                         itemType: e.itemType,
                     }));
                     const picked = await this.ai.semanticPick(desc, meta);
-                    const byId = new Map(idx.entries.map((e) => [e.id, e]));
-                    return {ok: true as const, entries: picked.map((p) => byId.get(p.id)).filter((e): e is NonNullable<typeof e> => !!e)};
+                    const entryMap = new Map(scoped.map((e) => [e.id, e]));
+                    return {ok: true as const, entries: picked.map((p) => entryMap.get(p.id)).filter((e): e is NonNullable<typeof e> => !!e)};
                 } catch (err) {
                     return {ok: false as const, message: this.aiErrorText(err)};
                 }

@@ -45,8 +45,8 @@ export interface DialogDeps {
     providerSearch: (query: string) => Promise<ProviderRow[]>;
     insertProviderPayload: (payload: string, target?: {docId: string; hPath: string}) => Promise<boolean>;
     copyProviderPayload: (payload: string) => Promise<boolean>;
-    /** AI 语义找（? 前缀触发；仅元数据出域） */
-    aiSemantic: (desc: string) => Promise<{ok: true; entries: SearchEntry[]} | {ok: false; message: string}>;
+    /** AI 语义找（? 前缀触发；仅元数据出域；候选先按当前筛选过滤） */
+    aiSemantic: (desc: string, filters: {itemType: string; tag: string; scope: "all" | "favorites" | "recent"}) => Promise<{ok: true; entries: SearchEntry[]} | {ok: false; message: string}>;
     /** AI 变换（需正文出域权限） */
     aiTransform: (itemId: string, kind: TransformKind) => Promise<{ok: true; text: string} | {ok: false; message: string}>;
     aiEnabled: () => boolean;
@@ -435,7 +435,7 @@ export class CommonSearchDialog {
             const text = query.text.trim();
             if (text.startsWith("?") && text.length > 1) {
                 // AI 语义找（仅元数据出域；未启用/失败诚实提示）
-                const aiResult = await this.deps.aiSemantic(text.slice(1));
+                const aiResult = await this.deps.aiSemantic(text.slice(1), {itemType: query.itemType ?? "", tag: query.tag ?? "", scope: this.currentScope});
                 if (seq !== this.searchSeq) return;
                 if (aiResult.ok) {
                     this.results = aiResult.entries;
