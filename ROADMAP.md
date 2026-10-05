@@ -13,7 +13,7 @@
 - [x] 生产 UI 升级到原型质感：双栏预览、类型彩色徽标、筛选 chips、来源失效横幅、底部 sheet
 - [x] 生产效果证据：真实 dist CSS+DOM 渲染截图（docs/design/production-desktop-light/dark.png）
 - [ ] 真实思源 AI 端到端（依赖 B-001 令牌：宿主配置模型后全链路）
-- [ ] AI 标签体检（P5 后）
+- [x] AI 标签体检（设置面板按钮；仅标签清单出域，只建议不自动改）
 
 ## 不可回退的约束
 
@@ -47,7 +47,7 @@
 ## P3 搜索和调用
 
 - [x] 实时搜索（标题/正文摘要/别名/标签/分类/类型/中文关键词）
-- [x] 拼音适配层（可替换接口 + 默认实现；拼音库后置）
+- [x] 拼音适配层（tiny-pinyin 已接入，条目侧注解 + 设置开关；noop 零开销门禁）
 - [x] 类型/标签筛选、预览、复制、插入、打开来源
 - [x] 键盘导航（↑↓/Enter/Esc/搜索框首焦点/快捷复制）
 
@@ -64,7 +64,7 @@
 - [x] `xiaolv-common/v1` 服务接口（getCapabilities/search/get/save/update/remove/insert/copy/openSource/reindex/getRecent/getFavorites）
 - [x] 命令 ID 与事件协议（xiaolv.common.* / xiaolv:common:*）
 - [x] provider 注册表（其他小驴插件注册内容源；卸载安全、重载恢复）
-- [ ] Markdown + 资源引用导出（后置，待 P5 验收后评估）
+- [x] Markdown + 资源引用导出（R13 导出按钮 + R31 parseMarkdownPack 导入回包，双向闭环）
 
 ## P6 验证和交付
 
