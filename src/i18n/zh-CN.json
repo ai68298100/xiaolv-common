@@ -162,5 +162,6 @@
   "providerInsert": "插入（提供方）",
   "providerCopy": "复制（提供方）",
   "openSettings": "设置 / 更改内容库",
-  "semanticSuggestion": "没有本地结果。试试 AI 语义找：在关键词前加 ?"
+  "semanticSuggestion": "没有本地结果。试试 AI 语义找：在关键词前加 ?",
+  "indexing": "正在构建索引…"
 }

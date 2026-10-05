@@ -171,6 +171,15 @@ export default class XiaolvCommonPlugin extends Plugin {
         };
     }
 
+    async onLayoutReady(): Promise<void> {
+        // 后台预热索引：打开搜索时通常已就绪（零等待）；失败静默——打开时会重建并如实报错
+        try {
+            await this.library.ensureIndex();
+        } catch {
+            // 预热失败不打扰用户
+        }
+    }
+
     /** 拼音适配器装配：开关变化/启动时调用；切换后需 reindex 重建注解 */
     private applyPinyinAdapter(): void {
         setPinyinAdapter(this.state.search.pinyin ? createTinyPinyinAdapter() : createNoopPinyinAdapter());
@@ -329,12 +338,13 @@ export default class XiaolvCommonPlugin extends Plugin {
         this.searchDialog = new CommonSearchDialog({
             t: this.i18nFn(),
             search: async (query) => {
+                const loading = !this.library.getIndex();
                 const idx = await this.library.ensureIndex();
                 const {searchEntries} = await import("./model/search");
                 const results = searchEntries(idx.entries, query, this.searchContext());
                 const entries = results.map((r) => r.entry);
                 void this.prefetchSourceHealth(entries);
-                return {entries, truncated: idx.truncated, total: idx.entries.length};
+                return {entries, truncated: idx.truncated, total: idx.entries.length, loading};
             },
             searchDocs: async (k) => {
                 const result = await this.library.searchDocs(k);

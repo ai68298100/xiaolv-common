@@ -96,6 +96,10 @@ fs.writeFileSync(path.join(OUT, "harness.html"), html);
     await shoot("desktop-light", {theme: "light", aiEnabled: true, missing: true});
     await shoot("desktop-dark", {theme: "dark", aiEnabled: true, missing: false});
     await shoot("provider-light", {theme: "light", aiEnabled: true, missing: false, query: "工作台"});
+    // 窄容器（<620px）：单列降级（预览隐藏）
+    await page.setViewportSize({width: 420, height: 720});
+    await shoot("narrow-light", {theme: "light", aiEnabled: true, missing: false});
+    await page.setViewportSize({width: 1280, height: 720});
     await browser.close();
     console.log("production renders done:", fs.readdirSync(OUT).filter((f) => f.startsWith("production-")).join(", "));
 })();

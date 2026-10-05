@@ -139,6 +139,7 @@
       this.previewSeq = 0;
       this.currentScope = "all";
       this.lastPreviewId = null;
+      this.inputDebounce = null;
       this.ctx = ctx;
     }
     open() {
@@ -185,7 +186,8 @@
       input.setAttribute("aria-label", this.deps.t("searchPlaceholder"));
       input.addEventListener("input", () => {
         this.currentScope = "all";
-        void this.refresh();
+        if (this.inputDebounce) clearTimeout(this.inputDebounce);
+        this.inputDebounce = setTimeout(() => void this.refresh(), 200);
       });
       input.addEventListener("keydown", (e) => void this.onKeydown(e));
       search.appendChild(qMark);
@@ -430,6 +432,7 @@
       this.lastPreviewId = null;
       let total = 0;
       let truncated = false;
+      let loading = false;
       try {
         const text = query.text.trim();
         if (text.startsWith("?") && text.length > 1) {
@@ -452,6 +455,7 @@
           this.results = result.entries;
           total = result.total;
           truncated = result.truncated;
+          loading = result.loading === true;
           this.aiResults = false;
           if (aiBanner) aiBanner.style.display = "none";
         }
@@ -467,6 +471,8 @@
       if (status) {
         if (this.results.length) {
           status.textContent = "";
+        } else if (loading) {
+          status.textContent = this.deps.t("indexing");
         } else if (query.text.trim() && !query.text.trim().startsWith("?") && this.deps.aiEnabled()) {
           status.textContent = this.deps.t("semanticSuggestion");
         } else {
@@ -898,6 +904,7 @@
     }
     destroy() {
       var _a;
+      if (this.inputDebounce) clearTimeout(this.inputDebounce);
       (_a = this.dialog) == null ? void 0 : _a.destroy();
       this.dialog = null;
     }

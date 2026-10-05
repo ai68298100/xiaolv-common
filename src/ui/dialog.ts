@@ -14,7 +14,7 @@ import {ProviderRow} from "../model/provider-section";
 
 export interface DialogDeps {
     t: (key: string, ...args: string[]) => string;
-    search: (query: SearchQuery) => Promise<{entries: SearchEntry[]; truncated: boolean; total: number}>;
+    search: (query: SearchQuery) => Promise<{entries: SearchEntry[]; truncated: boolean; total: number; loading?: boolean}>;
     /** 文档搜索（插入到指定文档的选择器） */
     searchDocs: (k: string) => Promise<Array<{id: string; hPath: string; name: string}>>;
     insertToDoc: (itemId: string, docId: string, hPath: string) => Promise<boolean>;
@@ -65,6 +65,7 @@ export class CommonSearchDialog {
     private ctx: SearchContext;
     private currentScope: "all" | "favorites" | "recent" = "all";
     private lastPreviewId: string | null = null;
+    private inputDebounce: ReturnType<typeof setTimeout> | null = null;
 
     constructor(private readonly deps: DialogDeps, ctx: SearchContext) {
         this.ctx = ctx;
@@ -117,7 +118,9 @@ export class CommonSearchDialog {
         input.setAttribute("aria-label", this.deps.t("searchPlaceholder"));
         input.addEventListener("input", () => {
             this.currentScope = "all";
-            void this.refresh();
+            // 200ms 输入防抖（雷切同款预算）：本地过滤本身便宜，但 ? 语义找/provider 请求每键一次不可接受
+            if (this.inputDebounce) clearTimeout(this.inputDebounce);
+            this.inputDebounce = setTimeout(() => void this.refresh(), 200);
         });
         input.addEventListener("keydown", (e) => void this.onKeydown(e));
         search.appendChild(qMark);
@@ -376,6 +379,7 @@ export class CommonSearchDialog {
         this.lastPreviewId = null;
         let total = 0;
         let truncated = false;
+        let loading = false;
         try {
             const text = query.text.trim();
             if (text.startsWith("?") && text.length > 1) {
@@ -399,6 +403,7 @@ export class CommonSearchDialog {
                 this.results = result.entries;
                 total = result.total;
                 truncated = result.truncated;
+                loading = result.loading === true;
                 this.aiResults = false;
                 if (aiBanner) aiBanner.style.display = "none";
             }
@@ -414,6 +419,8 @@ export class CommonSearchDialog {
         if (status) {
             if (this.results.length) {
                 status.textContent = "";
+            } else if (loading) {
+                status.textContent = this.deps.t("indexing");
             } else if (query.text.trim() && !query.text.trim().startsWith("?") && this.deps.aiEnabled()) {
                 status.textContent = this.deps.t("semanticSuggestion");
             } else {
@@ -863,6 +870,7 @@ export class CommonSearchDialog {
     }
 
     destroy(): void {
+        if (this.inputDebounce) clearTimeout(this.inputDebounce);
         this.dialog?.destroy();
         this.dialog = null;
     }

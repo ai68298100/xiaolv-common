@@ -162,5 +162,6 @@
   "providerInsert": "Insert (provider)",
   "providerCopy": "Copy (provider)",
   "openSettings": "Settings / change library",
-  "semanticSuggestion": "No local results. Try AI semantic search: prefix keywords with ?"
+  "semanticSuggestion": "No local results. Try AI semantic search: prefix keywords with ?",
+  "indexing": "Building index…"
 }
