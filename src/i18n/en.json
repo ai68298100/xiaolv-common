@@ -178,5 +178,7 @@
   "clearRecentsDone": "Recent history cleared",
   "insertMenu": "Insert common item…",
   "clearSource": "Clear source reference",
-  "clearSourceDone": "Source reference cleared"
+  "clearSourceDone": "Source reference cleared",
+  "captureBlockRefMenu": "Save block ref as item",
+  "captureLinkMenu": "Save link as item"
 }

@@ -57,3 +57,14 @@ test("fetchAssetBytes 路径校验（注入到 HostBridge.fetchAssetBytes 同语
     assert.equal(isSafe("assets/sub/pic.png"), false, "subdirectory rejected");
     assert.equal(isSafe("other/pic.png"), false, "non-assets prefix rejected");
 });
+
+test("R27：链接/块引用捕获目标分类（纯函数）", () => {
+    const cap = require("./.build/entry.cjs").capture;
+    assert.deepEqual(cap.classifyLinkTarget("https://example.com/a"), {kind: "url", value: "https://example.com/a"});
+    assert.deepEqual(cap.classifyLinkTarget("assets/pic-20240101.png"), {kind: "asset", value: "assets/pic-20240101.png"});
+    assert.equal(cap.classifyLinkTarget("siyuan://blocks/x"), null);
+    assert.equal(cap.classifyLinkTarget("javascript:alert(1)"), null);
+    assert.equal(cap.classifyLinkTarget(""), null);
+    assert.equal(cap.isBlockRefTarget("20240101120000-abcdefg"), true);
+    assert.equal(cap.isBlockRefTarget("bad"), false);
+});

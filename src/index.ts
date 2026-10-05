@@ -48,6 +48,8 @@ export default class XiaolvCommonPlugin extends Plugin {
     private saveTimer: ReturnType<typeof setTimeout> | null = null;
     /** 右键菜单处理器引用（onunload 解绑） */
     private menuHandler: ((event: {detail: {menu: {addItem: (item: {icon: string; label: string; click: () => void}) => void}}}) => void) | null = null;
+    private blockRefMenuHandler: ((event: {detail: {menu: {addItem: (item: {icon: string; label: string; click: () => void}) => void}; element?: Element}}) => void) | null = null;
+    private linkMenuHandler: ((event: {detail: {menu: {addItem: (item: {icon: string; label: string; click: () => void}) => void}; element?: Element}}) => void) | null = null;
     /** 来源失效预检缓存（每次搜索刷新时批量重建；仅为列表徽标，打开来源仍实时校验） */
     private missingSources = new Set<string>();
     /** 协议命令 ID → 执行器（xiaolv.common.*，供雷切等按稳定 ID 调用） */
@@ -387,6 +389,30 @@ export default class XiaolvCommonPlugin extends Plugin {
                 });
             };
             this.eventBus.on("open-menu-content", this.menuHandler);
+            // 块引用右键：把被引用块存为 blockref 条目（官方 detail.element data-id）
+            this.blockRefMenuHandler = (event) => {
+                const {menu, element} = event.detail;
+                const blockId = element?.getAttribute?.("data-id") ?? "";
+                if (!blockId || !element) return;
+                menu.addItem({
+                    icon: "iconXlcCommon",
+                    label: this.i18nFn()("captureBlockRefMenu"),
+                    click: () => this.capture.captureBlockRef(blockId, element.textContent ?? ""),
+                });
+            };
+            this.eventBus.on("open-menu-blockref", this.blockRefMenuHandler);
+            // 链接右键：http(s)/assets 存为 URL/资源条目（其余协议诚实拒绝）
+            this.linkMenuHandler = (event) => {
+                const {menu, element} = event.detail;
+                const href = element?.getAttribute?.("href") ?? "";
+                if (!href || !element) return;
+                menu.addItem({
+                    icon: "iconXlcCommon",
+                    label: this.i18nFn()("captureLinkMenu"),
+                    click: () => this.capture.captureLink(href, element.textContent ?? ""),
+                });
+            };
+            this.eventBus.on("open-menu-link", this.linkMenuHandler);
         } catch {
             // 事件契约变化时降级：右键入口缺席，其余入口仍可用
         }
@@ -918,6 +944,20 @@ export default class XiaolvCommonPlugin extends Plugin {
             }
             this.menuHandler = null;
         }
+        for (const [evt, handler] of [
+            ["open-menu-blockref", this.blockRefMenuHandler],
+            ["open-menu-link", this.linkMenuHandler],
+        ] as const) {
+            if (handler) {
+                try {
+                    this.eventBus.off(evt, handler as never);
+                } catch {
+                    // 忽略
+                }
+            }
+        }
+        this.blockRefMenuHandler = null;
+        this.linkMenuHandler = null;
         this.searchDialog?.destroy();
         if (this.saveTimer) clearTimeout(this.saveTimer);
         void this.saveData(STORAGE_KEYS.state, this.state);

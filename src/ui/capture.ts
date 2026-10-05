@@ -3,6 +3,19 @@
 import {Dialog, confirm} from "siyuan";
 import {ItemType} from "../model/item";
 import {NewItemInput} from "../service/library";
+
+/** 块引用目标校验（官方 data-id 属性值） */
+export function isBlockRefTarget(blockId: string): boolean {
+    return /^\d{14}-[0-9a-z]{7}$/.test(blockId);
+}
+
+/** 链接目标分类：仅接受 http(s) 外链与 assets/ 资源；其余（siyuan:// 等）返回 null */
+export function classifyLinkTarget(href: string): {kind: "url" | "asset"; value: string} | null {
+    const h = (href ?? "").trim();
+    if (/^https?:\/\//i.test(h)) return {kind: "url", value: h};
+    if (/^assets\/[^\s]+$/.test(h)) return {kind: "asset", value: h};
+    return null;
+}
 export interface CaptureDeps {
     t: (key: string, ...args: string[]) => string;
     /** 当前选区纯文本（官方选区 API + data-node-id 块定位，见 ADR 0003 DOM 边界） */
@@ -69,6 +82,33 @@ export class CaptureDialog {
         this.openForm("", "text", null);
     }
 
+    /** 右键块引用捕获：把被引用块存为 blockref 条目（目标块=引用目标） */
+    captureBlockRef(blockId: string, refText: string): void {
+        if (!isBlockRefTarget(blockId)) {
+            this.deps.notify("error", this.deps.t("invalidItem"));
+            return;
+        }
+        this.openForm("", "blockref", null, {
+            title: (refText || blockId).slice(0, 120),
+            targetBlockId: blockId,
+            docId: this.deps.currentDocId() ?? undefined,
+        });
+    }
+
+    /** 右键链接捕获：http(s) 外链 → url 条目；assets/ → asset 条目；其余诚实拒绝 */
+    captureLink(href: string, text: string): void {
+        const target = classifyLinkTarget(href);
+        if (!target) {
+            this.deps.notify("error", this.deps.t("invalidItem"));
+            return;
+        }
+        if (target.kind === "url") {
+            this.openForm(target.value, "url", null, {title: (text || target.value).slice(0, 120), docId: this.deps.currentDocId() ?? undefined});
+        } else {
+            this.openForm(`[${text || "资源"}](${target.value})`, "asset", null, {title: (text || target.value).slice(0, 120), docId: this.deps.currentDocId() ?? undefined});
+        }
+    }
+
     /** 捕获当前块：光标所在块整体作为条目（选区文本优先级低于整块语义） */
     async captureCurrentBlock(): Promise<void> {
         const blockId = this.deps.getSelectionText().blockId;
@@ -100,7 +140,7 @@ export class CaptureDialog {
         this.openForm(doc.content, "markdown", null, {title, docId});
     }
 
-    openForm(defaultText: string, defaultType: ItemType, sourceBlockId: string | null, overrides?: {title?: string; docId?: string}): void {
+    openForm(defaultText: string, defaultType: ItemType, sourceBlockId: string | null, overrides?: {title?: string; docId?: string; targetBlockId?: string}): void {
         const t = this.deps.t;
         const dialog = new Dialog({
             title: t("newItem"),
@@ -285,6 +325,7 @@ export class CaptureDialog {
                     alias: (aliasEl as HTMLInputElement).value || undefined,
                     tags: (tagsEl as HTMLInputElement).value ? (tagsEl as HTMLInputElement).value.split(/[,,]/).map((s) => s.trim()).filter(Boolean) : undefined,
                     category: (categoryEl as HTMLInputElement).value || undefined,
+                    targetBlockId: overrides?.targetBlockId,
                     source: docId ? {sourceDocId: docId, sourceBlockId: sourceBlockId ?? undefined, sourceType: overrides?.docId ? "doc-fragment" : sourceBlockId ? "selection" : "manual"} : undefined,
                 }).then((result) => {
                     if (result.ok) {

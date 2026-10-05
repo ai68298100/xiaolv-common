@@ -178,5 +178,7 @@
   "clearRecentsDone": "已清空最近使用",
   "insertMenu": "插入常用条目…",
   "clearSource": "清除来源引用",
-  "clearSourceDone": "已清除来源引用"
+  "clearSourceDone": "已清除来源引用",
+  "captureBlockRefMenu": "存为常用块引用",
+  "captureLinkMenu": "存链接为常用条目"
 }
