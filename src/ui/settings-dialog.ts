@@ -120,7 +120,7 @@ function buildProviderSection(ctx: SettingsUiContext, root: HTMLElement): void {
     if (providers.length === 0) {
         const empty = document.createElement("div");
         empty.className = "xlc-form-hint";
-        empty.textContent = t("libraryNone");
+        empty.textContent = t("providerNone");
         provSec.appendChild(empty);
     } else {
         for (const p of providers) {

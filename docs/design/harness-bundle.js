@@ -1068,6 +1068,15 @@
       };
       rebuild(buildDefault);
       ((_b = (_a = this.dialog) == null ? void 0 : _a.element) != null ? _b : document.body).appendChild(menu);
+      const escHandler = (e) => {
+        var _a2;
+        if (e.key === "Escape") {
+          e.preventDefault();
+          (_a2 = this.menuDismiss) == null ? void 0 : _a2.call(this);
+          this.menuDismiss = null;
+        }
+      };
+      menu.addEventListener("keydown", escHandler);
       const dismiss = (e) => {
         if (!menu.contains(e.target)) {
           menu.remove();
@@ -1539,7 +1548,7 @@
     if (providers.length === 0) {
       const empty = document.createElement("div");
       empty.className = "xlc-form-hint";
-      empty.textContent = t("libraryNone");
+      empty.textContent = t("providerNone");
       provSec.appendChild(empty);
     } else {
       for (const p of providers) {

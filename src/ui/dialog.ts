@@ -892,6 +892,15 @@ export class CommonSearchDialog {
 
         rebuild(buildDefault);
         (this.dialog?.element ?? document.body).appendChild(menu);
+        // Esc 关闭动作菜单（键盘可达性；焦点仍在菜单内按钮上时同样生效）
+        const escHandler = (e: KeyboardEvent) => {
+            if (e.key === "Escape") {
+                e.preventDefault();
+                this.menuDismiss?.();
+                this.menuDismiss = null;
+            }
+        };
+        menu.addEventListener("keydown", escHandler);
         const dismiss = (e: Event) => {
             if (!menu.contains(e.target as Node)) {
                 menu.remove();
