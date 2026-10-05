@@ -293,6 +293,8 @@
       /** 动作菜单 document 监听兜底清理（destroy 时调用；防键盘关弹窗残留监听） */
       this.menuDismiss = null;
       this.inputDebounce = null;
+      /** IME 组合输入中（中文输入法组词期间跳过刷新，compositionend 后统一刷新） */
+      this.isComposing = false;
       this.ctx = ctx;
     }
     open() {
@@ -339,8 +341,18 @@
       input.setAttribute("aria-label", this.deps.t("searchPlaceholder"));
       input.addEventListener("input", () => {
         this.currentScope = "all";
+        if (this.isComposing) return;
         if (this.inputDebounce) clearTimeout(this.inputDebounce);
         this.inputDebounce = setTimeout(() => void this.refresh(), 200);
+      });
+      input.addEventListener("compositionstart", () => {
+        this.isComposing = true;
+      });
+      input.addEventListener("compositionend", () => {
+        this.isComposing = false;
+        this.currentScope = "all";
+        if (this.inputDebounce) clearTimeout(this.inputDebounce);
+        this.inputDebounce = setTimeout(() => void this.refresh(), 50);
       });
       input.addEventListener("keydown", (e) => void this.onKeydown(e));
       search.appendChild(qMark);

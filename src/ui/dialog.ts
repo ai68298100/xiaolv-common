@@ -69,6 +69,8 @@ export class CommonSearchDialog {
     /** 动作菜单 document 监听兜底清理（destroy 时调用；防键盘关弹窗残留监听） */
     private menuDismiss: (() => void) | null = null;
     private inputDebounce: ReturnType<typeof setTimeout> | null = null;
+    /** IME 组合输入中（中文输入法组词期间跳过刷新，compositionend 后统一刷新） */
+    private isComposing = false;
 
     constructor(private readonly deps: DialogDeps, ctx: SearchContext) {
         this.ctx = ctx;
@@ -121,9 +123,21 @@ export class CommonSearchDialog {
         input.setAttribute("aria-label", this.deps.t("searchPlaceholder"));
         input.addEventListener("input", () => {
             this.currentScope = "all";
+            // IME 组合输入（中文输入法组词）期间跳过刷新——候选词未上屏不过滤；
+            // compositionend 后统一刷新一次
+            if (this.isComposing) return;
             // 200ms 输入防抖（雷切同款预算）：本地过滤本身便宜，但 ? 语义找/provider 请求每键一次不可接受
             if (this.inputDebounce) clearTimeout(this.inputDebounce);
             this.inputDebounce = setTimeout(() => void this.refresh(), 200);
+        });
+        input.addEventListener("compositionstart", () => {
+            this.isComposing = true;
+        });
+        input.addEventListener("compositionend", () => {
+            this.isComposing = false;
+            this.currentScope = "all";
+            if (this.inputDebounce) clearTimeout(this.inputDebounce);
+            this.inputDebounce = setTimeout(() => void this.refresh(), 50);
         });
         input.addEventListener("keydown", (e) => void this.onKeydown(e));
         search.appendChild(qMark);
