@@ -314,6 +314,16 @@ export class CaptureDialog {
         const saveBtn = document.createElement("button");
         saveBtn.className = "b3-button b3-button--text";
         saveBtn.textContent = t("save");
+        // 单行输入 Enter 提交（内容 textarea 换行合法，不绑）
+        const submitOnEnter = (el: HTMLInputElement): void => {
+            el.addEventListener("keydown", (ev) => {
+                if (ev.key === "Enter" && !ev.altKey && !ev.ctrlKey && !ev.metaKey) {
+                    ev.preventDefault();
+                    saveBtn.click();
+                }
+            });
+        };
+        [titleEl, aliasEl, tagsEl, categoryEl].forEach((el) => submitOnEnter(el as HTMLInputElement));
         saveBtn.addEventListener("click", () => {
             const contentValue = (contentEl as HTMLTextAreaElement).value;
             if (!contentValue.trim()) {

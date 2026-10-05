@@ -1,0 +1,20 @@
+{
+  "name": "xiaolv-provider-example",
+  "author": "ai68298100",
+  "url": "https://github.com/ai68298100/xiaolv-common",
+  "version": "0.1.0",
+  "minAppVersion": "3.8.0",
+  "displayName": {
+    "default": "LvProvider Example",
+    "zh-CN": "提供方示例"
+  },
+  "description": {
+    "default": "Minimal example: registers a content provider into LvCommon (xiaolv-common/v1). Copy this pattern into your own plugin.",
+    "zh-CN": "最小示例：向小驴常用注册内容提供方（xiaolv-common/v1）。把此模式复制到你的插件即可。"
+  },
+  "readme": {
+    "default": "README.md"
+  },
+  "icons": ["icon.png"],
+  "keywords": ["example", "xiaolv"]
+}

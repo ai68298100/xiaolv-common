@@ -2333,6 +2333,15 @@
       const saveBtn = document.createElement("button");
       saveBtn.className = "b3-button b3-button--text";
       saveBtn.textContent = t("save");
+      const submitOnEnter = (el) => {
+        el.addEventListener("keydown", (ev) => {
+          if (ev.key === "Enter" && !ev.altKey && !ev.ctrlKey && !ev.metaKey) {
+            ev.preventDefault();
+            saveBtn.click();
+          }
+        });
+      };
+      [titleEl, aliasEl, tagsEl, categoryEl].forEach((el) => submitOnEnter(el));
       saveBtn.addEventListener("click", () => {
         const contentValue = contentEl.value;
         if (!contentValue.trim()) {
