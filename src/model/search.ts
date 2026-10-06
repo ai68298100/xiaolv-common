@@ -16,10 +16,12 @@ export interface SearchContext {
     favorites: ReadonlySet<string>;
     /** 逻辑 ID → 最近使用时间戳 */
     recents: ReadonlyMap<string, number>;
+    /** 逻辑 ID → 使用次数（F3「常用」排序用；侧车，可重建） */
+    usage?: ReadonlyMap<string, number>;
     /** 手动排序（收藏序/置顶顺序），sort=manual 时生效 */
     manualOrder?: ReadonlyMap<string, number>;
     /** 排序模式（title 仅在无关键词浏览时生效，有关键词保持相关度优先） */
-    sort?: "manual" | "recent" | "title";
+    sort?: "manual" | "recent" | "frequent" | "title";
     now: number;
 }
 
@@ -31,6 +33,8 @@ export type SearchEntry = Pick<CommonItem, "id" | "blockId" | "libraryDocId" | "
     /** 拼音注解（索引期由适配器生成；noop 适配器下不存在） */
     py?: string;
     pyi?: string;
+    /** ask 变量数（写入期落库属性；0/缺省=无徽标。行为以插入时现场内容为准） */
+    varCount?: number;
 };
 
 export interface ScoredResult {
@@ -106,6 +110,15 @@ function compareResults(a: ScoredResult, b: ScoredResult, ctx: SearchContext): n
         const mb = ctx.manualOrder?.get(b.entry.id) ?? Number.MAX_SAFE_INTEGER;
         if (ma !== mb) return ma - mb;
     }
+    // 常用排序（F3）：次数 > 最近使用 > 相关度/稳定序
+    if (ctx.sort === "frequent") {
+        const ca = ctx.usage?.get(a.entry.id) ?? 0;
+        const cb = ctx.usage?.get(b.entry.id) ?? 0;
+        if (cb !== ca) return cb - ca;
+        const ra = ctx.recents.get(a.entry.id) ?? 0;
+        const rb = ctx.recents.get(b.entry.id) ?? 0;
+        if (rb !== ra) return rb - ra;
+    }
     if (b.score !== a.score) return b.score - a.score;
     if (ctx.sort === "title" && a.score === 0 && b.score === 0) {
         return a.entry.title.localeCompare(b.entry.title, "zh-Hans-CN");
@@ -160,4 +173,11 @@ export function collectTags(entries: readonly SearchEntry[]): string[] {
     const tags = new Set<string>();
     for (const e of entries) for (const t of e.tags) tags.add(t);
     return Array.from(tags).sort((a, b) => a.localeCompare(b, "zh-Hans-CN"));
+}
+
+/** 从条目集合聚合分类面（分类筛选下拉用；F4） */
+export function collectCategories(entries: readonly SearchEntry[]): string[] {
+    const categories = new Set<string>();
+    for (const e of entries) if (e.category) categories.add(e.category);
+    return Array.from(categories).sort((a, b) => a.localeCompare(b, "zh-Hans-CN"));
 }

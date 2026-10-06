@@ -91,7 +91,10 @@ export default class XiaolvCommonPlugin extends Plugin {
         this.registry = new ProviderRegistry();
         this.registry.restore(this.state.providers);
         this.ai = new AiAssistant({request: (endpoint, payload) => kernel.request(endpoint as never, payload ?? {})}, this.state.ai);
-        this.executor = new ActionExecutor(this.library, this.host, this.notify, (item) => this.service.touchRecent(item.id), {
+        this.executor = new ActionExecutor(this.library, this.host, this.notify, (item) => {
+            this.service.touchRecent(item.id);
+            this.recordUsage(item.id);
+        }, {
             enabled: () => this.state.search.placeholders,
             now: () => new Date(),
             currentDoc: async () => {
@@ -101,6 +104,16 @@ export default class XiaolvCommonPlugin extends Plugin {
                 const path = await this.library.getDocPath(docId);
                 if (!path) return {title: "", path: ""};
                 return {title: path.split("/").filter(Boolean).pop() ?? path, path};
+            },
+            clipboard: async () => {
+                try {
+                    if (navigator.clipboard && window.isSecureContext) {
+                        return await navigator.clipboard.readText();
+                    }
+                } catch {
+                    // 权限/平台限制：诚实降级为空串（占位符语义与无文档一致）
+                }
+                return "";
             },
         });
         this.service = new XiaolvCommonService({
@@ -152,7 +165,7 @@ export default class XiaolvCommonPlugin extends Plugin {
             getBlockKramdown: async (blockId) => {
                 const kd = await this.library.getItemKramdown({
                     id: "xlc-proxy", blockId, libraryDocId: "", itemType: "text", title: "", alias: "",
-                    tags: [], category: "", summary: "", source: {sourceDocId: "", sourceBlockId: "", sourceType: "manual"},
+                    tags: [], category: "", summary: "", varCount: 0, source: {sourceDocId: "", sourceBlockId: "", sourceType: "manual"},
                     url: "", targetBlockId: "", createdAt: 0, updatedAt: 0, droppedFields: [],
                 });
                 return kd.ok ? kd.data : null;
@@ -483,11 +496,24 @@ export default class XiaolvCommonPlugin extends Plugin {
         return {
             favorites: new Set(this.state.favorites),
             recents: new Map(this.state.recents.map((r) => [r.id, r.usedAt])),
+            // 常用排序（F3）：使用计数（侧车，可重建）
+            usage: new Map(Object.entries(this.state.usage).map(([id, u]) => [id, u.count])),
             // 手动/置顶 = 收藏序（收藏顺序即置顶顺序）
             manualOrder: sort === "manual" ? new Map(this.state.favorites.map((id, i) => [id, i])) : undefined,
             sort,
             now: Date.now(),
         };
+    }
+
+    /** 使用计数（F3）：插入/复制成功 +1；侧车上限由 normalize 兜底 */
+    private recordUsage(itemId: string): void {
+        if (!this.state.insert.recordUsage) return;
+        const current = this.state.usage[itemId];
+        this.state.usage[itemId] = {
+            count: Math.min((current?.count ?? 0) + 1, 1_000_000),
+            lastAt: Date.now(),
+        };
+        this.persistSoon();
     }
 
     /** 预览文本的有界可丢弃缓存（60s TTL：同步变更后预览最多陈旧一分钟；插入/复制仍现场取正文） */
@@ -518,7 +544,7 @@ export default class XiaolvCommonPlugin extends Plugin {
                 const result = await this.library.searchDocs(k);
                 return result.ok ? result.data : [];
             },
-            insertToDoc: async (itemId, docId, hPath) => {
+            insertToDoc: async (itemId, docId, hPath, fills) => {
                 const got = await this.library.getItem(itemId);
                 if (!got.ok) {
                     this.notify("error", got.message);
@@ -535,8 +561,8 @@ export default class XiaolvCommonPlugin extends Plugin {
                         this.notify("error", kd.message);
                         return false;
                     }
-                    // 占位符语义与活动编辑器路径一致（R51：定向插入同样渲染 {{xlc:…}}）
-                    markdown = await this.executor.renderForInsert(kd.data, item);
+                    // 占位符语义与活动编辑器路径一致（R51/R67：定向插入同样渲染 {{xlc:…}} 与变量填充）
+                    markdown = await this.executor.renderForInsert(kd.data, item, fills);
                 }
                 try {
                     const inserted = await this.library.appendToDoc(markdown, docId);
@@ -659,13 +685,20 @@ export default class XiaolvCommonPlugin extends Plugin {
                 const idx = await this.library.ensureIndex();
                 return collectTags(idx.entries);
             },
+            getCategories: async () => {
+                const {collectCategories} = await import("./model/search");
+                const idx = await this.library.ensureIndex();
+                return collectCategories(idx.entries);
+            },
             getFilters: () => ({
                 type: this.state.uiPrefs.lastTypeFilter,
                 tag: this.state.uiPrefs.lastTagFilter,
+                category: this.state.uiPrefs.lastCategoryFilter,
             }),
             setFilters: (f) => {
                 this.state.uiPrefs.lastTypeFilter = (f.type === "" || isItemType(f.type) ? f.type : "") as typeof this.state.uiPrefs.lastTypeFilter;
                 this.state.uiPrefs.lastTagFilter = f.tag.slice(0, 64);
+                this.state.uiPrefs.lastCategoryFilter = f.category.slice(0, 64);
                 this.persistSoon();
             },
             getLastQuery: () => this.state.search.lastQuery,
@@ -685,7 +718,8 @@ export default class XiaolvCommonPlugin extends Plugin {
             },
             getSort: () => this.state.sort,
             cycleSort: () => {
-                const order = ["manual", "recent", "title"] as const;
+                // 手动/置顶 → 最近 → 常用（F3）→ 标题
+                const order = ["manual", "recent", "frequent", "title"] as const;
                 const idx = order.indexOf(this.state.sort);
                 this.state.sort = order[(idx + 1) % order.length];
                 this.persistSoon();
@@ -703,6 +737,20 @@ export default class XiaolvCommonPlugin extends Plugin {
                 this.notify(receipt.ok ? "info" : "error", msg);
                 return {ok: receipt.ok, message: msg};
             },
+            runActionWithFills: async (itemId, mode, fills) => {
+                const got = await this.library.getItem(itemId);
+                if (!got.ok) {
+                    this.notify("error", got.message);
+                    return {ok: false, message: got.message};
+                }
+                const receipt = await this.executor.run(got.data, mode, {fills});
+                const msg = receipt.ok
+                    ? this.receiptText(receipt.message, got.data.title, receipt.pendingVerification)
+                    : this.i18nFn()("kernelError", receipt.message);
+                this.notify(receipt.ok ? "info" : "error", msg);
+                return {ok: receipt.ok, message: msg};
+            },
+            promptVariables: () => this.state.insert.promptVariables,
             openSource: async (itemId) => {
                 const got = await this.library.getItem(itemId);
                 if (!got.ok) {

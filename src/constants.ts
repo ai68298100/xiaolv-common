@@ -15,6 +15,7 @@ export const ATTR = {
     category: "custom-xlc-category",
     srcDoc: "custom-xlc-src-doc",
     srcBlock: "custom-xlc-src-block",
+    vars: "custom-xlc-vars",
     url: "custom-xlc-url",
     target: "custom-xlc-target",
     created: "custom-xlc-created",
@@ -39,6 +40,9 @@ export const LIMITS = {
     maxImportBytes: 4 * 1024 * 1024,
     walkDepth: 8,
     kernelTimeoutMs: 8000,
+    askValueChars: 2000,
+    maxUsage: 2000,
+    maxAskFields: 16,
 } as const;
 
 export const STORAGE_KEYS = {

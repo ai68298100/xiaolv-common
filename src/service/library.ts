@@ -24,6 +24,7 @@ import {
 import {LibraryConfig} from "../model/storage";
 import {SearchEntry} from "../model/search";
 import {getPinyinAdapter} from "../model/pinyin";
+import {countAskFields} from "../model/variables";
 
 export interface IndexBuildResult {
     entries: SearchEntry[];
@@ -71,6 +72,7 @@ function toSearchEntry(item: CommonItem): SearchEntry {
         updatedAt: item.updatedAt,
         sourceDocId: item.source.sourceDocId,
         sourceBlockId: item.source.sourceBlockId,
+        varCount: item.varCount,
     };
 }
 
@@ -453,6 +455,9 @@ export class LibraryService {
         if (input.targetBlockId && isBlockId(input.targetBlockId)) attrs[ATTR.target] = input.targetBlockId;
         if (input.source?.sourceDocId && isBlockId(input.source.sourceDocId)) attrs[ATTR.srcDoc] = input.source.sourceDocId;
         if (input.source?.sourceBlockId && isBlockId(input.source.sourceBlockId)) attrs[ATTR.srcBlock] = input.source.sourceBlockId;
+        // ask 变量数徽标（写入期快照；code 条目不处理变量，恒 0）
+        const varCount = input.itemType === "code" ? 0 : countAskFields(input.markdown);
+        if (varCount > 0) attrs[ATTR.vars] = String(Math.min(varCount, LIMITS.maxAskFields));
 
         let insertResp;
         try {
@@ -505,6 +510,11 @@ export class LibraryService {
         if (patch.category !== undefined) attrs[ATTR.category] = patch.category.slice(0, LIMITS.category);
         if (patch.url !== undefined) attrs[ATTR.url] = patch.url.slice(0, 2048);
         if (patch.targetBlockId !== undefined && isBlockId(patch.targetBlockId)) attrs[ATTR.target] = patch.targetBlockId;
+        // 内容变更时重算 ask 变量数徽标（code 恒 0；未改内容不写）
+        if (typeof patch.markdown === "string" && patch.markdown) {
+            const varCount = item.itemType === "code" ? 0 : countAskFields(patch.markdown);
+            if (varCount > 0) attrs[ATTR.vars] = String(Math.min(varCount, LIMITS.maxAskFields));
+        }
         try {
             await this.kernel.request("setBlockAttrs", {id: item.blockId, attrs});
             if (typeof patch.markdown === "string" && patch.markdown) {

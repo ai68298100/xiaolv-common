@@ -7,15 +7,15 @@ import type {SearchEntry} from "../../src/model/search";
 import type {TransformKind} from "../../src/service/ai";
 
 const ENTRIES: SearchEntry[] = [
-    {id: "xlc-demo0000001", blockId: "20240101120000-aaaaaaa", libraryDocId: "20240101120001-hijklmn", itemType: "markdown", title: "项目延期道歉与补偿方案", alias: "延期道歉", tags: ["客户沟通", "模板"], category: "客服", summary: "尊敬的王总：关于本期交付延期……", createdAt: 1, updatedAt: 2, sourceDocId: "20240101120001-hijklmn", sourceBlockId: "20240101120002-bbbbbbb"},
+    {id: "xlc-demo0000001", blockId: "20240101120000-aaaaaaa", libraryDocId: "20240101120001-hijklmn", itemType: "markdown", title: "项目延期道歉与补偿方案", alias: "延期道歉", tags: ["客户沟通", "模板"], category: "客服", summary: "尊敬的王总：关于本期交付延期……", createdAt: 1, updatedAt: 2, sourceDocId: "20240101120001-hijklmn", sourceBlockId: "20240101120002-bbbbbbb", varCount: 2},
     {id: "xlc-demo0000002", blockId: "20240101120000-ccccccc", libraryDocId: "20240101120001-hijklmn", itemType: "text", title: "延期简短版（IM 用）", alias: "", tags: [], category: "", summary: "您好，本次迭代因联调超期，上线推迟 2 天……", createdAt: 1, updatedAt: 2},
-    {id: "xlc-demo0000003", blockId: "20240101120000-ddddddd", libraryDocId: "20240101120001-hijklmn", itemType: "code", title: "SQL 分页模板", alias: "", tags: ["开发"], category: "", summary: "SELECT * FROM t LIMIT …", createdAt: 1, updatedAt: 2},
+    {id: "xlc-demo0000003", blockId: "20240101120000-ddddddd", libraryDocId: "20240101120001-hijklmn", itemType: "code", title: "SQL 分页模板", alias: "", tags: ["开发"], category: "开发", summary: "SELECT * FROM t LIMIT …", createdAt: 1, updatedAt: 2},
     {id: "xlc-demo0000004", blockId: "20240101120000-eeeeeee", libraryDocId: "20240101120001-hijklmn", itemType: "blockref", title: "产品需求模板（引用）", alias: "", tags: [], category: "", summary: "", createdAt: 1, updatedAt: 2, targetBlockId: "20240101120002-bbbbbbb" as unknown as string},
     {id: "xlc-demo0000005", blockId: "20240101120000-fffffff", libraryDocId: "20240101120001-hijklmn", itemType: "url", title: "SLA 赔付标准文档", alias: "", tags: [], category: "", summary: "https://wiki.example.com/sla", createdAt: 1, updatedAt: 2, url: "https://wiki.example.com/sla"},
 ];
 
 const PREVIEWS: Record<string, string> = {
-    "xlc-demo0000001": "尊敬的王总：\n\n关于本期「会员系统」交付延期，我们深表歉意。经复盘，主要原因为第三方支付联调超期。目前联调已完成 92%，预计推迟 2 个工作日上线。\n\n为弥补影响，我们提供以下补偿：\n1. 本期服务费减免 5%；\n2. 上线后 48 小时专属值守；\n3. 下期迭代优先排入贵方需求。\n\n再次感谢理解与支持，有任何问题随时联系我。",
+    "xlc-demo0000001": "尊敬的 {{xlc:ask:客户名称}}：\n\n关于本期「会员系统」交付延期，我们深表歉意。经复盘，主要原因为第三方支付联调超期。目前联调已完成 92%，预计推迟 2 个工作日上线。\n\n为弥补影响，我们提供以下补偿：\n1. 本期服务费减免 {{xlc:ask:补偿比例|5%,10%}}；\n2. 上线后 48 小时专属值守；\n3. 下期迭代优先排入贵方需求。\n\n再次感谢理解与支持，有任何问题随时联系我。{{xlc:cursor}}",
     "xlc-demo0000002": "您好，本次迭代因联调超期，上线推迟 2 天。给您带来不便深表歉意，有问题随时找我。",
     "xlc-demo0000003": "```sql\nSELECT * FROM articles\nWHERE status = 'published'\nORDER BY updated_at DESC\nLIMIT 20 OFFSET 40;\n```",
     "xlc-demo0000004": "（引用语法预览）((20240101120002-bbbbbbb '产品需求模板'))",
@@ -43,6 +43,19 @@ const T = (key: string, ...args: string[]): string => {
         saved: "已保存：%s",
         dataTruth: "思源块真源 · 失效可见", adoptAll: "全部采纳", actionsNoun: "动作",
         semanticSuggestion: "没有本地结果。试试 AI 语义找：在关键词前加 ?", aiSemanticHint: "输入 ? 加描述，如「?给客户的道歉回复」，AI 在元数据中找最相关条目",
+        varCountBadge: "%s 变量", paneVarsLabel: "插入时将询问 %s 个变量：", insertVariable: "插入变量：",
+        varFormTitle: "填写变量", varFormSub: "本条目含 %s 个变量，填写后一次性插入；填写值仅用于本次，不回写库。", varFormHint: "Tab 下一项 · Enter 插入",
+        groupPinned: "置顶", groupAll: "全部", insertSection: "变量与插入",
+        promptVariablesToggle: "插入前询问变量", promptVariablesSub: "含 {{xlc:ask:…}} 的条目插入前弹出填充卡片",
+        recordUsageToggle: "记录使用次数", recordUsageSub: "仅本地存储，可一键清除；用于「常用」排序",
+        usageStatsHint: "使用统计仅保存在本机", clearUsageBtn: "清空使用统计", clearUsageConfirm: "清空全部使用计数？", clearUsageDone: "已清空使用统计",
+        importPolicySkipDesc: "同名同源条目不动，仅新增缺失项", importPolicyOverwriteDesc: "以导入内容更新现有条目（原文块被改写）", importPolicyRenameDesc: "导入项加「导入」后缀，现有条目不受影响",
+        recommended: "推荐", importReceiptHint: "导入完成将逐项回执：新增 / 跳过 / 覆盖 / 改名 / 失败",
+        setupModeLabel: "库方式", setupStep1: "第 1 步 · 选择库方式", setupStep2: "第 2 步 · 确认落点",
+        setupNext: "下一步：确认", setupBack: "上一步", setupFinish: "完成设置", setupLater: "稍后再说",
+        setupConfirmHint: "创建动作有明确 confirm 提示 · 不动你已有的任何文档；之后可在 设置 → 当前内容库 更改。",
+        setupSummaryDoc: "条目将以真实块保存于此文档", setupSummaryNotebook: "整个笔记本作为内容库",
+        create: "创建",
         "sort.manual": "手动/置顶", "sort.recent": "最近使用", "sort.title": "标题",
         totalItems: "共 %s 条",
         duplicateItem: "创建副本", insertToDoc: "插入到指定文档", insertToDocPick: "选择目标文档（输入关键词搜索）",
@@ -72,8 +85,13 @@ function makeDeps(overrides: {aiEnabled?: boolean; missing?: boolean; mobile?: b
             ? {entries: [], truncated: false, total: 0}
             : {entries: ENTRIES, truncated: false, total: 128},
         getTags: async () => ["客户沟通", "模板", "开发"],
+        getCategories: async () => ["客服", "开发"],
         preview: async (itemId: string) => PREVIEWS[itemId] ?? "",
         runAction: async () => ({ok: true, message: "inserted"}),
+        runActionWithFills: async (_itemId: string, _mode: string, fills?: Record<string, string>) => {
+            (window as unknown as {__xlcLastFills?: Record<string, string>}).__xlcLastFills = fills;
+            return {ok: true, message: "inserted"};
+        },
         openSource: async () => ({ok: true, message: "opened"}),
         editItem: async () => {},
         deleteItem: async () => {},
@@ -86,12 +104,13 @@ function makeDeps(overrides: {aiEnabled?: boolean; missing?: boolean; mobile?: b
         insertToDoc: async () => true,
         duplicateItem: async () => {},
         saveTransformed: async () => {},
-        getFilters: () => ({type: "", tag: ""}),
+        getFilters: () => ({type: "", tag: "", category: ""}),
         setFilters: () => {},
         getLastQuery: () => "",
         setLastQuery: () => {},
         insertTarget: null,
         openSetup: () => {},
+        promptVariables: () => true,
         providerSearch: async (query: string) => query.includes("工作台") ? [
             {virtualId: "pv:xiaolv-speed-switch:1", providerId: "xiaolv-speed-switch", providerName: "小驴雷切", title: "当前工作台", payload: "快速回到工作台布局（提供方演示数据）"},
             {virtualId: "pv:xiaolv-checkin:1", providerId: "xiaolv-checkin", providerName: "小驴打卡", title: "今日打卡状态", payload: "已完成 3/4 项习惯打卡（提供方演示数据）"},
@@ -133,11 +152,12 @@ function makeDeps(overrides: {aiEnabled?: boolean; missing?: boolean; mobile?: b
             t: T,
             state: {
                 schemaVersion: 2,
-                favorites: [], recents: [], sort: "manual",
-                uiPrefs: {lastTypeFilter: "", lastTagFilter: ""},
+                favorites: [], recents: [], usage: {}, sort: "manual",
+                uiPrefs: {lastTypeFilter: "", lastTagFilter: "", lastCategoryFilter: ""},
                 providers: [{pluginId: "xiaolv-checkin", displayName: "小驴打卡", protocolVersion: 1, registeredAt: 1}],
                 ai: {enabled: true, shareContent: true},
                 search: {pinyin: true, placeholders: true},
+                insert: {promptVariables: true, recordUsage: true},
             },
             getConfig: () => ({configVersion: 1, mode: "doc", notebookIds: [], containerDocIds: ["20240101120001-hijklmn"], createdDocIds: [], configuredAt: 1}),
             library: {
@@ -166,9 +186,10 @@ function makeDeps(overrides: {aiEnabled?: boolean; missing?: boolean; mobile?: b
             t: T,
             state: {
                 schemaVersion: 2,
-                favorites: [], recents: [], sort: "manual",
-                uiPrefs: {lastTypeFilter: "", lastTagFilter: ""},
+                favorites: [], recents: [], usage: {}, sort: "manual",
+                uiPrefs: {lastTypeFilter: "", lastTagFilter: "", lastCategoryFilter: ""},
                 providers: [], ai: {enabled: false, shareContent: false}, search: {pinyin: true, placeholders: true},
+                insert: {promptVariables: true, recordUsage: true},
             },
             getConfig: () => null,
             library: {

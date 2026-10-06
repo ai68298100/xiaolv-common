@@ -14,6 +14,29 @@ import {CommonItem} from "../model/item";
 
 type TFn = (key: string, ...args: string[]) => string;
 
+/** 开关行统一构造（文本+说明在左，开关右贴；input 语义不变） */
+function buildSwitchRow(text: string, sub: string | null, checked: boolean, onChange: (value: boolean) => void): HTMLLabelElement {
+    const row = document.createElement("label");
+    row.className = "xlc-setting-row";
+    const cap = document.createElement("span");
+    cap.className = "xlc-setting-text";
+    cap.textContent = text;
+    if (sub) {
+        const subEl = document.createElement("div");
+        subEl.className = "xlc-setting-sub";
+        subEl.textContent = sub;
+        cap.appendChild(subEl);
+    }
+    const box = document.createElement("input");
+    box.type = "checkbox";
+    box.className = "xlc-switch";
+    box.checked = checked;
+    box.addEventListener("change", () => onChange(box.checked));
+    row.appendChild(cap);
+    row.appendChild(box);
+    return row;
+}
+
 export interface SettingsUiContext {
     t: TFn;
     state: PluginState;
@@ -32,7 +55,7 @@ export interface SettingsUiContext {
     applyPinyinAdapter(): void;
 }
 
-/** 首次引导（仅库选择；完整设置见 openSettingsDialog） */
+/** 首次引导（仅库选择，两步式；完整设置见 openSettingsDialog） */
 export function openSetupDialog(ctx: SettingsUiContext): void {
     const t = ctx.t;
     const dialog = new Dialog({
@@ -46,12 +69,7 @@ export function openSetupDialog(ctx: SettingsUiContext): void {
     body.innerHTML = "";
     const root = document.createElement("div");
     root.className = "xlc-form";
-
-    const hint = document.createElement("p");
-    hint.className = "xlc-form-hint";
-    hint.textContent = t("setupHint");
-    root.appendChild(hint);
-    buildLibraryPickerSection(ctx, root, () => dialog.destroy());
+    buildLibraryPickerSection(ctx, root, () => dialog.destroy(), {onDismiss: () => dialog.destroy()});
     body.appendChild(root);
 }
 
@@ -102,10 +120,59 @@ export function openSettingsDialog(ctx: SettingsUiContext): void {
     root.appendChild(libSec);
 
     buildAiSection(ctx, root);
+    buildInsertSection(ctx, root);
     buildSearchSection(ctx, root);
     buildProviderSection(ctx, root);
     buildDataSection(ctx, root);
     body.appendChild(root);
+}
+
+/** 变量与插入（F1/F3，原型屏 5）：插入前询问 / 使用计数开关 / 清空统计 */
+function buildInsertSection(ctx: SettingsUiContext, root: HTMLElement): void {
+    const t = ctx.t;
+    const sec = document.createElement("div");
+    sec.className = "xlc-form-field xlc-card";
+    const label = document.createElement("span");
+    label.className = "xlc-form-label";
+    label.textContent = t("insertSection");
+    sec.appendChild(label);
+    sec.appendChild(buildSwitchRow(
+        t("promptVariablesToggle"),
+        t("promptVariablesSub"),
+        ctx.state.insert.promptVariables,
+        (value) => {
+            ctx.state.insert.promptVariables = value;
+            ctx.persistSoon();
+        },
+    ));
+    sec.appendChild(buildSwitchRow(
+        t("recordUsageToggle"),
+        t("recordUsageSub"),
+        ctx.state.insert.recordUsage,
+        (value) => {
+            ctx.state.insert.recordUsage = value;
+            ctx.persistSoon();
+        },
+    ));
+    const foot = document.createElement("div");
+    foot.className = "xlc-setting-row";
+    const hint = document.createElement("span");
+    hint.className = "xlc-setting-text";
+    hint.textContent = t("usageStatsHint");
+    foot.appendChild(hint);
+    const clearBtn = document.createElement("button");
+    clearBtn.className = "b3-button";
+    clearBtn.textContent = t("clearUsageBtn");
+    clearBtn.addEventListener("click", () => {
+        confirm("⚠️ " + t("clearUsageBtn"), t("clearUsageConfirm"), () => {
+            ctx.state.usage = {};
+            ctx.persistSoon();
+            ctx.notify("info", t("clearUsageDone"));
+        });
+    });
+    foot.appendChild(clearBtn);
+    sec.appendChild(foot);
+    root.appendChild(sec);
 }
 
 /** 内容提供方列表：注册状态一目了然（可执行 = 本次会话已接线；待重载 = 提供方需重新 register） */
@@ -140,16 +207,53 @@ function buildProviderSection(ctx: SettingsUiContext, root: HTMLElement): void {
     root.appendChild(provSec);
 }
 
-/** 库选择器（首跑引导与「更改库」共用；onConfigured 在配置落地后回调） */
-function buildLibraryPickerSection(ctx: SettingsUiContext, root: HTMLElement, onConfigured: () => void): void {
-    const t = ctx.t;
+/** 步骤指示（原型屏 6）：dot(+状态) — 线 — dot + 文案 */
+function buildStepsEl(current: 1 | 2, caption: string): HTMLElement {
+    const steps = document.createElement("div");
+    steps.className = "xlc-steps";
+    const dot1 = document.createElement("span");
+    dot1.className = "xlc-step-dot" + (current === 1 ? " xlc-step-dot--on" : "");
+    dot1.textContent = current === 1 ? "1" : "✓";
+    steps.appendChild(dot1);
+    const line = document.createElement("span");
+    line.className = "xlc-step-line";
+    steps.appendChild(line);
+    const dot2 = document.createElement("span");
+    dot2.className = "xlc-step-dot" + (current === 2 ? " xlc-step-dot--on" : "");
+    dot2.textContent = "2";
+    steps.appendChild(dot2);
+    const cap = document.createElement("span");
+    cap.className = "xlc-step-cap";
+    cap.textContent = caption;
+    steps.appendChild(cap);
+    return steps;
+}
 
-    // 模式选择
+/**
+ * 库选择器（首跑引导与「更改库」共用；onConfigured 在配置落地后回调）。
+ * 两步式（原型屏 6）：① 选库方式（文档选择器/笔记本/新建）→ ② 确认落点后写入。
+ * 创建新库文档仍为立即动作（confirm 后直达配置）。onDismiss 提供「稍后再说」。
+ */
+function buildLibraryPickerSection(ctx: SettingsUiContext, root: HTMLElement, onConfigured: () => void, opts?: {onDismiss?: () => void}): void {
+    const t = ctx.t;
+    let step: 1 | 2 = 1;
+    let pickedDoc: {id: string; hPath: string} | null = null;
+
+    const stepsEl = buildStepsEl(1, t("setupStep1"));
+    root.appendChild(stepsEl);
+    const hint = document.createElement("p");
+    hint.className = "xlc-form-hint";
+    hint.style.marginBottom = "12px";
+    hint.textContent = t("setupHint");
+    root.appendChild(hint);
+
+    // ---- 第 1 步：选库方式 ----
+    const step1 = document.createElement("div");
     const modeWrap = document.createElement("div");
     modeWrap.className = "xlc-form-field";
     const modeLabel = document.createElement("span");
     modeLabel.className = "xlc-form-label";
-    modeLabel.textContent = t("setupTitle");
+    modeLabel.textContent = t("setupModeLabel");
     modeWrap.appendChild(modeLabel);
     const modeSelect = document.createElement("select");
     modeSelect.className = "b3-select";
@@ -165,78 +269,9 @@ function buildLibraryPickerSection(ctx: SettingsUiContext, root: HTMLElement, on
         modeSelect.appendChild(opt);
     }
     modeWrap.appendChild(modeSelect);
-    root.appendChild(modeWrap);
+    step1.appendChild(modeWrap);
 
-    // 笔记本下拉
-    const nbWrap = document.createElement("div");
-    nbWrap.className = "xlc-form-field";
-    const nbLabel = document.createElement("span");
-    nbLabel.className = "xlc-form-label";
-    nbLabel.textContent = t("setupNotebook");
-    nbWrap.appendChild(nbLabel);
-    const nbSelect = document.createElement("select");
-    nbSelect.className = "b3-select";
-    nbWrap.appendChild(nbSelect);
-    root.appendChild(nbWrap);
-    void ctx.library.listNotebooks().then((result) => {
-        if (!result.ok) {
-            ctx.notify("error", t("kernelError", result.message));
-            return;
-        }
-        for (const nb of result.data) {
-            const opt = document.createElement("option");
-            opt.value = nb.id;
-            opt.textContent = nb.name;
-            nbSelect.appendChild(opt);
-        }
-    });
-
-    // 新建文档名
-    const nameWrap = document.createElement("div");
-    nameWrap.className = "xlc-form-field";
-    const nameLabel = document.createElement("span");
-    nameLabel.className = "xlc-form-label";
-    nameLabel.textContent = t("setupNewDoc");
-    nameWrap.appendChild(nameLabel);
-    const nameInput = document.createElement("input");
-    nameInput.className = "b3-text-field";
-    nameInput.value = t("setupNewDocName");
-    nameWrap.appendChild(nameInput);
-    root.appendChild(nameWrap);
-
-    const actions = document.createElement("div");
-    actions.className = "xlc-form-actions";
-    const createBtn = document.createElement("button");
-    createBtn.className = "b3-button xlc-btn-primary";
-    createBtn.textContent = t("setupNewDoc");
-    createBtn.addEventListener("click", () => {
-        const notebookId = nbSelect.value;
-        const title = nameInput.value.trim();
-        if (!notebookId || !title) {
-            ctx.notify("error", t("invalidItem"));
-            return;
-        }
-        // 创建前明确确认（不静默写入）
-        confirm("⚠️ " + t("setupTitle"), t("setupConfirmCreate", title), () => {
-            void ctx.library.createLibraryDoc(notebookId, title).then((result) => {
-                if (!result.ok) {
-                    ctx.notify("error", t("kernelError", result.message));
-                    return;
-                }
-                ctx.applyConfig({
-                    configVersion: CONFIG_VERSION,
-                    mode: "doc",
-                    notebookIds: [],
-                    containerDocIds: [result.data.docId],
-                    createdDocIds: [result.data.docId],
-                    configuredAt: Date.now(),
-                });
-                ctx.notify("info", t("libDocCreated", title));
-                onConfigured();
-            });
-        });
-    });
-    // doc/tree 模式：文档选择器（searchDocs 关键词搜索 → 点选使用）
+    // doc/tree：文档选择器（searchDocs 关键词搜索 → 点选使用）
     const pickerWrap = document.createElement("div");
     pickerWrap.className = "xlc-form-field";
     const pickerInput = document.createElement("input");
@@ -246,8 +281,7 @@ function buildLibraryPickerSection(ctx: SettingsUiContext, root: HTMLElement, on
     const pickerList = document.createElement("div");
     pickerList.className = "xlc-doclist";
     pickerWrap.appendChild(pickerList);
-    root.appendChild(pickerWrap);
-    let pickedDoc: {id: string; hPath: string} | null = null;
+    step1.appendChild(pickerWrap);
     let pickerSeq = 0;
     pickerInput.addEventListener("input", () => {
         const seq = ++pickerSeq;
@@ -278,10 +312,137 @@ function buildLibraryPickerSection(ctx: SettingsUiContext, root: HTMLElement, on
             }
         });
     });
-    const useNotebookBtn = document.createElement("button");
-    useNotebookBtn.className = "b3-button b3-button--text";
-    useNotebookBtn.textContent = t("confirm");
-    useNotebookBtn.addEventListener("click", () => {
+
+    // notebook：笔记本下拉
+    const nbWrap = document.createElement("div");
+    nbWrap.className = "xlc-form-field";
+    nbWrap.style.display = "none";
+    const nbLabel = document.createElement("span");
+    nbLabel.className = "xlc-form-label";
+    nbLabel.textContent = t("setupNotebook");
+    nbWrap.appendChild(nbLabel);
+    const nbSelect = document.createElement("select");
+    nbSelect.className = "b3-select";
+    nbWrap.appendChild(nbSelect);
+    step1.appendChild(nbWrap);
+    void ctx.library.listNotebooks().then((result) => {
+        if (!result.ok) {
+            ctx.notify("error", t("kernelError", result.message));
+            return;
+        }
+        for (const nb of result.data) {
+            const opt = document.createElement("option");
+            opt.value = nb.id;
+            opt.textContent = nb.name;
+            nbSelect.appendChild(opt);
+        }
+    });
+    const syncModeUi = (): void => {
+        const notebook = modeSelect.value === "notebook";
+        pickerWrap.style.display = notebook ? "none" : "";
+        nbWrap.style.display = notebook ? "" : "none";
+    };
+    modeSelect.addEventListener("change", syncModeUi);
+    syncModeUi();
+
+    // 新建库文档（立即动作：confirm → 创建 → 配置落地）
+    const nameWrap = document.createElement("div");
+    nameWrap.className = "xlc-form-field";
+    const nameLabel = document.createElement("span");
+    nameLabel.className = "xlc-form-label";
+    nameLabel.textContent = t("setupNewDoc");
+    nameWrap.appendChild(nameLabel);
+    const nameRow = document.createElement("div");
+    nameRow.className = "xlc-form-row";
+    const nameInput = document.createElement("input");
+    nameInput.className = "b3-text-field";
+    nameInput.value = t("setupNewDocName");
+    nameRow.appendChild(nameInput);
+    const createBtn = document.createElement("button");
+    createBtn.className = "b3-button";
+    createBtn.style.whiteSpace = "nowrap";
+    createBtn.textContent = t("create");
+    createBtn.addEventListener("click", () => {
+        const notebookId = nbSelect.value;
+        const title = nameInput.value.trim();
+        if (!notebookId || !title) {
+            ctx.notify("error", t("invalidItem"));
+            return;
+        }
+        // 创建前明确确认（不静默写入）
+        confirm("⚠️ " + t("setupTitle"), t("setupConfirmCreate", title), () => {
+            void ctx.library.createLibraryDoc(notebookId, title).then((result) => {
+                if (!result.ok) {
+                    ctx.notify("error", t("kernelError", result.message));
+                    return;
+                }
+                ctx.applyConfig({
+                    configVersion: CONFIG_VERSION,
+                    mode: "doc",
+                    notebookIds: [],
+                    containerDocIds: [result.data.docId],
+                    createdDocIds: [result.data.docId],
+                    configuredAt: Date.now(),
+                });
+                ctx.notify("info", t("libDocCreated", title));
+                onConfigured();
+            });
+        });
+    });
+    nameRow.appendChild(createBtn);
+    nameWrap.appendChild(nameRow);
+    step1.appendChild(nameWrap);
+
+    const step1Actions = document.createElement("div");
+    step1Actions.className = "xlc-form-actions";
+    if (opts?.onDismiss) {
+        const dismissBtn = document.createElement("button");
+        dismissBtn.className = "b3-button xlc-btn-ghost";
+        dismissBtn.textContent = t("setupLater");
+        dismissBtn.addEventListener("click", () => opts.onDismiss?.());
+        step1Actions.appendChild(dismissBtn);
+    }
+    const nextBtn = document.createElement("button");
+    nextBtn.className = "b3-button xlc-btn-primary";
+    nextBtn.textContent = t("setupNext");
+    nextBtn.addEventListener("click", () => {
+        const mode = modeSelect.value as LibraryConfig["mode"];
+        if (mode === "notebook" && !nbSelect.value) {
+            ctx.notify("error", t("invalidItem"));
+            return;
+        }
+        if (mode !== "notebook" && !pickedDoc) {
+            ctx.notify("error", t("docPickerEmpty"));
+            return;
+        }
+        gotoStep(2);
+    });
+    step1Actions.appendChild(nextBtn);
+    step1.appendChild(step1Actions);
+    root.appendChild(step1);
+
+    // ---- 第 2 步：确认落点 ----
+    const step2 = document.createElement("div");
+    step2.style.display = "none";
+    const summaryWrap = document.createElement("div");
+    summaryWrap.className = "xlc-policy-list";
+    step2.appendChild(summaryWrap);
+    const summaryHint = document.createElement("p");
+    summaryHint.className = "xlc-form-hint";
+    summaryHint.style.marginTop = "12px";
+    summaryHint.textContent = t("setupConfirmHint");
+    step2.appendChild(summaryHint);
+    const step2Actions = document.createElement("div");
+    step2Actions.className = "xlc-form-actions";
+    const backBtn = document.createElement("button");
+    backBtn.className = "b3-button xlc-btn-ghost";
+    backBtn.textContent = t("setupBack");
+    backBtn.addEventListener("click", () => gotoStep(1));
+    step2Actions.appendChild(backBtn);
+    const finishBtn = document.createElement("button");
+    finishBtn.className = "b3-button xlc-btn-primary";
+    finishBtn.textContent = t("setupFinish");
+    finishBtn.addEventListener("click", () => {
         const mode = modeSelect.value as LibraryConfig["mode"];
         if (mode === "notebook") {
             const notebookId = nbSelect.value;
@@ -314,9 +475,43 @@ function buildLibraryPickerSection(ctx: SettingsUiContext, root: HTMLElement, on
         });
         onConfigured();
     });
-    actions.appendChild(createBtn);
-    actions.appendChild(useNotebookBtn);
-    root.appendChild(actions);
+    step2Actions.appendChild(finishBtn);
+    step2.appendChild(step2Actions);
+    root.appendChild(step2);
+
+    function paintSummary(): void {
+        summaryWrap.textContent = "";
+        const mode = modeSelect.value as LibraryConfig["mode"];
+        const card = document.createElement("div");
+        card.className = "xlc-policy xlc-policy--recommended";
+        const icon = document.createElement("span");
+        icon.className = "xlc-policy-ic";
+        icon.textContent = "✓";
+        card.appendChild(icon);
+        const text = document.createElement("span");
+        const titleEl = document.createElement("span");
+        titleEl.className = "xlc-policy-title";
+        titleEl.textContent = mode === "notebook"
+            ? `${t("setupNotebook")} · ${nbSelect.selectedOptions[0]?.textContent ?? nbSelect.value}`
+            : (pickedDoc?.hPath || pickedDoc?.id || "-");
+        text.appendChild(titleEl);
+        const desc = document.createElement("span");
+        desc.className = "xlc-policy-desc";
+        desc.textContent = mode === "notebook" ? t("setupSummaryNotebook") : t("setupSummaryDoc");
+        text.appendChild(desc);
+        card.appendChild(text);
+        summaryWrap.appendChild(card);
+    }
+
+    function gotoStep(next: 1 | 2): void {
+        step = next;
+        stepsEl.remove();
+        root.insertBefore(buildStepsEl(step, step === 1 ? t("setupStep1") : t("setupStep2")), root.firstChild);
+        step1.style.display = step === 1 ? "" : "none";
+        hint.style.display = step === 1 ? "" : "none";
+        step2.style.display = step === 2 ? "" : "none";
+        if (step === 2) paintSummary();
+    }
 }
 
 function buildAiSection(ctx: SettingsUiContext, root: HTMLElement): void {
@@ -627,21 +822,38 @@ function openImportPolicyDialog(
             ctx.notify("error", t("importFailed", (err as Error).message));
         });
     };
-    const btns = document.createElement("div");
-    btns.className = "xlc-form-actions";
-    btns.style.flexDirection = "column";
-    btns.style.alignItems = "stretch";
-    for (const [policy, label] of [
-        ["skip", t("importPolicySkip")],
-        ["overwrite", t("importPolicyOverwrite")],
-        ["rename", t("importPolicyRename")],
-    ] as Array<[ConflictPolicy, string]>) {
-        const btn = document.createElement("button");
-        btn.className = "b3-button";
-        btn.textContent = label;
-        btn.addEventListener("click", () => run(policy));
-        btns.appendChild(btn);
+    // 策略卡（原型屏 8）：标题+说明+推荐档高亮；逐卡整行可点
+    const policyList = document.createElement("div");
+    policyList.className = "xlc-policy-list";
+    for (const [policy, title, desc, recommended] of [
+        ["skip", t("importPolicySkip"), t("importPolicySkipDesc"), false],
+        ["overwrite", t("importPolicyOverwrite"), t("importPolicyOverwriteDesc"), false],
+        ["rename", t("importPolicyRename"), t("importPolicyRenameDesc"), true],
+    ] as Array<[ConflictPolicy, string, string, boolean]>) {
+        const card = document.createElement("button");
+        card.type = "button";
+        card.className = "xlc-policy" + (recommended ? " xlc-policy--recommended" : "");
+        const icon = document.createElement("span");
+        icon.className = "xlc-policy-ic";
+        icon.textContent = policy === "skip" ? "⃝" : policy === "overwrite" ? "⇄" : "＋";
+        card.appendChild(icon);
+        const text = document.createElement("span");
+        const titleEl = document.createElement("span");
+        titleEl.className = "xlc-policy-title";
+        titleEl.textContent = title + (recommended ? `（${t("recommended")}）` : "");
+        text.appendChild(titleEl);
+        const descEl = document.createElement("span");
+        descEl.className = "xlc-policy-desc";
+        descEl.textContent = desc;
+        text.appendChild(descEl);
+        card.appendChild(text);
+        card.addEventListener("click", () => run(policy));
+        policyList.appendChild(card);
     }
-    wrap.appendChild(btns);
+    wrap.appendChild(policyList);
+    const receiptHint = document.createElement("p");
+    receiptHint.className = "xlc-form-hint";
+    receiptHint.textContent = t("importReceiptHint");
+    wrap.appendChild(receiptHint);
     body.appendChild(wrap);
 }

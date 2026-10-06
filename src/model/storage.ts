@@ -86,18 +86,33 @@ export interface SearchPrefs {
     lastQuery: string;
 }
 
+/** 使用计数（F3）：插入/复制成功 +1；「常用」排序=次数×最近使用时间。侧车存储，可重建可清空。 */
+export interface UsageEntry {
+    count: number;
+    lastAt: number;
+}
+
+/** 插入偏好（F1/F3）：插入前询问变量 / 记录使用次数。默认都开。 */
+export interface InsertPrefs {
+    promptVariables: boolean;
+    recordUsage: boolean;
+}
+
 export interface PluginState {
     schemaVersion: number;
     favorites: string[];
     recents: RecentEntry[];
-    sort: "manual" | "recent" | "title";
+    usage: Record<string, UsageEntry>;
+    sort: "manual" | "recent" | "frequent" | "title";
     uiPrefs: {
         lastTypeFilter: "" | ItemType;
         lastTagFilter: string;
+        lastCategoryFilter: string;
     };
     providers: ProviderRecord[];
     ai: AiPrefs;
     search: SearchPrefs;
+    insert: InsertPrefs;
 }
 
 export function normalizeState(raw: unknown): PluginState {
@@ -119,11 +134,26 @@ export function normalizeState(raw: unknown): PluginState {
         recents.push({id, usedAt});
         if (recents.length >= LIMITS.maxRecents) break;
     }
-    const sort = obj.sort === "manual" || obj.sort === "recent" || obj.sort === "title" ? obj.sort : "manual";
+    const sort = obj.sort === "manual" || obj.sort === "recent" || obj.sort === "frequent" || obj.sort === "title" ? obj.sort : "manual";
     const prefsRaw = (obj.uiPrefs ?? {}) as Record<string, unknown>;
     const lastTypeFilter = (prefsRaw.lastTypeFilter === "" || isItemType(prefsRaw.lastTypeFilter))
         ? prefsRaw.lastTypeFilter as "" | ItemType
         : "";
+    // 使用计数（F3）：形状不可信逐条丢弃；超限保留最近使用的 maxUsage 条
+    const usageRaw = (obj.usage ?? {}) as Record<string, unknown>;
+    const usageEntries: Array<{id: string; entry: UsageEntry}> = [];
+    for (const [id, value] of Object.entries(usageRaw)) {
+        if (!id.startsWith("xlc-") || !value || typeof value !== "object") continue;
+        const count = Number((value as UsageEntry).count);
+        const lastAt = Number((value as UsageEntry).lastAt);
+        if (!Number.isInteger(count) || count <= 0 || count > 1_000_000) continue;
+        if (!Number.isFinite(lastAt) || lastAt <= 0) continue;
+        usageEntries.push({id, entry: {count, lastAt}});
+    }
+    usageEntries.sort((a, b) => b.entry.lastAt - a.entry.lastAt);
+    const usage: Record<string, UsageEntry> = {};
+    for (const {id, entry} of usageEntries.slice(0, LIMITS.maxUsage)) usage[id] = entry;
+    const insertRaw = (obj.insert ?? {}) as Record<string, unknown>;
     const providersRaw = Array.isArray(obj.providers) ? obj.providers : [];
     const providers: ProviderRecord[] = [];
     const providerSeen = new Set<string>();
@@ -148,10 +178,12 @@ export function normalizeState(raw: unknown): PluginState {
         schemaVersion: STATE_SCHEMA_VERSION,
         favorites,
         recents,
+        usage,
         sort,
         uiPrefs: {
             lastTypeFilter,
             lastTagFilter: typeof prefsRaw.lastTagFilter === "string" ? prefsRaw.lastTagFilter.slice(0, LIMITS.category) : "",
+            lastCategoryFilter: typeof prefsRaw.lastCategoryFilter === "string" ? prefsRaw.lastCategoryFilter.slice(0, LIMITS.category) : "",
         },
         providers,
         // AI 硬边界：任何输入下默认都关（门禁测试锁定）
@@ -166,6 +198,11 @@ export function normalizeState(raw: unknown): PluginState {
             lastQuery: obj.search !== null && typeof obj.search === "object" && typeof (obj.search as SearchPrefs).lastQuery === "string"
                 ? ((obj.search as SearchPrefs).lastQuery as string).slice(0, LIMITS.queryChars)
                 : "",
+        },
+        // 插入偏好默认开（F1/F3）；显式 false 才关
+        insert: {
+            promptVariables: !(insertRaw.promptVariables === false),
+            recordUsage: !(insertRaw.recordUsage === false),
         },
     };
 }

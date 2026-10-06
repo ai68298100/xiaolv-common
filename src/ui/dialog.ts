@@ -11,25 +11,31 @@ import {CommonItem} from "../model/item";
 import {InsertMode} from "../model/actions";
 import {TransformKind} from "../service/ai";
 import {ProviderRow} from "../model/provider-section";
+import {AskField, listAskFields} from "../model/variables";
+import {openVariableFillCard} from "./variable-form";
 
 export interface DialogDeps {
     t: (key: string, ...args: string[]) => string;
     search: (query: SearchQuery) => Promise<{entries: SearchEntry[]; truncated: boolean; total: number; loading?: boolean; error?: string}>;
     /** 文档搜索（插入到指定文档的选择器） */
     searchDocs: (k: string) => Promise<Array<{id: string; hPath: string; name: string}>>;
-    insertToDoc: (itemId: string, docId: string, hPath: string) => Promise<boolean>;
+    insertToDoc: (itemId: string, docId: string, hPath: string, fills?: Record<string, string>) => Promise<boolean>;
     duplicateItem: (itemId: string) => Promise<void>;
     /** AI 变换结果存为新条目（来源=原条目；原条目不被修改） */
     saveTransformed: (itemId: string, kind: TransformKind, text: string) => Promise<void>;
     getTags: () => Promise<string[]>;
+    /** 分类面（F4 分类筛选下拉） */
+    getCategories: () => Promise<string[]>;
     preview: (itemId: string) => Promise<string>;
     runAction: (itemId: string, mode: InsertMode) => Promise<{ok: boolean; message: string}>;
+    /** 变量填充：填充值随动作进入执行层（F1） */
+    runActionWithFills: (itemId: string, mode: InsertMode, fills?: Record<string, string>) => Promise<{ok: boolean; message: string}>;
     openSource: (itemId: string) => Promise<{ok: boolean; message: string}>;
     editItem: (itemId: string) => Promise<void>;
     deleteItem: (itemId: string) => Promise<void>;
-    /** 筛选状态持久化（类型/标签跨会话记忆；state.uiPrefs 承载） */
-    getFilters: () => {type: string; tag: string};
-    setFilters: (f: {type: string; tag: string}) => void;
+    /** 筛选状态持久化（类型/标签/分类跨会话记忆；state.uiPrefs 承载） */
+    getFilters: () => {type: string; tag: string; category: string};
+    setFilters: (f: {type: string; tag: string; category: string}) => void;
     /** 上次搜索词（跨会话保留；空串=无） */
     getLastQuery: () => string;
     setLastQuery: (q: string) => void;
@@ -38,7 +44,7 @@ export interface DialogDeps {
     toggleFavorite: (itemId: string) => boolean;
     isFavorite: (itemId: string) => boolean;
     insertRaw: (markdown: string) => Promise<boolean>;
-    getSort: () => "manual" | "recent" | "title";
+    getSort: () => "manual" | "recent" | "frequent" | "title";
     cycleSort: () => void;
     openSetup: () => void;
     /** 提供方候选（pv: 虚拟条目；绝不进入块执行器） */
@@ -50,6 +56,8 @@ export interface DialogDeps {
     /** AI 变换（需正文出域权限） */
     aiTransform: (itemId: string, kind: TransformKind) => Promise<{ok: true; text: string} | {ok: false; message: string}>;
     aiEnabled: () => boolean;
+    /** 插入前询问变量（F1；设置可关） */
+    promptVariables: () => boolean;
     isSourceMissing: (entry: SearchEntry) => boolean;
     close: () => void;
     isMobile: () => boolean;
@@ -209,7 +217,11 @@ export class CommonSearchDialog {
         const savedFilters = this.deps.getFilters();
         if (savedFilters.type) typeSelect.value = savedFilters.type;
         typeSelect.addEventListener("change", () => {
-            this.deps.setFilters({type: typeSelect.value, tag: tagSelect?.value ?? ""});
+            this.deps.setFilters({
+                type: typeSelect.value,
+                tag: tagSelect?.value ?? "",
+                category: categorySelect?.value ?? "",
+            });
             void this.refresh();
         });
         filters.appendChild(typeSelect);
@@ -232,10 +244,39 @@ export class CommonSearchDialog {
             if (savedFilters.tag && tags.includes(savedFilters.tag)) tagSelect.value = savedFilters.tag;
         });
         tagSelect.addEventListener("change", () => {
-            this.deps.setFilters({type: typeSelect.value, tag: tagSelect.value});
+            this.deps.setFilters({
+                type: typeSelect.value,
+                tag: tagSelect.value,
+                category: categorySelect?.value ?? "",
+            });
             void this.refresh();
         });
         filters.appendChild(tagSelect);
+
+        // 分类筛选（F4，原型屏 1：类型/标签/分类三下拉）
+        const categorySelect = document.createElement("select");
+        categorySelect.className = "b3-select xlc-category-select";
+        categorySelect.setAttribute("aria-label", this.deps.t("category"));
+        if (savedFilters.category) categorySelect.value = savedFilters.category;
+        void this.deps.getCategories().then((categories) => {
+            if (categories.length === 0) return;
+            const first = document.createElement("option");
+            first.value = "";
+            first.textContent = this.deps.t("category");
+            categorySelect.appendChild(first);
+            for (const category of categories) {
+                const opt = document.createElement("option");
+                opt.value = category;
+                opt.textContent = category;
+                categorySelect.appendChild(opt);
+            }
+            if (savedFilters.category && categories.includes(savedFilters.category)) categorySelect.value = savedFilters.category;
+        });
+        categorySelect.addEventListener("change", () => {
+            this.deps.setFilters({type: typeSelect.value, tag: tagSelect.value, category: categorySelect.value});
+            void this.refresh();
+        });
+        filters.appendChild(categorySelect);
 
         for (const scope of ["favorites", "recent"] as const) {
             const chip = document.createElement("button");
@@ -309,6 +350,11 @@ export class CommonSearchDialog {
             const pane = document.createElement("div");
             pane.className = "xlc-pane";
             pane.appendChild(this.buildPaneHead());
+            // 变量提示行（F1，原型屏 1）：「插入时将询问 N 个变量：{{…}}」
+            const paneVars = document.createElement("div");
+            paneVars.className = "xlc-pane-vars";
+            paneVars.style.display = "none";
+            pane.appendChild(paneVars);
             const warn = document.createElement("div");
             warn.className = "xlc-pane-warn";
             warn.style.display = "none";
@@ -453,7 +499,8 @@ export class CommonSearchDialog {
         const text = el?.querySelector<HTMLInputElement>(".xlc-search-input")?.value ?? "";
         const itemType = (el?.querySelector<HTMLSelectElement>(".xlc-type-select")?.value ?? "") as "" | ItemType;
         const tag = el?.querySelector<HTMLSelectElement>(".xlc-tag-select")?.value ?? "";
-        return {text, itemType, tag, scope: this.currentScope};
+        const category = el?.querySelector<HTMLSelectElement>(".xlc-category-select")?.value ?? "";
+        return {text, itemType, tag, category, scope: this.currentScope};
     }
 
     private async refresh(): Promise<void> {
@@ -566,9 +613,33 @@ export class CommonSearchDialog {
             }
             list.appendChild(empty);
         }
+        // 分组头（F4-lite，原型屏 1）：手动/置顶排序 + 全部范围时，收藏行前插「置顶」组，其余为「全部」
+        const grouping = this.deps.getSort() === "manual" && this.currentScope === "all";
+        const favoriteCount = grouping ? this.results.filter((e) => this.deps.isFavorite(e.id)).length : 0;
+        const showPinnedHead = grouping && favoriteCount > 0;
+        let pinnedPlaced = false;
+        let restHeadPlaced = false;
+        const placeGroupHead = (label: string, count: number): void => {
+            const head = document.createElement("div");
+            head.className = "xlc-group-head";
+            head.dataset.xlcHead = "1";
+            head.setAttribute("aria-hidden", "true");
+            head.textContent = `${label} · ${count}`;
+            list.appendChild(head);
+        };
         for (let i = 0; i < this.results.length; i++) {
             const entry = this.results[i];
             const fav = this.deps.isFavorite(entry.id);
+            if (showPinnedHead) {
+                if (fav && !pinnedPlaced) {
+                    placeGroupHead("📌 " + this.deps.t("groupPinned"), favoriteCount);
+                    pinnedPlaced = true;
+                }
+                if (!fav && pinnedPlaced && !restHeadPlaced) {
+                    placeGroupHead(this.deps.t("groupAll"), this.results.length - favoriteCount);
+                    restHeadPlaced = true;
+                }
+            }
             const row = document.createElement("div");
             row.className = "xlc-row"
                 + (i === this.activeIndex ? " xlc-row--active" : "")
@@ -596,6 +667,13 @@ export class CommonSearchDialog {
             titleText.className = "xlc-row-titletext";
             titleText.textContent = entry.title || this.deps.t("unknownType");
             title.appendChild(titleText);
+            // 变量徽标（F1；写入期快照，行为以插入时现场内容为准）
+            if ((entry.varCount ?? 0) > 0) {
+                const varBadge = document.createElement("span");
+                varBadge.className = "xlc-badge xlc-badge--var";
+                varBadge.textContent = this.deps.t("varCountBadge", String(entry.varCount));
+                title.appendChild(varBadge);
+            }
             if (this.deps.isFavorite(entry.id)) {
                 const starMini = document.createElement("span");
                 starMini.className = "xlc-row-favmark";
@@ -734,7 +812,8 @@ export class CommonSearchDialog {
     private paintActive(): void {
         const list = this.dialog?.element.querySelector<HTMLElement>(".xlc-list");
         if (!list) return;
-        const rows = Array.from(list.children) as HTMLElement[];
+        // 分组头不参与导航（F4-lite）：只遍历真实行
+        const rows = Array.from(list.children).filter((el) => !(el as HTMLElement).dataset.xlcHead) as HTMLElement[];
         rows.forEach((child, i) => {
             const isReal = i < this.results.length;
             const active = isReal
@@ -751,13 +830,39 @@ export class CommonSearchDialog {
         this.updatePreview(entry.id);
     }
 
+    /** 变量提示行：从预览文本解析 ask 字段并列出语法 chip（code/提供方行不展示）。 */
+    private paintPaneVars(text: string | null, itemType: ItemType | "provider" | undefined): void {
+        const paneVars = this.dialog?.element.querySelector<HTMLElement>(".xlc-pane-vars");
+        if (!paneVars) return;
+        const fields = itemType && itemType !== "code" && itemType !== "provider" && text
+            ? listAskFields(text)
+            : [];
+        paneVars.textContent = "";
+        if (fields.length === 0) {
+            paneVars.style.display = "none";
+            return;
+        }
+        const label = document.createElement("span");
+        label.textContent = this.deps.t("paneVarsLabel", String(fields.length));
+        paneVars.appendChild(label);
+        for (const field of fields) {
+            const chip = document.createElement("code");
+            chip.textContent = field.kind === "text"
+                ? `{{xlc:ask:${field.name}}}`
+                : `{{xlc:ask:${field.name}${field.kind === "date" ? "|date" : "|" + field.options.join(",")}}}`;
+            paneVars.appendChild(chip);
+        }
+        // 样式表默认 display:none，显示需显式内联覆盖
+        paneVars.style.display = "flex";
+    }
+
     private updatePreview(forceId?: string): void {
         const paneBody = this.dialog?.element.querySelector<HTMLElement>(".xlc-pane-body");
         const paneTitle = this.dialog?.element.querySelector<HTMLElement>(".xlc-pane-title");
         const paneWarn = this.dialog?.element.querySelector<HTMLElement>(".xlc-pane-warn");
         const paneAi = this.dialog?.element.querySelector<HTMLElement>(".xlc-pane-ai");
         if (!paneBody || !paneTitle || !paneWarn || !paneAi) return;
-        // 提供方行：预览直接展示 payload（无内核取用、无来源语义）
+        // 提供方行：预览直接展示 payload（无内核取用、无来源语义、无变量询问）
         if (this.activeProvider >= 0) {
             const row = this.providerRows[this.activeProvider];
             if (!row) return;
@@ -765,6 +870,7 @@ export class CommonSearchDialog {
             paneTitle.textContent = row.title || row.providerName;
             paneAi.style.display = "none";
             paneWarn.style.display = "none";
+            this.paintPaneVars(null, "provider");
             paneBody.textContent = row.payload;
             return;
         }
@@ -779,27 +885,62 @@ export class CommonSearchDialog {
             paneWarn.style.display = missing ? "" : "none";
             if (missing) paneWarn.textContent = "⚠ " + this.deps.t("sourceGone");
         }
+        this.paintPaneVars(null, entry?.itemType);
         paneBody.textContent = this.deps.t("aiWorking");
         void this.deps.preview(id).then((text) => {
             if (seq !== this.previewSeq) return;
-            paneBody.textContent = text || this.deps.t("previewUnavailable");
+            const finalText = text || this.deps.t("previewUnavailable");
+            paneBody.textContent = finalText;
+            this.paintPaneVars(text, entry?.itemType);
         }).catch(() => {
             if (seq !== this.previewSeq) return;
             paneBody.textContent = this.deps.t("kernelError", "preview");
+            this.paintPaneVars(null, entry?.itemType);
         });
     }
 
-    /** 普通点击 = 主动作（insert；blockref = 插入引用） */
+    /** 普通点击 = 主动作（insert；blockref = 插入引用）。含变量时先弹填充卡片（F1）。 */
     private async runPrimary(entry: SearchEntry): Promise<void> {
         // 定向插入模式（文档树入口）：插入到指定文档而非活动编辑器
         if (this.deps.insertTarget) {
-            this.destroy();
-            await this.deps.insertToDoc(entry.id, this.deps.insertTarget.docId, this.deps.insertTarget.hPath);
+            const target = this.deps.insertTarget;
+            await this.insertEntryWithVars(entry, (fills) => this.deps.insertToDoc(entry.id, target.docId, target.hPath, fills));
             return;
         }
         const mode: InsertMode = entry.itemType === "blockref" ? "insert-ref" : "insert";
-        await this.deps.runAction(entry.id, mode);
-        this.destroy();
+        await this.insertEntryWithVars(entry, (fills) => fills
+            ? this.deps.runActionWithFills(entry.id, mode, fills)
+            : this.deps.runAction(entry.id, mode));
+    }
+
+    /** F1：插入前询问变量（设置可关；无 ask 字段零打扰；code 条目不询问）。
+     *  perform 收到 fills（undefined=未触发询问，走原路径）。 */
+    private async insertEntryWithVars(entry: SearchEntry, perform: (fills?: Record<string, string>) => Promise<unknown>): Promise<void> {
+        if (!this.deps.promptVariables()) {
+            await perform();
+            return;
+        }
+        let fields: AskField[] = [];
+        try {
+            const content = await this.deps.preview(entry.id);
+            fields = entry.itemType === "code" || !content ? [] : listAskFields(content);
+        } catch {
+            fields = [];
+        }
+        if (fields.length === 0) {
+            await perform();
+            return;
+        }
+        openVariableFillCard({
+            t: this.deps.t,
+            itemType: entry.itemType,
+            title: entry.title,
+            fields,
+            onConfirm: (fills) => {
+                this.destroy();
+                void perform(fills);
+            },
+        });
     }
 
     /** 菜单按钮统一构造：图标列 + 文本（createTextNode 注入，绝不 innerHTML） */
@@ -854,7 +995,10 @@ export class CommonSearchDialog {
                 addAction("⊞", this.deps.t("insertEmbed"), () => this.deps.runAction(entry.id, "insert-embed"));
                 addAction("⧉", this.deps.t("insertCopy"), () => this.deps.runAction(entry.id, "copy-content"));
             } else {
-                addAction("＋", this.deps.t("insert"), () => this.deps.runAction(entry.id, "insert"));
+                // 插入含变量条目同样先弹填充卡（F1）；复制保持模板原样
+                addAction("＋", this.deps.t("insert"), () => this.insertEntryWithVars(entry, (fills) => fills
+                    ? this.deps.runActionWithFills(entry.id, "insert", fills)
+                    : this.deps.runAction(entry.id, "insert")));
                 addAction("⧉", this.deps.t("copy"), () => this.deps.runAction(entry.id, "copy"));
             }
             menu.appendChild(sec1);
@@ -907,8 +1051,9 @@ export class CommonSearchDialog {
                         if (mySeq !== seq) return;
                         for (const hit of hits.slice(0, 5)) {
                             sec!.appendChild(this.menuButton("⤓", hit.hPath || hit.name || hit.id, "xlc-menu-item xlc-pickdoc-hit", async () => {
-                                this.destroy();
-                                await this.deps.insertToDoc(entry.id, hit.id, hit.hPath);
+                                this.menuDismiss?.();
+                                this.menuDismiss = null;
+                                await this.insertEntryWithVars(entry, (fills) => this.deps.insertToDoc(entry.id, hit.id, hit.hPath, fills));
                             }));
                         }
                     });

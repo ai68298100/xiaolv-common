@@ -5,15 +5,18 @@ import {getActiveEditor, openTab} from "siyuan";
 import {EVENTS} from "../constants";
 import {ActionContext, InsertMode, InsertPlan, OpenTarget, planAction, planOpenSource} from "../model/actions";
 import {applyPlaceholders} from "../model/placeholders";
+import {applyAskDefaults, expandAsks, stripCursorToken} from "../model/variables";
 import {CommonItem} from "../model/item";
 import {LibraryService, Receipt, SourceHealth} from "./library";
 
-/** 占位符应用钩子：由入口注入（读设置 + 当前时间 + 当前文档）；未注入则原样保留 */
+/** 占位符应用钩子：由入口注入（读设置 + 当前时间 + 当前文档 + 剪贴板）；未注入则原样保留 */
 export interface IPlaceholderHook {
     enabled(): boolean;
     now(): Date;
-    /** 当前文档（{{xlc:title}}/{{xlc:path}}）；无活动文档返回 null */
+    /** 当前文档（{{xlc:title}}/{{xlc:doc}}/{{xlc:path}}）；无活动文档返回 null */
     currentDoc(): Promise<{title: string; path: string} | null>;
+    /** 系统剪贴板文本（{{xlc:clipboard}}）；读取失败/拒绝返回空串（语义同无文档） */
+    clipboard?(): Promise<string>;
 }
 
 export interface IHostBridge {
@@ -151,11 +154,18 @@ export class ActionExecutor {
     }
 
     /** 对输出载荷应用动态占位符（插入 markdown 与剪贴板文本；存储内容不受影响）。
-     *  仅当文本含 title/path 占位符时才取当前文档（避免多余内核往返）。
+     *  仅当文本含 title/path/doc 占位符时才取当前文档（避免多余内核往返）。
+     *  {{xlc:clipboard}} 异步替换（读取失败=空串，语义同无文档）。
      *  code 条目跳过替换：代码中的 {{xlc:…}} 是字面文本（例如演示模板的代码），绝不能被改写。 */
-    /** 公开渲染入口：定向插入（insertToDoc）与 provider payload 共用（R50/R51 语义统一）。 */
-    async renderForInsert(text: string, item?: CommonItem): Promise<string> {
-        return (await this.applyOutput(text, item)) ?? text;
+    /** 公开渲染入口：定向插入（insertToDoc）与 provider payload 共用（R50/R51 语义统一）。
+     *  fills：变量填充卡收集的 ask 值（R67）；插入语义，含光标移除与未填充兜底。 */
+    async renderForInsert(text: string, item?: CommonItem, fills?: Record<string, string>): Promise<string> {
+        let payload = text;
+        if (item?.itemType !== "code") {
+            if (fills) payload = expandAsks(payload, fills);
+            payload = applyAskDefaults(stripCursorToken(payload));
+        }
+        return (await this.applyOutput(payload, item)) ?? payload;
     }
 
     private async applyOutput(text: string | undefined, item?: CommonItem): Promise<string | undefined> {
@@ -165,9 +175,19 @@ export class ActionExecutor {
         try {
             if (!this.placeholders.enabled()) return text;
             const {listPlaceholders} = await import("../model/placeholders");
-            const needsDoc = listPlaceholders(text).some((k) => k === "title" || k === "path");
+            const needsDoc = listPlaceholders(text).some((k) => k === "title" || k === "path" || k === "doc");
             const doc = needsDoc ? await this.placeholders.currentDoc() : null;
-            return applyPlaceholders(text, this.placeholders.now(), true, doc);
+            let output = applyPlaceholders(text, this.placeholders.now(), true, doc);
+            if (output.includes("{{xlc:clipboard}}") && this.placeholders.clipboard) {
+                let clipboardText = "";
+                try {
+                    clipboardText = (await this.placeholders.clipboard()) ?? "";
+                } catch {
+                    clipboardText = "";
+                }
+                output = output.replaceAll("{{xlc:clipboard}}", clipboardText.slice(0, 4000));
+            }
+            return output;
         } catch {
             return text;
         }
@@ -195,8 +215,19 @@ export class ActionExecutor {
         }
     }
 
-    async run(item: CommonItem, mode: InsertMode): Promise<ExecutionReceipt> {
+    /** 现场解析条目内容；变量填充卡收集的 ask 值在此展开（模型层纯字符串替换；code 条目不处理变量）。 */
+    private async resolveWithFills(item: CommonItem, fills?: Record<string, string>) {
         const content = await this.resolveContent(item);
+        if (!content) return null;
+        if (fills && item.itemType !== "code") {
+            const expanded = expandAsks(content.kramdown, fills);
+            content.kramdown = expanded;
+        }
+        return content;
+    }
+
+    async run(item: CommonItem, mode: InsertMode, opts?: {fills?: Record<string, string>}): Promise<ExecutionReceipt> {
+        const content = await this.resolveWithFills(item, opts?.fills);
         if (!content) {
             return {ok: false, mode, message: "kernel-error:content", downgraded: false, pendingVerification: []};
         }
@@ -210,9 +241,15 @@ export class ActionExecutor {
     }
 
     private async execute(item: CommonItem, plan: InsertPlan): Promise<ExecutionReceipt> {
+        // 插入语义输出：未填充 ask 兜底为 __名称__（可见可改），光标标记移除；复制路径保持模板原样
+        const insertRender = (text: string | undefined): Promise<string | undefined> => {
+            if (text === undefined) return Promise.resolve(undefined);
+            if (item.itemType === "code") return Promise.resolve(text);
+            return this.applyOutput(applyAskDefaults(stripCursorToken(text)), item);
+        };
         // 移动端插入未验证：诚实降级为复制（B-002 解除后复核）
         if (plan.mode === "insert" && this.host.isMobile()) {
-            const text = plan.markdown ?? "";
+            const text = (await insertRender(plan.markdown)) ?? "";
             const copied = text ? await this.host.writeClipboard(text) : false;
             return {
                 ok: copied,
@@ -223,7 +260,7 @@ export class ActionExecutor {
             };
         }
         if (plan.mode === "insert" || plan.mode === "insert-ref" || plan.mode === "insert-embed") {
-            const md = (await this.applyOutput(plan.markdown, item)) ?? "";
+            const md = (await insertRender(plan.markdown)) ?? "";
             if (!md) {
                 return {ok: false, mode: plan.mode, message: "empty-plan", downgraded: plan.downgraded, pendingVerification: plan.pendingVerification};
             }

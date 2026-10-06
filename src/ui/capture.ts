@@ -208,6 +208,38 @@ export class CaptureDialog {
         form.appendChild(metaRow);
 
         const contentEl = field(t("contentLabel"), defaultText, true, "xlc-form-content");
+        // 变量快捷插入条（F1 捕获侧，原型屏 3）：点选在内容光标处插入变量语法
+        const varbar = document.createElement("div");
+        varbar.className = "xlc-varbar";
+        const varbarCap = document.createElement("span");
+        varbarCap.className = "xlc-varbar-cap";
+        varbarCap.textContent = t("insertVariable");
+        varbar.appendChild(varbarCap);
+        const VAR_SNIPPETS = [
+            "{{xlc:ask:字段}}",
+            "{{xlc:ask:字段|选项A,选项B}}",
+            "{{xlc:cursor}}",
+            "{{xlc:date}}",
+            "{{xlc:doc}}",
+            "{{xlc:clipboard}}",
+        ];
+        for (const snippet of VAR_SNIPPETS) {
+            const btn = document.createElement("button");
+            btn.type = "button";
+            btn.className = "xlc-varbtn";
+            btn.textContent = snippet;
+            btn.addEventListener("click", () => {
+                const el = contentEl as HTMLTextAreaElement;
+                const start = el.selectionStart ?? el.value.length;
+                const end = el.selectionEnd ?? start;
+                el.value = el.value.slice(0, start) + snippet + el.value.slice(end);
+                const caret = start + snippet.length;
+                el.focus();
+                el.setSelectionRange(caret, caret);
+            });
+            varbar.appendChild(btn);
+        }
+        (contentEl.parentElement as HTMLElement).after(varbar);
         const titleEl = field(t("title"), overrides?.title ?? "", false, "xlc-form-title");
         const aliasEl = field(t("alias"), "", false, "xlc-form-alias", metaRow);
         // 标签 + 分类（原型：双栏行）

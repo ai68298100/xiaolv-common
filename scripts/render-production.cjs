@@ -113,10 +113,19 @@ fs.writeFileSync(path.join(OUT, "harness.html"), html);
     await shoot("desktop-light", {theme: "light", aiEnabled: true, missing: true}, () => ({
         rows: document.querySelectorAll(".xlc-list .xlc-row[data-xlc-index]").length >= 3,
         badges: document.querySelectorAll(".xlc-badge").length >= 3,
-        panePreview: (document.querySelector(".xlc-pane-body")?.textContent ?? "").includes("王总"),
+        panePreview: (document.querySelector(".xlc-pane-body")?.textContent ?? "").includes("会员系统"),
         sourceWarn: (document.querySelector(".xlc-pane-warn")?.textContent ?? "").includes("来源"),
         aiBanner: (document.querySelector(".xlc-ai-banner")?.textContent ?? "").includes("3"),
         ordinals: document.querySelectorAll(".xlc-row-ordinal").length >= 3,
+        // R67：分组头（置顶/全部）+ 行变量徽标 + 预览变量提示行
+        groupHeads: document.querySelectorAll(".xlc-group-head").length >= 2,
+        pinnedGroup: (document.querySelector(".xlc-group-head")?.textContent ?? "").includes("置顶"),
+        varBadge: (document.querySelector(".xlc-badge--var")?.textContent ?? "").includes("变量"),
+        paneVars: (() => {
+            const el = document.querySelector(".xlc-pane-vars");
+            const text = el?.textContent ?? "";
+            return el !== null && el.offsetParent !== null && text.includes("变量") && text.includes("客户名称");
+        })(),
     }));
     await shoot("desktop-dark", {theme: "dark", aiEnabled: true, missing: false}, () => ({
         rows: document.querySelectorAll(".xlc-row[data-xlc-index]").length >= 3,
@@ -309,6 +318,53 @@ fs.writeFileSync(path.join(OUT, "harness.html"), html);
     }
     console.log("  smoke ✓ action-menu: 6 assertions");
     await page.screenshot({path: path.join(OUT, "production-action-menu-light.png")});
+    // 变量填充卡片（F1，原型屏 4）：活动条目含 ask → Enter 触发填充卡
+    await page.evaluate(() => {
+        const stage = document.getElementById("stage");
+        stage.className = "b3-scope light";
+        document.querySelectorAll(".b3-dialog").forEach((el) => el.remove());
+        stage.innerHTML = "";
+        window.XlcHarness.openDialog({aiEnabled: true, missing: false, query: "客户延期"});
+        const dialogRoot = document.querySelector(".b3-dialog");
+        if (dialogRoot) stage.appendChild(dialogRoot);
+        const root = document.querySelector(".xlc-dialog");
+        if (root) {
+            root.style.height = "560px";
+            root.style.position = "relative";
+        }
+        const container = document.querySelector(".b3-dialog__container");
+        if (container) {
+            container.style.margin = "0 auto";
+            container.style.maxWidth = "760px";
+        }
+    });
+    await page.waitForTimeout(800);
+    await page.evaluate(() => {
+        const input = document.querySelector(".xlc-search-input");
+        input.dispatchEvent(new KeyboardEvent("keydown", {key: "Enter", bubbles: true, cancelable: true}));
+    });
+    await page.waitForTimeout(600);
+    // harness 伪影修正：填充卡 Dialog 自挂载在 body（不在 .b3-scope 内 → b3 变量失效透明）；
+    // 真实宿主变量在 :root 无此问题——截图前把它也移入 stage
+    await page.evaluate(() => {
+        const stage = document.getElementById("stage");
+        document.body.querySelectorAll(":scope > .b3-dialog").forEach((el) => stage.appendChild(el));
+    });
+    const varFormAssertions = await page.evaluate(() => {
+        const form = document.querySelector(".xlc-varform");
+        return {
+            formOpen: !!form,
+            formTitle: (form?.querySelector(".xlc-varform-title")?.textContent ?? "").includes("项目延期"),
+            fieldCount: form ? form.querySelectorAll(".xlc-varform-field").length : 0,
+            fieldTagged: (form?.querySelector(".xlc-varform-tag")?.textContent ?? "").includes("xlc:ask"),
+            hasInsertBtn: (form?.querySelector(".xlc-btn-primary")?.textContent ?? "") === "插入",
+        };
+    });
+    if (Object.values(varFormAssertions).some((v) => !v)) {
+        throw new Error("variable-form smoke failed: " + JSON.stringify(varFormAssertions));
+    }
+    console.log("  smoke ✓ variable-form: 5 assertions");
+    await page.screenshot({path: path.join(OUT, "production-variable-form-light.png")});
     // 空状态（无结果：大空态 + 语义找提示；footer 计数 + 真源声明）
     await page.evaluate(() => {
         const stage = document.getElementById("stage");

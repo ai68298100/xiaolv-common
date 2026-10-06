@@ -41,6 +41,8 @@ export interface CommonItem {
     category: string;
     /** 有界摘要（索引缓存，可重建） */
     summary: string;
+    /** ask 变量数（写入时落 custom-xlc-vars 属性；0=无。徽标提示用，行为以插入时现场内容为准） */
+    varCount: number;
     source: ISourceRef;
     /** url 条目的目标网址；blockref 条目的目标块 ID 复用 target 字段名见 ATTR.url/ATTR.target */
     url: string;
@@ -155,6 +157,8 @@ export function normalizeCommonItem(input: {
     const updated = Number(attrs[ATTR.updated]);
     const srcDoc = typeof attrs[ATTR.srcDoc] === "string" ? (attrs[ATTR.srcDoc] as string) : "";
     const srcBlock = typeof attrs[ATTR.srcBlock] === "string" ? (attrs[ATTR.srcBlock] as string) : "";
+    const varCountRaw = Number(attrs[ATTR.vars]);
+    const varCount = Number.isInteger(varCountRaw) && varCountRaw > 0 ? Math.min(varCountRaw, LIMITS.maxAskFields) : 0;
     const source: ISourceRef = {
         sourceDocId: isBlockId(srcDoc) ? srcDoc : "",
         sourceBlockId: isBlockId(srcBlock) ? srcBlock : "",
@@ -170,6 +174,7 @@ export function normalizeCommonItem(input: {
         tags,
         category: cleanString(attrs[ATTR.category], LIMITS.category),
         summary: deriveSummary(kramdown),
+        varCount,
         source,
         url: cleanString(attrs[ATTR.url], 2048),
         targetBlockId: isBlockId(attrs[ATTR.target]) ? (attrs[ATTR.target] as string) : "",
@@ -228,6 +233,7 @@ export function normalizeUnknownItem(raw: unknown): CommonItem | null {
             [ATTR.category]: obj.category,
             [ATTR.srcDoc]: (obj.source as {sourceDocId?: unknown})?.sourceDocId,
             [ATTR.srcBlock]: (obj.source as {sourceBlockId?: unknown})?.sourceBlockId,
+            [ATTR.vars]: obj.varCount,
             [ATTR.url]: obj.url,
             [ATTR.target]: obj.targetBlockId,
             [ATTR.created]: obj.createdAt,

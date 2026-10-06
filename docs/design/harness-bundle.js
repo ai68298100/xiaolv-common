@@ -108,7 +108,10 @@
         maxProviders: 32,
         maxImportBytes: 4 * 1024 * 1024,
         walkDepth: 8,
-        kernelTimeoutMs: 8e3
+        kernelTimeoutMs: 8e3,
+        askValueChars: 2e3,
+        maxUsage: 2e3,
+        maxAskFields: 16
       };
       EXPORT_SCHEMA_VERSION = 1;
     }
@@ -141,6 +144,7 @@
   var search_exports = {};
   __export(search_exports, {
     applyBasicFilters: () => applyBasicFilters,
+    collectCategories: () => collectCategories,
     collectTags: () => collectTags,
     listByScope: () => listByScope,
     matchEntry: () => matchEntry,
@@ -196,18 +200,26 @@
     return entries.filter((e) => passesFilters(e, { text: "", itemType: query.itemType, tag: query.tag, scope: query.scope }, ctx));
   }
   function compareResults(a, b, ctx) {
-    var _a, _b, _c, _d, _e, _f;
+    var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k, _l;
     if (!ctx.sort || ctx.sort === "manual") {
       const ma = (_b = (_a = ctx.manualOrder) == null ? void 0 : _a.get(a.entry.id)) != null ? _b : Number.MAX_SAFE_INTEGER;
       const mb = (_d = (_c = ctx.manualOrder) == null ? void 0 : _c.get(b.entry.id)) != null ? _d : Number.MAX_SAFE_INTEGER;
       if (ma !== mb) return ma - mb;
     }
+    if (ctx.sort === "frequent") {
+      const ca = (_f = (_e = ctx.usage) == null ? void 0 : _e.get(a.entry.id)) != null ? _f : 0;
+      const cb = (_h = (_g = ctx.usage) == null ? void 0 : _g.get(b.entry.id)) != null ? _h : 0;
+      if (cb !== ca) return cb - ca;
+      const ra2 = (_i = ctx.recents.get(a.entry.id)) != null ? _i : 0;
+      const rb2 = (_j = ctx.recents.get(b.entry.id)) != null ? _j : 0;
+      if (rb2 !== ra2) return rb2 - ra2;
+    }
     if (b.score !== a.score) return b.score - a.score;
     if (ctx.sort === "title" && a.score === 0 && b.score === 0) {
       return a.entry.title.localeCompare(b.entry.title, "zh-Hans-CN");
     }
-    const ra = (_e = ctx.recents.get(a.entry.id)) != null ? _e : 0;
-    const rb = (_f = ctx.recents.get(b.entry.id)) != null ? _f : 0;
+    const ra = (_k = ctx.recents.get(a.entry.id)) != null ? _k : 0;
+    const rb = (_l = ctx.recents.get(b.entry.id)) != null ? _l : 0;
     if (rb !== ra) return rb - ra;
     if (b.entry.updatedAt !== a.entry.updatedAt) return b.entry.updatedAt - a.entry.updatedAt;
     return a.order - b.order;
@@ -246,6 +258,11 @@
     for (const e of entries) for (const t of e.tags) tags.add(t);
     return Array.from(tags).sort((a, b) => a.localeCompare(b, "zh-Hans-CN"));
   }
+  function collectCategories(entries) {
+    const categories = /* @__PURE__ */ new Set();
+    for (const e of entries) if (e.category) categories.add(e.category);
+    return Array.from(categories).sort((a, b) => a.localeCompare(b, "zh-Hans-CN"));
+  }
   var init_search = __esm({
     "src/model/search.ts"() {
       init_constants();
@@ -254,7 +271,7 @@
   });
 
   // src/ui/dialog.ts
-  var import_siyuan = __toESM(require_stub_dom());
+  var import_siyuan2 = __toESM(require_stub_dom());
 
   // src/model/item.ts
   init_constants();
@@ -269,8 +286,161 @@
     "structure"
   ];
 
-  // src/ui/dialog.ts
+  // src/model/variables.ts
+  init_constants();
+  var ASK_PATTERN = /\{\{xlc:ask:([^|}]+)(?:\|([^}]*))?\}\}/g;
+  function parseAskField(rawName, rawOptions) {
+    const name = rawName.trim().slice(0, LIMITS.tag);
+    if (!name) return null;
+    const options = (rawOptions != null ? rawOptions : "").split(",").map((s) => s.trim().slice(0, LIMITS.tag)).filter(Boolean).slice(0, 16);
+    if (options.length === 1 && options[0] === "date") return { name, kind: "date", options: [] };
+    if (options.length >= 2) return { name, kind: "select", options };
+    return { name, kind: "text", options: [] };
+  }
+  function listAskFields(text) {
+    var _a;
+    if (!text) return [];
+    const fields = [];
+    const seen = /* @__PURE__ */ new Set();
+    for (const match of text.matchAll(ASK_PATTERN)) {
+      const field = parseAskField((_a = match[1]) != null ? _a : "", match[2]);
+      if (!field || seen.has(field.name)) continue;
+      seen.add(field.name);
+      fields.push(field);
+      if (fields.length >= 16) break;
+    }
+    return fields;
+  }
+
+  // src/ui/variable-form.ts
+  var import_siyuan = __toESM(require_stub_dom());
   var TYPE_BADGES = {
+    text: "TXT",
+    markdown: "MD",
+    url: "URL",
+    code: "CODE",
+    image: "IMG",
+    asset: "FILE",
+    blockref: "REF",
+    structure: "BLK"
+  };
+  function openVariableFillCard(options) {
+    var _a, _b;
+    const t = options.t;
+    const dialog = new import_siyuan.Dialog({
+      title: t("varFormTitle"),
+      content: "",
+      width: "min(420px, 92vw)",
+      height: "auto"
+    });
+    const body = dialog.element.querySelector(".b3-dialog__content");
+    if (!body) return;
+    body.innerHTML = "";
+    const root = document.createElement("div");
+    root.className = "xlc-varform";
+    const head = document.createElement("div");
+    head.className = "xlc-varform-head";
+    const badge = document.createElement("span");
+    badge.className = "xlc-badge xlc-badge--markdown";
+    badge.textContent = (_a = TYPE_BADGES[options.itemType]) != null ? _a : "TXT";
+    head.appendChild(badge);
+    const title = document.createElement("span");
+    title.className = "xlc-varform-title";
+    title.textContent = options.title || t("unknownType");
+    head.appendChild(title);
+    const escHint = document.createElement("span");
+    escHint.className = "xlc-kbd";
+    escHint.textContent = "Esc " + t("cancel");
+    head.appendChild(escHint);
+    root.appendChild(head);
+    const sub = document.createElement("div");
+    sub.className = "xlc-varform-sub";
+    sub.textContent = t("varFormSub", String(options.fields.length));
+    root.appendChild(sub);
+    const inputs = [];
+    for (const field of options.fields) {
+      const wrap = document.createElement("div");
+      wrap.className = "xlc-varform-field";
+      const label = document.createElement("label");
+      label.className = "xlc-varform-label";
+      label.textContent = field.name;
+      const tag = document.createElement("span");
+      tag.className = "xlc-varform-tag";
+      tag.textContent = field.kind === "text" ? `{{xlc:ask:${field.name}}}` : `{{xlc:ask:${field.name}${field.kind === "date" ? "|date" : "|" + field.options.join(",")}}}`;
+      label.appendChild(tag);
+      wrap.appendChild(label);
+      const input = document.createElement("input");
+      input.className = "b3-text-field";
+      if (field.kind === "date") input.type = "date";
+      if (field.kind === "select") {
+        input.setAttribute("list", `xlc-varform-list-${safeListId(field.name)}`);
+        const datalist = document.createElement("datalist");
+        datalist.id = `xlc-varform-list-${safeListId(field.name)}`;
+        for (const opt of field.options) {
+          const option = document.createElement("option");
+          option.value = opt;
+          datalist.appendChild(option);
+        }
+        wrap.appendChild(datalist);
+      }
+      input.dataset.xlcVarField = field.name;
+      wrap.appendChild(input);
+      inputs.push(input);
+      root.appendChild(wrap);
+    }
+    const foot = document.createElement("div");
+    foot.className = "xlc-varform-foot";
+    const kbdHint = document.createElement("span");
+    kbdHint.className = "xlc-varform-hint";
+    kbdHint.textContent = t("varFormHint");
+    foot.appendChild(kbdHint);
+    const cancelBtn = document.createElement("button");
+    cancelBtn.className = "b3-button";
+    cancelBtn.textContent = t("cancel");
+    foot.appendChild(cancelBtn);
+    const insertBtn = document.createElement("button");
+    insertBtn.className = "b3-button xlc-btn-primary";
+    insertBtn.textContent = t("insert");
+    foot.appendChild(insertBtn);
+    root.appendChild(foot);
+    body.appendChild(root);
+    const collect = () => {
+      var _a2;
+      const fills = {};
+      for (const input of inputs) {
+        const name = (_a2 = input.dataset.xlcVarField) != null ? _a2 : "";
+        if (name) fills[name] = input.value;
+      }
+      return fills;
+    };
+    const confirm3 = () => {
+      dialog.destroy();
+      options.onConfirm(collect());
+    };
+    insertBtn.addEventListener("click", confirm3);
+    cancelBtn.addEventListener("click", () => {
+      var _a2;
+      dialog.destroy();
+      (_a2 = options.onCancel) == null ? void 0 : _a2.call(options);
+    });
+    root.addEventListener("keydown", (ev) => {
+      if (ev.key === "Enter" && !ev.altKey && !ev.ctrlKey && !ev.metaKey) {
+        ev.preventDefault();
+        confirm3();
+      }
+    });
+    dialog.element.addEventListener("click", (ev) => {
+      var _a2;
+      if (ev.target.classList.contains("b3-dialog__scrim")) (_a2 = options.onCancel) == null ? void 0 : _a2.call(options);
+    }, { once: true });
+    (_b = inputs[0]) == null ? void 0 : _b.focus();
+  }
+  function safeListId(name) {
+    return name.replace(/[^0-9a-zA-Z\u4e00-\u9fa5_-]/g, "").slice(0, 24) || "f";
+  }
+
+  // src/ui/dialog.ts
+  var TYPE_BADGES2 = {
     text: "TXT",
     markdown: "MD",
     url: "URL",
@@ -306,7 +476,7 @@
     open() {
       const isMobile = this.deps.isMobile();
       const content = this.buildDom(isMobile);
-      this.dialog = new import_siyuan.Dialog({
+      this.dialog = new import_siyuan2.Dialog({
         title: this.deps.t("pluginName"),
         content: "",
         width: isMobile ? "100vw" : "min(760px, 94vw)",
@@ -407,8 +577,12 @@
       const savedFilters = this.deps.getFilters();
       if (savedFilters.type) typeSelect.value = savedFilters.type;
       typeSelect.addEventListener("change", () => {
-        var _a;
-        this.deps.setFilters({ type: typeSelect.value, tag: (_a = tagSelect == null ? void 0 : tagSelect.value) != null ? _a : "" });
+        var _a, _b;
+        this.deps.setFilters({
+          type: typeSelect.value,
+          tag: (_a = tagSelect == null ? void 0 : tagSelect.value) != null ? _a : "",
+          category: (_b = categorySelect == null ? void 0 : categorySelect.value) != null ? _b : ""
+        });
         void this.refresh();
       });
       filters.appendChild(typeSelect);
@@ -430,10 +604,38 @@
         if (savedFilters.tag && tags.includes(savedFilters.tag)) tagSelect.value = savedFilters.tag;
       });
       tagSelect.addEventListener("change", () => {
-        this.deps.setFilters({ type: typeSelect.value, tag: tagSelect.value });
+        var _a;
+        this.deps.setFilters({
+          type: typeSelect.value,
+          tag: tagSelect.value,
+          category: (_a = categorySelect == null ? void 0 : categorySelect.value) != null ? _a : ""
+        });
         void this.refresh();
       });
       filters.appendChild(tagSelect);
+      const categorySelect = document.createElement("select");
+      categorySelect.className = "b3-select xlc-category-select";
+      categorySelect.setAttribute("aria-label", this.deps.t("category"));
+      if (savedFilters.category) categorySelect.value = savedFilters.category;
+      void this.deps.getCategories().then((categories) => {
+        if (categories.length === 0) return;
+        const first = document.createElement("option");
+        first.value = "";
+        first.textContent = this.deps.t("category");
+        categorySelect.appendChild(first);
+        for (const category of categories) {
+          const opt = document.createElement("option");
+          opt.value = category;
+          opt.textContent = category;
+          categorySelect.appendChild(opt);
+        }
+        if (savedFilters.category && categories.includes(savedFilters.category)) categorySelect.value = savedFilters.category;
+      });
+      categorySelect.addEventListener("change", () => {
+        this.deps.setFilters({ type: typeSelect.value, tag: tagSelect.value, category: categorySelect.value });
+        void this.refresh();
+      });
+      filters.appendChild(categorySelect);
       for (const scope of ["favorites", "recent"]) {
         const chip = document.createElement("button");
         chip.className = "xlc-chip xlc-scope-chip";
@@ -498,6 +700,10 @@
         const pane = document.createElement("div");
         pane.className = "xlc-pane";
         pane.appendChild(this.buildPaneHead());
+        const paneVars = document.createElement("div");
+        paneVars.className = "xlc-pane-vars";
+        paneVars.style.display = "none";
+        pane.appendChild(paneVars);
         const warn = document.createElement("div");
         warn.className = "xlc-pane-warn";
         warn.style.display = "none";
@@ -632,12 +838,13 @@
       });
     }
     buildQuery() {
-      var _a, _b, _c, _d, _e, _f, _g;
+      var _a, _b, _c, _d, _e, _f, _g, _h, _i;
       const el = (_a = this.dialog) == null ? void 0 : _a.element;
       const text = (_c = (_b = el == null ? void 0 : el.querySelector(".xlc-search-input")) == null ? void 0 : _b.value) != null ? _c : "";
       const itemType = (_e = (_d = el == null ? void 0 : el.querySelector(".xlc-type-select")) == null ? void 0 : _d.value) != null ? _e : "";
       const tag = (_g = (_f = el == null ? void 0 : el.querySelector(".xlc-tag-select")) == null ? void 0 : _f.value) != null ? _g : "";
-      return { text, itemType, tag, scope: this.currentScope };
+      const category = (_i = (_h = el == null ? void 0 : el.querySelector(".xlc-category-select")) == null ? void 0 : _h.value) != null ? _i : "";
+      return { text, itemType, tag, category, scope: this.currentScope };
     }
     async refresh() {
       var _a, _b, _c, _d, _e, _f;
@@ -723,7 +930,7 @@
       this.updatePreview();
     }
     renderList(list) {
-      var _a;
+      var _a, _b;
       list.innerHTML = "";
       if (this.results.length === 0 && this.providerRows.length === 0 && this.emptyMessage) {
         const empty = document.createElement("div");
@@ -744,9 +951,32 @@
         }
         list.appendChild(empty);
       }
+      const grouping = this.deps.getSort() === "manual" && this.currentScope === "all";
+      const favoriteCount = grouping ? this.results.filter((e) => this.deps.isFavorite(e.id)).length : 0;
+      const showPinnedHead = grouping && favoriteCount > 0;
+      let pinnedPlaced = false;
+      let restHeadPlaced = false;
+      const placeGroupHead = (label, count) => {
+        const head = document.createElement("div");
+        head.className = "xlc-group-head";
+        head.dataset.xlcHead = "1";
+        head.setAttribute("aria-hidden", "true");
+        head.textContent = `${label} \xB7 ${count}`;
+        list.appendChild(head);
+      };
       for (let i = 0; i < this.results.length; i++) {
         const entry = this.results[i];
         const fav = this.deps.isFavorite(entry.id);
+        if (showPinnedHead) {
+          if (fav && !pinnedPlaced) {
+            placeGroupHead("\u{1F4CC} " + this.deps.t("groupPinned"), favoriteCount);
+            pinnedPlaced = true;
+          }
+          if (!fav && pinnedPlaced && !restHeadPlaced) {
+            placeGroupHead(this.deps.t("groupAll"), this.results.length - favoriteCount);
+            restHeadPlaced = true;
+          }
+        }
         const row = document.createElement("div");
         row.className = "xlc-row" + (i === this.activeIndex ? " xlc-row--active" : "") + (fav ? " xlc-row--fav" : "");
         row.dataset.xlcIndex = String(i);
@@ -765,12 +995,18 @@
         }
         const badge = document.createElement("span");
         badge.className = `xlc-badge xlc-badge--${entry.itemType}`;
-        badge.textContent = (_a = TYPE_BADGES[entry.itemType]) != null ? _a : "TXT";
+        badge.textContent = (_a = TYPE_BADGES2[entry.itemType]) != null ? _a : "TXT";
         title.appendChild(badge);
         const titleText = document.createElement("span");
         titleText.className = "xlc-row-titletext";
         titleText.textContent = entry.title || this.deps.t("unknownType");
         title.appendChild(titleText);
+        if (((_b = entry.varCount) != null ? _b : 0) > 0) {
+          const varBadge = document.createElement("span");
+          varBadge.className = "xlc-badge xlc-badge--var";
+          varBadge.textContent = this.deps.t("varCountBadge", String(entry.varCount));
+          title.appendChild(varBadge);
+        }
         if (this.deps.isFavorite(entry.id)) {
           const starMini = document.createElement("span");
           starMini.className = "xlc-row-favmark";
@@ -902,7 +1138,7 @@
       var _a;
       const list = (_a = this.dialog) == null ? void 0 : _a.element.querySelector(".xlc-list");
       if (!list) return;
-      const rows = Array.from(list.children);
+      const rows = Array.from(list.children).filter((el) => !el.dataset.xlcHead);
       rows.forEach((child, i) => {
         const isReal = i < this.results.length;
         const active3 = isReal ? this.activeProvider < 0 && i === this.activeIndex : this.activeProvider >= 0 && i - this.results.length === this.activeProvider;
@@ -914,6 +1150,27 @@
     }
     schedulePreview(entry) {
       this.updatePreview(entry.id);
+    }
+    /** 变量提示行：从预览文本解析 ask 字段并列出语法 chip（code/提供方行不展示）。 */
+    paintPaneVars(text, itemType) {
+      var _a;
+      const paneVars = (_a = this.dialog) == null ? void 0 : _a.element.querySelector(".xlc-pane-vars");
+      if (!paneVars) return;
+      const fields = itemType && itemType !== "code" && itemType !== "provider" && text ? listAskFields(text) : [];
+      paneVars.textContent = "";
+      if (fields.length === 0) {
+        paneVars.style.display = "none";
+        return;
+      }
+      const label = document.createElement("span");
+      label.textContent = this.deps.t("paneVarsLabel", String(fields.length));
+      paneVars.appendChild(label);
+      for (const field of fields) {
+        const chip = document.createElement("code");
+        chip.textContent = field.kind === "text" ? `{{xlc:ask:${field.name}}}` : `{{xlc:ask:${field.name}${field.kind === "date" ? "|date" : "|" + field.options.join(",")}}}`;
+        paneVars.appendChild(chip);
+      }
+      paneVars.style.display = "flex";
     }
     updatePreview(forceId) {
       var _a, _b, _c, _d, _e, _f;
@@ -929,6 +1186,7 @@
         paneTitle.textContent = row.title || row.providerName;
         paneAi.style.display = "none";
         paneWarn.style.display = "none";
+        this.paintPaneVars(null, "provider");
         paneBody.textContent = row.payload;
         return;
       }
@@ -943,25 +1201,57 @@
         paneWarn.style.display = missing ? "" : "none";
         if (missing) paneWarn.textContent = "\u26A0 " + this.deps.t("sourceGone");
       }
+      this.paintPaneVars(null, entry == null ? void 0 : entry.itemType);
       paneBody.textContent = this.deps.t("aiWorking");
       void this.deps.preview(id).then((text) => {
         if (seq !== this.previewSeq) return;
-        paneBody.textContent = text || this.deps.t("previewUnavailable");
+        const finalText = text || this.deps.t("previewUnavailable");
+        paneBody.textContent = finalText;
+        this.paintPaneVars(text, entry == null ? void 0 : entry.itemType);
       }).catch(() => {
         if (seq !== this.previewSeq) return;
         paneBody.textContent = this.deps.t("kernelError", "preview");
+        this.paintPaneVars(null, entry == null ? void 0 : entry.itemType);
       });
     }
-    /** 普通点击 = 主动作（insert；blockref = 插入引用） */
+    /** 普通点击 = 主动作（insert；blockref = 插入引用）。含变量时先弹填充卡片（F1）。 */
     async runPrimary(entry) {
       if (this.deps.insertTarget) {
-        this.destroy();
-        await this.deps.insertToDoc(entry.id, this.deps.insertTarget.docId, this.deps.insertTarget.hPath);
+        const target = this.deps.insertTarget;
+        await this.insertEntryWithVars(entry, (fills) => this.deps.insertToDoc(entry.id, target.docId, target.hPath, fills));
         return;
       }
       const mode = entry.itemType === "blockref" ? "insert-ref" : "insert";
-      await this.deps.runAction(entry.id, mode);
-      this.destroy();
+      await this.insertEntryWithVars(entry, (fills) => fills ? this.deps.runActionWithFills(entry.id, mode, fills) : this.deps.runAction(entry.id, mode));
+    }
+    /** F1：插入前询问变量（设置可关；无 ask 字段零打扰；code 条目不询问）。
+     *  perform 收到 fills（undefined=未触发询问，走原路径）。 */
+    async insertEntryWithVars(entry, perform) {
+      if (!this.deps.promptVariables()) {
+        await perform();
+        return;
+      }
+      let fields = [];
+      try {
+        const content = await this.deps.preview(entry.id);
+        fields = entry.itemType === "code" || !content ? [] : listAskFields(content);
+      } catch {
+        fields = [];
+      }
+      if (fields.length === 0) {
+        await perform();
+        return;
+      }
+      openVariableFillCard({
+        t: this.deps.t,
+        itemType: entry.itemType,
+        title: entry.title,
+        fields,
+        onConfirm: (fills) => {
+          this.destroy();
+          void perform(fills);
+        }
+      });
     }
     /** 菜单按钮统一构造：图标列 + 文本（createTextNode 注入，绝不 innerHTML） */
     menuButton(icon, label, cls, run) {
@@ -1011,7 +1301,7 @@
           addAction("\u229E", this.deps.t("insertEmbed"), () => this.deps.runAction(entry.id, "insert-embed"));
           addAction("\u29C9", this.deps.t("insertCopy"), () => this.deps.runAction(entry.id, "copy-content"));
         } else {
-          addAction("\uFF0B", this.deps.t("insert"), () => this.deps.runAction(entry.id, "insert"));
+          addAction("\uFF0B", this.deps.t("insert"), () => this.insertEntryWithVars(entry, (fills) => fills ? this.deps.runActionWithFills(entry.id, "insert", fills) : this.deps.runAction(entry.id, "insert")));
           addAction("\u29C9", this.deps.t("copy"), () => this.deps.runAction(entry.id, "copy"));
         }
         menu.appendChild(sec1);
@@ -1061,8 +1351,10 @@
               if (mySeq !== seq) return;
               for (const hit of hits.slice(0, 5)) {
                 sec.appendChild(this.menuButton("\u2913", hit.hPath || hit.name || hit.id, "xlc-menu-item xlc-pickdoc-hit", async () => {
-                  this.destroy();
-                  await this.deps.insertToDoc(entry.id, hit.id, hit.hPath);
+                  var _a3;
+                  (_a3 = this.menuDismiss) == null ? void 0 : _a3.call(this);
+                  this.menuDismiss = null;
+                  await this.insertEntryWithVars(entry, (fills) => this.deps.insertToDoc(entry.id, hit.id, hit.hPath, fills));
                 }));
               }
             });
@@ -1213,7 +1505,7 @@
   };
 
   // src/ui/settings-dialog.ts
-  var import_siyuan2 = __toESM(require_stub_dom());
+  var import_siyuan3 = __toESM(require_stub_dom());
 
   // src/model/storage.ts
   init_constants();
@@ -1553,9 +1845,30 @@
   }
 
   // src/ui/settings-dialog.ts
+  function buildSwitchRow(text, sub, checked, onChange) {
+    const row = document.createElement("label");
+    row.className = "xlc-setting-row";
+    const cap = document.createElement("span");
+    cap.className = "xlc-setting-text";
+    cap.textContent = text;
+    if (sub) {
+      const subEl = document.createElement("div");
+      subEl.className = "xlc-setting-sub";
+      subEl.textContent = sub;
+      cap.appendChild(subEl);
+    }
+    const box = document.createElement("input");
+    box.type = "checkbox";
+    box.className = "xlc-switch";
+    box.checked = checked;
+    box.addEventListener("change", () => onChange(box.checked));
+    row.appendChild(cap);
+    row.appendChild(box);
+    return row;
+  }
   function openSetupDialog(ctx) {
     const t = ctx.t;
-    const dialog = new import_siyuan2.Dialog({
+    const dialog = new import_siyuan3.Dialog({
       title: t("setupTitle"),
       content: "",
       width: "min(520px, 92vw)",
@@ -1566,16 +1879,12 @@
     body.innerHTML = "";
     const root = document.createElement("div");
     root.className = "xlc-form";
-    const hint = document.createElement("p");
-    hint.className = "xlc-form-hint";
-    hint.textContent = t("setupHint");
-    root.appendChild(hint);
-    buildLibraryPickerSection(ctx, root, () => dialog.destroy());
+    buildLibraryPickerSection(ctx, root, () => dialog.destroy(), { onDismiss: () => dialog.destroy() });
     body.appendChild(root);
   }
   function openSettingsDialog(ctx) {
     const t = ctx.t;
-    const dialog = new import_siyuan2.Dialog({
+    const dialog = new import_siyuan3.Dialog({
       title: t("openSettings"),
       content: "",
       width: "min(560px, 92vw)",
@@ -1614,10 +1923,57 @@
     libSec.appendChild(pickerHost);
     root.appendChild(libSec);
     buildAiSection(ctx, root);
+    buildInsertSection(ctx, root);
     buildSearchSection(ctx, root);
     buildProviderSection(ctx, root);
     buildDataSection(ctx, root);
     body.appendChild(root);
+  }
+  function buildInsertSection(ctx, root) {
+    const t = ctx.t;
+    const sec = document.createElement("div");
+    sec.className = "xlc-form-field xlc-card";
+    const label = document.createElement("span");
+    label.className = "xlc-form-label";
+    label.textContent = t("insertSection");
+    sec.appendChild(label);
+    sec.appendChild(buildSwitchRow(
+      t("promptVariablesToggle"),
+      t("promptVariablesSub"),
+      ctx.state.insert.promptVariables,
+      (value) => {
+        ctx.state.insert.promptVariables = value;
+        ctx.persistSoon();
+      }
+    ));
+    sec.appendChild(buildSwitchRow(
+      t("recordUsageToggle"),
+      t("recordUsageSub"),
+      ctx.state.insert.recordUsage,
+      (value) => {
+        ctx.state.insert.recordUsage = value;
+        ctx.persistSoon();
+      }
+    ));
+    const foot = document.createElement("div");
+    foot.className = "xlc-setting-row";
+    const hint = document.createElement("span");
+    hint.className = "xlc-setting-text";
+    hint.textContent = t("usageStatsHint");
+    foot.appendChild(hint);
+    const clearBtn = document.createElement("button");
+    clearBtn.className = "b3-button";
+    clearBtn.textContent = t("clearUsageBtn");
+    clearBtn.addEventListener("click", () => {
+      (0, import_siyuan3.confirm)("\u26A0\uFE0F " + t("clearUsageBtn"), t("clearUsageConfirm"), () => {
+        ctx.state.usage = {};
+        ctx.persistSoon();
+        ctx.notify("info", t("clearUsageDone"));
+      });
+    });
+    foot.appendChild(clearBtn);
+    sec.appendChild(foot);
+    root.appendChild(sec);
   }
   function buildProviderSection(ctx, root) {
     const t = ctx.t;
@@ -1649,13 +2005,43 @@
     }
     root.appendChild(provSec);
   }
-  function buildLibraryPickerSection(ctx, root, onConfigured) {
+  function buildStepsEl(current, caption) {
+    const steps = document.createElement("div");
+    steps.className = "xlc-steps";
+    const dot1 = document.createElement("span");
+    dot1.className = "xlc-step-dot" + (current === 1 ? " xlc-step-dot--on" : "");
+    dot1.textContent = current === 1 ? "1" : "\u2713";
+    steps.appendChild(dot1);
+    const line = document.createElement("span");
+    line.className = "xlc-step-line";
+    steps.appendChild(line);
+    const dot2 = document.createElement("span");
+    dot2.className = "xlc-step-dot" + (current === 2 ? " xlc-step-dot--on" : "");
+    dot2.textContent = "2";
+    steps.appendChild(dot2);
+    const cap = document.createElement("span");
+    cap.className = "xlc-step-cap";
+    cap.textContent = caption;
+    steps.appendChild(cap);
+    return steps;
+  }
+  function buildLibraryPickerSection(ctx, root, onConfigured, opts) {
     const t = ctx.t;
+    let step = 1;
+    let pickedDoc = null;
+    const stepsEl = buildStepsEl(1, t("setupStep1"));
+    root.appendChild(stepsEl);
+    const hint = document.createElement("p");
+    hint.className = "xlc-form-hint";
+    hint.style.marginBottom = "12px";
+    hint.textContent = t("setupHint");
+    root.appendChild(hint);
+    const step1 = document.createElement("div");
     const modeWrap = document.createElement("div");
     modeWrap.className = "xlc-form-field";
     const modeLabel = document.createElement("span");
     modeLabel.className = "xlc-form-label";
-    modeLabel.textContent = t("setupTitle");
+    modeLabel.textContent = t("setupModeLabel");
     modeWrap.appendChild(modeLabel);
     const modeSelect = document.createElement("select");
     modeSelect.className = "b3-select";
@@ -1671,71 +2057,7 @@
       modeSelect.appendChild(opt);
     }
     modeWrap.appendChild(modeSelect);
-    root.appendChild(modeWrap);
-    const nbWrap = document.createElement("div");
-    nbWrap.className = "xlc-form-field";
-    const nbLabel = document.createElement("span");
-    nbLabel.className = "xlc-form-label";
-    nbLabel.textContent = t("setupNotebook");
-    nbWrap.appendChild(nbLabel);
-    const nbSelect = document.createElement("select");
-    nbSelect.className = "b3-select";
-    nbWrap.appendChild(nbSelect);
-    root.appendChild(nbWrap);
-    void ctx.library.listNotebooks().then((result) => {
-      if (!result.ok) {
-        ctx.notify("error", t("kernelError", result.message));
-        return;
-      }
-      for (const nb of result.data) {
-        const opt = document.createElement("option");
-        opt.value = nb.id;
-        opt.textContent = nb.name;
-        nbSelect.appendChild(opt);
-      }
-    });
-    const nameWrap = document.createElement("div");
-    nameWrap.className = "xlc-form-field";
-    const nameLabel = document.createElement("span");
-    nameLabel.className = "xlc-form-label";
-    nameLabel.textContent = t("setupNewDoc");
-    nameWrap.appendChild(nameLabel);
-    const nameInput = document.createElement("input");
-    nameInput.className = "b3-text-field";
-    nameInput.value = t("setupNewDocName");
-    nameWrap.appendChild(nameInput);
-    root.appendChild(nameWrap);
-    const actions = document.createElement("div");
-    actions.className = "xlc-form-actions";
-    const createBtn = document.createElement("button");
-    createBtn.className = "b3-button xlc-btn-primary";
-    createBtn.textContent = t("setupNewDoc");
-    createBtn.addEventListener("click", () => {
-      const notebookId = nbSelect.value;
-      const title = nameInput.value.trim();
-      if (!notebookId || !title) {
-        ctx.notify("error", t("invalidItem"));
-        return;
-      }
-      (0, import_siyuan2.confirm)("\u26A0\uFE0F " + t("setupTitle"), t("setupConfirmCreate", title), () => {
-        void ctx.library.createLibraryDoc(notebookId, title).then((result) => {
-          if (!result.ok) {
-            ctx.notify("error", t("kernelError", result.message));
-            return;
-          }
-          ctx.applyConfig({
-            configVersion: CONFIG_VERSION,
-            mode: "doc",
-            notebookIds: [],
-            containerDocIds: [result.data.docId],
-            createdDocIds: [result.data.docId],
-            configuredAt: Date.now()
-          });
-          ctx.notify("info", t("libDocCreated", title));
-          onConfigured();
-        });
-      });
-    });
+    step1.appendChild(modeWrap);
     const pickerWrap = document.createElement("div");
     pickerWrap.className = "xlc-form-field";
     const pickerInput = document.createElement("input");
@@ -1745,8 +2067,7 @@
     const pickerList = document.createElement("div");
     pickerList.className = "xlc-doclist";
     pickerWrap.appendChild(pickerList);
-    root.appendChild(pickerWrap);
-    let pickedDoc = null;
+    step1.appendChild(pickerWrap);
     let pickerSeq = 0;
     pickerInput.addEventListener("input", () => {
       const seq = ++pickerSeq;
@@ -1777,10 +2098,132 @@
         }
       });
     });
-    const useNotebookBtn = document.createElement("button");
-    useNotebookBtn.className = "b3-button b3-button--text";
-    useNotebookBtn.textContent = t("confirm");
-    useNotebookBtn.addEventListener("click", () => {
+    const nbWrap = document.createElement("div");
+    nbWrap.className = "xlc-form-field";
+    nbWrap.style.display = "none";
+    const nbLabel = document.createElement("span");
+    nbLabel.className = "xlc-form-label";
+    nbLabel.textContent = t("setupNotebook");
+    nbWrap.appendChild(nbLabel);
+    const nbSelect = document.createElement("select");
+    nbSelect.className = "b3-select";
+    nbWrap.appendChild(nbSelect);
+    step1.appendChild(nbWrap);
+    void ctx.library.listNotebooks().then((result) => {
+      if (!result.ok) {
+        ctx.notify("error", t("kernelError", result.message));
+        return;
+      }
+      for (const nb of result.data) {
+        const opt = document.createElement("option");
+        opt.value = nb.id;
+        opt.textContent = nb.name;
+        nbSelect.appendChild(opt);
+      }
+    });
+    const syncModeUi = () => {
+      const notebook = modeSelect.value === "notebook";
+      pickerWrap.style.display = notebook ? "none" : "";
+      nbWrap.style.display = notebook ? "" : "none";
+    };
+    modeSelect.addEventListener("change", syncModeUi);
+    syncModeUi();
+    const nameWrap = document.createElement("div");
+    nameWrap.className = "xlc-form-field";
+    const nameLabel = document.createElement("span");
+    nameLabel.className = "xlc-form-label";
+    nameLabel.textContent = t("setupNewDoc");
+    nameWrap.appendChild(nameLabel);
+    const nameRow = document.createElement("div");
+    nameRow.className = "xlc-form-row";
+    const nameInput = document.createElement("input");
+    nameInput.className = "b3-text-field";
+    nameInput.value = t("setupNewDocName");
+    nameRow.appendChild(nameInput);
+    const createBtn = document.createElement("button");
+    createBtn.className = "b3-button";
+    createBtn.style.whiteSpace = "nowrap";
+    createBtn.textContent = t("create");
+    createBtn.addEventListener("click", () => {
+      const notebookId = nbSelect.value;
+      const title = nameInput.value.trim();
+      if (!notebookId || !title) {
+        ctx.notify("error", t("invalidItem"));
+        return;
+      }
+      (0, import_siyuan3.confirm)("\u26A0\uFE0F " + t("setupTitle"), t("setupConfirmCreate", title), () => {
+        void ctx.library.createLibraryDoc(notebookId, title).then((result) => {
+          if (!result.ok) {
+            ctx.notify("error", t("kernelError", result.message));
+            return;
+          }
+          ctx.applyConfig({
+            configVersion: CONFIG_VERSION,
+            mode: "doc",
+            notebookIds: [],
+            containerDocIds: [result.data.docId],
+            createdDocIds: [result.data.docId],
+            configuredAt: Date.now()
+          });
+          ctx.notify("info", t("libDocCreated", title));
+          onConfigured();
+        });
+      });
+    });
+    nameRow.appendChild(createBtn);
+    nameWrap.appendChild(nameRow);
+    step1.appendChild(nameWrap);
+    const step1Actions = document.createElement("div");
+    step1Actions.className = "xlc-form-actions";
+    if (opts == null ? void 0 : opts.onDismiss) {
+      const dismissBtn = document.createElement("button");
+      dismissBtn.className = "b3-button xlc-btn-ghost";
+      dismissBtn.textContent = t("setupLater");
+      dismissBtn.addEventListener("click", () => {
+        var _a;
+        return (_a = opts.onDismiss) == null ? void 0 : _a.call(opts);
+      });
+      step1Actions.appendChild(dismissBtn);
+    }
+    const nextBtn = document.createElement("button");
+    nextBtn.className = "b3-button xlc-btn-primary";
+    nextBtn.textContent = t("setupNext");
+    nextBtn.addEventListener("click", () => {
+      const mode = modeSelect.value;
+      if (mode === "notebook" && !nbSelect.value) {
+        ctx.notify("error", t("invalidItem"));
+        return;
+      }
+      if (mode !== "notebook" && !pickedDoc) {
+        ctx.notify("error", t("docPickerEmpty"));
+        return;
+      }
+      gotoStep(2);
+    });
+    step1Actions.appendChild(nextBtn);
+    step1.appendChild(step1Actions);
+    root.appendChild(step1);
+    const step2 = document.createElement("div");
+    step2.style.display = "none";
+    const summaryWrap = document.createElement("div");
+    summaryWrap.className = "xlc-policy-list";
+    step2.appendChild(summaryWrap);
+    const summaryHint = document.createElement("p");
+    summaryHint.className = "xlc-form-hint";
+    summaryHint.style.marginTop = "12px";
+    summaryHint.textContent = t("setupConfirmHint");
+    step2.appendChild(summaryHint);
+    const step2Actions = document.createElement("div");
+    step2Actions.className = "xlc-form-actions";
+    const backBtn = document.createElement("button");
+    backBtn.className = "b3-button xlc-btn-ghost";
+    backBtn.textContent = t("setupBack");
+    backBtn.addEventListener("click", () => gotoStep(1));
+    step2Actions.appendChild(backBtn);
+    const finishBtn = document.createElement("button");
+    finishBtn.className = "b3-button xlc-btn-primary";
+    finishBtn.textContent = t("setupFinish");
+    finishBtn.addEventListener("click", () => {
       const mode = modeSelect.value;
       if (mode === "notebook") {
         const notebookId = nbSelect.value;
@@ -1813,9 +2256,40 @@
       });
       onConfigured();
     });
-    actions.appendChild(createBtn);
-    actions.appendChild(useNotebookBtn);
-    root.appendChild(actions);
+    step2Actions.appendChild(finishBtn);
+    step2.appendChild(step2Actions);
+    root.appendChild(step2);
+    function paintSummary() {
+      var _a, _b;
+      summaryWrap.textContent = "";
+      const mode = modeSelect.value;
+      const card = document.createElement("div");
+      card.className = "xlc-policy xlc-policy--recommended";
+      const icon = document.createElement("span");
+      icon.className = "xlc-policy-ic";
+      icon.textContent = "\u2713";
+      card.appendChild(icon);
+      const text = document.createElement("span");
+      const titleEl = document.createElement("span");
+      titleEl.className = "xlc-policy-title";
+      titleEl.textContent = mode === "notebook" ? `${t("setupNotebook")} \xB7 ${(_b = (_a = nbSelect.selectedOptions[0]) == null ? void 0 : _a.textContent) != null ? _b : nbSelect.value}` : (pickedDoc == null ? void 0 : pickedDoc.hPath) || (pickedDoc == null ? void 0 : pickedDoc.id) || "-";
+      text.appendChild(titleEl);
+      const desc = document.createElement("span");
+      desc.className = "xlc-policy-desc";
+      desc.textContent = mode === "notebook" ? t("setupSummaryNotebook") : t("setupSummaryDoc");
+      text.appendChild(desc);
+      card.appendChild(text);
+      summaryWrap.appendChild(card);
+    }
+    function gotoStep(next) {
+      step = next;
+      stepsEl.remove();
+      root.insertBefore(buildStepsEl(step, step === 1 ? t("setupStep1") : t("setupStep2")), root.firstChild);
+      step1.style.display = step === 1 ? "" : "none";
+      hint.style.display = step === 1 ? "" : "none";
+      step2.style.display = step === 2 ? "" : "none";
+      if (step === 2) paintSummary();
+    }
   }
   function buildAiSection(ctx, root) {
     const t = ctx.t;
@@ -1934,7 +2408,7 @@
       });
     });
     mkBtn(t("clearRecents"), () => {
-      (0, import_siyuan2.confirm)("\u26A0\uFE0F " + t("clearRecents"), t("clearRecentsConfirm"), () => {
+      (0, import_siyuan3.confirm)("\u26A0\uFE0F " + t("clearRecents"), t("clearRecentsConfirm"), () => {
         ctx.state.recents = [];
         ctx.persistSoon();
         ctx.notify("info", t("clearRecentsDone"));
@@ -2032,7 +2506,7 @@
       ctx.notify("error", ctx.aiErrorText(err));
       return;
     }
-    const dialog = new import_siyuan2.Dialog({
+    const dialog = new import_siyuan3.Dialog({
       title: t("tagAuditTitle"),
       content: "",
       width: "min(520px, 92vw)",
@@ -2074,7 +2548,7 @@
   }
   function openImportPolicyDialog(ctx, parsed, issues, source) {
     const t = ctx.t;
-    const dialog = new import_siyuan2.Dialog({
+    const dialog = new import_siyuan3.Dialog({
       title: t("importPolicyTitle"),
       content: "",
       width: "min(440px, 92vw)",
@@ -2105,27 +2579,43 @@
         ctx.notify("error", t("importFailed", err.message));
       });
     };
-    const btns = document.createElement("div");
-    btns.className = "xlc-form-actions";
-    btns.style.flexDirection = "column";
-    btns.style.alignItems = "stretch";
-    for (const [policy, label] of [
-      ["skip", t("importPolicySkip")],
-      ["overwrite", t("importPolicyOverwrite")],
-      ["rename", t("importPolicyRename")]
+    const policyList = document.createElement("div");
+    policyList.className = "xlc-policy-list";
+    for (const [policy, title, desc, recommended] of [
+      ["skip", t("importPolicySkip"), t("importPolicySkipDesc"), false],
+      ["overwrite", t("importPolicyOverwrite"), t("importPolicyOverwriteDesc"), false],
+      ["rename", t("importPolicyRename"), t("importPolicyRenameDesc"), true]
     ]) {
-      const btn = document.createElement("button");
-      btn.className = "b3-button";
-      btn.textContent = label;
-      btn.addEventListener("click", () => run(policy));
-      btns.appendChild(btn);
+      const card = document.createElement("button");
+      card.type = "button";
+      card.className = "xlc-policy" + (recommended ? " xlc-policy--recommended" : "");
+      const icon = document.createElement("span");
+      icon.className = "xlc-policy-ic";
+      icon.textContent = policy === "skip" ? "\u20DD" : policy === "overwrite" ? "\u21C4" : "\uFF0B";
+      card.appendChild(icon);
+      const text = document.createElement("span");
+      const titleEl = document.createElement("span");
+      titleEl.className = "xlc-policy-title";
+      titleEl.textContent = title + (recommended ? `\uFF08${t("recommended")}\uFF09` : "");
+      text.appendChild(titleEl);
+      const descEl = document.createElement("span");
+      descEl.className = "xlc-policy-desc";
+      descEl.textContent = desc;
+      text.appendChild(descEl);
+      card.appendChild(text);
+      card.addEventListener("click", () => run(policy));
+      policyList.appendChild(card);
     }
-    wrap.appendChild(btns);
+    wrap.appendChild(policyList);
+    const receiptHint = document.createElement("p");
+    receiptHint.className = "xlc-form-hint";
+    receiptHint.textContent = t("importReceiptHint");
+    wrap.appendChild(receiptHint);
     body.appendChild(wrap);
   }
 
   // src/ui/capture.ts
-  var import_siyuan3 = __toESM(require_stub_dom());
+  var import_siyuan4 = __toESM(require_stub_dom());
   function isBlockRefTarget(blockId) {
     return /^\d{14}-[0-9a-z]{7}$/.test(blockId);
   }
@@ -2248,7 +2738,7 @@
     openForm(defaultText, defaultType, sourceBlockId, overrides) {
       var _a;
       const t = this.deps.t;
-      const dialog = new import_siyuan3.Dialog({
+      const dialog = new import_siyuan4.Dialog({
         title: t("newItem"),
         content: "",
         width: "min(520px, 92vw)",
@@ -2297,6 +2787,38 @@
       metaRow.appendChild(typeWrap);
       form.appendChild(metaRow);
       const contentEl = field(t("contentLabel"), defaultText, true, "xlc-form-content");
+      const varbar = document.createElement("div");
+      varbar.className = "xlc-varbar";
+      const varbarCap = document.createElement("span");
+      varbarCap.className = "xlc-varbar-cap";
+      varbarCap.textContent = t("insertVariable");
+      varbar.appendChild(varbarCap);
+      const VAR_SNIPPETS = [
+        "{{xlc:ask:\u5B57\u6BB5}}",
+        "{{xlc:ask:\u5B57\u6BB5|\u9009\u9879A,\u9009\u9879B}}",
+        "{{xlc:cursor}}",
+        "{{xlc:date}}",
+        "{{xlc:doc}}",
+        "{{xlc:clipboard}}"
+      ];
+      for (const snippet of VAR_SNIPPETS) {
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = "xlc-varbtn";
+        btn.textContent = snippet;
+        btn.addEventListener("click", () => {
+          var _a2, _b;
+          const el = contentEl;
+          const start = (_a2 = el.selectionStart) != null ? _a2 : el.value.length;
+          const end = (_b = el.selectionEnd) != null ? _b : start;
+          el.value = el.value.slice(0, start) + snippet + el.value.slice(end);
+          const caret = start + snippet.length;
+          el.focus();
+          el.setSelectionRange(caret, caret);
+        });
+        varbar.appendChild(btn);
+      }
+      contentEl.parentElement.after(varbar);
       const titleEl = field(t("title"), (_a = overrides == null ? void 0 : overrides.title) != null ? _a : "", false, "xlc-form-title");
       const aliasEl = field(t("alias"), "", false, "xlc-form-alias", metaRow);
       const tagRow = document.createElement("div");
@@ -2453,7 +2975,7 @@
             doSave();
             return;
           }
-          (0, import_siyuan3.confirm)("\u26A0\uFE0F " + t("duplicateTitle"), t("duplicateConfirm", dup.title), () => doSave());
+          (0, import_siyuan4.confirm)("\u26A0\uFE0F " + t("duplicateTitle"), t("duplicateConfirm", dup.title), () => doSave());
         });
       });
       actions.appendChild(cancelBtn);
@@ -2466,14 +2988,14 @@
 
   // scripts/harness/entry.ts
   var ENTRIES = [
-    { id: "xlc-demo0000001", blockId: "20240101120000-aaaaaaa", libraryDocId: "20240101120001-hijklmn", itemType: "markdown", title: "\u9879\u76EE\u5EF6\u671F\u9053\u6B49\u4E0E\u8865\u507F\u65B9\u6848", alias: "\u5EF6\u671F\u9053\u6B49", tags: ["\u5BA2\u6237\u6C9F\u901A", "\u6A21\u677F"], category: "\u5BA2\u670D", summary: "\u5C0A\u656C\u7684\u738B\u603B\uFF1A\u5173\u4E8E\u672C\u671F\u4EA4\u4ED8\u5EF6\u671F\u2026\u2026", createdAt: 1, updatedAt: 2, sourceDocId: "20240101120001-hijklmn", sourceBlockId: "20240101120002-bbbbbbb" },
+    { id: "xlc-demo0000001", blockId: "20240101120000-aaaaaaa", libraryDocId: "20240101120001-hijklmn", itemType: "markdown", title: "\u9879\u76EE\u5EF6\u671F\u9053\u6B49\u4E0E\u8865\u507F\u65B9\u6848", alias: "\u5EF6\u671F\u9053\u6B49", tags: ["\u5BA2\u6237\u6C9F\u901A", "\u6A21\u677F"], category: "\u5BA2\u670D", summary: "\u5C0A\u656C\u7684\u738B\u603B\uFF1A\u5173\u4E8E\u672C\u671F\u4EA4\u4ED8\u5EF6\u671F\u2026\u2026", createdAt: 1, updatedAt: 2, sourceDocId: "20240101120001-hijklmn", sourceBlockId: "20240101120002-bbbbbbb", varCount: 2 },
     { id: "xlc-demo0000002", blockId: "20240101120000-ccccccc", libraryDocId: "20240101120001-hijklmn", itemType: "text", title: "\u5EF6\u671F\u7B80\u77ED\u7248\uFF08IM \u7528\uFF09", alias: "", tags: [], category: "", summary: "\u60A8\u597D\uFF0C\u672C\u6B21\u8FED\u4EE3\u56E0\u8054\u8C03\u8D85\u671F\uFF0C\u4E0A\u7EBF\u63A8\u8FDF 2 \u5929\u2026\u2026", createdAt: 1, updatedAt: 2 },
-    { id: "xlc-demo0000003", blockId: "20240101120000-ddddddd", libraryDocId: "20240101120001-hijklmn", itemType: "code", title: "SQL \u5206\u9875\u6A21\u677F", alias: "", tags: ["\u5F00\u53D1"], category: "", summary: "SELECT * FROM t LIMIT \u2026", createdAt: 1, updatedAt: 2 },
+    { id: "xlc-demo0000003", blockId: "20240101120000-ddddddd", libraryDocId: "20240101120001-hijklmn", itemType: "code", title: "SQL \u5206\u9875\u6A21\u677F", alias: "", tags: ["\u5F00\u53D1"], category: "\u5F00\u53D1", summary: "SELECT * FROM t LIMIT \u2026", createdAt: 1, updatedAt: 2 },
     { id: "xlc-demo0000004", blockId: "20240101120000-eeeeeee", libraryDocId: "20240101120001-hijklmn", itemType: "blockref", title: "\u4EA7\u54C1\u9700\u6C42\u6A21\u677F\uFF08\u5F15\u7528\uFF09", alias: "", tags: [], category: "", summary: "", createdAt: 1, updatedAt: 2, targetBlockId: "20240101120002-bbbbbbb" },
     { id: "xlc-demo0000005", blockId: "20240101120000-fffffff", libraryDocId: "20240101120001-hijklmn", itemType: "url", title: "SLA \u8D54\u4ED8\u6807\u51C6\u6587\u6863", alias: "", tags: [], category: "", summary: "https://wiki.example.com/sla", createdAt: 1, updatedAt: 2, url: "https://wiki.example.com/sla" }
   ];
   var PREVIEWS = {
-    "xlc-demo0000001": "\u5C0A\u656C\u7684\u738B\u603B\uFF1A\n\n\u5173\u4E8E\u672C\u671F\u300C\u4F1A\u5458\u7CFB\u7EDF\u300D\u4EA4\u4ED8\u5EF6\u671F\uFF0C\u6211\u4EEC\u6DF1\u8868\u6B49\u610F\u3002\u7ECF\u590D\u76D8\uFF0C\u4E3B\u8981\u539F\u56E0\u4E3A\u7B2C\u4E09\u65B9\u652F\u4ED8\u8054\u8C03\u8D85\u671F\u3002\u76EE\u524D\u8054\u8C03\u5DF2\u5B8C\u6210 92%\uFF0C\u9884\u8BA1\u63A8\u8FDF 2 \u4E2A\u5DE5\u4F5C\u65E5\u4E0A\u7EBF\u3002\n\n\u4E3A\u5F25\u8865\u5F71\u54CD\uFF0C\u6211\u4EEC\u63D0\u4F9B\u4EE5\u4E0B\u8865\u507F\uFF1A\n1. \u672C\u671F\u670D\u52A1\u8D39\u51CF\u514D 5%\uFF1B\n2. \u4E0A\u7EBF\u540E 48 \u5C0F\u65F6\u4E13\u5C5E\u503C\u5B88\uFF1B\n3. \u4E0B\u671F\u8FED\u4EE3\u4F18\u5148\u6392\u5165\u8D35\u65B9\u9700\u6C42\u3002\n\n\u518D\u6B21\u611F\u8C22\u7406\u89E3\u4E0E\u652F\u6301\uFF0C\u6709\u4EFB\u4F55\u95EE\u9898\u968F\u65F6\u8054\u7CFB\u6211\u3002",
+    "xlc-demo0000001": "\u5C0A\u656C\u7684 {{xlc:ask:\u5BA2\u6237\u540D\u79F0}}\uFF1A\n\n\u5173\u4E8E\u672C\u671F\u300C\u4F1A\u5458\u7CFB\u7EDF\u300D\u4EA4\u4ED8\u5EF6\u671F\uFF0C\u6211\u4EEC\u6DF1\u8868\u6B49\u610F\u3002\u7ECF\u590D\u76D8\uFF0C\u4E3B\u8981\u539F\u56E0\u4E3A\u7B2C\u4E09\u65B9\u652F\u4ED8\u8054\u8C03\u8D85\u671F\u3002\u76EE\u524D\u8054\u8C03\u5DF2\u5B8C\u6210 92%\uFF0C\u9884\u8BA1\u63A8\u8FDF 2 \u4E2A\u5DE5\u4F5C\u65E5\u4E0A\u7EBF\u3002\n\n\u4E3A\u5F25\u8865\u5F71\u54CD\uFF0C\u6211\u4EEC\u63D0\u4F9B\u4EE5\u4E0B\u8865\u507F\uFF1A\n1. \u672C\u671F\u670D\u52A1\u8D39\u51CF\u514D {{xlc:ask:\u8865\u507F\u6BD4\u4F8B|5%,10%}}\uFF1B\n2. \u4E0A\u7EBF\u540E 48 \u5C0F\u65F6\u4E13\u5C5E\u503C\u5B88\uFF1B\n3. \u4E0B\u671F\u8FED\u4EE3\u4F18\u5148\u6392\u5165\u8D35\u65B9\u9700\u6C42\u3002\n\n\u518D\u6B21\u611F\u8C22\u7406\u89E3\u4E0E\u652F\u6301\uFF0C\u6709\u4EFB\u4F55\u95EE\u9898\u968F\u65F6\u8054\u7CFB\u6211\u3002{{xlc:cursor}}",
     "xlc-demo0000002": "\u60A8\u597D\uFF0C\u672C\u6B21\u8FED\u4EE3\u56E0\u8054\u8C03\u8D85\u671F\uFF0C\u4E0A\u7EBF\u63A8\u8FDF 2 \u5929\u3002\u7ED9\u60A8\u5E26\u6765\u4E0D\u4FBF\u6DF1\u8868\u6B49\u610F\uFF0C\u6709\u95EE\u9898\u968F\u65F6\u627E\u6211\u3002",
     "xlc-demo0000003": "```sql\nSELECT * FROM articles\nWHERE status = 'published'\nORDER BY updated_at DESC\nLIMIT 20 OFFSET 40;\n```",
     "xlc-demo0000004": "\uFF08\u5F15\u7528\u8BED\u6CD5\u9884\u89C8\uFF09((20240101120002-bbbbbbb '\u4EA7\u54C1\u9700\u6C42\u6A21\u677F'))",
@@ -2543,6 +3065,39 @@
       actionsNoun: "\u52A8\u4F5C",
       semanticSuggestion: "\u6CA1\u6709\u672C\u5730\u7ED3\u679C\u3002\u8BD5\u8BD5 AI \u8BED\u4E49\u627E\uFF1A\u5728\u5173\u952E\u8BCD\u524D\u52A0 ?",
       aiSemanticHint: "\u8F93\u5165 ? \u52A0\u63CF\u8FF0\uFF0C\u5982\u300C?\u7ED9\u5BA2\u6237\u7684\u9053\u6B49\u56DE\u590D\u300D\uFF0CAI \u5728\u5143\u6570\u636E\u4E2D\u627E\u6700\u76F8\u5173\u6761\u76EE",
+      varCountBadge: "%s \u53D8\u91CF",
+      paneVarsLabel: "\u63D2\u5165\u65F6\u5C06\u8BE2\u95EE %s \u4E2A\u53D8\u91CF\uFF1A",
+      insertVariable: "\u63D2\u5165\u53D8\u91CF\uFF1A",
+      varFormTitle: "\u586B\u5199\u53D8\u91CF",
+      varFormSub: "\u672C\u6761\u76EE\u542B %s \u4E2A\u53D8\u91CF\uFF0C\u586B\u5199\u540E\u4E00\u6B21\u6027\u63D2\u5165\uFF1B\u586B\u5199\u503C\u4EC5\u7528\u4E8E\u672C\u6B21\uFF0C\u4E0D\u56DE\u5199\u5E93\u3002",
+      varFormHint: "Tab \u4E0B\u4E00\u9879 \xB7 Enter \u63D2\u5165",
+      groupPinned: "\u7F6E\u9876",
+      groupAll: "\u5168\u90E8",
+      insertSection: "\u53D8\u91CF\u4E0E\u63D2\u5165",
+      promptVariablesToggle: "\u63D2\u5165\u524D\u8BE2\u95EE\u53D8\u91CF",
+      promptVariablesSub: "\u542B {{xlc:ask:\u2026}} \u7684\u6761\u76EE\u63D2\u5165\u524D\u5F39\u51FA\u586B\u5145\u5361\u7247",
+      recordUsageToggle: "\u8BB0\u5F55\u4F7F\u7528\u6B21\u6570",
+      recordUsageSub: "\u4EC5\u672C\u5730\u5B58\u50A8\uFF0C\u53EF\u4E00\u952E\u6E05\u9664\uFF1B\u7528\u4E8E\u300C\u5E38\u7528\u300D\u6392\u5E8F",
+      usageStatsHint: "\u4F7F\u7528\u7EDF\u8BA1\u4EC5\u4FDD\u5B58\u5728\u672C\u673A",
+      clearUsageBtn: "\u6E05\u7A7A\u4F7F\u7528\u7EDF\u8BA1",
+      clearUsageConfirm: "\u6E05\u7A7A\u5168\u90E8\u4F7F\u7528\u8BA1\u6570\uFF1F",
+      clearUsageDone: "\u5DF2\u6E05\u7A7A\u4F7F\u7528\u7EDF\u8BA1",
+      importPolicySkipDesc: "\u540C\u540D\u540C\u6E90\u6761\u76EE\u4E0D\u52A8\uFF0C\u4EC5\u65B0\u589E\u7F3A\u5931\u9879",
+      importPolicyOverwriteDesc: "\u4EE5\u5BFC\u5165\u5185\u5BB9\u66F4\u65B0\u73B0\u6709\u6761\u76EE\uFF08\u539F\u6587\u5757\u88AB\u6539\u5199\uFF09",
+      importPolicyRenameDesc: "\u5BFC\u5165\u9879\u52A0\u300C\u5BFC\u5165\u300D\u540E\u7F00\uFF0C\u73B0\u6709\u6761\u76EE\u4E0D\u53D7\u5F71\u54CD",
+      recommended: "\u63A8\u8350",
+      importReceiptHint: "\u5BFC\u5165\u5B8C\u6210\u5C06\u9010\u9879\u56DE\u6267\uFF1A\u65B0\u589E / \u8DF3\u8FC7 / \u8986\u76D6 / \u6539\u540D / \u5931\u8D25",
+      setupModeLabel: "\u5E93\u65B9\u5F0F",
+      setupStep1: "\u7B2C 1 \u6B65 \xB7 \u9009\u62E9\u5E93\u65B9\u5F0F",
+      setupStep2: "\u7B2C 2 \u6B65 \xB7 \u786E\u8BA4\u843D\u70B9",
+      setupNext: "\u4E0B\u4E00\u6B65\uFF1A\u786E\u8BA4",
+      setupBack: "\u4E0A\u4E00\u6B65",
+      setupFinish: "\u5B8C\u6210\u8BBE\u7F6E",
+      setupLater: "\u7A0D\u540E\u518D\u8BF4",
+      setupConfirmHint: "\u521B\u5EFA\u52A8\u4F5C\u6709\u660E\u786E confirm \u63D0\u793A \xB7 \u4E0D\u52A8\u4F60\u5DF2\u6709\u7684\u4EFB\u4F55\u6587\u6863\uFF1B\u4E4B\u540E\u53EF\u5728 \u8BBE\u7F6E \u2192 \u5F53\u524D\u5185\u5BB9\u5E93 \u66F4\u6539\u3002",
+      setupSummaryDoc: "\u6761\u76EE\u5C06\u4EE5\u771F\u5B9E\u5757\u4FDD\u5B58\u4E8E\u6B64\u6587\u6863",
+      setupSummaryNotebook: "\u6574\u4E2A\u7B14\u8BB0\u672C\u4F5C\u4E3A\u5185\u5BB9\u5E93",
+      create: "\u521B\u5EFA",
       "sort.manual": "\u624B\u52A8/\u7F6E\u9876",
       "sort.recent": "\u6700\u8FD1\u4F7F\u7528",
       "sort.title": "\u6807\u9898",
@@ -2596,11 +3151,16 @@
       t: T,
       search: async () => overrides.empty ? { entries: [], truncated: false, total: 0 } : { entries: ENTRIES, truncated: false, total: 128 },
       getTags: async () => ["\u5BA2\u6237\u6C9F\u901A", "\u6A21\u677F", "\u5F00\u53D1"],
+      getCategories: async () => ["\u5BA2\u670D", "\u5F00\u53D1"],
       preview: async (itemId) => {
         var _a2;
         return (_a2 = PREVIEWS[itemId]) != null ? _a2 : "";
       },
       runAction: async () => ({ ok: true, message: "inserted" }),
+      runActionWithFills: async (_itemId, _mode, fills) => {
+        window.__xlcLastFills = fills;
+        return { ok: true, message: "inserted" };
+      },
       openSource: async () => ({ ok: true, message: "opened" }),
       editItem: async () => {
       },
@@ -2618,7 +3178,7 @@
       },
       saveTransformed: async () => {
       },
-      getFilters: () => ({ type: "", tag: "" }),
+      getFilters: () => ({ type: "", tag: "", category: "" }),
       setFilters: () => {
       },
       getLastQuery: () => "",
@@ -2627,6 +3187,7 @@
       insertTarget: null,
       openSetup: () => {
       },
+      promptVariables: () => true,
       providerSearch: async (query) => query.includes("\u5DE5\u4F5C\u53F0") ? [
         { virtualId: "pv:xiaolv-speed-switch:1", providerId: "xiaolv-speed-switch", providerName: "\u5C0F\u9A74\u96F7\u5207", title: "\u5F53\u524D\u5DE5\u4F5C\u53F0", payload: "\u5FEB\u901F\u56DE\u5230\u5DE5\u4F5C\u53F0\u5E03\u5C40\uFF08\u63D0\u4F9B\u65B9\u6F14\u793A\u6570\u636E\uFF09" },
         { virtualId: "pv:xiaolv-checkin:1", providerId: "xiaolv-checkin", providerName: "\u5C0F\u9A74\u6253\u5361", title: "\u4ECA\u65E5\u6253\u5361\u72B6\u6001", payload: "\u5DF2\u5B8C\u6210 3/4 \u9879\u4E60\u60EF\u6253\u5361\uFF08\u63D0\u4F9B\u65B9\u6F14\u793A\u6570\u636E\uFF09" }
@@ -2668,11 +3229,13 @@
           schemaVersion: 2,
           favorites: [],
           recents: [],
+          usage: {},
           sort: "manual",
-          uiPrefs: { lastTypeFilter: "", lastTagFilter: "" },
+          uiPrefs: { lastTypeFilter: "", lastTagFilter: "", lastCategoryFilter: "" },
           providers: [{ pluginId: "xiaolv-checkin", displayName: "\u5C0F\u9A74\u6253\u5361", protocolVersion: 1, registeredAt: 1 }],
           ai: { enabled: true, shareContent: true },
-          search: { pinyin: true, placeholders: true }
+          search: { pinyin: true, placeholders: true },
+          insert: { promptVariables: true, recordUsage: true }
         },
         getConfig: () => ({ configVersion: 1, mode: "doc", notebookIds: [], containerDocIds: ["20240101120001-hijklmn"], createdDocIds: [], configuredAt: 1 }),
         library: {
@@ -2708,11 +3271,13 @@
           schemaVersion: 2,
           favorites: [],
           recents: [],
+          usage: {},
           sort: "manual",
-          uiPrefs: { lastTypeFilter: "", lastTagFilter: "" },
+          uiPrefs: { lastTypeFilter: "", lastTagFilter: "", lastCategoryFilter: "" },
           providers: [],
           ai: { enabled: false, shareContent: false },
-          search: { pinyin: true, placeholders: true }
+          search: { pinyin: true, placeholders: true },
+          insert: { promptVariables: true, recordUsage: true }
         },
         getConfig: () => null,
         library: {

@@ -38,6 +38,10 @@
   --xlc-badge-warn-bg: rgba(226, 106, 80, .12);
   --xlc-ai-tint: rgba(53, 117, 240, .08);
   --xlc-ai-tint-strong: rgba(53, 117, 240, .14);
+  // 变量系统（F1，原型屏 4）：紫罗兰独占，与 AI 蓝区分
+  --xlc-var: #8a5ad0;
+  --xlc-var-tint: rgba(150, 105, 224, .1);
+  --xlc-var-tint-strong: rgba(150, 105, 224, .16);
   // 自绘下拉箭头（中性灰，亮暗通用）
   --xlc-chevron: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%237d8085' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
 }
@@ -544,6 +548,44 @@
     }
   }
 
+  // 分组 sticky 头（F4-lite，原型屏 1）
+  .xlc-group-head {
+    padding: 5px 12px;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: .4px;
+    color: var(--b3-theme-on-surface);
+    background-color: var(--b3-theme-surface);
+    border-bottom: 1px solid var(--b3-border-color);
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    user-select: none;
+  }
+
+  // 预览窗格变量提示行（F1，原型屏 1）
+  .xlc-pane-vars {
+    display: none;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+    margin: 4px 14px 2px;
+    padding: 6px 10px;
+    border-radius: var(--xlc-radius-xs);
+    font-size: 11.5px;
+    line-height: 1.7;
+    color: var(--xlc-var);
+    background-color: var(--xlc-var-tint);
+
+    code {
+      font-family: var(--mono, ui-monospace, monospace);
+      font-size: 10.5px;
+      background-color: var(--xlc-var-tint-strong);
+      border-radius: 4px;
+      padding: 1px 5px;
+    }
+  }
+
   .xlc-pane-warn {
     margin: 6px 14px 4px;
     padding: 6px 10px;
@@ -754,6 +796,7 @@
   &--structure { color: var(--xlc-badge-md); background-color: var(--xlc-badge-md-bg); }
   &--warn      { color: var(--xlc-badge-warn); background-color: var(--xlc-badge-warn-bg); }
   &--ai        { color: var(--b3-theme-primary); background-color: var(--xlc-badge-md-bg); }
+  &--var       { color: var(--xlc-var); background-color: var(--xlc-var-tint); font-family: var(--mono, inherit); font-weight: 500; letter-spacing: 0; }
 }
 
 // 菜单弹层动效（只动 transform / opacity）
@@ -1029,6 +1072,217 @@
       outline: 2px solid var(--b3-theme-primary);
       outline-offset: 2px;
     }
+  }
+}
+
+// ---------- 变量填充卡片（F1，原型屏 4）----------
+.xlc-varform {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  color: var(--b3-theme-on-background);
+
+  .xlc-varform-head {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+
+    .xlc-varform-title {
+      flex: 1;
+      min-width: 0;
+      font-weight: 600;
+      font-size: 13.5px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+  }
+
+  .xlc-varform-sub {
+    font-size: 11px;
+    line-height: 1.6;
+    color: var(--b3-theme-on-surface);
+    margin-top: -4px;
+  }
+
+  .xlc-varform-field {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    min-width: 0;
+
+    .xlc-varform-label {
+      font-size: 11.5px;
+      color: var(--b3-theme-on-surface);
+
+      .xlc-varform-tag {
+        font-family: var(--mono, ui-monospace, monospace);
+        font-size: 10px;
+        color: var(--xlc-var);
+        margin-left: 6px;
+      }
+    }
+
+    .b3-text-field {
+      width: 100%;
+      border: 1px solid var(--b3-border-color);
+      border-radius: var(--xlc-radius-sm);
+      background-color: var(--b3-theme-surface);
+      color: var(--b3-theme-on-background);
+      padding: 6px 10px;
+      font-size: 12.5px;
+      font-family: inherit;
+
+      &:focus {
+        border-color: var(--b3-theme-primary);
+        background-color: var(--b3-theme-background);
+        outline: none;
+      }
+    }
+  }
+
+  .xlc-varform-foot {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 4px;
+
+    .xlc-varform-hint {
+      margin-right: auto;
+      font-size: 11px;
+      color: var(--b3-theme-on-surface);
+    }
+  }
+}
+
+// ---------- 变量快捷插入条（F1 捕获侧，原型屏 3）----------
+.xlc-varbar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+
+  .xlc-varbar-cap {
+    font-size: 11px;
+    color: var(--b3-theme-on-surface);
+  }
+
+  .xlc-varbtn {
+    font-family: var(--mono, ui-monospace, monospace);
+    font-size: 11px;
+    line-height: 18px;
+    padding: 1px 9px;
+    border: 1px solid rgba(150, 105, 224, .35);
+    border-radius: 999px;
+    color: var(--xlc-var);
+    background-color: var(--xlc-var-tint);
+    cursor: pointer;
+    transition: background-color var(--xlc-dur-fast) var(--xlc-ease),
+                transform var(--xlc-dur-fast) var(--xlc-ease);
+
+    &:hover { background-color: var(--xlc-var-tint-strong); }
+
+    &:active { transform: scale(.97); }
+
+    &:focus-visible {
+      outline: 2px solid var(--b3-theme-primary);
+      outline-offset: 1px;
+    }
+  }
+}
+
+// ---------- 策略卡（导入三选，原型屏 8）----------
+.xlc-policy-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+
+  .xlc-policy {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    text-align: left;
+    border: 1px solid var(--b3-border-color);
+    border-radius: var(--xlc-radius);
+    background-color: var(--b3-theme-surface);
+    padding: 10px 12px;
+    color: var(--b3-theme-on-background);
+    font-size: 12.5px;
+    font-family: inherit;
+    cursor: pointer;
+    transition: border-color var(--xlc-dur-fast) var(--xlc-ease),
+                background-color var(--xlc-dur-fast) var(--xlc-ease);
+
+    &:hover { border-color: var(--b3-theme-primary-light); }
+
+    &:focus-visible {
+      outline: 2px solid var(--b3-theme-primary);
+      outline-offset: 1px;
+    }
+
+    .xlc-policy-ic {
+      flex-shrink: 0;
+      color: var(--b3-theme-primary);
+      font-size: 14px;
+    }
+
+    .xlc-policy-title {
+      display: block;
+      font-weight: 600;
+    }
+
+    .xlc-policy-desc {
+      display: block;
+      font-size: 11px;
+      line-height: 1.6;
+      color: var(--b3-theme-on-surface);
+    }
+
+    &--recommended {
+      border-color: var(--b3-theme-primary-light);
+      background-color: var(--xlc-ai-tint);
+    }
+  }
+}
+
+// ---------- 步骤指示（首跑引导两步式，原型屏 6）----------
+.xlc-steps {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 12px;
+
+  .xlc-step-dot {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    border: 1px solid var(--b3-border-color);
+    color: var(--b3-theme-on-surface);
+    font-size: 10.5px;
+    font-variant-numeric: tabular-nums;
+
+    &--on {
+      background-color: var(--b3-theme-primary);
+      border-color: var(--b3-theme-primary);
+      color: var(--b3-theme-on-primary);
+      font-weight: 600;
+    }
+  }
+
+  .xlc-step-line {
+    flex: 0 0 24px;
+    height: 1px;
+    background-color: var(--b3-border-color);
+  }
+
+  .xlc-step-cap {
+    font-size: 11px;
+    color: var(--b3-theme-on-surface);
+    margin-left: 4px;
   }
 }
 
