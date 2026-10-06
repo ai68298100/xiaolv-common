@@ -1,0 +1,58 @@
+src/index.ts(3,5): error TS6133: 'App' is declared but its value is never read.
+src/index.ts(17,1): error TS6133: 'parseMarkdownPack' is declared but its value is never read.
+src/index.ts(27,25): error TS6133: 'NewItemInput' is declared but its value is never read.
+src/index.ts(27,39): error TS6133: 'SourceHealth' is declared but its value is never read.
+src/index.ts(474,54): error TS2345: Argument of type 'string | undefined' is not assignable to parameter of type 'string'.
+src/index.ts(475,46): error TS2322: Type 'string | undefined' is not assignable to type 'string'.
+src/index.ts(733,17): error TS2322: Type '"title" | "manual" | "recent" | "frequent" | undefined' is not assignable to type '"title" | "manual" | "recent" | "frequent"'.
+src/kernel/client.ts(179,13): error TS2322: Type 'string | undefined' is not assignable to type 'string'.
+src/model/actions.ts(4,34): error TS6133: 'ItemType' is declared but its value is never read.
+src/model/actions.ts(59,29): error TS2345: Argument of type 'string | undefined' is not assignable to parameter of type 'string'.
+src/model/actions.ts(59,37): error TS2322: Type 'string | undefined' is not assignable to type 'string | null'.
+src/model/actions.ts(65,13): error TS2322: Type 'string | undefined' is not assignable to type 'string'.
+src/model/actions.ts(65,29): error TS2322: Type 'string | undefined' is not assignable to type 'string'.
+src/model/item.ts(100,10): error TS6133: 'normalizeSource' is declared but its value is never read.
+src/model/search.ts(87,60): error TS18048: 'a' is possibly 'undefined'.
+src/model/search.ts(88,13): error TS18048: 'top' is possibly 'undefined'.
+src/model/search.ts(88,40): error TS18048: 'top' is possibly 'undefined'.
+src/model/search.ts(88,65): error TS2322: Type '{ score: number; matchedBy: string; } | undefined' is not assignable to type '{ score: number; matchedBy: string; } | null'.
+src/model/search.ts(138,28): error TS2345: Argument of type 'SearchEntry | undefined' is not assignable to parameter of type 'SearchEntry'.
+src/model/search.ts(141,34): error TS2345: Argument of type 'SearchEntry | undefined' is not assignable to parameter of type 'SearchEntry'.
+src/model/search.ts(144,27): error TS2322: Type 'SearchEntry | undefined' is not assignable to type 'SearchEntry'.
+src/model/transfer.ts(3,35): error TS6133: 'normalizeUnknownItem' is declared but its value is never read.
+src/model/transfer.ts(4,1): error TS6133: 'envelope' is declared but its value is never read.
+src/model/transfer.ts(168,34): error TS6133: 'incomingId' is declared but its value is never read.
+src/model/variables.ts(70,97): error TS2345: Argument of type 'string | undefined' is not assignable to parameter of type 'string'.
+src/model/zip.ts(17,59): error TS2532: Object is possibly 'undefined'.
+src/model/zip.ts(17,74): error TS2532: Object is possibly 'undefined'.
+src/service/ai.ts(194,19): error TS18048: 'body' is possibly 'undefined'.
+src/service/ai.ts(196,18): error TS18048: 'body' is possibly 'undefined'.
+src/service/ai.ts(198,17): error TS18048: 'body' is possibly 'undefined'.
+src/service/ai.ts(200,12): error TS18048: 'body' is possibly 'undefined'.
+src/service/commands.ts(10,25): error TS6133: 'Receipt' is declared but its value is never read.
+src/service/commands.ts(145,26): error TS6138: Property 'notify' is declared but its value is never read.
+src/service/commands.ts(331,50): error TS6133: 'item' is declared but its value is never read.
+src/service/import-markdown.ts(4,23): error TS6133: 'ConflictPolicy' is declared but its value is never read.
+src/service/import-markdown.ts(77,62): error TS2345: Argument of type 'number | undefined' is not assignable to parameter of type 'number'.
+src/service/import-markdown.ts(77,81): error TS2345: Argument of type 'number | undefined' is not assignable to parameter of type 'number'.
+src/service/import-markdown.ts(79,75): error TS2345: Argument of type 'number | undefined' is not assignable to parameter of type 'number'.
+src/service/import-markdown.ts(103,28): error TS2532: Object is possibly 'undefined'.
+src/service/import-markdown.ts(143,11): error TS6196: 'ParsedImportLike' is declared but never used.
+src/service/library.ts(20,5): error TS6133: 'isItemType' is declared but its value is never read.
+src/service/library.ts(332,42): error TS2532: Object is possibly 'undefined'.
+src/service/service.ts(3,37): error TS6133: 'CapabilityAi' is declared but its value is never read.
+src/ui/dialog.ts(10,1): error TS6133: 'CommonItem' is declared but its value is never read.
+src/ui/dialog.ts(91,13): error TS6133: 'ctx' is declared but its value is never read.
+src/ui/dialog.ts(698,46): error TS18048: 'entry' is possibly 'undefined'.
+src/ui/dialog.ts(729,55): error TS18048: 'entry' is possibly 'undefined'.
+src/ui/dialog.ts(730,45): error TS18048: 'entry' is possibly 'undefined'.
+src/ui/dialog.ts(734,37): error TS18048: 'entry' is possibly 'undefined'.
+src/ui/dialog.ts(737,18): error TS18048: 'entry' is possibly 'undefined'.
+src/ui/dialog.ts(740,76): error TS18048: 'entry' is possibly 'undefined'.
+src/ui/dialog.ts(748,51): error TS18048: 'entry' is possibly 'undefined'.
+src/ui/dialog.ts(749,31): error TS18048: 'entry' is possibly 'undefined'.
+src/ui/dialog.ts(749,55): error TS18048: 'entry' is possibly 'undefined'.
+src/ui/dialog.ts(756,43): error TS2345: Argument of type 'SearchEntry | undefined' is not assignable to parameter of type 'SearchEntry'.
+src/ui/dialog.ts(772,42): error TS18048: 'entry' is possibly 'undefined'.
+src/ui/dialog.ts(773,57): error TS18048: 'entry' is possibly 'undefined'.
+src/ui/variable-form.ts(148,13): error TS2532: Object is possibly 'undefined'.
