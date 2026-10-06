@@ -96,8 +96,8 @@
   "copyFailed": "Copy failed: %s",
   "timeout": "Operation timed out, please retry",
   "aiSection": "AI assistant",
-  "aiEnabled": "Enable AI assistant (uses models from SiYuan Settings - AI; no keys stored by this plugin)",
-  "aiShareContent": "Allow AI to read full item content (needed by tidy/transform/draft; metadata only when off)",
+  "aiEnabled": "Enable AI assistant",
+  "aiShareContent": "Let AI read full item content",
   "aiTidy": "AI tidy",
   "aiDraft": "AI draft",
   "aiDraftDesc": "Describe the content you want; AI drafts it",
@@ -154,8 +154,8 @@
   "reindexBtn": "Rebuild index",
   "totalItems": "%s items total",
   "searchSection": "Search",
-  "pinyinToggle": "Pinyin search (local full-pinyin/initials matching, can disable)",
-  "placeholdersToggle": "Dynamic placeholders (replace {{xlc:date}} etc. at insert/copy time)",
+  "pinyinToggle": "Pinyin search",
+  "placeholdersToggle": "Dynamic placeholders",
   "saveTransformed": "Save as new item",
   "placeholdersHint": "Supports {{xlc:date}} {{xlc:time}} {{xlc:datetime}} {{xlc:weekday}}; replaced only at insert/copy",
   "providerSection": "Provider content",
@@ -230,5 +230,10 @@
   "quickInsertSelected": "Insert selected",
   "cursorHint": "Cursor",
   "itemCountBadge": "%s items",
-  "invalidSkipBadge": "%s invalid will be skipped"
+  "invalidSkipBadge": "%s invalid will be skipped",
+  "aiEnabledSub": "Uses the model from SiYuan Settings → AI; no keys stored",
+  "aiShareContentSub": "Needed by tidy/transform/draft; metadata-only when off",
+  "pinyinToggleSub": "Local full-spelling / initials matching",
+  "placeholdersToggleSub": "Replaces {{xlc:date}} etc. at insert/copy time",
+  "aiSuggestion": "AI suggestion"
 }

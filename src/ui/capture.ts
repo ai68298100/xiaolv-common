@@ -185,7 +185,7 @@ export class CaptureDialog {
             return inputEl as HTMLInputElement;
         };
 
-        // 类型（别名同排，原型 v2：别名|类型 双栏）
+        // 类型（别名同排；挂载点在标题之后，原型屏 3 顺序：AI 草稿→内容→建议→标题→别名|类型→标签|分类）
         const metaRow = document.createElement("div");
         metaRow.className = "xlc-form-row";
         const typeWrap = document.createElement("label");
@@ -205,7 +205,6 @@ export class CaptureDialog {
         }
         typeWrap.appendChild(typeSelect);
         metaRow.appendChild(typeWrap);
-        form.appendChild(metaRow);
 
         const contentEl = field(t("contentLabel"), defaultText, true, "xlc-form-content");
         // 变量快捷插入条（F1 捕获侧，原型屏 3）：点选在内容光标处插入变量语法
@@ -241,6 +240,8 @@ export class CaptureDialog {
         }
         (contentEl.parentElement as HTMLElement).after(varbar);
         const titleEl = field(t("title"), overrides?.title ?? "", false, "xlc-form-title");
+        // 原型顺序：标题下方挂 别名|类型 双栏
+        form.appendChild(metaRow);
         const aliasEl = field(t("alias"), "", false, "xlc-form-alias", metaRow);
         // 标签 + 分类（原型：双栏行）
         const tagRow = document.createElement("div");
@@ -298,12 +299,25 @@ export class CaptureDialog {
                             return;
                         }
                         suggestions = result;
+                        // 原型屏 3：「✦ AI 建议：<b>标题</b> · 标签 … · 分类 …」（标题加粗；区别于搜索的「AI 找到的」）
+                        sugText.textContent = "";
+                        const lead = document.createElement("span");
+                        lead.textContent = "✦ " + t("aiSuggestion") + "：";
+                        sugText.appendChild(lead);
+                        if (result.title) {
+                            const titleEl = document.createElement("b");
+                            titleEl.textContent = result.title;
+                            sugText.appendChild(titleEl);
+                        }
                         const parts = [
-                            result.title ? result.title : "",
                             result.tags?.length ? result.tags.join("/") : "",
                             result.category ?? "",
                         ].filter(Boolean);
-                        sugText.textContent = "✦ " + t("aiFound") + "：" + parts.join(" · ");
+                        if (parts.length) {
+                            const tail = document.createElement("span");
+                            tail.textContent = (result.title ? " · " : "") + parts.join(" · ");
+                            sugText.appendChild(tail);
+                        }
                         sugrow.style.display = "";
                         applySuggestions();
                     });

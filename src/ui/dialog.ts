@@ -307,6 +307,8 @@ export class CommonSearchDialog {
         const paintSort = (): void => {
             const sort = this.deps.getSort();
             sortChip.textContent = "⇅ " + this.deps.t(`sort.${sort}`);
+            // 非默认档高亮（原型屏 1：⇅常用 为选中态）
+            sortChip.classList.toggle("xlc-chip--on", sort !== "manual");
         };
         paintSort();
         sortChip.addEventListener("click", () => {

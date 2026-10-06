@@ -101,11 +101,18 @@ export function openSettingsDialog(ctx: SettingsUiContext): void {
     libStatus.textContent = cfg
         ? (cfg.mode === "notebook" ? `notebook ${cfg.notebookIds.join(",")}` : `${cfg.mode} · ${cfg.containerDocIds.length} doc(s)`)
         : t("libraryNone");
-    libSec.appendChild(libStatus);
     const changeBtn = document.createElement("button");
     changeBtn.className = "b3-button";
-    changeBtn.style.alignSelf = "flex-start";
     changeBtn.textContent = t("openSettingsChangeLib");
+    // 原型屏 5：状态与按钮同行（状态左、按钮右贴）
+    const libRow = document.createElement("div");
+    libRow.className = "xlc-setting-row";
+    const statusText = document.createElement("span");
+    statusText.className = "xlc-setting-text";
+    statusText.textContent = libStatus.textContent;
+    libRow.appendChild(statusText);
+    libRow.appendChild(changeBtn);
+    libSec.appendChild(libRow);
     const pickerHost = document.createElement("div");
     pickerHost.style.display = "none";
     changeBtn.addEventListener("click", () => {
@@ -115,7 +122,6 @@ export function openSettingsDialog(ctx: SettingsUiContext): void {
             buildLibraryPickerSection(ctx, pickerHost, () => dialog.destroy());
         }
     });
-    libSec.appendChild(changeBtn);
     libSec.appendChild(pickerHost);
     root.appendChild(libSec);
 
@@ -523,29 +529,18 @@ function buildAiSection(ctx: SettingsUiContext, root: HTMLElement): void {
     aiLabel.className = "xlc-form-label";
     aiLabel.textContent = t("aiSection");
     aiSec.appendChild(aiLabel);
-    const aiRow = (key: "enabled" | "shareContent", text: string): HTMLInputElement => {
-        const row = document.createElement("label");
-        row.className = "xlc-setting-row";
-        const box = document.createElement("input");
-        box.type = "checkbox";
-        box.className = "xlc-switch";
-        box.checked = ctx.state.ai[key];
-        box.addEventListener("change", () => {
-            ctx.state.ai[key] = box.checked;
-            if (key === "enabled" && !box.checked) ctx.state.ai.shareContent = false;
+    const aiRow = (key: "enabled" | "shareContent", text: string, sub: string): HTMLInputElement => {
+        const row = buildSwitchRow(text, sub, ctx.state.ai[key], (value) => {
+            ctx.state.ai[key] = value;
+            if (key === "enabled" && !value) ctx.state.ai.shareContent = false;
             ctx.ai.updateSettings(ctx.state.ai);
             ctx.persistSoon();
         });
-        const cap = document.createElement("span");
-        cap.className = "xlc-setting-text";
-        cap.textContent = text;
-        row.appendChild(cap);
-        row.appendChild(box);
         aiSec.appendChild(row);
-        return box;
+        return row.querySelector<HTMLInputElement>(".xlc-switch") as HTMLInputElement;
     };
-    const aiEnabledBox = aiRow("enabled", t("aiEnabled"));
-    const aiShareBox = aiRow("shareContent", t("aiShareContent"));
+    const aiEnabledBox = aiRow("enabled", t("aiEnabled"), t("aiEnabledSub"));
+    const aiShareBox = aiRow("shareContent", t("aiShareContent"), t("aiShareContentSub"));
     aiEnabledBox.addEventListener("change", () => {
         if (!aiEnabledBox.checked) aiShareBox.checked = false;
     });
@@ -561,47 +556,21 @@ function buildSearchSection(ctx: SettingsUiContext, root: HTMLElement): void {
     searchLabel.className = "xlc-form-label";
     searchLabel.textContent = t("searchSection");
     searchSec.appendChild(searchLabel);
-    const pinyinRow = document.createElement("label");
-    pinyinRow.className = "xlc-setting-row";
-    const pinyinBox = document.createElement("input");
-    pinyinBox.type = "checkbox";
-    pinyinBox.className = "xlc-switch";
-    pinyinBox.checked = ctx.state.search.pinyin;
-    pinyinBox.addEventListener("change", () => {
-        ctx.state.search.pinyin = pinyinBox.checked;
+    const pinyinRow = buildSwitchRow(t("pinyinToggle"), t("pinyinToggleSub"), ctx.state.search.pinyin, (value) => {
+        ctx.state.search.pinyin = value;
         ctx.applyPinyinAdapter();
         ctx.persistSoon();
         void ctx.library.reindex().then((idx) => {
             ctx.notify("info", t("reindexDone", String(idx.entries.length)));
         });
     });
-    const pinyinCap = document.createElement("span");
-    pinyinCap.className = "xlc-setting-text";
-    pinyinCap.textContent = t("pinyinToggle");
-    pinyinRow.appendChild(pinyinCap);
-    pinyinRow.appendChild(pinyinBox);
     searchSec.appendChild(pinyinRow);
     // 占位符开关
-    const phRow = document.createElement("label");
-    phRow.className = "xlc-setting-row";
-    const phBox = document.createElement("input");
-    phBox.type = "checkbox";
-    phBox.className = "xlc-switch";
-    phBox.checked = ctx.state.search.placeholders;
-    phBox.addEventListener("change", () => {
-        ctx.state.search.placeholders = phBox.checked;
+    const phRow = buildSwitchRow(t("placeholdersToggle"), t("placeholdersToggleSub"), ctx.state.search.placeholders, (value) => {
+        ctx.state.search.placeholders = value;
         ctx.persistSoon();
     });
-    const phCap = document.createElement("span");
-    phCap.className = "xlc-setting-text";
-    phCap.textContent = t("placeholdersToggle");
-    phRow.appendChild(phCap);
-    phRow.appendChild(phBox);
     searchSec.appendChild(phRow);
-    const phHint = document.createElement("span");
-    phHint.className = "xlc-form-hint";
-    phHint.textContent = t("placeholdersHint");
-    searchSec.appendChild(phHint);
     root.appendChild(searchSec);
 }
 

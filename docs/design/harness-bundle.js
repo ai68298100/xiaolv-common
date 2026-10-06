@@ -663,6 +663,7 @@
       const paintSort = () => {
         const sort = this.deps.getSort();
         sortChip.textContent = "\u21C5 " + this.deps.t(`sort.${sort}`);
+        sortChip.classList.toggle("xlc-chip--on", sort !== "manual");
       };
       paintSort();
       sortChip.addEventListener("click", () => {
@@ -1957,11 +1958,17 @@
     libStatus.className = "xlc-form-hint";
     const cfg = ctx.getConfig();
     libStatus.textContent = cfg ? cfg.mode === "notebook" ? `notebook ${cfg.notebookIds.join(",")}` : `${cfg.mode} \xB7 ${cfg.containerDocIds.length} doc(s)` : t("libraryNone");
-    libSec.appendChild(libStatus);
     const changeBtn = document.createElement("button");
     changeBtn.className = "b3-button";
-    changeBtn.style.alignSelf = "flex-start";
     changeBtn.textContent = t("openSettingsChangeLib");
+    const libRow = document.createElement("div");
+    libRow.className = "xlc-setting-row";
+    const statusText = document.createElement("span");
+    statusText.className = "xlc-setting-text";
+    statusText.textContent = libStatus.textContent;
+    libRow.appendChild(statusText);
+    libRow.appendChild(changeBtn);
+    libSec.appendChild(libRow);
     const pickerHost = document.createElement("div");
     pickerHost.style.display = "none";
     changeBtn.addEventListener("click", () => {
@@ -1971,7 +1978,6 @@
         buildLibraryPickerSection(ctx, pickerHost, () => dialog.destroy());
       }
     });
-    libSec.appendChild(changeBtn);
     libSec.appendChild(pickerHost);
     root.appendChild(libSec);
     buildAiSection(ctx, root);
@@ -2351,29 +2357,18 @@
     aiLabel.className = "xlc-form-label";
     aiLabel.textContent = t("aiSection");
     aiSec.appendChild(aiLabel);
-    const aiRow = (key, text) => {
-      const row = document.createElement("label");
-      row.className = "xlc-setting-row";
-      const box = document.createElement("input");
-      box.type = "checkbox";
-      box.className = "xlc-switch";
-      box.checked = ctx.state.ai[key];
-      box.addEventListener("change", () => {
-        ctx.state.ai[key] = box.checked;
-        if (key === "enabled" && !box.checked) ctx.state.ai.shareContent = false;
+    const aiRow = (key, text, sub) => {
+      const row = buildSwitchRow(text, sub, ctx.state.ai[key], (value) => {
+        ctx.state.ai[key] = value;
+        if (key === "enabled" && !value) ctx.state.ai.shareContent = false;
         ctx.ai.updateSettings(ctx.state.ai);
         ctx.persistSoon();
       });
-      const cap = document.createElement("span");
-      cap.className = "xlc-setting-text";
-      cap.textContent = text;
-      row.appendChild(cap);
-      row.appendChild(box);
       aiSec.appendChild(row);
-      return box;
+      return row.querySelector(".xlc-switch");
     };
-    const aiEnabledBox = aiRow("enabled", t("aiEnabled"));
-    const aiShareBox = aiRow("shareContent", t("aiShareContent"));
+    const aiEnabledBox = aiRow("enabled", t("aiEnabled"), t("aiEnabledSub"));
+    const aiShareBox = aiRow("shareContent", t("aiShareContent"), t("aiShareContentSub"));
     aiEnabledBox.addEventListener("change", () => {
       if (!aiEnabledBox.checked) aiShareBox.checked = false;
     });
@@ -2387,46 +2382,20 @@
     searchLabel.className = "xlc-form-label";
     searchLabel.textContent = t("searchSection");
     searchSec.appendChild(searchLabel);
-    const pinyinRow = document.createElement("label");
-    pinyinRow.className = "xlc-setting-row";
-    const pinyinBox = document.createElement("input");
-    pinyinBox.type = "checkbox";
-    pinyinBox.className = "xlc-switch";
-    pinyinBox.checked = ctx.state.search.pinyin;
-    pinyinBox.addEventListener("change", () => {
-      ctx.state.search.pinyin = pinyinBox.checked;
+    const pinyinRow = buildSwitchRow(t("pinyinToggle"), t("pinyinToggleSub"), ctx.state.search.pinyin, (value) => {
+      ctx.state.search.pinyin = value;
       ctx.applyPinyinAdapter();
       ctx.persistSoon();
       void ctx.library.reindex().then((idx) => {
         ctx.notify("info", t("reindexDone", String(idx.entries.length)));
       });
     });
-    const pinyinCap = document.createElement("span");
-    pinyinCap.className = "xlc-setting-text";
-    pinyinCap.textContent = t("pinyinToggle");
-    pinyinRow.appendChild(pinyinCap);
-    pinyinRow.appendChild(pinyinBox);
     searchSec.appendChild(pinyinRow);
-    const phRow = document.createElement("label");
-    phRow.className = "xlc-setting-row";
-    const phBox = document.createElement("input");
-    phBox.type = "checkbox";
-    phBox.className = "xlc-switch";
-    phBox.checked = ctx.state.search.placeholders;
-    phBox.addEventListener("change", () => {
-      ctx.state.search.placeholders = phBox.checked;
+    const phRow = buildSwitchRow(t("placeholdersToggle"), t("placeholdersToggleSub"), ctx.state.search.placeholders, (value) => {
+      ctx.state.search.placeholders = value;
       ctx.persistSoon();
     });
-    const phCap = document.createElement("span");
-    phCap.className = "xlc-setting-text";
-    phCap.textContent = t("placeholdersToggle");
-    phRow.appendChild(phCap);
-    phRow.appendChild(phBox);
     searchSec.appendChild(phRow);
-    const phHint = document.createElement("span");
-    phHint.className = "xlc-form-hint";
-    phHint.textContent = t("placeholdersHint");
-    searchSec.appendChild(phHint);
     root.appendChild(searchSec);
   }
   function buildDataSection(ctx, root) {
@@ -2850,7 +2819,6 @@
       }
       typeWrap.appendChild(typeSelect);
       metaRow.appendChild(typeWrap);
-      form.appendChild(metaRow);
       const contentEl = field(t("contentLabel"), defaultText, true, "xlc-form-content");
       const varbar = document.createElement("div");
       varbar.className = "xlc-varbar";
@@ -2885,6 +2853,7 @@
       }
       contentEl.parentElement.after(varbar);
       const titleEl = field(t("title"), (_a = overrides == null ? void 0 : overrides.title) != null ? _a : "", false, "xlc-form-title");
+      form.appendChild(metaRow);
       const aliasEl = field(t("alias"), "", false, "xlc-form-alias", metaRow);
       const tagRow = document.createElement("div");
       tagRow.className = "xlc-form-row";
@@ -2938,12 +2907,24 @@
                 return;
               }
               suggestions = result;
+              sugText.textContent = "";
+              const lead = document.createElement("span");
+              lead.textContent = "\u2726 " + t("aiSuggestion") + "\uFF1A";
+              sugText.appendChild(lead);
+              if (result.title) {
+                const titleEl2 = document.createElement("b");
+                titleEl2.textContent = result.title;
+                sugText.appendChild(titleEl2);
+              }
               const parts = [
-                result.title ? result.title : "",
                 ((_a2 = result.tags) == null ? void 0 : _a2.length) ? result.tags.join("/") : "",
                 (_b = result.category) != null ? _b : ""
               ].filter(Boolean);
-              sugText.textContent = "\u2726 " + t("aiFound") + "\uFF1A" + parts.join(" \xB7 ");
+              if (parts.length) {
+                const tail = document.createElement("span");
+                tail.textContent = (result.title ? " \xB7 " : "") + parts.join(" \xB7 ");
+                sugText.appendChild(tail);
+              }
               sugrow.style.display = "";
               applySuggestions();
             });
@@ -3194,10 +3175,15 @@
       aiSection: "AI \u52A9\u624B",
       aiEnabled: "\u542F\u7528 AI \u52A9\u624B",
       aiShareContent: "\u5141\u8BB8 AI \u8BFB\u53D6\u6761\u76EE\u5B8C\u6574\u6B63\u6587",
+      aiEnabledSub: "\u4F7F\u7528\u601D\u6E90 \u8BBE\u7F6E\u2192\u4EBA\u5DE5\u667A\u80FD \u7684\u6A21\u578B\uFF0C\u63D2\u4EF6\u4E0D\u4FDD\u5B58\u5BC6\u94A5",
+      aiShareContentSub: "\u6574\u7406/\u53D8\u6362/\u8349\u7A3F\u9700\u8981\uFF1B\u5173\u95ED\u65F6\u4EC5\u5143\u6570\u636E",
       searchSection: "\u641C\u7D22",
       pinyinToggle: "\u62FC\u97F3\u641C\u7D22",
       placeholdersToggle: "\u52A8\u6001\u5360\u4F4D\u7B26",
       placeholdersHint: "\u652F\u6301 {{xlc:date}} \u7B49",
+      pinyinToggleSub: "\u5168\u62FC/\u9996\u5B57\u6BCD\u672C\u5730\u5339\u914D",
+      placeholdersToggleSub: "\u63D2\u5165\u65F6\u66FF\u6362 {{xlc:date}} \u7B49\u4E3A\u5F53\u524D\u65E5\u671F\u65F6\u95F4",
+      aiSuggestion: "AI \u5EFA\u8BAE",
       dataSection: "\u6570\u636E\uFF08\u5BFC\u51FA / \u5BFC\u5165\uFF09",
       librarySection: "\u5F53\u524D\u5185\u5BB9\u5E93",
       libraryNone: "\u672A\u914D\u7F6E",

@@ -183,11 +183,13 @@ fs.writeFileSync(path.join(OUT, "harness.html"), html);
         toggles: document.querySelectorAll(".xlc-setting-row input[type=checkbox]").length >= 3,
         providerRow: (document.body.textContent || "").includes("小驴打卡"),
         dataButtons: (document.body.textContent || "").includes("重建索引") && (document.body.textContent || "").includes("导出"),
+        // R70：开关说明拆为标题+副文本
+        switchSubs: (document.body.textContent || "").includes("插件不保存密钥") && (document.body.textContent || "").includes("全拼/首字母本地匹配"),
     }));
     if (Object.values(settingsAssertions).some((v) => !v)) {
         throw new Error("settings smoke failed: " + JSON.stringify(settingsAssertions));
     }
-    console.log("  smoke ✓ settings: 4 assertions");
+    console.log("  smoke ✓ settings: 5 assertions");
     await page.screenshot({path: path.join(OUT, "production-settings-light.png")});
     // 首跑引导（库选择器，全新安装第一屏）
     await page.evaluate(() => {
@@ -238,6 +240,8 @@ fs.writeFileSync(path.join(OUT, "harness.html"), html);
     await page.waitForTimeout(400);
     const captureAssertions = await page.evaluate(() => {
         const text = document.body.textContent || "";
+        const typeWrap = document.querySelector(".xlc-form-type")?.closest(".xlc-form-field");
+        const titleWrap = document.querySelector(".xlc-form-title")?.closest(".xlc-form-field");
         return {
             typeSelect: !!document.querySelector(".xlc-form-type"),
             contentArea: !!document.querySelector(".xlc-form-content"),
@@ -245,13 +249,15 @@ fs.writeFileSync(path.join(OUT, "harness.html"), html);
             saveBtn: text.includes("保存"),
             aiTidy: !!document.querySelector(".xlc-form-ai") && text.includes("AI 整理"),
             aiDraft: text.includes("草稿"),
+            // R70：原型屏 3 顺序 —— 类型|别名 行在标题之下
+            metaRowAfterTitle: !!typeWrap && !!titleWrap && Boolean(titleWrap.compareDocumentPosition(typeWrap) & Node.DOCUMENT_POSITION_FOLLOWING),
         };
     });
     if (Object.values(captureAssertions).some((v) => !v)) {
         throw new Error("capture smoke failed: " + JSON.stringify(captureAssertions));
 // debug marker
     }
-    console.log("  smoke ✓ capture: 6 assertions");
+    console.log("  smoke ✓ capture: 7 assertions");
     await page.screenshot({path: path.join(OUT, "production-capture-light.png")});
     // 捕获表单 AI 建议态（点「AI 整理」→ sugrow + 全部采纳 + 主色保存钮）
     await page.evaluate(() => {
@@ -278,6 +284,8 @@ fs.writeFileSync(path.join(OUT, "harness.html"), html);
         const save = Array.from(document.querySelectorAll("button")).find((b) => b.textContent === "保存");
         return {
             sugrowVisible: !!sugrow && sugrow.offsetParent !== null && sugrow.textContent.includes("全部采纳"),
+            // R70：建议行文案「AI 建议」+ 标题加粗
+            sugrowWording: !!sugrow && sugrow.textContent.includes("AI 建议") && !!sugrow.querySelector("b"),
             savePrimary: !!save && save.classList.contains("xlc-btn-primary"),
             twoColRows: document.querySelectorAll(".xlc-form-row").length >= 2,
         };
@@ -285,7 +293,7 @@ fs.writeFileSync(path.join(OUT, "harness.html"), html);
     if (Object.values(captureAiAssertions).some((v) => !v)) {
         throw new Error("capture-ai smoke failed: " + JSON.stringify(captureAiAssertions));
     }
-    console.log("  smoke ✓ capture-ai: 3 assertions");
+    console.log("  smoke ✓ capture-ai: 4 assertions");
     await page.screenshot({path: path.join(OUT, "production-capture-ai-light.png")});
     // 动作菜单（生产 showActionMenu DOM：右键第二行触发；图标列 + 标题 + AI 分区）
     await page.setViewportSize({width: 1280, height: 720});
