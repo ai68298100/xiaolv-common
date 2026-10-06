@@ -29,7 +29,28 @@ Powered by the model **you** configured in SiYuan Settings → AI; the plugin st
 | **AI transform** | action menu ✦ polish / shorten / formalize / translate / bulletize → preview, then insert-transformed / copy / insert-original (**original never modified**) | item content (same toggle) |
 | **AI semantic search** | type `?` + description in the search box → results flagged "AI-picked" | **metadata only** (title/alias/tags/category/summary; never content or source ids) |
 
-Also built-in: **dynamic placeholders** `{{xlc:date}} / {{xlc:time}} / {{xlc:datetime}} / {{xlc:weekday}} / {{xlc:title}} / {{xlc:path}}` replaced at insert/copy time (stored content always keeps the template; `xlc:` namespace never collides with SiYuan templates).
+Also built-in: **dynamic placeholders** `{{xlc:date}} / {{xlc:time}} / {{xlc:datetime}} / {{xlc:weekday}} / {{xlc:title}} / {{xlc:doc}} / {{xlc:path}} / {{xlc:clipboard}}` replaced at insert/copy time (stored content always keeps the template; `xlc:` namespace never collides with SiYuan templates).
+
+## Variables, snippet nesting & template packs
+
+| Capability | Usage |
+| --- | --- |
+| **Fill-in on insert** | `{{xlc:ask:field}}` / `{{xlc:ask:field|A,B}}` (dropdown) / `{{xlc:ask:field|date}}` opens a fill card before insert; values apply once, never written back; unfilled falls back to visible `__field__` |
+| **Cursor** | `{{xlc:cursor}}` marks the spot (host API: cursor lands after the inserted content) |
+| **Snippet nesting** | `{{xlc:snippet:title}}` inlines another item at insert (depth ≤3, cycle-safe; unresolvable refs become visible `__snippet: title__`) |
+| **Frequent sort** | Insert/copy counts usage (local, clearable); "⇅ Frequent" = count × recency |
+| **Template packs** | Settings → Data → "Template pack": filter by category, export a named `.md` pack with variable list; recipients get real SiYuan blocks |
+| **Custom AI transforms** | Settings → AI assistant → custom transforms (≤10), listed beside the five built-ins in the action menu ✦ section |
+| **Prompt scene pack** | Settings → AI assistant → import the built-in pack: 10 templates across support / AI prompts / dev writing |
+| **Quick capture** | Command "Quick capture clipboard as item" (⌥⇧V): form-less one-step save with type inference and honest duplicate skip |
+
+## B-001 desktop acceptance (one-shot script)
+
+```bash
+SIYUAN_ORIGIN=http://127.0.0.1:6806 SIYUAN_TOKEN=<your token> pnpm e2e
+```
+
+Mirrors every kernel flow the plugin uses (create library doc → append items + attrs → read-back / search / export → update → cleanup) and prints a per-item ✔/✖ summary.
 
 ## Insert semantics per type
 

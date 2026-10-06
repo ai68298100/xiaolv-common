@@ -8,7 +8,8 @@
     "build": "webpack --config webpack.config.js --mode production",
     "check": "tsc --noEmit",
     "test": "node tests/run-tests.cjs",
-    "test:ui": "node scripts/render-production.cjs"
+    "test:ui": "node scripts/render-production.cjs",
+    "e2e": "node scripts/e2e-acceptance.cjs"
   },
   "keywords": [
     "siyuan",
