@@ -267,6 +267,7 @@
     root.addEventListener("keydown", (ev) => {
       var _a2;
       if (ev.key === "Enter" && !ev.altKey && !ev.ctrlKey && !ev.metaKey) {
+        if (ev.target.tagName === "BUTTON") return;
         ev.preventDefault();
         confirm3();
         return;

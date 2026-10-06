@@ -1,6 +1,5 @@
 const path = require("path");
 const fs = require("fs");
-const webpack = require("webpack");
 const {EsbuildPlugin} = require("esbuild-loader");
 const MiniCssExtractPlugin = require("mini-css-extract-plugin");
 const CopyPlugin = require("copy-webpack-plugin");
@@ -21,9 +20,6 @@ const packageFilePatterns = [
 module.exports = (env, argv) => {
     const production = argv.mode === "production";
     const plugins = [
-        new webpack.DefinePlugin({
-            __LOG_ENABLED__: JSON.stringify(!production || process.env.XLC_LOG === "1"),
-        }),
         new MiniCssExtractPlugin({
             filename: production ? "dist/index.css" : "index.css",
         }),

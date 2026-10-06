@@ -128,9 +128,10 @@ export function openVariableFillCard(options: VariableFillOptions): void {
         dialog.destroy();
         options.onCancel?.();
     });
-    // Enter=插入（单行输入语义）；Tab 在卡片内循环（模态焦点不逃逸）
+    // Enter=插入（焦点在输入框时）；焦点在按钮上时由原生激活该按钮（取消=取消）
     root.addEventListener("keydown", (ev) => {
         if (ev.key === "Enter" && !ev.altKey && !ev.ctrlKey && !ev.metaKey) {
+            if ((ev.target as HTMLElement).tagName === "BUTTON") return;
             ev.preventDefault();
             confirm();
             return;
