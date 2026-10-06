@@ -19,7 +19,7 @@
 | `/api/attr/getBlockAttrs` / `batchGetBlockAttrs` | 元数据读取（`map[string]map[string]string`，contracts.go L279） | L363/L364 | 结构✓ / 真机待 |
 | `/api/attr/setBlockAttrs` | 元数据写入 | L361 | 结构✓ / 真机待 |
 | `/api/file/getFile` | 资源存在性检查 | router.go `/api/file/` | 结构✓ / 真机待 |
-| `/api/export/exportMdContent` | 文档片段导出（P4 后备用） | L437 | 未接线 |
+| `/api/export/exportMdContent` | 捕获当前文档（captureCurrentDoc） | L437 | 结构✓ / 真机待 |
 
 写端点均带 `CheckAdminRole + CheckReadonly`（只读模式/访客下会失败→回执 kernel-error，UI 明示）。
 
