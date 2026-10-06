@@ -1519,12 +1519,16 @@
         sec.appendChild(this.menuButton("\u21A9", this.deps.t("aiInsertOriginal"), "xlc-menu-item", async () => {
           await this.deps.runAction(entry.id, entry.itemType === "blockref" ? "insert-ref" : "insert");
         }));
-        sec.appendChild(this.menuButton("\u{1F5CE}", this.deps.t("saveTransformed"), "xlc-menu-item", async () => {
+        const saveBtn = this.menuButton("\u{1F5CE}", this.deps.t("saveTransformed"), "xlc-menu-item", async () => {
           var _a2;
           const transformed = (_a2 = box.dataset.transformed) != null ? _a2 : "";
+          if (!transformed) return;
           this.destroy();
           await this.deps.saveTransformed(entry.id, transformLabel, transformed);
-        }));
+        });
+        resultButtons.push(saveBtn);
+        sec.appendChild(saveBtn);
+        syncReady();
         menu.appendChild(sec);
         const secBack = document.createElement("div");
         secBack.className = "xlc-menu-sec";

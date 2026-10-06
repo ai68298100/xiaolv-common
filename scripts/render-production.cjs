@@ -413,7 +413,8 @@ fs.writeFileSync(path.join(OUT, "harness.html"), html);
     await page.waitForTimeout(400);
     const r77 = await page.evaluate(() => {
         const insert = Array.from(document.querySelectorAll(".xlc-menu-item")).find((b) => (b.textContent ?? "").includes("插入变换结果"));
-        const ready = !!insert && !insert.disabled;
+        const save = Array.from(document.querySelectorAll(".xlc-menu-item")).find((b) => (b.textContent ?? "").includes("存为新条目"));
+        const ready = !!insert && !insert.disabled && !!save && !save.disabled;
         const copyBtn = Array.from(document.querySelectorAll(".xlc-menu-item")).find((b) => (b.textContent ?? "").includes("复制变换结果"));
         if (copyBtn) copyBtn.click();
         return {disabledBefore: (window).__xlcInsertDisabledBefore, ready};

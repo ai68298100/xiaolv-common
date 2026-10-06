@@ -1198,11 +1198,15 @@ export class CommonSearchDialog {
             sec.appendChild(this.menuButton("↩", this.deps.t("aiInsertOriginal"), "xlc-menu-item", async () => {
                 await this.deps.runAction(entry.id, entry.itemType === "blockref" ? "insert-ref" : "insert");
             }));
-            sec.appendChild(this.menuButton("🗎", this.deps.t("saveTransformed"), "xlc-menu-item", async () => {
+            const saveBtn = this.menuButton("🗎", this.deps.t("saveTransformed"), "xlc-menu-item", async () => {
                 const transformed = box.dataset.transformed ?? "";
+                if (!transformed) return;
                 this.destroy();
                 await this.deps.saveTransformed(entry.id, transformLabel, transformed);
-            }));
+            });
+            resultButtons.push(saveBtn);
+            sec.appendChild(saveBtn);
+            syncReady();
             menu.appendChild(sec);
             const secBack = document.createElement("div");
             secBack.className = "xlc-menu-sec";
