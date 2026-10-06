@@ -41,6 +41,8 @@ const T = (key: string, ...args: string[]): string => {
         newItem: "新建条目", save: "保存", cancel: "取消", confirm: "确定", invalidItem: "条目数据无效",
         aiTidy: "AI 整理", aiDraft: "AI 草稿", aiDraftDesc: "描述你想要的内容，AI 生成草稿", aiApplied: "已应用 AI 建议", aiTransform: "AI 变换",
         saved: "已保存：%s",
+        dataTruth: "思源块真源 · 失效可见", adoptAll: "全部采纳", actionsNoun: "动作",
+        semanticSuggestion: "没有本地结果。试试 AI 语义找：在关键词前加 ?", aiSemanticHint: "输入 ? 加描述，如「?给客户的道歉回复」，AI 在元数据中找最相关条目",
         "sort.manual": "手动/置顶", "sort.recent": "最近使用", "sort.title": "标题",
         totalItems: "共 %s 条",
         duplicateItem: "创建副本", insertToDoc: "插入到指定文档", insertToDocPick: "选择目标文档（输入关键词搜索）",
@@ -62,11 +64,13 @@ const T = (key: string, ...args: string[]): string => {
     return text;
 };
 
-function makeDeps(overrides: {aiEnabled?: boolean; missing?: boolean} = {}) {
+function makeDeps(overrides: {aiEnabled?: boolean; missing?: boolean; mobile?: boolean; empty?: boolean} = {}) {
     const aiOn = overrides.aiEnabled ?? true;
     return {
         t: T,
-        search: async () => ({entries: ENTRIES, truncated: false, total: 128}),
+        search: async () => overrides.empty
+            ? {entries: [], truncated: false, total: 0}
+            : {entries: ENTRIES, truncated: false, total: 128},
         getTags: async () => ["客户沟通", "模板", "开发"],
         preview: async (itemId: string) => PREVIEWS[itemId] ?? "",
         runAction: async () => ({ok: true, message: "inserted"}),
@@ -104,12 +108,12 @@ function makeDeps(overrides: {aiEnabled?: boolean; missing?: boolean} = {}) {
         aiEnabled: () => aiOn,
         isSourceMissing: (entry: SearchEntry) => overrides.missing === true && entry.id === "xlc-demo0000001",
         close: () => {},
-        isMobile: () => false,
+        isMobile: () => overrides.mobile === true,
     };
 }
 
 (window as unknown as {XlcHarness: unknown}).XlcHarness = {
-    openDialog(overrides?: {aiEnabled?: boolean; missing?: boolean; scope?: "all" | "favorites"; query?: string}): CommonSearchDialog {
+    openDialog(overrides?: {aiEnabled?: boolean; missing?: boolean; scope?: "all" | "favorites"; query?: string; mobile?: boolean; empty?: boolean}): CommonSearchDialog {
         const dialog = new CommonSearchDialog(makeDeps(overrides), {
             favorites: new Set(["xlc-demo0000001"]),
             recents: new Map([["xlc-demo0000002", 2]]),

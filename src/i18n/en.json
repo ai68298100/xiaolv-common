@@ -188,5 +188,8 @@
   "providerPendingReload": "Pending reload",
   "providerNone": "No content providers yet (shown when other Lv plugins register)",
   "insertToDocMenu": "Insert common items into this doc",
-  "blockrefNeedsTarget": "Block-ref items need a target block: use right-click on a block ref instead"
+  "blockrefNeedsTarget": "Block-ref items need a target block: use right-click on a block ref instead",
+  "dataTruth": "Anchored to real SiYuan blocks · broken items stay visible",
+  "adoptAll": "Adopt all",
+  "actionsNoun": "Actions"
 }

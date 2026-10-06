@@ -165,7 +165,7 @@ export class CaptureDialog {
         const form = document.createElement("div");
         form.className = "xlc-form";
 
-        const field = (label: string, value: string, isArea: boolean, cls: string): HTMLInputElement | HTMLTextAreaElement => {
+        const field = (label: string, value: string, isArea: boolean, cls: string, parent?: HTMLElement): HTMLInputElement | HTMLTextAreaElement => {
             const wrap = document.createElement("label");
             wrap.className = "xlc-form-field";
             const cap = document.createElement("span");
@@ -181,12 +181,15 @@ export class CaptureDialog {
             inputEl.className = "b3-text-field " + cls;
             (inputEl as HTMLInputElement).value = value;
             wrap.appendChild(inputEl);
-            form.appendChild(wrap);
+            (parent ?? form).appendChild(wrap);
             return inputEl as HTMLInputElement;
         };
 
+        // 类型（别名同排，原型 v2：别名|类型 双栏）
+        const metaRow = document.createElement("div");
+        metaRow.className = "xlc-form-row";
         const typeWrap = document.createElement("label");
-        typeWrap.className = "xlc-form-field";
+        typeWrap.className = "xlc-form-field xlc-form-field--fixed";
         const typeLabel = document.createElement("span");
         typeLabel.className = "xlc-form-label";
         typeLabel.textContent = t("type");
@@ -201,17 +204,23 @@ export class CaptureDialog {
             typeSelect.appendChild(opt);
         }
         typeWrap.appendChild(typeSelect);
-        form.appendChild(typeWrap);
+        metaRow.appendChild(typeWrap);
+        form.appendChild(metaRow);
 
         const contentEl = field(t("contentLabel"), defaultText, true, "xlc-form-content");
         const titleEl = field(t("title"), overrides?.title ?? "", false, "xlc-form-title");
-        const aliasEl = field(t("alias"), "", false, "xlc-form-alias");
-        const tagsEl = field(t("tags"), "", false, "xlc-form-tags");
+        const aliasEl = field(t("alias"), "", false, "xlc-form-alias", metaRow);
+        // 标签 + 分类（原型：双栏行）
+        const tagRow = document.createElement("div");
+        tagRow.className = "xlc-form-row";
+        const tagsEl = field(t("tags"), "", false, "xlc-form-tags", tagRow);
         const tagsHint = document.createElement("span");
         tagsHint.className = "xlc-form-hint";
         tagsHint.textContent = t("tagsHint");
         (tagsEl.parentElement as HTMLElement).appendChild(tagsHint);
-        const categoryEl = field(t("category"), "", false, "xlc-form-category");
+        const categoryEl = field(t("category"), "", false, "xlc-form-category", tagRow);
+        (categoryEl.parentElement as HTMLElement).classList.add("xlc-form-field--fixed");
+        form.appendChild(tagRow);
 
         // AI 草稿行（启用 AI 时展示）：描述 → 生成草稿填入内容
         // AI 建议行（AI 整理后展示，全部采纳）
@@ -230,7 +239,7 @@ export class CaptureDialog {
             if (suggestions.category) (categoryEl as HTMLInputElement).value = suggestions.category;
             this.deps.notify("info", t("aiApplied"));
         };
-        adoptBtn.textContent = t("confirm");
+        adoptBtn.textContent = t("adoptAll");
         adoptBtn.addEventListener("click", applySuggestions);
         sugrow.appendChild(adoptBtn);
         form.insertBefore(sugrow, titleEl.parentElement as Node);
@@ -270,29 +279,28 @@ export class CaptureDialog {
                 contentLabel.appendChild(tidyBtn);
             }
 
-            // AI 草稿行
+            // AI 草稿（原型：label=「AI 草稿」+ 主色触发链接；输入框整行）
             const draftWrap = document.createElement("div");
             draftWrap.className = "xlc-form-field";
             const draftLabel = document.createElement("span");
             draftLabel.className = "xlc-form-label";
-            draftLabel.textContent = t("aiDraftDesc");
+            draftLabel.textContent = t("aiDraft");
             draftWrap.appendChild(draftLabel);
-            const draftRow = document.createElement("div");
-            draftRow.style.display = "flex";
-            draftRow.style.gap = "6px";
+            const draftBtn = document.createElement("button");
+            draftBtn.type = "button";
+            draftBtn.className = "xlc-form-ai";
+            draftBtn.textContent = "✦ " + t("aiDraftDesc");
+            draftLabel.appendChild(draftBtn);
             const draftInput = document.createElement("input");
             draftInput.className = "b3-text-field";
             draftInput.placeholder = t("aiDraftDesc");
-            draftRow.appendChild(draftInput);
-            const draftBtn = document.createElement("button");
-            draftBtn.className = "b3-button b3-button--text xlc-form-ai";
-            draftBtn.textContent = "✦ " + t("aiDraft");
+            draftWrap.appendChild(draftInput);
             draftBtn.addEventListener("click", () => {
                 const desc = draftInput.value.trim();
                 if (!desc) return;
                 draftBtn.textContent = t("aiWorking");
                 void this.deps.aiDraft(desc).then((result) => {
-                    draftBtn.textContent = "✦ " + t("aiDraft");
+                    draftBtn.textContent = "✦ " + t("aiDraftDesc");
                     if (!result.ok) {
                         this.deps.notify("error", result.message);
                         return;
@@ -300,19 +308,17 @@ export class CaptureDialog {
                     (contentEl as HTMLTextAreaElement).value = result.text;
                 });
             });
-            draftRow.appendChild(draftBtn);
-            draftWrap.appendChild(draftRow);
             form.insertBefore(draftWrap, form.firstChild);
         }
 
         const actions = document.createElement("div");
         actions.className = "xlc-form-actions";
         const cancelBtn = document.createElement("button");
-        cancelBtn.className = "b3-button b3-button--cancel";
+        cancelBtn.className = "b3-button";
         cancelBtn.textContent = t("cancel");
         cancelBtn.addEventListener("click", () => dialog.destroy());
         const saveBtn = document.createElement("button");
-        saveBtn.className = "b3-button b3-button--text";
+        saveBtn.className = "b3-button xlc-btn-primary";
         saveBtn.textContent = t("save");
         // 单行输入 Enter 提交（内容 textarea 换行合法，不绑）
         const submitOnEnter = (el: HTMLInputElement): void => {

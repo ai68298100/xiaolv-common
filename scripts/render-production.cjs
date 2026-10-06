@@ -48,15 +48,22 @@ const b3Vars = `
   --b3-dialog-shadow: 0 8px 32px rgba(0,0,0,.5), 0 2px 8px rgba(0,0,0,.35);
 }
 body { margin: 0; background: #eceef1; }
-.b3-dialog__header { padding: 12px 16px 4px; font-weight: 600; }
+/* 宿主 chrome 模拟（与思源 Dialog 容器一致）：白底/圆角/描边/双层阴影/内边距 */
+.b3-dialog__container {
+  background: var(--b3-theme-background);
+  border: 1px solid var(--b3-border-color);
+  border-radius: 12px;
+  box-shadow: var(--b3-dialog-shadow);
+  overflow: hidden;
+}
+.b3-dialog__header { padding: 14px 16px 0; font-size: 15px; font-weight: 600; }
+.b3-dialog__content { padding: 16px 20px 20px; }
 .b3-button { border: 1px solid var(--b3-border-color); background: var(--b3-theme-background); color: var(--b3-theme-on-background); border-radius: 8px; padding: 4px 12px; font-size: 12.5px; cursor: pointer; }
 .b3-button--small { padding: 2px 8px; }
 .b3-button--text { border-color: transparent; background: transparent; }
 .b3-select { border: 1px solid var(--b3-border-color); background: var(--b3-theme-surface); color: var(--b3-theme-on-background); }
 .b3-text-field { border: 1px solid var(--b3-border-color); background: var(--b3-theme-surface); color: var(--b3-theme-on-background); outline: none; font-family: inherit; padding: 4px 8px; border-radius: 4px; box-sizing: border-box; }
 .b3-dialog .xlc-search .b3-text-field { border: none; background: transparent; padding: 0; }
-.xlc-dialog { position: relative; }
-.xlc-dialog .xlc-menu { position: fixed; right: 180px; bottom: 120px; left: auto; width: 320px; }
 `;
 const html = `<!DOCTYPE html><html><head><meta charset="utf-8">
 <style>${b3Vars}</style><style>${prodCss}</style></head>
@@ -221,6 +228,154 @@ fs.writeFileSync(path.join(OUT, "harness.html"), html);
     }
     console.log("  smoke ✓ capture: 6 assertions");
     await page.screenshot({path: path.join(OUT, "production-capture-light.png")});
+    // 捕获表单 AI 建议态（点「AI 整理」→ sugrow + 全部采纳 + 主色保存钮）
+    await page.evaluate(() => {
+        const stage = document.getElementById("stage");
+        stage.className = "b3-scope light";
+        document.querySelectorAll(".b3-dialog").forEach((el) => el.remove());
+        stage.innerHTML = "";
+        window.XlcHarness.openCapture(true);
+        const dialogRoot = document.querySelector(".b3-dialog");
+        if (dialogRoot) stage.appendChild(dialogRoot);
+        const container = document.querySelector(".b3-dialog__container");
+        if (container) {
+            container.style.margin = "0 auto";
+            container.style.maxWidth = "560px";
+        }
+        const tidyBtn = Array.from(document.querySelectorAll(".xlc-form-ai")).find((b) => b.textContent.includes("AI 整理"));
+        const content = document.querySelector(".xlc-form-content");
+        if (content) content.value = "项目延期通知模板内容";
+        if (tidyBtn) tidyBtn.click();
+    });
+    await page.waitForTimeout(400);
+    const captureAiAssertions = await page.evaluate(() => {
+        const sugrow = document.querySelector(".xlc-sugrow");
+        const save = Array.from(document.querySelectorAll("button")).find((b) => b.textContent === "保存");
+        return {
+            sugrowVisible: !!sugrow && sugrow.offsetParent !== null && sugrow.textContent.includes("全部采纳"),
+            savePrimary: !!save && save.classList.contains("xlc-btn-primary"),
+            twoColRows: document.querySelectorAll(".xlc-form-row").length >= 2,
+        };
+    });
+    if (Object.values(captureAiAssertions).some((v) => !v)) {
+        throw new Error("capture-ai smoke failed: " + JSON.stringify(captureAiAssertions));
+    }
+    console.log("  smoke ✓ capture-ai: 3 assertions");
+    await page.screenshot({path: path.join(OUT, "production-capture-ai-light.png")});
+    // 动作菜单（生产 showActionMenu DOM：右键第二行触发；图标列 + 标题 + AI 分区）
+    await page.setViewportSize({width: 1280, height: 720});
+    await page.evaluate(() => {
+        const stage = document.getElementById("stage");
+        stage.className = "b3-scope light";
+        document.querySelectorAll(".b3-dialog").forEach((el) => el.remove());
+        stage.innerHTML = "";
+        window.XlcHarness.openDialog({aiEnabled: true, missing: false, query: "延期"});
+        const dialogRoot = document.querySelector(".b3-dialog");
+        if (dialogRoot) stage.appendChild(dialogRoot);
+        const root = document.querySelector(".xlc-dialog");
+        if (root) {
+            root.style.height = "560px";
+            root.style.position = "relative";
+        }
+        const container = document.querySelector(".b3-dialog__container");
+        if (container) {
+            container.style.margin = "0 auto";
+            container.style.maxWidth = "760px";
+        }
+    });
+    await page.waitForTimeout(800);
+    await page.evaluate(() => {
+        const row = document.querySelectorAll(".xlc-list .xlc-row[data-xlc-index]")[1];
+        row.dispatchEvent(new MouseEvent("contextmenu", {bubbles: true, cancelable: true}));
+    });
+    await page.waitForTimeout(600);
+    const menuAssertions = await page.evaluate(() => {
+        const menu = document.querySelector(".xlc-menu");
+        const text = menu ? menu.textContent : "";
+        return {
+            menuOpen: !!menu,
+            menuTitle: text.includes("延期简短版") && text.includes("动作"),
+            coreActions: text.includes("插入") && text.includes("复制"),
+            aiSection: text.includes("润色") && text.includes("译为英文"),
+            iconColumns: menu ? menu.querySelectorAll(".xlc-menu-ic").length >= 6 : false,
+            previewBoxSized: (() => {
+                const p = document.querySelector(".xlc-menu-preview");
+                return !!p && p.getBoundingClientRect().height >= 36;
+            })(),
+        };
+    });
+    if (Object.values(menuAssertions).some((v) => !v)) {
+        throw new Error("action-menu smoke failed: " + JSON.stringify(menuAssertions));
+    }
+    console.log("  smoke ✓ action-menu: 6 assertions");
+    await page.screenshot({path: path.join(OUT, "production-action-menu-light.png")});
+    // 空状态（无结果：大空态 + 语义找提示；footer 计数 + 真源声明）
+    await page.evaluate(() => {
+        const stage = document.getElementById("stage");
+        stage.className = "b3-scope light";
+        document.querySelectorAll(".b3-dialog").forEach((el) => el.remove());
+        stage.innerHTML = "";
+        window.XlcHarness.openDialog({empty: true, query: "不存在的词条"});
+        const dialogRoot = document.querySelector(".b3-dialog");
+        if (dialogRoot) stage.appendChild(dialogRoot);
+        const root = document.querySelector(".xlc-dialog");
+        if (root) {
+            root.style.height = "560px";
+            root.style.position = "relative";
+        }
+        const container = document.querySelector(".b3-dialog__container");
+        if (container) {
+            container.style.margin = "0 auto";
+            container.style.maxWidth = "760px";
+        }
+    });
+    await page.waitForTimeout(500);
+    const emptyAssertions = await page.evaluate(() => {
+        const empty = document.querySelector(".xlc-empty");
+        const footer = document.querySelector(".xlc-footer");
+        return {
+            emptyBlock: !!empty && empty.textContent.includes("AI 语义找"),
+            emptyHint: !!empty && empty.textContent.includes("?"),
+            footerClaim: !!footer && footer.textContent.includes("思源块真源"),
+            footerCount: !!footer && footer.textContent.includes("共 0 条"),
+        };
+    });
+    if (Object.values(emptyAssertions).some((v) => !v)) {
+        throw new Error("empty-state smoke failed: " + JSON.stringify(emptyAssertions));
+    }
+    console.log("  smoke ✓ empty-state: 4 assertions");
+    await page.screenshot({path: path.join(OUT, "production-empty-light.png")});
+    // 移动端 sheet（390×844 触控形态：圆角卡片行 + 点按提示）
+    await page.setViewportSize({width: 390, height: 844});
+    await page.evaluate(() => {
+        const stage = document.getElementById("stage");
+        stage.className = "b3-scope light";
+        document.querySelectorAll(".b3-dialog").forEach((el) => el.remove());
+        stage.innerHTML = "";
+        window.XlcHarness.openDialog({mobile: true, missing: false});
+        const dialogRoot = document.querySelector(".b3-dialog");
+        if (dialogRoot) stage.appendChild(dialogRoot);
+        const container = document.querySelector(".b3-dialog__container");
+        if (container) {
+            container.style.height = "82vh";
+        }
+    });
+    await page.waitForTimeout(500);
+    const mobileAssertions = await page.evaluate(() => {
+        const root = document.querySelector(".xlc-dialog--mobile");
+        return {
+            mobileRoot: !!root,
+            rows: document.querySelectorAll(".xlc-row[data-xlc-index]").length >= 3,
+            cardRows: !!document.querySelector(".xlc-dialog--mobile .xlc-row"),
+            kbdHidden: !document.querySelector(".xlc-kbdrow") || document.querySelector(".xlc-kbdrow").offsetParent === null,
+        };
+    });
+    if (Object.values(mobileAssertions).some((v) => !v)) {
+        throw new Error("mobile smoke failed: " + JSON.stringify(mobileAssertions));
+    }
+    console.log("  smoke ✓ mobile: 4 assertions");
+    await page.screenshot({path: path.join(OUT, "production-mobile-light.png")});
+    await page.setViewportSize({width: 1280, height: 720});
     // 设置暗色
     await page.evaluate(() => {
         const stage = document.getElementById("stage");

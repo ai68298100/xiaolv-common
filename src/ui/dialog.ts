@@ -74,6 +74,8 @@ export class CommonSearchDialog {
     private ctx: SearchContext;
     private currentScope: "all" | "favorites" | "recent" = "all";
     private lastPreviewId: string | null = null;
+    /** 空状态文案（refresh 计算后交 renderList 渲染大空态；瞬态/错误仍走 status 行） */
+    private emptyMessage = "";
     /** 动作菜单 document 监听兜底清理（destroy 时调用；防键盘关弹窗残留监听） */
     private menuDismiss: (() => void) | null = null;
     private inputDebounce: ReturnType<typeof setTimeout> | null = null;
@@ -108,7 +110,7 @@ export class CommonSearchDialog {
             body.appendChild(content);
         }
         const container = this.dialog.element.querySelector(".b3-dialog__container");
-        if (container && isMobile) container.classList.add("xlc-sheet");
+        if (container) container.classList.add(isMobile ? "xlc-sheet" : "xlc-dialog-host");
         const input = this.dialog.element.querySelector<HTMLInputElement>(".xlc-search-input");
         if (input) {
             // 上次搜索词回填（跨会话保留）
@@ -143,7 +145,12 @@ export class CommonSearchDialog {
         input.className = "b3-text-field xlc-search-input";
         input.placeholder = this.deps.t("searchPlaceholder");
         input.setAttribute("aria-label", this.deps.t("searchPlaceholder"));
+        // 输入以 ? 开头时隐藏装饰性 ? 提示（避免「??」双写；功能前缀仍在输入框内）
+        const syncQMark = (): void => {
+            qMark.classList.toggle("xlc-search-q--off", input.value.startsWith("?"));
+        };
         input.addEventListener("input", () => {
+            syncQMark();
             this.currentScope = "all";
             // 持久化剥离 ? 前缀：重开弹窗预填普通查询，绝不自动触发 AI 语义找
             this.deps.setLastQuery(input.value.replace(/^\?+/, ""));
@@ -159,6 +166,7 @@ export class CommonSearchDialog {
         });
         input.addEventListener("compositionend", () => {
             this.isComposing = false;
+            syncQMark();
             this.currentScope = "all";
             if (this.inputDebounce) clearTimeout(this.inputDebounce);
             this.inputDebounce = setTimeout(() => void this.refresh(), 50);
@@ -314,11 +322,19 @@ export class CommonSearchDialog {
         }
         root.appendChild(bodyWrap);
 
+        // 底栏（原型：左计数 / 右真源声明 + 设置入口；移动端左=点按提示）
         const footer = document.createElement("div");
         footer.className = "xlc-footer";
-        const hintText = document.createElement("span");
-        hintText.textContent = isMobile ? this.deps.t("usageHintMobile") : this.deps.t("usageHint");
-        footer.appendChild(hintText);
+        const count = document.createElement("span");
+        count.className = "xlc-footer-count";
+        count.textContent = isMobile ? this.deps.t("usageHintMobile") : "";
+        footer.appendChild(count);
+        if (!isMobile) {
+            const claim = document.createElement("span");
+            claim.className = "xlc-footer-claim";
+            claim.textContent = this.deps.t("dataTruth");
+            footer.appendChild(claim);
+        }
         // 设置入口双端可达（移动端无顶栏/命令面板，此处是唯一设置路径）
         const gear = document.createElement("button");
         gear.className = "b3-button b3-button--text xlc-btn-ghost xlc-footer-gear";
@@ -492,29 +508,26 @@ export class CommonSearchDialog {
         this.activeIndex = 0;
         this.activeProvider = -1;
         if (status) {
+            this.emptyMessage = "";
             if (this.results.length) {
                 status.textContent = "";
             } else if (loadError) {
                 status.textContent = this.deps.t("kernelError", loadError);
             } else if (loading) {
                 status.textContent = this.deps.t("indexing");
-            } else if (query.text.trim() && !query.text.trim().startsWith("?") && this.deps.aiEnabled()) {
-                status.textContent = this.deps.t("semanticSuggestion");
             } else {
-                status.textContent = this.deps.t("empty");
+                // 空态文案移入列表大空态（图标 + 主文案 + 语义找提示）；status 保持安静
+                status.textContent = "";
+                this.emptyMessage = query.text.trim() && !query.text.trim().startsWith("?") && this.deps.aiEnabled()
+                    ? this.deps.t("semanticSuggestion")
+                    : this.deps.t("empty");
             }
         }
         if (footer) {
-            footer.textContent = (this.deps.isMobile() ? this.deps.t("usageHintMobile") : this.deps.t("usageHint"))
-                + " ｜ " + this.deps.t("totalItems", String(total)) + (truncated ? " ⚠" : "");
-            const gear = document.createElement("button");
-            gear.className = "b3-button b3-button--text xlc-btn-ghost xlc-footer-gear";
-            gear.textContent = "⚙ " + this.deps.t("openSettings");
-            gear.addEventListener("click", () => {
-                this.destroy();
-                this.deps.openSetup();
-            });
-            footer.appendChild(gear);
+            const count = footer.querySelector<HTMLElement>(".xlc-footer-count");
+            if (count && !this.deps.isMobile()) {
+                count.textContent = this.deps.t("totalItems", String(total)) + (truncated ? " ⚠" : "");
+            }
         }
         // 提供方分区（有查询词且注册了可执行 provider 时；pv: 虚拟行不进键盘导航/执行器）
         this.providerRows = [];
@@ -533,10 +546,33 @@ export class CommonSearchDialog {
 
     private renderList(list: HTMLElement): void {
         list.innerHTML = "";
+        // 大空态（无结果且无提供方行；图标 + 主文案 + ? 语义找提示）
+        if (this.results.length === 0 && this.providerRows.length === 0 && this.emptyMessage) {
+            const empty = document.createElement("div");
+            empty.className = "xlc-empty";
+            const icon = document.createElement("div");
+            icon.className = "xlc-empty-icon";
+            icon.textContent = "✦";
+            empty.appendChild(icon);
+            const text = document.createElement("div");
+            text.className = "xlc-empty-text";
+            text.textContent = this.emptyMessage;
+            empty.appendChild(text);
+            if (this.emptyMessage === this.deps.t("semanticSuggestion")) {
+                const hint = document.createElement("div");
+                hint.className = "xlc-empty-hint";
+                hint.textContent = this.deps.t("aiSemanticHint");
+                empty.appendChild(hint);
+            }
+            list.appendChild(empty);
+        }
         for (let i = 0; i < this.results.length; i++) {
             const entry = this.results[i];
+            const fav = this.deps.isFavorite(entry.id);
             const row = document.createElement("div");
-            row.className = "xlc-row" + (i === this.activeIndex ? " xlc-row--active" : "");
+            row.className = "xlc-row"
+                + (i === this.activeIndex ? " xlc-row--active" : "")
+                + (fav ? " xlc-row--fav" : "");
             row.dataset.xlcIndex = String(i);
             row.setAttribute("role", "option");
             row.setAttribute("aria-selected", i === this.activeIndex ? "true" : "false");
@@ -575,16 +611,19 @@ export class CommonSearchDialog {
             row.appendChild(main);
 
             if (this.deps.isSourceMissing(entry)) {
+                // 行内只留 ⚠ 图标徽标（完整说明在预览窗格横幅；tooltip 兜底）
                 const warn = document.createElement("span");
-                warn.className = "xlc-badge xlc-badge--warn";
-                warn.textContent = "⚠ " + this.deps.t("sourceMissing");
-                row.appendChild(warn);
+                warn.className = "xlc-row-warn";
+                warn.textContent = "⚠";
+                warn.title = this.deps.t("sourceMissing") + " · " + this.deps.t("sourceGone");
+                warn.setAttribute("aria-label", this.deps.t("sourceMissing"));
+                title.appendChild(warn);
             }
 
             const star = document.createElement("button");
             star.className = "b3-button b3-button--small xlc-row-action";
-            star.textContent = this.deps.isFavorite(entry.id) ? "★" : "☆";
-            star.setAttribute("aria-label", this.deps.isFavorite(entry.id) ? this.deps.t("unfavorite") : this.deps.t("favorite"));
+            star.textContent = fav ? "★" : "☆";
+            star.setAttribute("aria-label", fav ? this.deps.t("unfavorite") : this.deps.t("favorite"));
             star.addEventListener("click", (e) => {
                 e.stopPropagation();
                 this.deps.toggleFavorite(entry.id);
@@ -642,20 +681,18 @@ export class CommonSearchDialog {
         menu.appendChild(lbl);
         const sec = document.createElement("div");
         sec.className = "xlc-menu-sec";
-        const mk = (label: string, run: () => Promise<unknown>): void => {
-            const btn = document.createElement("button");
-            btn.className = "xlc-menu-item";
-            btn.textContent = label;
-            btn.addEventListener("click", async () => {
-                this.destroy();
-                await run();
-            });
-            sec.appendChild(btn);
-        };
-        mk(this.deps.t("providerInsert"), () => this.deps.insertProviderPayload(row.payload, this.insertTarget ?? undefined));
-        mk(this.deps.t("providerCopy"), () => this.deps.copyProviderPayload(row.payload));
+        sec.appendChild(this.menuButton("＋", this.deps.t("providerInsert"), "xlc-menu-item", async () => {
+            this.destroy();
+            await this.deps.insertProviderPayload(row.payload, this.insertTarget ?? undefined);
+        }));
+        sec.appendChild(this.menuButton("⧉", this.deps.t("providerCopy"), "xlc-menu-item", async () => {
+            this.destroy();
+            await this.deps.copyProviderPayload(row.payload);
+        }));
         menu.appendChild(sec);
-        (this.dialog?.element ?? anchor).appendChild(menu);
+        // 菜单挂在 .xlc-dialog 内（样式作用域 + 相对弹窗定位）；无弹窗时兜底 anchor
+        const host = (this.dialog?.element.querySelector(".xlc-dialog")) ?? this.dialog?.element ?? anchor;
+        host.appendChild(menu);
         const dismiss = (e: Event) => {
             if (!menu.contains(e.target as Node)) {
                 menu.remove();
@@ -765,6 +802,20 @@ export class CommonSearchDialog {
         this.destroy();
     }
 
+    /** 菜单按钮统一构造：图标列 + 文本（createTextNode 注入，绝不 innerHTML） */
+    private menuButton(icon: string, label: string, cls: string, run: () => void | Promise<unknown>): HTMLButtonElement {
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = cls;
+        const ic = document.createElement("span");
+        ic.className = "xlc-menu-ic";
+        ic.textContent = icon;
+        btn.appendChild(ic);
+        btn.appendChild(document.createTextNode(label));
+        btn.addEventListener("click", () => void run());
+        return btn;
+    }
+
     private async showActionMenu(entry: SearchEntry): Promise<void> {
         const menu = document.createElement("div");
         menu.className = "xlc-menu";
@@ -774,6 +825,11 @@ export class CommonSearchDialog {
         };
 
         const buildDefault = (): void => {
+            // 标题行（原型：条目名 · 动作）
+            const lbl = document.createElement("div");
+            lbl.className = "xlc-menu-lbl";
+            lbl.textContent = (entry.title || this.deps.t("unknownType")) + " · " + this.deps.t("actionsNoun");
+            menu.appendChild(lbl);
             // 预览盒（原文摘要）
             const previewBox = document.createElement("pre");
             previewBox.className = "xlc-menu-preview";
@@ -787,23 +843,19 @@ export class CommonSearchDialog {
 
             const sec1 = document.createElement("div");
             sec1.className = "xlc-menu-sec";
-            const addAction = (label: string, run: () => Promise<unknown>, cls = "xlc-menu-item"): void => {
-                const btn = document.createElement("button");
-                btn.className = cls;
-                btn.textContent = label;
-                btn.addEventListener("click", async () => {
+            const addAction = (icon: string, label: string, run: () => Promise<unknown>, cls = "xlc-menu-item"): void => {
+                sec1.appendChild(this.menuButton(icon, label, cls, async () => {
                     this.destroy();
                     await run();
-                });
-                sec1.appendChild(btn);
+                }));
             };
             if (entry.itemType === "blockref") {
-                addAction(this.deps.t("insertRef"), () => this.deps.runAction(entry.id, "insert-ref"));
-                addAction(this.deps.t("insertEmbed"), () => this.deps.runAction(entry.id, "insert-embed"));
-                addAction(this.deps.t("insertCopy"), () => this.deps.runAction(entry.id, "copy-content"));
+                addAction("＋", this.deps.t("insertRef"), () => this.deps.runAction(entry.id, "insert-ref"));
+                addAction("⊞", this.deps.t("insertEmbed"), () => this.deps.runAction(entry.id, "insert-embed"));
+                addAction("⧉", this.deps.t("insertCopy"), () => this.deps.runAction(entry.id, "copy-content"));
             } else {
-                addAction(this.deps.t("insert"), () => this.deps.runAction(entry.id, "insert"));
-                addAction(this.deps.t("copy"), () => this.deps.runAction(entry.id, "copy"));
+                addAction("＋", this.deps.t("insert"), () => this.deps.runAction(entry.id, "insert"));
+                addAction("⧉", this.deps.t("copy"), () => this.deps.runAction(entry.id, "copy"));
             }
             menu.appendChild(sec1);
 
@@ -812,38 +864,27 @@ export class CommonSearchDialog {
                 const secAi = document.createElement("div");
                 secAi.className = "xlc-menu-sec xlc-menu-sec--ai";
                 for (const kind of TRANSFORM_KINDS) {
-                    const btn = document.createElement("button");
-                    btn.className = "xlc-menu-item xlc-menu-item--ai";
-                    btn.textContent = "✦ " + this.deps.t(`tf.${kind}`);
-                    btn.addEventListener("click", () => {
+                    secAi.appendChild(this.menuButton("✦", this.deps.t(`tf.${kind}`), "xlc-menu-item xlc-menu-item--ai", () => {
                         rebuild(buildTransform.bind(this, kind));
                         void runTransform(kind);
-                    });
-                    secAi.appendChild(btn);
+                    }));
                 }
                 menu.appendChild(secAi);
             }
 
             const sec2 = document.createElement("div");
             sec2.className = "xlc-menu-sec";
-            const addSilent = (label: string, run: () => Promise<unknown>): void => {
-                const btn = document.createElement("button");
-                btn.className = "xlc-menu-item";
-                btn.textContent = label;
-                btn.addEventListener("click", async () => {
+            const addSilent = (icon: string, label: string, run: () => Promise<unknown>): void => {
+                sec2.appendChild(this.menuButton(icon, label, "xlc-menu-item", async () => {
                     menu.remove();
                     await run();
-                });
-                sec2.appendChild(btn);
+                }));
             };
-            addSilent(this.deps.t("openSource"), () => this.deps.openSource(entry.id));
-            addSilent(this.deps.t("edit"), () => this.deps.editItem(entry.id));
-            addSilent(this.deps.t("duplicateItem"), () => this.deps.duplicateItem(entry.id));
+            addSilent("↗", this.deps.t("openSource"), () => this.deps.openSource(entry.id));
+            addSilent("✎", this.deps.t("edit"), () => this.deps.editItem(entry.id));
+            addSilent("⧉", this.deps.t("duplicateItem"), () => this.deps.duplicateItem(entry.id));
             // 插入到指定文档（菜单内联文档选择器；无活动编辑器场景的主路径）
-            const toDocBtn = document.createElement("button");
-            toDocBtn.className = "xlc-menu-item";
-            toDocBtn.textContent = this.deps.t("insertToDoc");
-            toDocBtn.addEventListener("click", () => {
+            const toDocBtn = this.menuButton("⤓", this.deps.t("insertToDoc"), "xlc-menu-item", () => {
                 let sec = menu.querySelector<HTMLElement>(".xlc-menu-pickdoc");
                 if (sec) {
                     sec.remove();
@@ -865,14 +906,10 @@ export class CommonSearchDialog {
                     void this.deps.searchDocs(k).then((hits) => {
                         if (mySeq !== seq) return;
                         for (const hit of hits.slice(0, 5)) {
-                            const hitBtn = document.createElement("button");
-                            hitBtn.className = "xlc-menu-item xlc-pickdoc-hit";
-                            hitBtn.textContent = hit.hPath || hit.name || hit.id;
-                            hitBtn.addEventListener("click", async () => {
+                            sec!.appendChild(this.menuButton("⤓", hit.hPath || hit.name || hit.id, "xlc-menu-item xlc-pickdoc-hit", async () => {
                                 this.destroy();
                                 await this.deps.insertToDoc(entry.id, hit.id, hit.hPath);
-                            });
-                            sec!.appendChild(hitBtn);
+                            }));
                         }
                     });
                 });
@@ -881,7 +918,7 @@ export class CommonSearchDialog {
                 input.focus();
             });
             sec2.appendChild(toDocBtn);
-            addSilent(this.deps.t("delete"), () => this.deps.deleteItem(entry.id));
+            addSilent("🗑", this.deps.t("delete"), () => this.deps.deleteItem(entry.id));
             menu.appendChild(sec2);
         };
 
@@ -897,42 +934,29 @@ export class CommonSearchDialog {
             menu.appendChild(box);
             const sec = document.createElement("div");
             sec.className = "xlc-menu-sec";
-            const mk = (label: string, run: () => Promise<void>): void => {
-                const btn = document.createElement("button");
-                btn.className = "xlc-menu-item";
-                btn.textContent = label;
-                btn.addEventListener("click", async () => {
-                    this.destroy();
-                    await run();
-                });
-                sec.appendChild(btn);
+            const mk = (icon: string, label: string, run: () => Promise<void>): void => {
+                sec.appendChild(this.menuButton(icon, label, "xlc-menu-item", run));
             };
-            mk(this.deps.t("aiInsertTransformed"), async () => {
+            mk("＋", this.deps.t("aiInsertTransformed"), async () => {
                 await this.deps.insertRaw(box.dataset.transformed ?? "");
             });
-            mk(this.deps.t("aiCopyTransformed"), async () => {
+            mk("⧉", this.deps.t("aiCopyTransformed"), async () => {
                 await this.deps.runAction(entry.id, "copy");
             });
-            mk(this.deps.t("aiInsertOriginal"), async () => {
+            mk("↩", this.deps.t("aiInsertOriginal"), async () => {
                 await this.deps.runAction(entry.id, entry.itemType === "blockref" ? "insert-ref" : "insert");
             });
-            const saveNewBtn = document.createElement("button");
-            saveNewBtn.className = "xlc-menu-item";
-            saveNewBtn.textContent = this.deps.t("saveTransformed");
-            saveNewBtn.addEventListener("click", async () => {
+            sec.appendChild(this.menuButton("🗎", this.deps.t("saveTransformed"), "xlc-menu-item", async () => {
                 const transformed = box.dataset.transformed ?? "";
                 this.destroy();
                 await this.deps.saveTransformed(entry.id, kind, transformed);
-            });
-            sec.appendChild(saveNewBtn);
+            }));
             menu.appendChild(sec);
             const secBack = document.createElement("div");
             secBack.className = "xlc-menu-sec";
-            const back = document.createElement("button");
-            back.className = "xlc-menu-item";
-            back.textContent = "← " + this.deps.t("more");
-            back.addEventListener("click", () => rebuild(buildDefault));
-            secBack.appendChild(back);
+            secBack.appendChild(this.menuButton("←", this.deps.t("more"), "xlc-menu-item", () => {
+                rebuild(buildDefault);
+            }));
             menu.appendChild(secBack);
             // 把最终文本挂到 dataset 供按钮使用（runTransform 完成后填充）
             (menu as HTMLElement & {applyTransform?: (text: string) => void}).applyTransform = (text: string): void => {
@@ -953,7 +977,9 @@ export class CommonSearchDialog {
         };
 
         rebuild(buildDefault);
-        (this.dialog?.element ?? document.body).appendChild(menu);
+        // 菜单挂在 .xlc-dialog 内（样式作用域 + 相对弹窗定位）
+        const host = (this.dialog?.element.querySelector(".xlc-dialog")) ?? this.dialog?.element ?? document.body;
+        host.appendChild(menu);
         // Esc 关闭动作菜单（键盘可达性；焦点仍在菜单内按钮上时同样生效）
         const escHandler = (e: KeyboardEvent) => {
             if (e.key === "Escape") {

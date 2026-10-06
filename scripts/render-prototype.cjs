@@ -21,7 +21,7 @@ try {
     await page.screenshot({path: path.join(OUT, "prototype-all.png"), fullPage: true});
     // 单屏：按 section 裁剪
     const sections = await page.locator("body > section").all();
-    const names = ["desktop-dialog", "action-menu", "capture-form", "mobile-sheet"];
+    const names = ["desktop-dialog", "action-menu", "capture-form", "mobile-sheet", "settings"];
     for (let i = 0; i < sections.length && i < names.length; i++) {
         await sections[i].screenshot({path: path.join(OUT, `prototype-${names[i]}.png`)});
     }

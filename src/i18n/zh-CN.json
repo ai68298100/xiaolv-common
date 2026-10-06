@@ -188,5 +188,8 @@
   "providerPendingReload": "待重载",
   "providerNone": "暂无内容提供方（其他小驴插件注册后显示）",
   "insertToDocMenu": "插入常用条目到此文档",
-  "blockrefNeedsTarget": "块引用条目需要目标块：请改用右键块引用捕获"
+  "blockrefNeedsTarget": "块引用条目需要目标块：请改用右键块引用捕获",
+  "dataTruth": "思源块真源 · 失效可见",
+  "adoptAll": "全部采纳",
+  "actionsNoun": "动作"
 }

@@ -867,16 +867,18 @@ export default class XiaolvCommonPlugin extends Plugin {
         contentEl.value = initialKramdown;
         contentWrap.appendChild(contentEl);
         form.appendChild(contentWrap);
-        // 来源状态与重新指定
+        // 来源状态与重新指定（文本单独 span：异步回填路径不得抹掉行内按钮）
         const srcRow = document.createElement("div");
-        srcRow.className = "xlc-form-hint";
-        srcRow.textContent = item.source.sourceDocId
+        srcRow.className = "xlc-form-sourcerow";
+        const srcText = document.createElement("span");
+        srcText.textContent = item.source.sourceDocId
             ? `src: ${item.source.sourceDocId}${item.source.sourceBlockId ? ` / ${item.source.sourceBlockId}` : ""}`
             : t("sourceMissing");
+        srcRow.appendChild(srcText);
         // 异步补全为可读路径（内核权威 hPath；失败保持 ID 显示）
         if (item.source.sourceDocId) {
             void this.library.getDocPath(item.source.sourceDocId).then((path) => {
-                if (path) srcRow.textContent = `来源：${path}${item.source.sourceBlockId ? ` / 块 ${item.source.sourceBlockId}` : ""}`;
+                if (path) srcText.textContent = `来源：${path}${item.source.sourceBlockId ? ` / 块 ${item.source.sourceBlockId}` : ""}`;
             });
         }
         const relinkBtn = document.createElement("button");
@@ -893,7 +895,7 @@ export default class XiaolvCommonPlugin extends Plugin {
                     this.previewCache.clear();
                     this.notify("info", t("relinkDone"));
                     void this.library.getDocPath(docId).then((path) => {
-                        srcRow.textContent = path ? `来源：${path}` : `src: ${docId}`;
+                        srcText.textContent = path ? `来源：${path}` : `src: ${docId}`;
                     });
                 } else {
                     this.notify("error", result.message);
@@ -910,7 +912,7 @@ export default class XiaolvCommonPlugin extends Plugin {
                     if (result.ok) {
                         this.previewCache.clear();
                         this.notify("info", t("clearSourceDone"));
-                        srcRow.textContent = t("sourceMissing");
+                        srcText.textContent = t("sourceMissing");
                     } else {
                         this.notify("error", result.message);
                     }
@@ -922,11 +924,11 @@ export default class XiaolvCommonPlugin extends Plugin {
         const actions = document.createElement("div");
         actions.className = "xlc-form-actions";
         const cancel = document.createElement("button");
-        cancel.className = "b3-button b3-button--cancel";
+        cancel.className = "b3-button";
         cancel.textContent = t("cancel");
         cancel.addEventListener("click", () => dialog.destroy());
         const save = document.createElement("button");
-        save.className = "b3-button b3-button--text";
+        save.className = "b3-button xlc-btn-primary";
         save.textContent = t("save");
         save.addEventListener("click", () => {
             void this.library.updateItem(item.id, {

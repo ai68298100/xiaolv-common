@@ -294,6 +294,8 @@
       this.previewSeq = 0;
       this.currentScope = "all";
       this.lastPreviewId = null;
+      /** 空状态文案（refresh 计算后交 renderList 渲染大空态；瞬态/错误仍走 status 行） */
+      this.emptyMessage = "";
       /** 动作菜单 document 监听兜底清理（destroy 时调用；防键盘关弹窗残留监听） */
       this.menuDismiss = null;
       this.inputDebounce = null;
@@ -320,7 +322,7 @@
         body.appendChild(content);
       }
       const container = this.dialog.element.querySelector(".b3-dialog__container");
-      if (container && isMobile) container.classList.add("xlc-sheet");
+      if (container) container.classList.add(isMobile ? "xlc-sheet" : "xlc-dialog-host");
       const input = this.dialog.element.querySelector(".xlc-search-input");
       if (input) {
         const last = this.deps.getLastQuery();
@@ -350,7 +352,11 @@
       input.className = "b3-text-field xlc-search-input";
       input.placeholder = this.deps.t("searchPlaceholder");
       input.setAttribute("aria-label", this.deps.t("searchPlaceholder"));
+      const syncQMark = () => {
+        qMark.classList.toggle("xlc-search-q--off", input.value.startsWith("?"));
+      };
       input.addEventListener("input", () => {
+        syncQMark();
         this.currentScope = "all";
         this.deps.setLastQuery(input.value.replace(/^\?+/, ""));
         if (this.isComposing) return;
@@ -362,6 +368,7 @@
       });
       input.addEventListener("compositionend", () => {
         this.isComposing = false;
+        syncQMark();
         this.currentScope = "all";
         if (this.inputDebounce) clearTimeout(this.inputDebounce);
         this.inputDebounce = setTimeout(() => void this.refresh(), 50);
@@ -505,9 +512,16 @@
       root.appendChild(bodyWrap);
       const footer = document.createElement("div");
       footer.className = "xlc-footer";
-      const hintText = document.createElement("span");
-      hintText.textContent = isMobile ? this.deps.t("usageHintMobile") : this.deps.t("usageHint");
-      footer.appendChild(hintText);
+      const count = document.createElement("span");
+      count.className = "xlc-footer-count";
+      count.textContent = isMobile ? this.deps.t("usageHintMobile") : "";
+      footer.appendChild(count);
+      if (!isMobile) {
+        const claim = document.createElement("span");
+        claim.className = "xlc-footer-claim";
+        claim.textContent = this.deps.t("dataTruth");
+        footer.appendChild(claim);
+      }
       const gear = document.createElement("button");
       gear.className = "b3-button b3-button--text xlc-btn-ghost xlc-footer-gear";
       gear.textContent = "\u2699 " + this.deps.t("openSettings");
@@ -677,28 +691,23 @@
       this.activeIndex = 0;
       this.activeProvider = -1;
       if (status) {
+        this.emptyMessage = "";
         if (this.results.length) {
           status.textContent = "";
         } else if (loadError) {
           status.textContent = this.deps.t("kernelError", loadError);
         } else if (loading) {
           status.textContent = this.deps.t("indexing");
-        } else if (query.text.trim() && !query.text.trim().startsWith("?") && this.deps.aiEnabled()) {
-          status.textContent = this.deps.t("semanticSuggestion");
         } else {
-          status.textContent = this.deps.t("empty");
+          status.textContent = "";
+          this.emptyMessage = query.text.trim() && !query.text.trim().startsWith("?") && this.deps.aiEnabled() ? this.deps.t("semanticSuggestion") : this.deps.t("empty");
         }
       }
       if (footer) {
-        footer.textContent = (this.deps.isMobile() ? this.deps.t("usageHintMobile") : this.deps.t("usageHint")) + " \uFF5C " + this.deps.t("totalItems", String(total)) + (truncated ? " \u26A0" : "");
-        const gear = document.createElement("button");
-        gear.className = "b3-button b3-button--text xlc-btn-ghost xlc-footer-gear";
-        gear.textContent = "\u2699 " + this.deps.t("openSettings");
-        gear.addEventListener("click", () => {
-          this.destroy();
-          this.deps.openSetup();
-        });
-        footer.appendChild(gear);
+        const count = footer.querySelector(".xlc-footer-count");
+        if (count && !this.deps.isMobile()) {
+          count.textContent = this.deps.t("totalItems", String(total)) + (truncated ? " \u26A0" : "");
+        }
       }
       this.providerRows = [];
       const q = query.text.trim();
@@ -716,10 +725,30 @@
     renderList(list) {
       var _a;
       list.innerHTML = "";
+      if (this.results.length === 0 && this.providerRows.length === 0 && this.emptyMessage) {
+        const empty = document.createElement("div");
+        empty.className = "xlc-empty";
+        const icon = document.createElement("div");
+        icon.className = "xlc-empty-icon";
+        icon.textContent = "\u2726";
+        empty.appendChild(icon);
+        const text = document.createElement("div");
+        text.className = "xlc-empty-text";
+        text.textContent = this.emptyMessage;
+        empty.appendChild(text);
+        if (this.emptyMessage === this.deps.t("semanticSuggestion")) {
+          const hint = document.createElement("div");
+          hint.className = "xlc-empty-hint";
+          hint.textContent = this.deps.t("aiSemanticHint");
+          empty.appendChild(hint);
+        }
+        list.appendChild(empty);
+      }
       for (let i = 0; i < this.results.length; i++) {
         const entry = this.results[i];
+        const fav = this.deps.isFavorite(entry.id);
         const row = document.createElement("div");
-        row.className = "xlc-row" + (i === this.activeIndex ? " xlc-row--active" : "");
+        row.className = "xlc-row" + (i === this.activeIndex ? " xlc-row--active" : "") + (fav ? " xlc-row--fav" : "");
         row.dataset.xlcIndex = String(i);
         row.setAttribute("role", "option");
         row.setAttribute("aria-selected", i === this.activeIndex ? "true" : "false");
@@ -756,14 +785,16 @@
         row.appendChild(main);
         if (this.deps.isSourceMissing(entry)) {
           const warn = document.createElement("span");
-          warn.className = "xlc-badge xlc-badge--warn";
-          warn.textContent = "\u26A0 " + this.deps.t("sourceMissing");
-          row.appendChild(warn);
+          warn.className = "xlc-row-warn";
+          warn.textContent = "\u26A0";
+          warn.title = this.deps.t("sourceMissing") + " \xB7 " + this.deps.t("sourceGone");
+          warn.setAttribute("aria-label", this.deps.t("sourceMissing"));
+          title.appendChild(warn);
         }
         const star = document.createElement("button");
         star.className = "b3-button b3-button--small xlc-row-action";
-        star.textContent = this.deps.isFavorite(entry.id) ? "\u2605" : "\u2606";
-        star.setAttribute("aria-label", this.deps.isFavorite(entry.id) ? this.deps.t("unfavorite") : this.deps.t("favorite"));
+        star.textContent = fav ? "\u2605" : "\u2606";
+        star.setAttribute("aria-label", fav ? this.deps.t("unfavorite") : this.deps.t("favorite"));
         star.addEventListener("click", (e) => {
           e.stopPropagation();
           this.deps.toggleFavorite(entry.id);
@@ -811,7 +842,7 @@
       this.paintActive();
     }
     async showProviderMenu(row, anchor) {
-      var _a, _b;
+      var _a, _b, _c, _d;
       const menu = document.createElement("div");
       menu.className = "xlc-menu";
       const lbl = document.createElement("div");
@@ -820,23 +851,18 @@
       menu.appendChild(lbl);
       const sec = document.createElement("div");
       sec.className = "xlc-menu-sec";
-      const mk = (label, run) => {
-        const btn = document.createElement("button");
-        btn.className = "xlc-menu-item";
-        btn.textContent = label;
-        btn.addEventListener("click", async () => {
-          this.destroy();
-          await run();
-        });
-        sec.appendChild(btn);
-      };
-      mk(this.deps.t("providerInsert"), () => {
+      sec.appendChild(this.menuButton("\uFF0B", this.deps.t("providerInsert"), "xlc-menu-item", async () => {
         var _a2;
-        return this.deps.insertProviderPayload(row.payload, (_a2 = this.insertTarget) != null ? _a2 : void 0);
-      });
-      mk(this.deps.t("providerCopy"), () => this.deps.copyProviderPayload(row.payload));
+        this.destroy();
+        await this.deps.insertProviderPayload(row.payload, (_a2 = this.insertTarget) != null ? _a2 : void 0);
+      }));
+      sec.appendChild(this.menuButton("\u29C9", this.deps.t("providerCopy"), "xlc-menu-item", async () => {
+        this.destroy();
+        await this.deps.copyProviderPayload(row.payload);
+      }));
       menu.appendChild(sec);
-      ((_b = (_a = this.dialog) == null ? void 0 : _a.element) != null ? _b : anchor).appendChild(menu);
+      const host = (_d = (_c = (_a = this.dialog) == null ? void 0 : _a.element.querySelector(".xlc-dialog")) != null ? _c : (_b = this.dialog) == null ? void 0 : _b.element) != null ? _d : anchor;
+      host.appendChild(menu);
       const dismiss = (e) => {
         if (!menu.contains(e.target)) {
           menu.remove();
@@ -937,8 +963,21 @@
       await this.deps.runAction(entry.id, mode);
       this.destroy();
     }
+    /** 菜单按钮统一构造：图标列 + 文本（createTextNode 注入，绝不 innerHTML） */
+    menuButton(icon, label, cls, run) {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = cls;
+      const ic = document.createElement("span");
+      ic.className = "xlc-menu-ic";
+      ic.textContent = icon;
+      btn.appendChild(ic);
+      btn.appendChild(document.createTextNode(label));
+      btn.addEventListener("click", () => void run());
+      return btn;
+    }
     async showActionMenu(entry) {
-      var _a, _b;
+      var _a, _b, _c, _d;
       const menu = document.createElement("div");
       menu.className = "xlc-menu";
       const rebuild = (render) => {
@@ -946,6 +985,10 @@
         render();
       };
       const buildDefault = () => {
+        const lbl = document.createElement("div");
+        lbl.className = "xlc-menu-lbl";
+        lbl.textContent = (entry.title || this.deps.t("unknownType")) + " \xB7 " + this.deps.t("actionsNoun");
+        menu.appendChild(lbl);
         const previewBox = document.createElement("pre");
         previewBox.className = "xlc-menu-preview";
         previewBox.textContent = this.deps.t("previewUnavailable");
@@ -957,59 +1000,44 @@
         menu.appendChild(previewBox);
         const sec1 = document.createElement("div");
         sec1.className = "xlc-menu-sec";
-        const addAction = (label, run, cls = "xlc-menu-item") => {
-          const btn = document.createElement("button");
-          btn.className = cls;
-          btn.textContent = label;
-          btn.addEventListener("click", async () => {
+        const addAction = (icon, label, run, cls = "xlc-menu-item") => {
+          sec1.appendChild(this.menuButton(icon, label, cls, async () => {
             this.destroy();
             await run();
-          });
-          sec1.appendChild(btn);
+          }));
         };
         if (entry.itemType === "blockref") {
-          addAction(this.deps.t("insertRef"), () => this.deps.runAction(entry.id, "insert-ref"));
-          addAction(this.deps.t("insertEmbed"), () => this.deps.runAction(entry.id, "insert-embed"));
-          addAction(this.deps.t("insertCopy"), () => this.deps.runAction(entry.id, "copy-content"));
+          addAction("\uFF0B", this.deps.t("insertRef"), () => this.deps.runAction(entry.id, "insert-ref"));
+          addAction("\u229E", this.deps.t("insertEmbed"), () => this.deps.runAction(entry.id, "insert-embed"));
+          addAction("\u29C9", this.deps.t("insertCopy"), () => this.deps.runAction(entry.id, "copy-content"));
         } else {
-          addAction(this.deps.t("insert"), () => this.deps.runAction(entry.id, "insert"));
-          addAction(this.deps.t("copy"), () => this.deps.runAction(entry.id, "copy"));
+          addAction("\uFF0B", this.deps.t("insert"), () => this.deps.runAction(entry.id, "insert"));
+          addAction("\u29C9", this.deps.t("copy"), () => this.deps.runAction(entry.id, "copy"));
         }
         menu.appendChild(sec1);
         if (this.deps.aiEnabled()) {
           const secAi = document.createElement("div");
           secAi.className = "xlc-menu-sec xlc-menu-sec--ai";
           for (const kind of TRANSFORM_KINDS) {
-            const btn = document.createElement("button");
-            btn.className = "xlc-menu-item xlc-menu-item--ai";
-            btn.textContent = "\u2726 " + this.deps.t(`tf.${kind}`);
-            btn.addEventListener("click", () => {
+            secAi.appendChild(this.menuButton("\u2726", this.deps.t(`tf.${kind}`), "xlc-menu-item xlc-menu-item--ai", () => {
               rebuild(buildTransform.bind(this, kind));
               void runTransform(kind);
-            });
-            secAi.appendChild(btn);
+            }));
           }
           menu.appendChild(secAi);
         }
         const sec2 = document.createElement("div");
         sec2.className = "xlc-menu-sec";
-        const addSilent = (label, run) => {
-          const btn = document.createElement("button");
-          btn.className = "xlc-menu-item";
-          btn.textContent = label;
-          btn.addEventListener("click", async () => {
+        const addSilent = (icon, label, run) => {
+          sec2.appendChild(this.menuButton(icon, label, "xlc-menu-item", async () => {
             menu.remove();
             await run();
-          });
-          sec2.appendChild(btn);
+          }));
         };
-        addSilent(this.deps.t("openSource"), () => this.deps.openSource(entry.id));
-        addSilent(this.deps.t("edit"), () => this.deps.editItem(entry.id));
-        addSilent(this.deps.t("duplicateItem"), () => this.deps.duplicateItem(entry.id));
-        const toDocBtn = document.createElement("button");
-        toDocBtn.className = "xlc-menu-item";
-        toDocBtn.textContent = this.deps.t("insertToDoc");
-        toDocBtn.addEventListener("click", () => {
+        addSilent("\u2197", this.deps.t("openSource"), () => this.deps.openSource(entry.id));
+        addSilent("\u270E", this.deps.t("edit"), () => this.deps.editItem(entry.id));
+        addSilent("\u29C9", this.deps.t("duplicateItem"), () => this.deps.duplicateItem(entry.id));
+        const toDocBtn = this.menuButton("\u2913", this.deps.t("insertToDoc"), "xlc-menu-item", () => {
           var _a2;
           let sec = menu.querySelector(".xlc-menu-pickdoc");
           if (sec) {
@@ -1032,14 +1060,10 @@
             void this.deps.searchDocs(k).then((hits) => {
               if (mySeq !== seq) return;
               for (const hit of hits.slice(0, 5)) {
-                const hitBtn = document.createElement("button");
-                hitBtn.className = "xlc-menu-item xlc-pickdoc-hit";
-                hitBtn.textContent = hit.hPath || hit.name || hit.id;
-                hitBtn.addEventListener("click", async () => {
+                sec.appendChild(this.menuButton("\u2913", hit.hPath || hit.name || hit.id, "xlc-menu-item xlc-pickdoc-hit", async () => {
                   this.destroy();
                   await this.deps.insertToDoc(entry.id, hit.id, hit.hPath);
-                });
-                sec.appendChild(hitBtn);
+                }));
               }
             });
           });
@@ -1048,7 +1072,7 @@
           input.focus();
         });
         sec2.appendChild(toDocBtn);
-        addSilent(this.deps.t("delete"), () => this.deps.deleteItem(entry.id));
+        addSilent("\u{1F5D1}", this.deps.t("delete"), () => this.deps.deleteItem(entry.id));
         menu.appendChild(sec2);
       };
       const buildTransform = (kind) => {
@@ -1062,44 +1086,31 @@
         menu.appendChild(box);
         const sec = document.createElement("div");
         sec.className = "xlc-menu-sec";
-        const mk = (label, run) => {
-          const btn = document.createElement("button");
-          btn.className = "xlc-menu-item";
-          btn.textContent = label;
-          btn.addEventListener("click", async () => {
-            this.destroy();
-            await run();
-          });
-          sec.appendChild(btn);
+        const mk = (icon, label, run) => {
+          sec.appendChild(this.menuButton(icon, label, "xlc-menu-item", run));
         };
-        mk(this.deps.t("aiInsertTransformed"), async () => {
+        mk("\uFF0B", this.deps.t("aiInsertTransformed"), async () => {
           var _a2;
           await this.deps.insertRaw((_a2 = box.dataset.transformed) != null ? _a2 : "");
         });
-        mk(this.deps.t("aiCopyTransformed"), async () => {
+        mk("\u29C9", this.deps.t("aiCopyTransformed"), async () => {
           await this.deps.runAction(entry.id, "copy");
         });
-        mk(this.deps.t("aiInsertOriginal"), async () => {
+        mk("\u21A9", this.deps.t("aiInsertOriginal"), async () => {
           await this.deps.runAction(entry.id, entry.itemType === "blockref" ? "insert-ref" : "insert");
         });
-        const saveNewBtn = document.createElement("button");
-        saveNewBtn.className = "xlc-menu-item";
-        saveNewBtn.textContent = this.deps.t("saveTransformed");
-        saveNewBtn.addEventListener("click", async () => {
+        sec.appendChild(this.menuButton("\u{1F5CE}", this.deps.t("saveTransformed"), "xlc-menu-item", async () => {
           var _a2;
           const transformed = (_a2 = box.dataset.transformed) != null ? _a2 : "";
           this.destroy();
           await this.deps.saveTransformed(entry.id, kind, transformed);
-        });
-        sec.appendChild(saveNewBtn);
+        }));
         menu.appendChild(sec);
         const secBack = document.createElement("div");
         secBack.className = "xlc-menu-sec";
-        const back = document.createElement("button");
-        back.className = "xlc-menu-item";
-        back.textContent = "\u2190 " + this.deps.t("more");
-        back.addEventListener("click", () => rebuild(buildDefault));
-        secBack.appendChild(back);
+        secBack.appendChild(this.menuButton("\u2190", this.deps.t("more"), "xlc-menu-item", () => {
+          rebuild(buildDefault);
+        }));
         menu.appendChild(secBack);
         menu.applyTransform = (text) => {
           box.dataset.transformed = text;
@@ -1117,7 +1128,8 @@
         }
       };
       rebuild(buildDefault);
-      ((_b = (_a = this.dialog) == null ? void 0 : _a.element) != null ? _b : document.body).appendChild(menu);
+      const host = (_d = (_c = (_a = this.dialog) == null ? void 0 : _a.element.querySelector(".xlc-dialog")) != null ? _c : (_b = this.dialog) == null ? void 0 : _b.element) != null ? _d : document.body;
+      host.appendChild(menu);
       const escHandler = (e) => {
         var _a2;
         if (e.key === "Escape") {
@@ -1575,7 +1587,7 @@
     const root = document.createElement("div");
     root.className = "xlc-form";
     const libSec = document.createElement("div");
-    libSec.className = "xlc-form-field";
+    libSec.className = "xlc-form-field xlc-card";
     const libLabel = document.createElement("span");
     libLabel.className = "xlc-form-label";
     libLabel.textContent = t("librarySection");
@@ -1587,6 +1599,7 @@
     libSec.appendChild(libStatus);
     const changeBtn = document.createElement("button");
     changeBtn.className = "b3-button";
+    changeBtn.style.alignSelf = "flex-start";
     changeBtn.textContent = t("openSettingsChangeLib");
     const pickerHost = document.createElement("div");
     pickerHost.style.display = "none";
@@ -1609,7 +1622,7 @@
   function buildProviderSection(ctx, root) {
     const t = ctx.t;
     const provSec = document.createElement("div");
-    provSec.className = "xlc-form-field";
+    provSec.className = "xlc-form-field xlc-card";
     const provLabel = document.createElement("span");
     provLabel.className = "xlc-form-label";
     provLabel.textContent = t("providerSection");
@@ -1695,7 +1708,7 @@
     const actions = document.createElement("div");
     actions.className = "xlc-form-actions";
     const createBtn = document.createElement("button");
-    createBtn.className = "b3-button b3-button--text";
+    createBtn.className = "b3-button xlc-btn-primary";
     createBtn.textContent = t("setupNewDoc");
     createBtn.addEventListener("click", () => {
       const notebookId = nbSelect.value;
@@ -1807,7 +1820,7 @@
   function buildAiSection(ctx, root) {
     const t = ctx.t;
     const aiSec = document.createElement("div");
-    aiSec.className = "xlc-form-field";
+    aiSec.className = "xlc-form-field xlc-card";
     const aiLabel = document.createElement("span");
     aiLabel.className = "xlc-form-label";
     aiLabel.textContent = t("aiSection");
@@ -1817,6 +1830,7 @@
       row.className = "xlc-setting-row";
       const box = document.createElement("input");
       box.type = "checkbox";
+      box.className = "xlc-switch";
       box.checked = ctx.state.ai[key];
       box.addEventListener("change", () => {
         ctx.state.ai[key] = box.checked;
@@ -1825,9 +1839,10 @@
         ctx.persistSoon();
       });
       const cap = document.createElement("span");
+      cap.className = "xlc-setting-text";
       cap.textContent = text;
-      row.appendChild(box);
       row.appendChild(cap);
+      row.appendChild(box);
       aiSec.appendChild(row);
       return box;
     };
@@ -1841,7 +1856,7 @@
   function buildSearchSection(ctx, root) {
     const t = ctx.t;
     const searchSec = document.createElement("div");
-    searchSec.className = "xlc-form-field";
+    searchSec.className = "xlc-form-field xlc-card";
     const searchLabel = document.createElement("span");
     searchLabel.className = "xlc-form-label";
     searchLabel.textContent = t("searchSection");
@@ -1850,6 +1865,7 @@
     pinyinRow.className = "xlc-setting-row";
     const pinyinBox = document.createElement("input");
     pinyinBox.type = "checkbox";
+    pinyinBox.className = "xlc-switch";
     pinyinBox.checked = ctx.state.search.pinyin;
     pinyinBox.addEventListener("change", () => {
       ctx.state.search.pinyin = pinyinBox.checked;
@@ -1860,23 +1876,26 @@
       });
     });
     const pinyinCap = document.createElement("span");
+    pinyinCap.className = "xlc-setting-text";
     pinyinCap.textContent = t("pinyinToggle");
-    pinyinRow.appendChild(pinyinBox);
     pinyinRow.appendChild(pinyinCap);
+    pinyinRow.appendChild(pinyinBox);
     searchSec.appendChild(pinyinRow);
     const phRow = document.createElement("label");
     phRow.className = "xlc-setting-row";
     const phBox = document.createElement("input");
     phBox.type = "checkbox";
+    phBox.className = "xlc-switch";
     phBox.checked = ctx.state.search.placeholders;
     phBox.addEventListener("change", () => {
       ctx.state.search.placeholders = phBox.checked;
       ctx.persistSoon();
     });
     const phCap = document.createElement("span");
+    phCap.className = "xlc-setting-text";
     phCap.textContent = t("placeholdersToggle");
-    phRow.appendChild(phBox);
     phRow.appendChild(phCap);
+    phRow.appendChild(phBox);
     searchSec.appendChild(phRow);
     const phHint = document.createElement("span");
     phHint.className = "xlc-form-hint";
@@ -1887,7 +1906,7 @@
   function buildDataSection(ctx, root) {
     const t = ctx.t;
     const dataSec = document.createElement("div");
-    dataSec.className = "xlc-form-field";
+    dataSec.className = "xlc-form-field xlc-card";
     const dataLabel = document.createElement("span");
     dataLabel.className = "xlc-form-label";
     dataLabel.textContent = t("dataSection");
@@ -2240,7 +2259,7 @@
       body.innerHTML = "";
       const form = document.createElement("div");
       form.className = "xlc-form";
-      const field = (label, value, isArea, cls) => {
+      const field = (label, value, isArea, cls, parent) => {
         const wrap = document.createElement("label");
         wrap.className = "xlc-form-field";
         const cap = document.createElement("span");
@@ -2254,11 +2273,13 @@
         inputEl.className = "b3-text-field " + cls;
         inputEl.value = value;
         wrap.appendChild(inputEl);
-        form.appendChild(wrap);
+        (parent != null ? parent : form).appendChild(wrap);
         return inputEl;
       };
+      const metaRow = document.createElement("div");
+      metaRow.className = "xlc-form-row";
       const typeWrap = document.createElement("label");
-      typeWrap.className = "xlc-form-field";
+      typeWrap.className = "xlc-form-field xlc-form-field--fixed";
       const typeLabel = document.createElement("span");
       typeLabel.className = "xlc-form-label";
       typeLabel.textContent = t("type");
@@ -2273,16 +2294,21 @@
         typeSelect.appendChild(opt);
       }
       typeWrap.appendChild(typeSelect);
-      form.appendChild(typeWrap);
+      metaRow.appendChild(typeWrap);
+      form.appendChild(metaRow);
       const contentEl = field(t("contentLabel"), defaultText, true, "xlc-form-content");
       const titleEl = field(t("title"), (_a = overrides == null ? void 0 : overrides.title) != null ? _a : "", false, "xlc-form-title");
-      const aliasEl = field(t("alias"), "", false, "xlc-form-alias");
-      const tagsEl = field(t("tags"), "", false, "xlc-form-tags");
+      const aliasEl = field(t("alias"), "", false, "xlc-form-alias", metaRow);
+      const tagRow = document.createElement("div");
+      tagRow.className = "xlc-form-row";
+      const tagsEl = field(t("tags"), "", false, "xlc-form-tags", tagRow);
       const tagsHint = document.createElement("span");
       tagsHint.className = "xlc-form-hint";
       tagsHint.textContent = t("tagsHint");
       tagsEl.parentElement.appendChild(tagsHint);
-      const categoryEl = field(t("category"), "", false, "xlc-form-category");
+      const categoryEl = field(t("category"), "", false, "xlc-form-category", tagRow);
+      categoryEl.parentElement.classList.add("xlc-form-field--fixed");
+      form.appendChild(tagRow);
       const sugrow = document.createElement("div");
       sugrow.className = "xlc-sugrow";
       sugrow.style.display = "none";
@@ -2299,7 +2325,7 @@
         if (suggestions.category) categoryEl.value = suggestions.category;
         this.deps.notify("info", t("aiApplied"));
       };
-      adoptBtn.textContent = t("confirm");
+      adoptBtn.textContent = t("adoptAll");
       adoptBtn.addEventListener("click", applySuggestions);
       sugrow.appendChild(adoptBtn);
       form.insertBefore(sugrow, titleEl.parentElement);
@@ -2341,24 +2367,23 @@
         draftWrap.className = "xlc-form-field";
         const draftLabel = document.createElement("span");
         draftLabel.className = "xlc-form-label";
-        draftLabel.textContent = t("aiDraftDesc");
+        draftLabel.textContent = t("aiDraft");
         draftWrap.appendChild(draftLabel);
-        const draftRow = document.createElement("div");
-        draftRow.style.display = "flex";
-        draftRow.style.gap = "6px";
+        const draftBtn = document.createElement("button");
+        draftBtn.type = "button";
+        draftBtn.className = "xlc-form-ai";
+        draftBtn.textContent = "\u2726 " + t("aiDraftDesc");
+        draftLabel.appendChild(draftBtn);
         const draftInput = document.createElement("input");
         draftInput.className = "b3-text-field";
         draftInput.placeholder = t("aiDraftDesc");
-        draftRow.appendChild(draftInput);
-        const draftBtn = document.createElement("button");
-        draftBtn.className = "b3-button b3-button--text xlc-form-ai";
-        draftBtn.textContent = "\u2726 " + t("aiDraft");
+        draftWrap.appendChild(draftInput);
         draftBtn.addEventListener("click", () => {
           const desc = draftInput.value.trim();
           if (!desc) return;
           draftBtn.textContent = t("aiWorking");
           void this.deps.aiDraft(desc).then((result) => {
-            draftBtn.textContent = "\u2726 " + t("aiDraft");
+            draftBtn.textContent = "\u2726 " + t("aiDraftDesc");
             if (!result.ok) {
               this.deps.notify("error", result.message);
               return;
@@ -2366,18 +2391,16 @@
             contentEl.value = result.text;
           });
         });
-        draftRow.appendChild(draftBtn);
-        draftWrap.appendChild(draftRow);
         form.insertBefore(draftWrap, form.firstChild);
       }
       const actions = document.createElement("div");
       actions.className = "xlc-form-actions";
       const cancelBtn = document.createElement("button");
-      cancelBtn.className = "b3-button b3-button--cancel";
+      cancelBtn.className = "b3-button";
       cancelBtn.textContent = t("cancel");
       cancelBtn.addEventListener("click", () => dialog.destroy());
       const saveBtn = document.createElement("button");
-      saveBtn.className = "b3-button b3-button--text";
+      saveBtn.className = "b3-button xlc-btn-primary";
       saveBtn.textContent = t("save");
       const submitOnEnter = (el) => {
         el.addEventListener("keydown", (ev) => {
@@ -2515,6 +2538,11 @@
       aiApplied: "\u5DF2\u5E94\u7528 AI \u5EFA\u8BAE",
       aiTransform: "AI \u53D8\u6362",
       saved: "\u5DF2\u4FDD\u5B58\uFF1A%s",
+      dataTruth: "\u601D\u6E90\u5757\u771F\u6E90 \xB7 \u5931\u6548\u53EF\u89C1",
+      adoptAll: "\u5168\u90E8\u91C7\u7EB3",
+      actionsNoun: "\u52A8\u4F5C",
+      semanticSuggestion: "\u6CA1\u6709\u672C\u5730\u7ED3\u679C\u3002\u8BD5\u8BD5 AI \u8BED\u4E49\u627E\uFF1A\u5728\u5173\u952E\u8BCD\u524D\u52A0 ?",
+      aiSemanticHint: "\u8F93\u5165 ? \u52A0\u63CF\u8FF0\uFF0C\u5982\u300C?\u7ED9\u5BA2\u6237\u7684\u9053\u6B49\u56DE\u590D\u300D\uFF0CAI \u5728\u5143\u6570\u636E\u4E2D\u627E\u6700\u76F8\u5173\u6761\u76EE",
       "sort.manual": "\u624B\u52A8/\u7F6E\u9876",
       "sort.recent": "\u6700\u8FD1\u4F7F\u7528",
       "sort.title": "\u6807\u9898",
@@ -2566,7 +2594,7 @@
     const aiOn = (_a = overrides.aiEnabled) != null ? _a : true;
     return {
       t: T,
-      search: async () => ({ entries: ENTRIES, truncated: false, total: 128 }),
+      search: async () => overrides.empty ? { entries: [], truncated: false, total: 0 } : { entries: ENTRIES, truncated: false, total: 128 },
       getTags: async () => ["\u5BA2\u6237\u6C9F\u901A", "\u6A21\u677F", "\u5F00\u53D1"],
       preview: async (itemId) => {
         var _a2;
@@ -2614,7 +2642,7 @@
       isSourceMissing: (entry) => overrides.missing === true && entry.id === "xlc-demo0000001",
       close: () => {
       },
-      isMobile: () => false
+      isMobile: () => overrides.mobile === true
     };
   }
   window.XlcHarness = {

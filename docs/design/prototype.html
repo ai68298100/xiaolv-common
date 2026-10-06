@@ -2,12 +2,15 @@
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8">
-<title>小驴常用 · 界面原型 v1（2026-10-06）</title>
+<title>小驴常用 · 界面原型 v2（2026-10-06）</title>
 <style>
 /* ============ 原型设计基准 ============
    原则：与思源 b3 视觉融合为基线（变量语义一致），在此之上做克制的精致化：
    10px 圆角、双层阴影、类型彩色徽标（b3 派生淡彩）、AI 紫罗兰高光、8px 间距网格。
-   本文件是生产 UI 的质感基准（src/styles/index.scss 须达到同等效果）。 */
+   本文件是生产 UI 的质感基准（src/styles/index.scss 须达到同等效果）。
+   v2：吸收已实现的新功能——序号直达（Alt+1~9）、排序 chip、提供方分区、
+   行内来源失效徽标、菜单「创建副本/插入到指定文档/存为新条目」、footer 计数与真源声明、
+   设置页（分区卡片 + switch + 状态徽标）。 */
 :root {
   --font: "PingFang SC", "Microsoft YaHei", -apple-system, "Segoe UI", sans-serif;
   --radius: 10px;
@@ -66,6 +69,15 @@ body > section > h2 { font-size: 13px; color: #666; margin: 0 0 10px 4px; font-w
 .badge.ai    { color:var(--b3-theme-primary); background:var(--badge-text-bg); }
 .ai-chip { display:inline-flex; align-items:center; gap:4px; color:var(--b3-theme-primary); font-size:11px; }
 button { font-family: var(--font); cursor: pointer; }
+.ordinal {
+  display:inline-flex; width:16px; height:16px; align-items:center; justify-content:center;
+  border:1px solid var(--b3-border-color); border-radius:4px; font-size:10.5px; font-weight:600;
+  color:var(--b3-theme-on-surface); flex-shrink:0;
+}
+.warnmini {
+  display:inline-flex; align-items:center; font-size:10.5px; font-weight:600; padding:0 6px;
+  border-radius:999px; line-height:16px; color:#c2503a; background:rgba(226,106,80,.12); flex-shrink:0;
+}
 .btn {
   border: 1px solid var(--b3-border-color); background: var(--b3-theme-background); color: var(--b3-theme-on-background);
   border-radius: 8px; padding: 5px 12px; font-size: 12.5px;
@@ -172,6 +184,20 @@ button { font-family: var(--font); cursor: pointer; }
 .sheet .row { border-radius:10px; border-bottom:none; margin-bottom:2px; padding:10px; min-height:52px; }
 .sheet-foot { display:flex; gap:8px; padding-top:8px; }
 .sheet-foot .btn { flex:1; padding:9px 0; font-size:13px; border-radius:10px; }
+
+/* ---------- 屏5：设置（分区卡片 + switch + 状态徽标） ---------- */
+.setdlg { width: 560px; margin: 20px auto 0; background:var(--b3-theme-background); border-radius:12px; box-shadow:var(--shadow); border:1px solid var(--b3-border-color); padding:6px 18px 18px; height:472px; overflow:auto; }
+.set-card { border:1px solid var(--b3-border-color); background:var(--b3-theme-surface); border-radius:10px; padding:12px 14px; margin-top:12px; }
+.set-card h4 { font-size:12px; font-weight:600; color:var(--b3-theme-on-surface); margin:0 0 8px; letter-spacing:.4px; }
+.set-row { display:flex; align-items:center; gap:10px; font-size:12.5px; color:var(--b3-theme-on-background); padding:3px 0; }
+.set-row .sub { font-size:11px; color:var(--b3-theme-on-surface); }
+.set-row .grow { flex:1; min-width:0; }
+.switch { position:relative; width:34px; height:20px; border-radius:999px; border:none; background:var(--b3-border-color); flex-shrink:0; transition:background .12s; }
+.switch.on { background:var(--b3-theme-primary); }
+.switch::after { content:""; position:absolute; top:2px; left:2px; width:16px; height:16px; border-radius:50%; background:#fff; box-shadow:0 1px 2px rgba(0,0,0,.2); transition:transform .12s; }
+.switch.on::after { transform:translateX(14px); }
+.set-foot { display:flex; gap:6px; flex-wrap:wrap; align-items:center; margin-top:10px; }
+.set-foot .hint { font-size:11px; color:var(--b3-theme-on-surface); margin-right:auto; }
 </style>
 </head>
 <body>
@@ -184,33 +210,34 @@ button { font-family: var(--font); cursor: pointer; }
   <div class="dlg">
     <div class="dlg-head">
       <span class="dlg-title">小驴常用</span>
-      <span class="kbd">↑↓</span><span class="kbd">↩ 插入</span><span class="kbd">⌃↩ 复制</span><span class="kbd">Esc</span>
+      <span class="kbd">↑↓</span><span class="kbd">↩ 插入</span><span class="kbd">⌃↩ 复制</span><span class="kbd">⌥1-9 直达</span><span class="kbd">Esc</span>
     </div>
     <div class="search"><span class="q">?</span><input value="给客户延期上线 的道歉回复" placeholder="搜索常用内容（? 前缀 = AI 语义找）"></div>
     <div class="filters">
       <button class="chip ai-chip ai" style="color:var(--b3-theme-primary)">✦ AI 找到的 · 5 条</button>
       <button class="chip">类型 ▾</button><button class="chip">标签 ▾</button>
       <button class="chip">★ 收藏</button><button class="chip">🕐 最近</button>
+      <button class="chip">⇅ 手动/置顶</button>
     </div>
     <div class="dlg-body">
       <div class="list">
         <div class="row on">
           <div style="flex:1;min-width:0">
-            <div class="tt"><span class="badge md">MD</span><span class="t">项目延期道歉与补偿方案</span></div>
+            <div class="tt"><span class="ordinal">1</span><span class="badge md">MD</span><span class="t">项目延期道歉与补偿方案</span><span class="warnmini">⚠ 来源失效</span></div>
             <div class="meta">尊敬的王总：关于本期交付延期…</div>
           </div>
           <span class="star fav">★</span>
         </div>
         <div class="row">
           <div style="flex:1;min-width:0">
-            <div class="tt"><span class="badge text">TXT</span><span class="t">延期简短版（IM 用）</span></div>
+            <div class="tt"><span class="ordinal">2</span><span class="badge text">TXT</span><span class="t">延期简短版（IM 用）</span></div>
             <div class="meta">您好，本次迭代因联调超期，上线推迟 2 天…</div>
           </div>
           <span class="star">☆</span>
         </div>
         <div class="row">
           <div style="flex:1;min-width:0">
-            <div class="tt"><span class="badge md">MD</span><span class="t">客服投诉标准回复流程</span><span class="ai-chip">✦</span></div>
+            <div class="tt"><span class="ordinal">3</span><span class="badge md">MD</span><span class="t">客服投诉标准回复流程</span><span class="ai-chip">✦</span></div>
             <div class="meta">第一步 先致歉安抚，第二步 同步进展…</div>
           </div>
           <span class="star">☆</span>
@@ -221,6 +248,13 @@ button { font-family: var(--font); cursor: pointer; }
             <div class="meta">https://wiki.example.com/sla</div>
           </div>
           <span class="star">☆</span>
+        </div>
+        <div style="padding:6px 12px; font-size:11.5px; font-weight:600; color:var(--b3-theme-primary); background:rgba(53,117,240,.06); border-bottom:1px solid var(--b3-border-color);">✦ 提供方内容 · 2</div>
+        <div class="row" style="background:rgba(53,117,240,.03)">
+          <div style="flex:1;min-width:0">
+            <div class="tt"><span class="badge ai">小驴雷切</span><span class="t">当前工作台</span></div>
+            <div class="meta">快速回到工作台布局（提供方演示数据）</div>
+          </div>
         </div>
       </div>
       <div class="pane">
@@ -245,12 +279,12 @@ button { font-family: var(--font); cursor: pointer; }
         </div>
       </div>
     </div>
-    <div class="dlg-foot"><span>共 128 条 · 索引 3 秒前</span><span>思源块真源 · 失效可见</span></div>
+    <div class="dlg-foot"><span>共 128 条</span><span style="margin-left:auto">思源块真源 · 失效可见</span><span>⚙ 设置</span></div>
   </div>
 </div>
 <div class="frame t-dark">
   <div class="dlg">
-    <div class="dlg-head"><span class="dlg-title">小驴常用</span><span class="kbd">↑↓</span><span class="kbd">↩ 插入</span><span class="kbd">Esc</span></div>
+    <div class="dlg-head"><span class="dlg-title">小驴常用</span><span class="kbd">↑↓</span><span class="kbd">↩ 插入</span><span class="kbd">⌥1-9</span><span class="kbd">Esc</span></div>
     <div class="search"><span class="q">?</span><input value="给客户延期上线 的道歉回复"></div>
     <div class="filters">
       <button class="chip ai-chip">✦ AI 找到的 · 5 条</button>
@@ -285,7 +319,7 @@ button { font-family: var(--font); cursor: pointer; }
         </div>
       </div>
     </div>
-    <div class="dlg-foot"><span>共 128 条</span><span>AI 由思源 设置→人工智能 提供</span></div>
+    <div class="dlg-foot"><span>共 128 条</span><span style="margin-left:auto">AI 由思源 设置→人工智能 提供</span></div>
   </div>
 </div>
 </div>
@@ -313,10 +347,13 @@ button { font-family: var(--font); cursor: pointer; }
         <button class="mi"><span class="ic">＋</span><b>插入变换结果</b></button>
         <button class="mi"><span class="ic">⧉</span>复制变换结果</button>
         <button class="mi"><span class="ic">↩</span>插入原文</button>
+        <button class="mi"><span class="ic">🗎</span>存为新条目</button>
       </div>
       <div class="sec">
         <button class="mi"><span class="ic">↗</span>打开来源</button>
         <button class="mi"><span class="ic">✎</span>编辑</button>
+        <button class="mi"><span class="ic">⧉</span>创建副本</button>
+        <button class="mi"><span class="ic">⤓</span>插入到指定文档</button>
         <button class="mi"><span class="ic">🗑</span>删除</button>
       </div>
     </div>
@@ -370,6 +407,10 @@ button { font-family: var(--font); cursor: pointer; }
     </div>
     <div class="sugrow">✦ AI 建议：<b>项目延期通知模板</b> · 标签 客户沟通/模板 · 分类 客服<button class="btn ai" style="margin-left:auto;padding:2px 10px">全部采纳</button></div>
     <div class="fld"><label>标题</label><input class="inp" value="项目延期通知模板"></div>
+    <div style="display:flex;gap:10px">
+      <div class="fld" style="flex:1"><label>别名</label><input class="inp" value="延期通知"></div>
+      <div class="fld" style="width:130px"><label>类型</label><input class="inp" value="Markdown" readonly></div>
+    </div>
     <div style="display:flex;gap:10px">
       <div class="fld" style="flex:1"><label>标签（逗号分隔）</label><input class="inp" value="客户沟通, 模板"></div>
       <div class="fld" style="width:130px"><label>分类</label><input class="inp" value="客服"></div>
@@ -468,6 +509,71 @@ button { font-family: var(--font); cursor: pointer; }
       <button class="btn">＋ 新建</button>
       <button class="btn ai">✦ AI 找</button>
       <button class="btn primary">复制选中</button>
+    </div>
+  </div>
+</div>
+</div>
+</section>
+
+<!-- ======== 屏 5：设置（分区卡片 + switch + 提供方状态徽标） ======== -->
+<section>
+<h2>屏 5 · 设置（分区卡片 · switch · 提供方状态 · 数据按钮组）</h2>
+<div class="pair">
+<div class="frame t-light">
+  <div class="setdlg">
+    <h3 style="font-size:15px; margin:10px 0 0;">设置 · 小驴常用</h3>
+    <div class="set-card">
+      <h4>当前内容库</h4>
+      <div class="set-row"><span class="grow">doc · 1 个文档<div class="sub">条目以真实块保存在库文档中</div></span><button class="btn">更改内容库</button></div>
+    </div>
+    <div class="set-card">
+      <h4>AI 助手</h4>
+      <div class="set-row"><span class="grow">启用 AI 助手<div class="sub">使用思源 设置→人工智能 的模型，插件不保存密钥</div></span><button class="switch on" aria-label="启用 AI 助手"></button></div>
+      <div class="set-row"><span class="grow">允许 AI 读取条目完整正文<div class="sub">关闭时仅元数据出域</div></span><button class="switch on"></button></div>
+    </div>
+    <div class="set-card">
+      <h4>搜索</h4>
+      <div class="set-row"><span class="grow">拼音搜索<div class="sub">全拼/首字母本地匹配</div></span><button class="switch on"></button></div>
+      <div class="set-row"><span class="grow">动态占位符<div class="sub">插入时替换 {{xlc:date}} 等</div></span><button class="switch on"></button></div>
+    </div>
+    <div class="set-card">
+      <h4>提供方内容</h4>
+      <div class="set-row"><span class="badge ai">可执行</span>小驴打卡（v1）</div>
+      <div class="set-row"><span class="badge warn">待重载</span>小驴雷切（v1）</div>
+    </div>
+    <div class="set-card">
+      <h4>数据（导出 / 导入）</h4>
+      <div class="set-foot">
+        <span class="hint">当前内容库：doc · 1</span>
+        <button class="btn">重建索引</button><button class="btn">清空最近使用</button>
+        <button class="btn ai">✦ AI 标签体检</button>
+        <button class="btn">导出 JSON</button><button class="btn">导入 JSON</button>
+      </div>
+    </div>
+  </div>
+</div>
+<div class="frame t-dark">
+  <div class="setdlg">
+    <h3 style="font-size:15px; margin:10px 0 0;">设置 · 小驴常用</h3>
+    <div class="set-card">
+      <h4>当前内容库</h4>
+      <div class="set-row"><span class="grow">doc · 1 个文档</span><button class="btn">更改内容库</button></div>
+    </div>
+    <div class="set-card">
+      <h4>AI 助手</h4>
+      <div class="set-row"><span class="grow">启用 AI 助手</span><button class="switch on"></button></div>
+      <div class="set-row"><span class="grow">允许 AI 读取条目完整正文</span><button class="switch"></button></div>
+    </div>
+    <div class="set-card">
+      <h4>搜索</h4>
+      <div class="set-row"><span class="grow">拼音搜索</span><button class="switch on"></button></div>
+    </div>
+    <div class="set-card">
+      <h4>数据（导出 / 导入）</h4>
+      <div class="set-foot">
+        <span class="hint">当前内容库：doc · 1</span>
+        <button class="btn">重建索引</button><button class="btn">导出 JSON</button>
+      </div>
     </div>
   </div>
 </div>

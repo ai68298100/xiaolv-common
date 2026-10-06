@@ -70,9 +70,9 @@ export function openSettingsDialog(ctx: SettingsUiContext): void {
     const root = document.createElement("div");
     root.className = "xlc-form";
 
-    // 库管理：状态行 + 「更改内容库」展开选择器
+    // 库管理：状态行 + 「更改内容库」展开选择器（分区卡片）
     const libSec = document.createElement("div");
-    libSec.className = "xlc-form-field";
+    libSec.className = "xlc-form-field xlc-card";
     const libLabel = document.createElement("span");
     libLabel.className = "xlc-form-label";
     libLabel.textContent = t("librarySection");
@@ -86,6 +86,7 @@ export function openSettingsDialog(ctx: SettingsUiContext): void {
     libSec.appendChild(libStatus);
     const changeBtn = document.createElement("button");
     changeBtn.className = "b3-button";
+    changeBtn.style.alignSelf = "flex-start";
     changeBtn.textContent = t("openSettingsChangeLib");
     const pickerHost = document.createElement("div");
     pickerHost.style.display = "none";
@@ -111,7 +112,7 @@ export function openSettingsDialog(ctx: SettingsUiContext): void {
 function buildProviderSection(ctx: SettingsUiContext, root: HTMLElement): void {
     const t = ctx.t;
     const provSec = document.createElement("div");
-    provSec.className = "xlc-form-field";
+    provSec.className = "xlc-form-field xlc-card";
     const provLabel = document.createElement("span");
     provLabel.className = "xlc-form-label";
     provLabel.textContent = t("providerSection");
@@ -206,7 +207,7 @@ function buildLibraryPickerSection(ctx: SettingsUiContext, root: HTMLElement, on
     const actions = document.createElement("div");
     actions.className = "xlc-form-actions";
     const createBtn = document.createElement("button");
-    createBtn.className = "b3-button b3-button--text";
+    createBtn.className = "b3-button xlc-btn-primary";
     createBtn.textContent = t("setupNewDoc");
     createBtn.addEventListener("click", () => {
         const notebookId = nbSelect.value;
@@ -322,7 +323,7 @@ function buildAiSection(ctx: SettingsUiContext, root: HTMLElement): void {
     const t = ctx.t;
     // AI 设置区（默认关；开启即视为同意元数据出域；正文出域单独开关）
     const aiSec = document.createElement("div");
-    aiSec.className = "xlc-form-field";
+    aiSec.className = "xlc-form-field xlc-card";
     const aiLabel = document.createElement("span");
     aiLabel.className = "xlc-form-label";
     aiLabel.textContent = t("aiSection");
@@ -332,6 +333,7 @@ function buildAiSection(ctx: SettingsUiContext, root: HTMLElement): void {
         row.className = "xlc-setting-row";
         const box = document.createElement("input");
         box.type = "checkbox";
+        box.className = "xlc-switch";
         box.checked = ctx.state.ai[key];
         box.addEventListener("change", () => {
             ctx.state.ai[key] = box.checked;
@@ -340,9 +342,10 @@ function buildAiSection(ctx: SettingsUiContext, root: HTMLElement): void {
             ctx.persistSoon();
         });
         const cap = document.createElement("span");
+        cap.className = "xlc-setting-text";
         cap.textContent = text;
-        row.appendChild(box);
         row.appendChild(cap);
+        row.appendChild(box);
         aiSec.appendChild(row);
         return box;
     };
@@ -358,7 +361,7 @@ function buildSearchSection(ctx: SettingsUiContext, root: HTMLElement): void {
     const t = ctx.t;
     // 搜索设置区（拼音：本地注解，无出域）
     const searchSec = document.createElement("div");
-    searchSec.className = "xlc-form-field";
+    searchSec.className = "xlc-form-field xlc-card";
     const searchLabel = document.createElement("span");
     searchLabel.className = "xlc-form-label";
     searchLabel.textContent = t("searchSection");
@@ -367,6 +370,7 @@ function buildSearchSection(ctx: SettingsUiContext, root: HTMLElement): void {
     pinyinRow.className = "xlc-setting-row";
     const pinyinBox = document.createElement("input");
     pinyinBox.type = "checkbox";
+    pinyinBox.className = "xlc-switch";
     pinyinBox.checked = ctx.state.search.pinyin;
     pinyinBox.addEventListener("change", () => {
         ctx.state.search.pinyin = pinyinBox.checked;
@@ -377,24 +381,27 @@ function buildSearchSection(ctx: SettingsUiContext, root: HTMLElement): void {
         });
     });
     const pinyinCap = document.createElement("span");
+    pinyinCap.className = "xlc-setting-text";
     pinyinCap.textContent = t("pinyinToggle");
-    pinyinRow.appendChild(pinyinBox);
     pinyinRow.appendChild(pinyinCap);
+    pinyinRow.appendChild(pinyinBox);
     searchSec.appendChild(pinyinRow);
     // 占位符开关
     const phRow = document.createElement("label");
     phRow.className = "xlc-setting-row";
     const phBox = document.createElement("input");
     phBox.type = "checkbox";
+    phBox.className = "xlc-switch";
     phBox.checked = ctx.state.search.placeholders;
     phBox.addEventListener("change", () => {
         ctx.state.search.placeholders = phBox.checked;
         ctx.persistSoon();
     });
     const phCap = document.createElement("span");
+    phCap.className = "xlc-setting-text";
     phCap.textContent = t("placeholdersToggle");
-    phRow.appendChild(phBox);
     phRow.appendChild(phCap);
+    phRow.appendChild(phBox);
     searchSec.appendChild(phRow);
     const phHint = document.createElement("span");
     phHint.className = "xlc-form-hint";
@@ -407,7 +414,7 @@ function buildDataSection(ctx: SettingsUiContext, root: HTMLElement): void {
     const t = ctx.t;
     // 数据区：当前库 + 重建索引 + 清空最近 + 标签体检 + 导出/导入
     const dataSec = document.createElement("div");
-    dataSec.className = "xlc-form-field";
+    dataSec.className = "xlc-form-field xlc-card";
     const dataLabel = document.createElement("span");
     dataLabel.className = "xlc-form-label";
     dataLabel.textContent = t("dataSection");
