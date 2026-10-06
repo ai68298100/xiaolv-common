@@ -227,5 +227,8 @@
   "setupSummaryNotebook": "整个笔记本作为内容库",
   "useCount": "%s 次",
   "quickNew": "＋ 新建",
-  "quickInsertSelected": "插入选中"
+  "quickInsertSelected": "插入选中",
+  "cursorHint": "光标落点",
+  "itemCountBadge": "%s 条目",
+  "invalidSkipBadge": "%s 条格式无效将跳过"
 }

@@ -227,5 +227,8 @@
   "setupSummaryNotebook": "The whole notebook becomes the library",
   "useCount": "%s uses",
   "quickNew": "＋ New",
-  "quickInsertSelected": "Insert selected"
+  "quickInsertSelected": "Insert selected",
+  "cursorHint": "Cursor",
+  "itemCountBadge": "%s items",
+  "invalidSkipBadge": "%s invalid will be skipped"
 }

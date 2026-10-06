@@ -11,7 +11,7 @@ import {CommonItem} from "../model/item";
 import {InsertMode} from "../model/actions";
 import {TransformKind} from "../service/ai";
 import {ProviderRow} from "../model/provider-section";
-import {AskField, listAskFields} from "../model/variables";
+import {AskField, hasCursorToken, listAskFields} from "../model/variables";
 import {openVariableFillCard} from "./variable-form";
 
 export interface DialogDeps {
@@ -193,7 +193,7 @@ export class CommonSearchDialog {
         if (!isMobile) {
             const kbdRow = document.createElement("div");
             kbdRow.className = "xlc-kbdrow";
-            for (const hint of ["↑↓", "↩ 插入", "⌃↩ 复制", "Esc"]) {
+            for (const hint of ["↑↓", "↩ 插入", "⌃↩ 复制", "⌥1-9 直达", "Esc"]) {
                 const kbd = document.createElement("span");
                 kbd.className = "xlc-kbd";
                 kbd.textContent = hint;
@@ -710,12 +710,7 @@ export class CommonSearchDialog {
                 varBadge.textContent = this.deps.t("varCountBadge", String(entry.varCount));
                 title.appendChild(varBadge);
             }
-            if (this.deps.isFavorite(entry.id)) {
-                const starMini = document.createElement("span");
-                starMini.className = "xlc-row-favmark";
-                starMini.textContent = "★";
-                title.appendChild(starMini);
-            }
+            // 收藏态由右侧星标按钮承载（原型同款：金色常驻），标题内不再重复 ★
             main.appendChild(title);
             const meta = document.createElement("div");
             meta.className = "xlc-row-meta";
@@ -870,26 +865,38 @@ export class CommonSearchDialog {
         this.updatePreview(entry.id);
     }
 
-    /** 变量提示行：从预览文本解析 ask 字段并列出语法 chip（code/提供方行不展示）。 */
+    /** 变量提示行：从预览文本解析 ask 字段与光标标记并列出语法 chip（code/提供方行不展示）。 */
     private paintPaneVars(text: string | null, itemType: ItemType | "provider" | undefined): void {
         const paneVars = this.dialog?.element.querySelector<HTMLElement>(".xlc-pane-vars");
         if (!paneVars) return;
+        const hasCursor = Boolean(text && hasCursorToken(text));
         const fields = itemType && itemType !== "code" && itemType !== "provider" && text
             ? listAskFields(text)
             : [];
         paneVars.textContent = "";
-        if (fields.length === 0) {
+        if (fields.length === 0 && !hasCursor) {
             paneVars.style.display = "none";
             return;
         }
-        const label = document.createElement("span");
-        label.textContent = this.deps.t("paneVarsLabel", String(fields.length));
-        paneVars.appendChild(label);
+        if (fields.length > 0) {
+            const label = document.createElement("span");
+            label.textContent = this.deps.t("paneVarsLabel", String(fields.length));
+            paneVars.appendChild(label);
+        }
         for (const field of fields) {
             const chip = document.createElement("code");
             chip.textContent = field.kind === "text"
                 ? `{{xlc:ask:${field.name}}}`
                 : `{{xlc:ask:${field.name}${field.kind === "date" ? "|date" : "|" + field.options.join(",")}}}`;
+            paneVars.appendChild(chip);
+        }
+        // 光标落点提示（原型屏 1：内容含 {{xlc:cursor}} 时附带说明）
+        if (hasCursor) {
+            const sep = document.createElement("span");
+            sep.textContent = (fields.length > 0 ? "· " : "") + this.deps.t("cursorHint");
+            paneVars.appendChild(sep);
+            const chip = document.createElement("code");
+            chip.textContent = "{{xlc:cursor}}";
             paneVars.appendChild(chip);
         }
         // 样式表默认 display:none，显示需显式内联覆盖

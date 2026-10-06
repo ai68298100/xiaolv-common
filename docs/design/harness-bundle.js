@@ -311,6 +311,10 @@
     }
     return fields;
   }
+  var CURSOR_TOKEN = "{{xlc:cursor}}";
+  function hasCursorToken(text) {
+    return text.includes(CURSOR_TOKEN);
+  }
 
   // src/ui/variable-form.ts
   var import_siyuan = __toESM(require_stub_dom());
@@ -552,7 +556,7 @@
       if (!isMobile) {
         const kbdRow = document.createElement("div");
         kbdRow.className = "xlc-kbdrow";
-        for (const hint of ["\u2191\u2193", "\u21A9 \u63D2\u5165", "\u2303\u21A9 \u590D\u5236", "Esc"]) {
+        for (const hint of ["\u2191\u2193", "\u21A9 \u63D2\u5165", "\u2303\u21A9 \u590D\u5236", "\u23251-9 \u76F4\u8FBE", "Esc"]) {
           const kbd = document.createElement("span");
           kbd.className = "xlc-kbd";
           kbd.textContent = hint;
@@ -1035,12 +1039,6 @@
           varBadge.textContent = this.deps.t("varCountBadge", String(entry.varCount));
           title.appendChild(varBadge);
         }
-        if (this.deps.isFavorite(entry.id)) {
-          const starMini = document.createElement("span");
-          starMini.className = "xlc-row-favmark";
-          starMini.textContent = "\u2605";
-          title.appendChild(starMini);
-        }
         main.appendChild(title);
         const meta = document.createElement("div");
         meta.className = "xlc-row-meta";
@@ -1181,23 +1179,34 @@
     schedulePreview(entry) {
       this.updatePreview(entry.id);
     }
-    /** 变量提示行：从预览文本解析 ask 字段并列出语法 chip（code/提供方行不展示）。 */
+    /** 变量提示行：从预览文本解析 ask 字段与光标标记并列出语法 chip（code/提供方行不展示）。 */
     paintPaneVars(text, itemType) {
       var _a;
       const paneVars = (_a = this.dialog) == null ? void 0 : _a.element.querySelector(".xlc-pane-vars");
       if (!paneVars) return;
+      const hasCursor = Boolean(text && hasCursorToken(text));
       const fields = itemType && itemType !== "code" && itemType !== "provider" && text ? listAskFields(text) : [];
       paneVars.textContent = "";
-      if (fields.length === 0) {
+      if (fields.length === 0 && !hasCursor) {
         paneVars.style.display = "none";
         return;
       }
-      const label = document.createElement("span");
-      label.textContent = this.deps.t("paneVarsLabel", String(fields.length));
-      paneVars.appendChild(label);
+      if (fields.length > 0) {
+        const label = document.createElement("span");
+        label.textContent = this.deps.t("paneVarsLabel", String(fields.length));
+        paneVars.appendChild(label);
+      }
       for (const field of fields) {
         const chip = document.createElement("code");
         chip.textContent = field.kind === "text" ? `{{xlc:ask:${field.name}}}` : `{{xlc:ask:${field.name}${field.kind === "date" ? "|date" : "|" + field.options.join(",")}}}`;
+        paneVars.appendChild(chip);
+      }
+      if (hasCursor) {
+        const sep = document.createElement("span");
+        sep.textContent = (fields.length > 0 ? "\xB7 " : "") + this.deps.t("cursorHint");
+        paneVars.appendChild(sep);
+        const chip = document.createElement("code");
+        chip.textContent = "{{xlc:cursor}}";
         paneVars.appendChild(chip);
       }
       paneVars.style.display = "flex";
@@ -2602,6 +2611,19 @@
     body.innerHTML = "";
     const wrap = document.createElement("div");
     wrap.className = "xlc-form";
+    const meta = document.createElement("div");
+    meta.className = "xlc-import-meta";
+    const metaCount = document.createElement("span");
+    metaCount.className = "xlc-badge xlc-badge--markdown";
+    metaCount.textContent = t("itemCountBadge", String(parsed.items.length));
+    meta.appendChild(metaCount);
+    if (issues.length > 0) {
+      const metaInvalid = document.createElement("span");
+      metaInvalid.className = "xlc-badge xlc-badge--warn";
+      metaInvalid.textContent = t("invalidSkipBadge", String(issues.length));
+      meta.appendChild(metaInvalid);
+    }
+    wrap.appendChild(meta);
     const preview = document.createElement("p");
     preview.className = "xlc-form-hint";
     preview.textContent = t("importPreview", String(parsed.items.length), String(issues.length));
@@ -3130,6 +3152,14 @@
       importPolicyRenameDesc: "\u5BFC\u5165\u9879\u52A0\u300C\u5BFC\u5165\u300D\u540E\u7F00\uFF0C\u73B0\u6709\u6761\u76EE\u4E0D\u53D7\u5F71\u54CD",
       recommended: "\u63A8\u8350",
       importReceiptHint: "\u5BFC\u5165\u5B8C\u6210\u5C06\u9010\u9879\u56DE\u6267\uFF1A\u65B0\u589E / \u8DF3\u8FC7 / \u8986\u76D6 / \u6539\u540D / \u5931\u8D25",
+      importPolicyTitle: "\u9009\u62E9\u91CD\u590D\u5904\u7406\u7B56\u7565",
+      importPolicySkip: "\u8DF3\u8FC7\u91CD\u590D\uFF08\u4FDD\u7559\u73B0\u6709\uFF09",
+      importPolicyOverwrite: "\u8986\u76D6\u91CD\u590D",
+      importPolicyRename: "\u91CD\u540D\u5E76\u5B58",
+      importPreview: "\u6587\u4EF6\u5305\u542B %s \u4E2A\u6761\u76EE\uFF0C%s \u6761\u683C\u5F0F\u65E0\u6548\u5C06\u88AB\u8DF3\u8FC7\u3002\u9009\u62E9\u91CD\u590D\u5904\u7406\u7B56\u7565\uFF1A",
+      itemCountBadge: "%s \u6761\u76EE",
+      invalidSkipBadge: "%s \u6761\u683C\u5F0F\u65E0\u6548\u5C06\u8DF3\u8FC7",
+      cursorHint: "\u5149\u6807\u843D\u70B9",
       setupModeLabel: "\u5E93\u65B9\u5F0F",
       setupStep1: "\u7B2C 1 \u6B65 \xB7 \u9009\u62E9\u5E93\u65B9\u5F0F",
       setupStep2: "\u7B2C 2 \u6B65 \xB7 \u786E\u8BA4\u843D\u70B9",
@@ -3378,6 +3408,18 @@
         aiDraft: async (desc) => ({ ok: true, text: "\u8349\u7A3F\uFF08" + desc + "\uFF09" })
       });
       capture.newManual();
+    },
+    openImport() {
+      const ctx = {
+        t: T,
+        notify: () => {
+        },
+        importBundleText: async () => ({ total: 18, created: 12, skipped: 4, overwritten: 1, renamed: 1, failed: 0, lines: [] }),
+        importMarkdownItems: async () => ({ total: 18, created: 12, skipped: 4, overwritten: 1, renamed: 1, failed: 0, lines: [] })
+      };
+      const parsed = { items: Array.from({ length: 18 }, (_, i) => ({ id: `xlc-demo${i}`, title: `\u6761\u76EE ${i + 1}` })) };
+      const issues = [{ line: 3, reason: "bad shape" }, { line: 7, reason: "bad shape" }, { line: 11, reason: "bad shape" }];
+      openImportPolicyDialog(ctx, parsed, issues, { kind: "json", text: "{}" });
     }
   };
 })();

@@ -1,7 +1,7 @@
 // 渲染 harness 入口：把生产 CommonSearchDialog / 设置对话框 / 捕获表单暴露到 window，
 // 由 render-production.cjs 在 Chromium 中以假数据驱动、截取真实生产 DOM+CSS 效果。
 import {CommonSearchDialog} from "../../src/ui/dialog";
-import {openSettingsDialog, openSetupDialog, type SettingsUiContext} from "../../src/ui/settings-dialog";
+import {openImportPolicyDialog, openSettingsDialog, openSetupDialog, type SettingsUiContext} from "../../src/ui/settings-dialog";
 import {CaptureDialog} from "../../src/ui/capture";
 import type {SearchEntry} from "../../src/model/search";
 import type {TransformKind} from "../../src/service/ai";
@@ -51,6 +51,10 @@ const T = (key: string, ...args: string[]): string => {
         usageStatsHint: "使用统计仅保存在本机", clearUsageBtn: "清空使用统计", clearUsageConfirm: "清空全部使用计数？", clearUsageDone: "已清空使用统计",
         importPolicySkipDesc: "同名同源条目不动，仅新增缺失项", importPolicyOverwriteDesc: "以导入内容更新现有条目（原文块被改写）", importPolicyRenameDesc: "导入项加「导入」后缀，现有条目不受影响",
         recommended: "推荐", importReceiptHint: "导入完成将逐项回执：新增 / 跳过 / 覆盖 / 改名 / 失败",
+        importPolicyTitle: "选择重复处理策略", importPolicySkip: "跳过重复（保留现有）", importPolicyOverwrite: "覆盖重复", importPolicyRename: "重名并存",
+        importPreview: "文件包含 %s 个条目，%s 条格式无效将被跳过。选择重复处理策略：",
+        itemCountBadge: "%s 条目", invalidSkipBadge: "%s 条格式无效将跳过",
+        cursorHint: "光标落点",
         setupModeLabel: "库方式", setupStep1: "第 1 步 · 选择库方式", setupStep2: "第 2 步 · 确认落点",
         setupNext: "下一步：确认", setupBack: "上一步", setupFinish: "完成设置", setupLater: "稍后再说",
         setupConfirmHint: "创建动作有明确 confirm 提示 · 不动你已有的任何文档；之后可在 设置 → 当前内容库 更改。",
@@ -234,5 +238,17 @@ function makeDeps(overrides: {aiEnabled?: boolean; missing?: boolean; mobile?: b
             aiDraft: async (desc: string) => ({ok: true as const, text: "草稿（" + desc + "）"}),
         });
         capture.newManual();
+    },
+    openImport(): void {
+        // 导入策略卡（原型屏 8）：18 条目 / 3 条无效 / 策略三选
+        const ctx = {
+            t: T,
+            notify: () => {},
+            importBundleText: async () => ({total: 18, created: 12, skipped: 4, overwritten: 1, renamed: 1, failed: 0, lines: []}),
+            importMarkdownItems: async () => ({total: 18, created: 12, skipped: 4, overwritten: 1, renamed: 1, failed: 0, lines: []}),
+        } as unknown as SettingsUiContext;
+        const parsed = {items: Array.from({length: 18}, (_, i) => ({id: `xlc-demo${i}`, title: `条目 ${i + 1}`}))};
+        const issues = [{line: 3, reason: "bad shape"}, {line: 7, reason: "bad shape"}, {line: 11, reason: "bad shape"}];
+        openImportPolicyDialog(ctx, parsed, issues, {kind: "json", text: "{}"});
     },
 };

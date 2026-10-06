@@ -215,7 +215,6 @@
     .xlc-search-q {
       color: var(--b3-theme-primary);
       font-weight: 600;
-      opacity: .55;
       transition: opacity var(--xlc-dur-fast) var(--xlc-ease);
       user-select: none;
 
@@ -392,9 +391,7 @@
     }
 
     .xlc-row-favmark {
-      color: #e8a020;
-      font-size: 12px;
-      flex-shrink: 0;
+      display: none; // 收藏态由右侧星标按钮承载（R69 去重）
     }
 
     // 行内来源失效：收敛为 ⚠ 图标圆片（完整说明在预览窗格横幅）
@@ -675,7 +672,6 @@
   .xlc-menu {
     position: absolute;
     inset: auto 16px 16px auto;
-    width: min(340px, calc(100% - 32px));
     z-index: 10;
     display: flex;
     flex-direction: column;
@@ -687,6 +683,7 @@
     max-height: 72%;
     transform-origin: 100% 100%;
     animation: xlc-pop var(--xlc-dur) var(--xlc-ease);
+    width: min(320px, calc(100% - 32px));
 
     // 子项不参与 flex 收缩：内容超高时整卡滚动，预览盒（overflow:auto → 最小尺寸 0）不被压瘪
     > * {
@@ -1191,7 +1188,14 @@
   }
 }
 
-// ---------- 策略卡（导入三选，原型屏 8）----------
+// ---------- 导入策略（原型屏 8）：徽标行 + 策略卡 ----------
+.xlc-import-meta {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-bottom: 4px;
+}
+
 .xlc-policy-list {
   display: flex;
   flex-direction: column;
@@ -1316,11 +1320,12 @@
   }
 }
 
-// ---------- 桌面窄容器：单列降级（预览隐藏）----------
+// ---------- 桌面窄容器：单列降级（预览隐藏；kbd 行换行反而碍事，一并隐藏）----------
 @media (max-width: 620px) {
   .xlc-dialog:not(.xlc-dialog--mobile) {
     .xlc-list { width: 100%; border-right: none; }
     .xlc-pane { display: none; }
+    .xlc-kbdrow { display: none; }
   }
 }
 

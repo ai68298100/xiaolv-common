@@ -781,8 +781,8 @@ async function runTagAudit(ctx: SettingsUiContext): Promise<void> {
     body.appendChild(wrap);
 }
 
-/** 导入策略确认（导入前校验已过；策略三选 → importBundleText → 汇总回执） */
-function openImportPolicyDialog(
+/** 导入策略确认（导入前校验已过；策略三选 → importBundleText → 汇总回执）。导出供渲染 harness 取证。 */
+export function openImportPolicyDialog(
     ctx: SettingsUiContext,
     parsed: {items: Array<{id: string; title: string}>},
     issues: ImportIssue[],
@@ -800,6 +800,20 @@ function openImportPolicyDialog(
     body.innerHTML = "";
     const wrap = document.createElement("div");
     wrap.className = "xlc-form";
+    // 元数据徽标行（原型屏 8：条目数 / 无效将跳过）
+    const meta = document.createElement("div");
+    meta.className = "xlc-import-meta";
+    const metaCount = document.createElement("span");
+    metaCount.className = "xlc-badge xlc-badge--markdown";
+    metaCount.textContent = t("itemCountBadge", String(parsed.items.length));
+    meta.appendChild(metaCount);
+    if (issues.length > 0) {
+        const metaInvalid = document.createElement("span");
+        metaInvalid.className = "xlc-badge xlc-badge--warn";
+        metaInvalid.textContent = t("invalidSkipBadge", String(issues.length));
+        meta.appendChild(metaInvalid);
+    }
+    wrap.appendChild(meta);
     const preview = document.createElement("p");
     preview.className = "xlc-form-hint";
     preview.textContent = t("importPreview", String(parsed.items.length), String(issues.length));

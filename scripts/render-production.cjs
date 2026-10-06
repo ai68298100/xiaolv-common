@@ -123,11 +123,15 @@ fs.writeFileSync(path.join(OUT, "harness.html"), html);
         varBadge: (document.querySelector(".xlc-badge--var")?.textContent ?? "").includes("变量"),
         // R68：行 meta 使用次数（F3 展示）
         rowUseCount: ((document.querySelectorAll(".xlc-row-meta")[0] ?? {textContent: ""}).textContent ?? "").includes("32 次"),
+        // R69：kbd 补 ⌥1-9；标题内联 ★ 去重；提示行含光标落点
+        kbdAltChips: Array.from(document.querySelectorAll(".xlc-kbd")).some((el) => (el.textContent ?? "").includes("1-9")),
+        favmarkGone: document.querySelectorAll(".xlc-row-favmark").length === 0,
         paneVars: (() => {
             const el = document.querySelector(".xlc-pane-vars");
             const text = el?.textContent ?? "";
             return el !== null && el.offsetParent !== null && text.includes("变量") && text.includes("客户名称");
         })(),
+        paneVarsCursor: (document.querySelector(".xlc-pane-vars")?.textContent ?? "").includes("光标落点"),
     }));
     await shoot("desktop-dark", {theme: "dark", aiEnabled: true, missing: false}, () => ({
         rows: document.querySelectorAll(".xlc-row[data-xlc-index]").length >= 3,
@@ -151,6 +155,11 @@ fs.writeFileSync(path.join(OUT, "harness.html"), html);
             return !pane || getComputedStyle(pane).display === "none";
         })(),
         rows: document.querySelectorAll(".xlc-row[data-xlc-index]").length >= 1,
+        // R69：窄容器隐藏 kbd 行（避免换行挤压）
+        kbdHidden: (() => {
+            const el = document.querySelector(".xlc-kbdrow");
+            return !el || el.offsetParent === null;
+        })(),
     }));
     await page.setViewportSize({width: 1280, height: 720});
     // 设置对话框（生产 settings-dialog DOM）
@@ -444,6 +453,38 @@ fs.writeFileSync(path.join(OUT, "harness.html"), html);
     console.log("  smoke ✓ mobile: 5 assertions");
     await page.screenshot({path: path.join(OUT, "production-mobile-light.png")});
     await page.setViewportSize({width: 1280, height: 720});
+    // 导入策略卡（R69，原型屏 8：三选 + 推荐档 + 逐项回执提示）
+    await page.evaluate(() => {
+        const stage = document.getElementById("stage");
+        stage.className = "b3-scope light";
+        document.querySelectorAll(".b3-dialog").forEach((el) => el.remove());
+        stage.innerHTML = "";
+        window.XlcHarness.openImport();
+        const dialogRoot = document.querySelector(".b3-dialog");
+        if (dialogRoot) stage.appendChild(dialogRoot);
+        const container = document.querySelector(".b3-dialog__container");
+        if (container) {
+            container.style.margin = "40px auto";
+            container.style.maxWidth = "460px";
+        }
+    });
+    await page.waitForTimeout(400);
+    const importAssertions = await page.evaluate(() => {
+        const cards = document.querySelectorAll(".xlc-policy");
+        const recommended = document.querySelector(".xlc-policy--recommended");
+        return {
+            cards: cards.length === 3,
+            recommended: !!recommended && (recommended.textContent ?? "").includes("重名并存"),
+            descs: (document.querySelector(".xlc-policy-desc")?.textContent ?? "").length > 0,
+            receiptHint: (document.body.textContent ?? "").includes("逐项回执"),
+            badges: (document.body.textContent ?? "").includes("18 条目"),
+        };
+    });
+    if (Object.values(importAssertions).some((v) => !v)) {
+        throw new Error("import-policy smoke failed: " + JSON.stringify(importAssertions));
+    }
+    console.log("  smoke ✓ import-policy: 5 assertions");
+    await page.screenshot({path: path.join(OUT, "production-import-policy-light.png")});
     // 设置暗色
     await page.evaluate(() => {
         const stage = document.getElementById("stage");
