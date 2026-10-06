@@ -43,6 +43,9 @@ export const LIMITS = {
     askValueChars: 2000,
     maxUsage: 2000,
     maxAskFields: 16,
+    maxCustomTransforms: 10,
+    customNameChars: 20,
+    customPromptChars: 500,
 } as const;
 
 export const STORAGE_KEYS = {

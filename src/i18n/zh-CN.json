@@ -248,5 +248,13 @@
   "packVarsBadge": "%s 条含变量",
   "emptyFavorites": "还没有收藏的条目",
   "emptyFavoritesSub": "点击条目右侧 ☆ 一键收藏，收藏会置顶显示",
-  "emptyRecent": "暂无最近使用的条目"
+  "emptyRecent": "暂无最近使用的条目",
+  "customTransformSection": "自定义变换",
+  "customTransformAdd": "＋ 添加自定义变换",
+  "customTransformName": "名称",
+  "customTransformPrompt": "变换指令，如：改写为客服话术：",
+  "customTransformEmpty": "暂无自定义变换",
+  "customTransformCap": "最多 10 个自定义变换",
+  "customTransformNewName": "我的变换",
+  "customTransformHint": "与内置变换并列出现在条目动作菜单 ✦ 区；读取正文遵循「允许 AI 读取完整正文」开关"
 }

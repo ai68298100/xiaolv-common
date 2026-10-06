@@ -75,6 +75,37 @@ export interface AiPrefs {
     enabled: boolean;
     /** 允许发送完整正文给 AI（元数据级功能不需要） */
     shareContent: boolean;
+    /** 自定义 AI 变换（F7）：与内置五种并列出现在动作菜单 ✦ 区 */
+    customTransforms: CustomTransform[];
+}
+
+export interface CustomTransform {
+    /** 稳定 ID（xltf- 前缀） */
+    id: string;
+    /** 菜单显示名 */
+    name: string;
+    /** 变换指令（发给 AI 的提示正文） */
+    prompt: string;
+}
+
+const CUSTOM_TRANSFORM_ID_RE = /^xltf-[0-9a-z]{4,24}$/;
+
+function normalizeCustomTransforms(raw: unknown): CustomTransform[] {
+    const out: CustomTransform[] = [];
+    if (!Array.isArray(raw)) return out;
+    const seen = new Set<string>();
+    for (const entry of raw) {
+        if (!entry || typeof entry !== "object") continue;
+        const id = (entry as CustomTransform).id;
+        const name = typeof (entry as CustomTransform).name === "string" ? ((entry as CustomTransform).name as string).trim().slice(0, LIMITS.customNameChars) : "";
+        const prompt = typeof (entry as CustomTransform).prompt === "string" ? ((entry as CustomTransform).prompt as string).trim().slice(0, LIMITS.customPromptChars) : "";
+        if (typeof id !== "string" || !CUSTOM_TRANSFORM_ID_RE.test(id) || seen.has(id)) continue;
+        if (!name || !prompt) continue;
+        seen.add(id);
+        out.push({id, name, prompt});
+        if (out.length >= LIMITS.maxCustomTransforms) break;
+    }
+    return out;
 }
 
 export interface SearchPrefs {
@@ -186,10 +217,11 @@ export function normalizeState(raw: unknown): PluginState {
             lastCategoryFilter: typeof prefsRaw.lastCategoryFilter === "string" ? prefsRaw.lastCategoryFilter.slice(0, LIMITS.category) : "",
         },
         providers,
-        // AI 硬边界：任何输入下默认都关（门禁测试锁定）
+        // AI 硬边界：任何输入下默认都关（门禁测试锁定）；自定义变换列表逐条校验（F7）
         ai: {
             enabled: obj.ai !== null && typeof obj.ai === "object" && (obj.ai as AiPrefs).enabled === true,
             shareContent: obj.ai !== null && typeof obj.ai === "object" && (obj.ai as AiPrefs).shareContent === true,
+            customTransforms: normalizeCustomTransforms(obj.ai !== null && typeof obj.ai === "object" ? (obj.ai as AiPrefs).customTransforms : []),
         },
         // 拼音搜索默认开（本地注解，无出域；可关）
         search: {

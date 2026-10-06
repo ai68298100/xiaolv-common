@@ -80,6 +80,15 @@ export function buildTransformPrompt(kind: TransformKind, content: string): stri
     ].join("\n");
 }
 
+/** 自定义变换（F7）：用户指令作为变换提示正文，外层约束（直接输出/正文上限）与内置一致 */
+export function buildCustomTransformPrompt(instruction: string, content: string): string {
+    return [
+        `（prompt v${PROMPT_VERSION}）直接输出变换结果本体，不要解释：`,
+        instruction.trim().slice(0, 500),
+        content.slice(0, AI_MAX_CONTENT_CHARS),
+    ].join("\n");
+}
+
 export interface SearchMetaEntry {
     id: string;
     title: string;
@@ -254,6 +263,11 @@ export class AiAssistant {
     /** 调用时变换：需要正文出域权限。返回预览文本，绝不回写。 */
     async transform(kind: TransformKind, content: string): Promise<string> {
         return this.complete(buildTransformPrompt(kind, content), true, content);
+    }
+
+    /** 自定义变换（F7）：指令来自用户设置；需要正文出域权限（complete 的 needContent 门禁同内置） */
+    async transformCustom(instruction: string, content: string): Promise<string> {
+        return this.complete(buildCustomTransformPrompt(instruction, content), true, content);
     }
 
     /** 语义找条目：默认仅元数据清单出域（不含正文）。返回按相关度排序的条目引用。 */

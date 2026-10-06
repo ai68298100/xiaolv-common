@@ -248,5 +248,13 @@
   "packVarsBadge": "%s with variables",
   "emptyFavorites": "No favorites yet",
   "emptyFavoritesSub": "Tap the ☆ on a row to pin it here",
-  "emptyRecent": "No recently used items"
+  "emptyRecent": "No recently used items",
+  "customTransformSection": "Custom transforms",
+  "customTransformAdd": "＋ Add custom transform",
+  "customTransformName": "Name",
+  "customTransformPrompt": "Instruction, e.g. Rewrite as support reply:",
+  "customTransformEmpty": "No custom transforms",
+  "customTransformCap": "Up to 10 custom transforms",
+  "customTransformNewName": "My transform",
+  "customTransformHint": "Listed alongside built-ins in the action menu ✦ section; content access follows the full-content toggle"
 }

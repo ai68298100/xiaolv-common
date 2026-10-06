@@ -689,6 +689,84 @@ function buildAiSection(ctx: SettingsUiContext, root: HTMLElement): void {
     aiEnabledBox.addEventListener("change", () => {
         if (!aiEnabledBox.checked) aiShareBox.checked = false;
     });
+    // 自定义变换（F7）：与内置五种并列出现在条目动作菜单 ✦ 区
+    const ctLabel = document.createElement("span");
+    ctLabel.className = "xlc-form-label";
+    ctLabel.style.marginTop = "6px";
+    ctLabel.textContent = t("customTransformSection");
+    aiSec.appendChild(ctLabel);
+    const ctList = document.createElement("div");
+    ctList.className = "xlc-ct-list";
+    aiSec.appendChild(ctList);
+    const persistCt = (): void => {
+        ctx.ai.updateSettings(ctx.state.ai);
+        ctx.persistSoon();
+    };
+    const repaintCt = (): void => {
+        ctList.textContent = "";
+        for (const ct of ctx.state.ai.customTransforms) {
+            const row = document.createElement("div");
+            row.className = "xlc-ct-row";
+            const nameInput = document.createElement("input");
+            nameInput.className = "b3-text-field xlc-ct-name";
+            nameInput.placeholder = t("customTransformName");
+            nameInput.value = ct.name;
+            nameInput.maxLength = 20;
+            nameInput.addEventListener("change", () => {
+                ct.name = nameInput.value.trim().slice(0, 20);
+                persistCt();
+            });
+            row.appendChild(nameInput);
+            const promptInput = document.createElement("input");
+            promptInput.className = "b3-text-field xlc-ct-prompt";
+            promptInput.placeholder = t("customTransformPrompt");
+            promptInput.value = ct.prompt;
+            promptInput.maxLength = 500;
+            promptInput.addEventListener("change", () => {
+                ct.prompt = promptInput.value.trim().slice(0, 500);
+                persistCt();
+            });
+            row.appendChild(promptInput);
+            const delBtn = document.createElement("button");
+            delBtn.type = "button";
+            delBtn.className = "b3-button xlc-btn-ghost xlc-ct-del";
+            delBtn.textContent = t("delete");
+            delBtn.addEventListener("click", () => {
+                ctx.state.ai.customTransforms = ctx.state.ai.customTransforms.filter((c) => c.id !== ct.id);
+                persistCt();
+                repaintCt();
+            });
+            row.appendChild(delBtn);
+            ctList.appendChild(row);
+        }
+        if (ctx.state.ai.customTransforms.length === 0) {
+            const empty = document.createElement("div");
+            empty.className = "xlc-form-hint";
+            empty.textContent = t("customTransformEmpty");
+            ctList.appendChild(empty);
+        }
+    };
+    repaintCt();
+    const addCtBtn = document.createElement("button");
+    addCtBtn.type = "button";
+    addCtBtn.className = "b3-button";
+    addCtBtn.style.alignSelf = "flex-start";
+    addCtBtn.textContent = t("customTransformAdd");
+    addCtBtn.addEventListener("click", () => {
+        if (ctx.state.ai.customTransforms.length >= 10) {
+            ctx.notify("error", t("customTransformCap"));
+            return;
+        }
+        const id = `xltf-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
+        ctx.state.ai.customTransforms = [...ctx.state.ai.customTransforms, {id, name: t("customTransformNewName"), prompt: ""}];
+        persistCt();
+        repaintCt();
+    });
+    aiSec.appendChild(addCtBtn);
+    const ctHint = document.createElement("span");
+    ctHint.className = "xlc-form-hint";
+    ctHint.textContent = t("customTransformHint");
+    aiSec.appendChild(ctHint);
     root.appendChild(aiSec);
 }
 

@@ -22,7 +22,7 @@ export interface DialogDeps {
     insertToDoc: (itemId: string, docId: string, hPath: string, fills?: Record<string, string>) => Promise<boolean>;
     duplicateItem: (itemId: string) => Promise<void>;
     /** AI 变换结果存为新条目（来源=原条目；原条目不被修改） */
-    saveTransformed: (itemId: string, kind: TransformKind, text: string) => Promise<void>;
+    saveTransformed: (itemId: string, transformLabel: string, text: string) => Promise<void>;
     getTags: () => Promise<string[]>;
     /** 分类面（F4 分类筛选下拉） */
     getCategories: () => Promise<string[]>;
@@ -59,6 +59,9 @@ export interface DialogDeps {
     aiSemantic: (desc: string, filters: {itemType: string; tag: string; scope: "all" | "favorites" | "recent"}) => Promise<{ok: true; entries: SearchEntry[]} | {ok: false; message: string}>;
     /** AI 变换（需正文出域权限） */
     aiTransform: (itemId: string, kind: TransformKind) => Promise<{ok: true; text: string} | {ok: false; message: string}>;
+    /** 自定义 AI 变换（F7）：与内置并列出现在菜单 ✦ 区 */
+    listCustomTransforms: () => Array<{id: string; name: string}>;
+    aiTransformCustom: (itemId: string, customId: string) => Promise<{ok: true; text: string} | {ok: false; message: string}>;
     aiEnabled: () => boolean;
     /** 插入前询问变量（F1；设置可关） */
     promptVariables: () => boolean;
@@ -965,6 +968,8 @@ export class CommonSearchDialog {
                 if (seq !== this.previewSeq) return;
                 const finalText = text || this.deps.t("previewUnavailable");
                 paneBody.textContent = finalText;
+                // 切换条目后回到顶部（长内容滚动位置不残留）
+                paneBody.scrollTop = 0;
                 // 代码条目预览用等宽字体（纯文本渲染不变，仅观感）
                 paneBody.classList.toggle("xlc-pane-body--code", entry?.itemType === "code");
                 this.paintPaneVars(text, entry?.itemType);
@@ -1080,14 +1085,23 @@ export class CommonSearchDialog {
             }
             menu.appendChild(sec1);
 
-            // AI 变换（启用时展示；需要正文出域权限，失败在预览盒诚实提示）
+            // AI 变换（启用时展示；需要正文出域权限，失败在预览盒诚实提示；
+            // 内置五种 + 用户自定义变换（F7）并列）
             if (this.deps.aiEnabled()) {
                 const secAi = document.createElement("div");
                 secAi.className = "xlc-menu-sec xlc-menu-sec--ai";
+                const openTransform = (transformLabel: string, run: () => Promise<{ok: true; text: string} | {ok: false; message: string}>): void => {
+                    rebuild(() => buildTransformView(entry.title + " · " + transformLabel, transformLabel));
+                    void runTransformView(run);
+                };
                 for (const kind of TRANSFORM_KINDS) {
                     secAi.appendChild(this.menuButton("✦", this.deps.t(`tf.${kind}`), "xlc-menu-item xlc-menu-item--ai", () => {
-                        rebuild(buildTransform.bind(this, kind));
-                        void runTransform(kind);
+                        openTransform(this.deps.t(`tf.${kind}`), async () => this.deps.aiTransform(entry.id, kind));
+                    }));
+                }
+                for (const ct of this.deps.listCustomTransforms()) {
+                    secAi.appendChild(this.menuButton("✦", ct.name, "xlc-menu-item xlc-menu-item--ai", () => {
+                        openTransform(ct.name, async () => this.deps.aiTransformCustom(entry.id, ct.id));
                     }));
                 }
                 menu.appendChild(secAi);
@@ -1144,11 +1158,11 @@ export class CommonSearchDialog {
             menu.appendChild(sec2);
         };
 
-        const buildTransform = (kind: TransformKind): void => {
-            // 变换态：预览盒显示结果 + 三选（插变换/复制变换/插原文）
+        const buildTransformView = (viewLabel: string, transformLabel: string): void => {
+            // 变换态：预览盒显示结果 + 插变换/复制变换/插原文/存为新条目/返回
             const lbl = document.createElement("div");
             lbl.className = "xlc-menu-lbl";
-            lbl.textContent = entry.title + " · " + this.deps.t(`tf.${kind}`);
+            lbl.textContent = viewLabel;
             menu.appendChild(lbl);
             const box = document.createElement("pre");
             box.className = "xlc-menu-preview";
@@ -1171,7 +1185,7 @@ export class CommonSearchDialog {
             sec.appendChild(this.menuButton("🗎", this.deps.t("saveTransformed"), "xlc-menu-item", async () => {
                 const transformed = box.dataset.transformed ?? "";
                 this.destroy();
-                await this.deps.saveTransformed(entry.id, kind, transformed);
+                await this.deps.saveTransformed(entry.id, transformLabel, transformed);
             }));
             menu.appendChild(sec);
             const secBack = document.createElement("div");
@@ -1180,15 +1194,15 @@ export class CommonSearchDialog {
                 rebuild(buildDefault);
             }));
             menu.appendChild(secBack);
-            // 把最终文本挂到 dataset 供按钮使用（runTransform 完成后填充）
+            // 把最终文本挂到 dataset 供按钮使用（runTransformView 完成后填充）
             (menu as HTMLElement & {applyTransform?: (text: string) => void}).applyTransform = (text: string): void => {
                 box.dataset.transformed = text;
                 box.textContent = text.slice(0, 800);
             };
         };
 
-        const runTransform = async (kind: TransformKind): Promise<void> => {
-            const result = await this.deps.aiTransform(entry.id, kind);
+        const runTransformView = async (run: () => Promise<{ok: true; text: string} | {ok: false; message: string}>): Promise<void> => {
+            const result = await run();
             const apply = (menu as HTMLElement & {applyTransform?: (text: string) => void}).applyTransform;
             if (result.ok) {
                 apply?.(result.text);

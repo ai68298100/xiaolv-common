@@ -600,7 +600,7 @@ export default class XiaolvCommonPlugin extends Plugin {
                     this.notify("error", created.message);
                 }
             },
-            saveTransformed: async (itemId, kind, text) => {
+            saveTransformed: async (itemId, transformLabel, text) => {
                 const trimmed = (text ?? "").trim();
                 if (!trimmed) return;
                 const got = await this.library.getItem(itemId);
@@ -611,7 +611,7 @@ export default class XiaolvCommonPlugin extends Plugin {
                 const created = await this.library.createItem({
                     itemType: "markdown",
                     markdown: trimmed,
-                    title: `${got.data.title} · ${this.i18nFn()(`tf.${kind}`)}`,
+                    title: `${got.data.title} · ${transformLabel}`,
                     tags: got.data.tags,
                     category: got.data.category || undefined,
                     source: {sourceDocId: got.data.libraryDocId, sourceBlockId: got.data.blockId, sourceType: "external"},
@@ -817,6 +817,20 @@ export default class XiaolvCommonPlugin extends Plugin {
                     const kd = await this.library.getItemKramdown(got.data);
                     if (!kd.ok) return {ok: false as const, message: kd.message};
                     return {ok: true as const, text: await this.ai.transform(kind, kd.data)};
+                } catch (err) {
+                    return {ok: false as const, message: this.aiErrorText(err)};
+                }
+            },
+            listCustomTransforms: () => this.state.ai.customTransforms.map((ct) => ({id: ct.id, name: ct.name})),
+            aiTransformCustom: async (itemId, customId) => {
+                try {
+                    const ct = this.state.ai.customTransforms.find((c) => c.id === customId);
+                    if (!ct) return {ok: false as const, message: "custom-transform-not-found"};
+                    const got = await this.library.getItem(itemId);
+                    if (!got.ok) return {ok: false as const, message: got.message};
+                    const kd = await this.library.getItemKramdown(got.data);
+                    if (!kd.ok) return {ok: false as const, message: kd.message};
+                    return {ok: true as const, text: await this.ai.transformCustom(ct.prompt, kd.data)};
                 } catch (err) {
                     return {ok: false as const, message: this.aiErrorText(err)};
                 }

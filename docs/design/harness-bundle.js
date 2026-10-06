@@ -111,7 +111,10 @@
         kernelTimeoutMs: 8e3,
         askValueChars: 2e3,
         maxUsage: 2e3,
-        maxAskFields: 16
+        maxAskFields: 16,
+        maxCustomTransforms: 10,
+        customNameChars: 20,
+        customPromptChars: 500
       };
       EXPORT_SCHEMA_VERSION = 1;
     }
@@ -1308,6 +1311,7 @@
         if (seq !== this.previewSeq) return;
         const finalText = text || this.deps.t("previewUnavailable");
         paneBody.textContent = finalText;
+        paneBody.scrollTop = 0;
         paneBody.classList.toggle("xlc-pane-body--code", (entry == null ? void 0 : entry.itemType) === "code");
         this.paintPaneVars(text, entry == null ? void 0 : entry.itemType);
       }).catch(() => {
@@ -1411,10 +1415,18 @@
         if (this.deps.aiEnabled()) {
           const secAi = document.createElement("div");
           secAi.className = "xlc-menu-sec xlc-menu-sec--ai";
+          const openTransform = (transformLabel, run) => {
+            rebuild(() => buildTransformView(entry.title + " \xB7 " + transformLabel, transformLabel));
+            void runTransformView(run);
+          };
           for (const kind of TRANSFORM_KINDS) {
             secAi.appendChild(this.menuButton("\u2726", this.deps.t(`tf.${kind}`), "xlc-menu-item xlc-menu-item--ai", () => {
-              rebuild(buildTransform.bind(this, kind));
-              void runTransform(kind);
+              openTransform(this.deps.t(`tf.${kind}`), async () => this.deps.aiTransform(entry.id, kind));
+            }));
+          }
+          for (const ct of this.deps.listCustomTransforms()) {
+            secAi.appendChild(this.menuButton("\u2726", ct.name, "xlc-menu-item xlc-menu-item--ai", () => {
+              openTransform(ct.name, async () => this.deps.aiTransformCustom(entry.id, ct.id));
             }));
           }
           menu.appendChild(secAi);
@@ -1470,10 +1482,10 @@
         addSilent("\u{1F5D1}", this.deps.t("delete"), () => this.deps.deleteItem(entry.id));
         menu.appendChild(sec2);
       };
-      const buildTransform = (kind) => {
+      const buildTransformView = (viewLabel, transformLabel) => {
         const lbl = document.createElement("div");
         lbl.className = "xlc-menu-lbl";
-        lbl.textContent = entry.title + " \xB7 " + this.deps.t(`tf.${kind}`);
+        lbl.textContent = viewLabel;
         menu.appendChild(lbl);
         const box = document.createElement("pre");
         box.className = "xlc-menu-preview";
@@ -1498,7 +1510,7 @@
           var _a2;
           const transformed = (_a2 = box.dataset.transformed) != null ? _a2 : "";
           this.destroy();
-          await this.deps.saveTransformed(entry.id, kind, transformed);
+          await this.deps.saveTransformed(entry.id, transformLabel, transformed);
         }));
         menu.appendChild(sec);
         const secBack = document.createElement("div");
@@ -1512,8 +1524,8 @@
           box.textContent = text.slice(0, 800);
         };
       };
-      const runTransform = async (kind) => {
-        const result = await this.deps.aiTransform(entry.id, kind);
+      const runTransformView = async (run) => {
+        const result = await run();
         const apply = menu.applyTransform;
         if (result.ok) {
           apply == null ? void 0 : apply(result.text);
@@ -2586,6 +2598,83 @@
     aiEnabledBox.addEventListener("change", () => {
       if (!aiEnabledBox.checked) aiShareBox.checked = false;
     });
+    const ctLabel = document.createElement("span");
+    ctLabel.className = "xlc-form-label";
+    ctLabel.style.marginTop = "6px";
+    ctLabel.textContent = t("customTransformSection");
+    aiSec.appendChild(ctLabel);
+    const ctList = document.createElement("div");
+    ctList.className = "xlc-ct-list";
+    aiSec.appendChild(ctList);
+    const persistCt = () => {
+      ctx.ai.updateSettings(ctx.state.ai);
+      ctx.persistSoon();
+    };
+    const repaintCt = () => {
+      ctList.textContent = "";
+      for (const ct of ctx.state.ai.customTransforms) {
+        const row = document.createElement("div");
+        row.className = "xlc-ct-row";
+        const nameInput = document.createElement("input");
+        nameInput.className = "b3-text-field xlc-ct-name";
+        nameInput.placeholder = t("customTransformName");
+        nameInput.value = ct.name;
+        nameInput.maxLength = 20;
+        nameInput.addEventListener("change", () => {
+          ct.name = nameInput.value.trim().slice(0, 20);
+          persistCt();
+        });
+        row.appendChild(nameInput);
+        const promptInput = document.createElement("input");
+        promptInput.className = "b3-text-field xlc-ct-prompt";
+        promptInput.placeholder = t("customTransformPrompt");
+        promptInput.value = ct.prompt;
+        promptInput.maxLength = 500;
+        promptInput.addEventListener("change", () => {
+          ct.prompt = promptInput.value.trim().slice(0, 500);
+          persistCt();
+        });
+        row.appendChild(promptInput);
+        const delBtn = document.createElement("button");
+        delBtn.type = "button";
+        delBtn.className = "b3-button xlc-btn-ghost xlc-ct-del";
+        delBtn.textContent = t("delete");
+        delBtn.addEventListener("click", () => {
+          ctx.state.ai.customTransforms = ctx.state.ai.customTransforms.filter((c) => c.id !== ct.id);
+          persistCt();
+          repaintCt();
+        });
+        row.appendChild(delBtn);
+        ctList.appendChild(row);
+      }
+      if (ctx.state.ai.customTransforms.length === 0) {
+        const empty = document.createElement("div");
+        empty.className = "xlc-form-hint";
+        empty.textContent = t("customTransformEmpty");
+        ctList.appendChild(empty);
+      }
+    };
+    repaintCt();
+    const addCtBtn = document.createElement("button");
+    addCtBtn.type = "button";
+    addCtBtn.className = "b3-button";
+    addCtBtn.style.alignSelf = "flex-start";
+    addCtBtn.textContent = t("customTransformAdd");
+    addCtBtn.addEventListener("click", () => {
+      if (ctx.state.ai.customTransforms.length >= 10) {
+        ctx.notify("error", t("customTransformCap"));
+        return;
+      }
+      const id = `xltf-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
+      ctx.state.ai.customTransforms = [...ctx.state.ai.customTransforms, { id, name: t("customTransformNewName"), prompt: "" }];
+      persistCt();
+      repaintCt();
+    });
+    aiSec.appendChild(addCtBtn);
+    const ctHint = document.createElement("span");
+    ctHint.className = "xlc-form-hint";
+    ctHint.textContent = t("customTransformHint");
+    aiSec.appendChild(ctHint);
     root.appendChild(aiSec);
   }
   function buildSearchSection(ctx, root) {
@@ -3367,6 +3456,14 @@
       pinyinToggleSub: "\u5168\u62FC/\u9996\u5B57\u6BCD\u672C\u5730\u5339\u914D",
       placeholdersToggleSub: "\u63D2\u5165\u65F6\u66FF\u6362 {{xlc:date}} \u7B49\u4E3A\u5F53\u524D\u65E5\u671F\u65F6\u95F4",
       aiSuggestion: "AI \u5EFA\u8BAE",
+      customTransformSection: "\u81EA\u5B9A\u4E49\u53D8\u6362",
+      customTransformAdd: "\uFF0B \u6DFB\u52A0\u81EA\u5B9A\u4E49\u53D8\u6362",
+      customTransformName: "\u540D\u79F0",
+      customTransformPrompt: "\u53D8\u6362\u6307\u4EE4\uFF0C\u5982\uFF1A\u6539\u5199\u4E3A\u5BA2\u670D\u8BDD\u672F\uFF1A",
+      customTransformEmpty: "\u6682\u65E0\u81EA\u5B9A\u4E49\u53D8\u6362",
+      customTransformCap: "\u6700\u591A 10 \u4E2A\u81EA\u5B9A\u4E49\u53D8\u6362",
+      customTransformNewName: "\u6211\u7684\u53D8\u6362",
+      customTransformHint: "\u4E0E\u5185\u7F6E\u53D8\u6362\u5E76\u5217\u51FA\u73B0\u5728\u6761\u76EE\u52A8\u4F5C\u83DC\u5355 \u2726 \u533A\uFF1B\u8BFB\u53D6\u6B63\u6587\u9075\u5FAA\u300C\u5141\u8BB8 AI \u8BFB\u53D6\u5B8C\u6574\u6B63\u6587\u300D\u5F00\u5173",
       dataSection: "\u6570\u636E\uFF08\u5BFC\u51FA / \u5BFC\u5165\uFF09",
       librarySection: "\u5F53\u524D\u5185\u5BB9\u5E93",
       libraryNone: "\u672A\u914D\u7F6E",
@@ -3453,6 +3550,8 @@
         ok: true,
         text: kind === "translate-en" ? 'Dear Mr. Wang:\n\nWe sincerely apologize for the delay of the "Membership System" delivery. Root cause: third-party payment integration overrun. Integration is 92% complete; launch postponed by 2 business days.\n\nCompensation: 5% fee reduction; 48h dedicated support after launch; priority scheduling next iteration.' : "\u5C0A\u656C\u7684\u738B\u603B\uFF1A\n\n\u672C\u671F\u300C\u4F1A\u5458\u7CFB\u7EDF\u300D\u56E0\u7B2C\u4E09\u65B9\u652F\u4ED8\u8054\u8C03\u8D85\u671F\u800C\u5EF6\u671F\uFF0C\u6211\u4EEC\u6DF1\u8868\u6B49\u610F\u3002\u8054\u8C03\u5DF2\u5B8C\u6210 92%\uFF0C\u9884\u8BA1\u63A8\u8FDF 2 \u4E2A\u5DE5\u4F5C\u65E5\u4E0A\u7EBF\u3002\n\n\u8865\u507F\u65B9\u6848\uFF1A\u672C\u671F\u670D\u52A1\u8D39\u51CF\u514D 5%\uFF1B\u4E0A\u7EBF\u540E 48 \u5C0F\u65F6\u4E13\u5C5E\u503C\u5B88\uFF1B\u4E0B\u671F\u9700\u6C42\u4F18\u5148\u6392\u671F\u3002"
       }),
+      listCustomTransforms: () => [{ id: "xltf-demo00001", name: "\u5BA2\u670D\u8BDD\u672F" }],
+      aiTransformCustom: async () => ({ ok: true, text: "\u5BA2\u670D\u8BDD\u672F\u7ED3\u679C\u793A\u4F8B" }),
       aiEnabled: () => aiOn,
       isSourceMissing: (entry) => overrides.missing === true && entry.id === "xlc-demo0000001",
       close: () => {
@@ -3487,7 +3586,7 @@
           sort: "manual",
           uiPrefs: { lastTypeFilter: "", lastTagFilter: "", lastCategoryFilter: "" },
           providers: [{ pluginId: "xiaolv-checkin", displayName: "\u5C0F\u9A74\u6253\u5361", protocolVersion: 1, registeredAt: 1 }],
-          ai: { enabled: true, shareContent: true },
+          ai: { enabled: true, shareContent: true, customTransforms: [{ id: "xltf-demo00001", name: "\u5BA2\u670D\u8BDD\u672F", prompt: "\u6539\u5199\u4E3A\u5BA2\u670D\u8BDD\u672F\uFF1A" }] },
           search: { pinyin: true, placeholders: true },
           insert: { promptVariables: true, recordUsage: true }
         },

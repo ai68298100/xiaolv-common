@@ -185,6 +185,10 @@ fs.writeFileSync(path.join(OUT, "harness.html"), html);
         dataButtons: (document.body.textContent || "").includes("重建索引") && (document.body.textContent || "").includes("导出"),
         // R70：开关说明拆为标题+副文本
         switchSubs: (document.body.textContent || "").includes("插件不保存密钥") && (document.body.textContent || "").includes("全拼/首字母本地匹配"),
+        // R73：自定义变换编辑器（列表行输入值 + 添加按钮；input value 不出现在 textContent）
+        customTransforms: (document.body.textContent || "").includes("自定义变换")
+            && (document.querySelector(".xlc-ct-name")?.value ?? "") === "客服话术"
+            && (document.body.textContent || "").includes("添加自定义变换"),
     }));
     if (Object.values(settingsAssertions).some((v) => !v)) {
         throw new Error("settings smoke failed: " + JSON.stringify(settingsAssertions));
@@ -370,6 +374,8 @@ fs.writeFileSync(path.join(OUT, "harness.html"), html);
             menuTitle: text.includes("延期简短版") && text.includes("动作"),
             coreActions: text.includes("插入") && text.includes("复制"),
             aiSection: text.includes("润色") && text.includes("译为英文"),
+            // R73：自定义变换并列出现在菜单 ✦ 区
+            customItem: text.includes("客服话术"),
             iconColumns: menu ? menu.querySelectorAll(".xlc-menu-ic").length >= 6 : false,
             previewBoxSized: (() => {
                 const p = document.querySelector(".xlc-menu-preview");
