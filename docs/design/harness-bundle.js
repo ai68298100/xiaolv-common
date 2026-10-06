@@ -1,3 +1,4 @@
+"use strict";
 (() => {
   var __create = Object.create;
   var __defProp = Object.defineProperty;
@@ -91,6 +92,7 @@
   var PROTOCOL_NAME, LIMITS, EXPORT_SCHEMA_VERSION;
   var init_constants = __esm({
     "src/constants.ts"() {
+      "use strict";
       PROTOCOL_NAME = "xiaolv-common";
       LIMITS = {
         title: 512,
@@ -139,6 +141,7 @@
   var active;
   var init_pinyin = __esm({
     "src/model/pinyin.ts"() {
+      "use strict";
       active = createNoopPinyinAdapter();
     }
   });
@@ -268,6 +271,7 @@
   }
   var init_search = __esm({
     "src/model/search.ts"() {
+      "use strict";
       init_constants();
       init_pinyin();
     }

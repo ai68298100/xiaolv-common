@@ -96,6 +96,10 @@ module.exports = (env, argv) => {
                 }),
             ],
         },
+        // 桌面插件包不受网页加载体积约束（package.zip/集市 preview.png 超限为误报）
+        performance: {
+            hints: false,
+        },
         plugins,
         stats: {
             modules: false,

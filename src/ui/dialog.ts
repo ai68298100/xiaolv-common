@@ -107,9 +107,6 @@ export class CommonSearchDialog {
 
     /** 定向插入目标（文档树入口；设置后 Enter/点按插入到该文档而非活动编辑器） */
     insertTarget?: {docId: string; hPath: string} | null;
-    /** 上次搜索词（跨会话保留） */
-    getLastQuery: () => string;
-    setLastQuery: (q: string) => void;
     open(): void {
         const isMobile = this.deps.isMobile();
         const content = this.buildDom(isMobile);
