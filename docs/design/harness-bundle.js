@@ -1993,6 +1993,171 @@
     return { items, issues, pack };
   }
 
+  // src/service/prompt-pack.ts
+  var PROMPT_PACK_NAME = "\u63D0\u793A\u8BCD\u573A\u666F\u5305";
+  var PROMPT_PACK_MD = [
+    "<!-- xlc-pack",
+    `name: ${PROMPT_PACK_NAME}`,
+    "items: 10",
+    "vars: \u5BA2\u6237\u540D\u79F0,\u8865\u507F\u6BD4\u4F8B,\u5DE5\u5355\u53F7,\u8DDF\u8FDB\u65E5\u671F,\u5BA2\u6237\u6635\u79F0,\u76EE\u6807\u8BFB\u8005,\u7F16\u7A0B\u8BED\u8A00,\u672C\u5468\u4E3B\u9898,\u4F1A\u8BAE\u4E3B\u9898",
+    "-->",
+    "# \u63D0\u793A\u8BCD\u573A\u666F\u5305",
+    "",
+    "> \u5C0F\u9A74\u5E38\u7528\u5185\u7F6E\u6A21\u677F\u96C6\uFF1A\u5BA2\u670D\u56DE\u590D / AI \u63D0\u793A\u8BCD / \u7814\u53D1\u5199\u4F5C\u3002\u5BFC\u5165\u540E\u5373\u4E3A\u771F\u5B9E\u601D\u6E90\u5757\uFF0C\u53EF\u81EA\u7531\u4FEE\u6539\u3002",
+    // ---- 场景① 客服模板 ----
+    "## \u5EF6\u671F\u81F4\u6B49\u56DE\u590D",
+    "",
+    "<!-- xlc-item",
+    "id: xlc-pack00000001",
+    "type: markdown",
+    "tags: \u5BA2\u670D,\u6A21\u677F",
+    "category: \u5BA2\u670D",
+    "source-type: external",
+    "-->",
+    "\u5C0A\u656C\u7684 {{xlc:ask:\u5BA2\u6237\u540D\u79F0}}\uFF1A",
+    "",
+    "\u5173\u4E8E\u672C\u671F\u4EA4\u4ED8\u8BA1\u5212\u7684\u8C03\u6574\uFF0C\u6211\u4EEC\u6DF1\u8868\u6B49\u610F\u3002\u4E3B\u8981\u539F\u56E0\u4E3A __\u539F\u56E0__\uFF0C\u76EE\u524D\u8FDB\u5EA6\u5DF2\u8FBE __\u767E\u5206\u6BD4__\uFF0C\u9884\u8BA1\u63A8\u8FDF __\u5929\u6570__ \u4E2A\u5DE5\u4F5C\u65E5\u3002",
+    "",
+    "\u4E3A\u5F25\u8865\u5F71\u54CD\uFF0C\u6211\u4EEC\u63D0\u4F9B\u4EE5\u4E0B\u8865\u507F\uFF1A",
+    "1. \u672C\u671F\u670D\u52A1\u8D39\u51CF\u514D {{xlc:ask:\u8865\u507F\u6BD4\u4F8B|5%,10%,\u81EA\u5B9A\u4E49}}\uFF1B",
+    "2. \u4E0A\u7EBF\u540E 48 \u5C0F\u65F6\u4E13\u5C5E\u503C\u5B88\uFF1B",
+    "3. \u4E0B\u671F\u8FED\u4EE3\u4F18\u5148\u6392\u5165\u8D35\u65B9\u9700\u6C42\u3002",
+    "",
+    "\u518D\u6B21\u611F\u8C22\u7406\u89E3\u4E0E\u652F\u6301\uFF0C\u6709\u4EFB\u4F55\u95EE\u9898\u968F\u65F6\u8054\u7CFB\u6211\u3002{{xlc:cursor}}",
+    "## \u5DE5\u5355\u8FDB\u5EA6\u8DDF\u8FDB",
+    "",
+    "<!-- xlc-item",
+    "id: xlc-pack00000002",
+    "type: markdown",
+    "tags: \u5BA2\u670D,\u8DDF\u8FDB",
+    "category: \u5BA2\u670D",
+    "source-type: external",
+    "-->",
+    "{{xlc:ask:\u5BA2\u6237\u540D\u79F0}} \u60A8\u597D\uFF1A",
+    "",
+    "\u60A8\u7684\u5DE5\u5355 {{xlc:ask:\u5DE5\u5355\u53F7}} \u5F53\u524D\u72B6\u6001\uFF1A__\u5F53\u524D\u72B6\u6001__\u3002",
+    "\u9884\u8BA1\u5B8C\u6210\u65F6\u95F4\uFF1A{{xlc:ask:\u8DDF\u8FDB\u65E5\u671F|date}}\u3002\u671F\u95F4\u6709\u4EFB\u4F55\u8865\u5145\u4FE1\u606F\u8BF7\u76F4\u63A5\u56DE\u590D\u672C\u6D88\u606F\u3002",
+    "",
+    "\u611F\u8C22\u60A8\u7684\u8010\u5FC3\u7B49\u5F85\u3002{{xlc:cursor}}",
+    "## \u597D\u8BC4\u611F\u8C22\u56DE\u590D",
+    "",
+    "<!-- xlc-item",
+    "id: xlc-pack00000003",
+    "type: text",
+    "tags: \u5BA2\u670D,\u56DE\u590D",
+    "category: \u5BA2\u670D",
+    "source-type: external",
+    "-->",
+    "\u611F\u8C22 {{xlc:ask:\u5BA2\u6237\u6635\u79F0}} \u7684\u8BA4\u53EF\u4E0E\u652F\u6301\uFF01\u60A8\u7684\u9F13\u52B1\u662F\u6211\u4EEC\u524D\u8FDB\u7684\u52A8\u529B\uFF0C\u5982\u518D\u6B21\u5149\u4E34\u6709\u4EFB\u4F55\u95EE\u9898\uFF0C\u968F\u65F6\u8054\u7CFB\u6211\u3002\u795D\u751F\u6D3B\u6109\u5FEB\uFF01{{xlc:cursor}}",
+    // ---- 场景② AI 提示词库 ----
+    "## \u6587\u7AE0\u6DA6\u8272\u63D0\u793A\u8BCD",
+    "",
+    "<!-- xlc-item",
+    "id: xlc-pack00000004",
+    "type: text",
+    "tags: AI,\u63D0\u793A\u8BCD",
+    "category: \u63D0\u793A\u8BCD",
+    "source-type: external",
+    "-->",
+    "\u4F60\u662F\u8D44\u6DF1\u7F16\u8F91\u3002\u8BF7\u6DA6\u8272\u4EE5\u4E0B\u6587\u7AE0\uFF0C\u9762\u5411 {{xlc:ask:\u76EE\u6807\u8BFB\u8005|\u666E\u901A\u8BFB\u8005,\u4E13\u4E1A\u8BFB\u8005}}\uFF1A",
+    "\u4FDD\u6301\u539F\u610F\u4E0E\u7ED3\u6784\uFF0C\u4EC5\u63D0\u5347\u6D41\u7545\u5EA6\u4E0E\u8868\u8FBE\u529B\uFF1B\u4E0D\u6539\u5199\u4E8B\u5B9E\uFF0C\u4E0D\u65B0\u589E\u5185\u5BB9\u3002",
+    "\u8F93\u51FA\u6DA6\u8272\u540E\u7684\u5168\u6587\uFF1A",
+    "",
+    "{{xlc:clipboard}}{{xlc:cursor}}",
+    "## \u4EE3\u7801\u5BA1\u67E5\u63D0\u793A\u8BCD",
+    "",
+    "<!-- xlc-item",
+    "id: xlc-pack00000005",
+    "type: text",
+    "tags: AI,\u63D0\u793A\u8BCD,\u5F00\u53D1",
+    "category: \u63D0\u793A\u8BCD",
+    "source-type: external",
+    "-->",
+    "\u4F60\u662F {{xlc:ask:\u7F16\u7A0B\u8BED\u8A00|TypeScript,Python,Go}} \u8D44\u6DF1\u5DE5\u7A0B\u5E08\uFF0C\u8BF7\u5BA1\u67E5\u4EE5\u4E0B\u4EE3\u7801\uFF0C\u6309\u4E25\u91CD\u5EA6\u8F93\u51FA\uFF1A",
+    "1. \u6B63\u786E\u6027\u95EE\u9898\uFF08\u4F1A\u51FA\u9519\u7684\u5730\u65B9\uFF09",
+    "2. \u5B89\u5168\u9690\u60A3",
+    "3. \u53EF\u8BFB\u6027\u4E0E\u7EF4\u62A4\u6027\u5EFA\u8BAE",
+    "\u4EC5\u5217\u95EE\u9898\u4E0E\u4FEE\u6539\u5EFA\u8BAE\uFF0C\u4E0D\u91CD\u5199\u5168\u6587\uFF1A",
+    "",
+    "{{xlc:clipboard}}{{xlc:cursor}}",
+    "## \u4F1A\u8BAE\u8981\u70B9\u63D0\u70BC\u63D0\u793A\u8BCD",
+    "",
+    "<!-- xlc-item",
+    "id: xlc-pack00000006",
+    "type: text",
+    "tags: AI,\u63D0\u793A\u8BCD",
+    "category: \u63D0\u793A\u8BCD",
+    "source-type: external",
+    "-->",
+    "\u8BF7\u628A\u4EE5\u4E0B\u4F1A\u8BAE\u8BB0\u5F55\u63D0\u70BC\u4E3A\u8981\u70B9\uFF1A\u7ED3\u8BBA / \u5F85\u529E\uFF08\u8D1F\u8D23\u4EBA+\u622A\u6B62\u65F6\u95F4\uFF09/ \u98CE\u9669\u4E09\u7C7B\uFF0C\u6BCF\u6761\u4E00\u884C\uFF1A",
+    "",
+    "{{xlc:clipboard}}{{xlc:cursor}}",
+    // ---- 场景③ 研发写作常用件 ----
+    "## \u5468\u62A5\u5F00\u5934",
+    "",
+    "<!-- xlc-item",
+    "id: xlc-pack00000007",
+    "type: markdown",
+    "tags: \u5199\u4F5C,\u5468\u62A5",
+    "category: \u5199\u4F5C",
+    "source-type: external",
+    "-->",
+    "\u672C\u5468\u56F4\u7ED5 {{xlc:ask:\u672C\u5468\u4E3B\u9898}} \u63A8\u8FDB\uFF0C\u5173\u952E\u8FDB\u5C55\uFF1A",
+    "",
+    "1. __\u4E8B\u9879__\uFF08\u72B6\u6001\uFF1A__\u8FDB\u5EA6__\uFF09",
+    "2. __\u4E8B\u9879__\uFF08\u72B6\u6001\uFF1A__\u8FDB\u5EA6__\uFF09",
+    "",
+    "\u98CE\u9669\u4E0E\u4F9D\u8D56\uFF1A{{xlc:cursor}}",
+    "## \u4F1A\u8BAE\u7EAA\u8981\u9AA8\u67B6",
+    "",
+    "<!-- xlc-item",
+    "id: xlc-pack00000008",
+    "type: markdown",
+    "tags: \u5199\u4F5C,\u4F1A\u8BAE",
+    "category: \u5199\u4F5C",
+    "source-type: external",
+    "-->",
+    "# {{xlc:ask:\u4F1A\u8BAE\u4E3B\u9898}} \xB7 \u4F1A\u8BAE\u7EAA\u8981\uFF08{{xlc:date}}\uFF09",
+    "",
+    "## \u7ED3\u8BBA",
+    "- {{xlc:cursor}}",
+    "## \u5F85\u529E",
+    "- [ ] __\u4E8B\u9879__\uFF08\u8D1F\u8D23\u4EBA\uFF1A__ / \u622A\u6B62\uFF1A__\uFF09",
+    "## \u98CE\u9669",
+    "- ",
+    "## \u65E5\u8BA1\u5212\u6A21\u677F",
+    "",
+    "<!-- xlc-item",
+    "id: xlc-pack00000009",
+    "type: markdown",
+    "tags: \u5199\u4F5C,\u8BA1\u5212",
+    "category: \u5199\u4F5C",
+    "source-type: external",
+    "-->",
+    "## \u4ECA\u65E5\u4E09\u4EF6\u4E8B\uFF08{{xlc:date}}\uFF09",
+    "",
+    "1. {{xlc:cursor}}",
+    "2. ",
+    "3. ",
+    "## \u7559\u767D\uFF08\u5E94\u5BF9\u7A81\u53D1\uFF09",
+    "- ",
+    "## SQL \u5206\u9875\u67E5\u8BE2",
+    "",
+    "<!-- xlc-item",
+    "id: xlc-pack00000010",
+    "type: code",
+    "tags: \u5F00\u53D1,SQL",
+    "category: \u5F00\u53D1",
+    "source-type: external",
+    "-->",
+    "```sql",
+    "SELECT * FROM {{xlc:ask:\u8868\u540D}}",
+    "WHERE status = 'published'",
+    "ORDER BY updated_at DESC",
+    "LIMIT 20 OFFSET 40;",
+    "```"
+  ].join("\n");
+
   // src/ui/settings-dialog.ts
   function buildSwitchRow(text, sub, checked, onChange) {
     const row = document.createElement("label");
@@ -2675,6 +2840,26 @@
     ctHint.className = "xlc-form-hint";
     ctHint.textContent = t("customTransformHint");
     aiSec.appendChild(ctHint);
+    const packRow = document.createElement("div");
+    packRow.className = "xlc-setting-row";
+    const packText = document.createElement("span");
+    packText.className = "xlc-setting-text";
+    packText.textContent = t("promptPackHint");
+    packRow.appendChild(packText);
+    const packBtn = document.createElement("button");
+    packBtn.type = "button";
+    packBtn.className = "b3-button";
+    packBtn.textContent = t("promptPackBtn");
+    packBtn.addEventListener("click", () => {
+      const parsed = parseMarkdownPack(PROMPT_PACK_MD);
+      if (parsed.items.length === 0) {
+        ctx.notify("error", t("importFailed", "builtin pack empty"));
+        return;
+      }
+      openImportPolicyDialog(ctx, { items: parsed.items, pack: parsed.pack }, parsed.issues, { kind: "markdown-pack", items: parsed.items });
+    });
+    packRow.appendChild(packBtn);
+    aiSec.appendChild(packRow);
     root.appendChild(aiSec);
   }
   function buildSearchSection(ctx, root) {
@@ -2984,6 +3169,32 @@
       } catch {
         this.deps.notify("error", this.deps.t("clipboardReadFailed"));
         this.openForm("", "text", null);
+      }
+    }
+    /** 快速捕获剪贴板（F8）：无表单一步入库——类型推断 + 首行作标题；
+     *  同文已存在则诚实提示不重复写入（不打断）。 */
+    async quickCaptureFromClipboard() {
+      let text = "";
+      try {
+        text = (await this.deps.readClipboardText()).trim();
+      } catch {
+        text = "";
+      }
+      if (!text) {
+        this.deps.notify("error", this.deps.t("clipboardReadFailed"));
+        return;
+      }
+      const content = text.slice(0, 1e5);
+      const dup = await this.deps.findDuplicate(content);
+      if (dup) {
+        this.deps.notify("info", this.deps.t("quickCaptureDuplicate", dup.title));
+        return;
+      }
+      const created = await this.deps.createItem({ itemType: inferTypeFromText(content), markdown: content });
+      if (created.ok) {
+        this.deps.notify("info", this.deps.t("saved", created.message));
+      } else {
+        this.deps.notify("error", created.message);
       }
     }
     /** 手动新建（空表单） */
@@ -3464,6 +3675,10 @@
       customTransformCap: "\u6700\u591A 10 \u4E2A\u81EA\u5B9A\u4E49\u53D8\u6362",
       customTransformNewName: "\u6211\u7684\u53D8\u6362",
       customTransformHint: "\u4E0E\u5185\u7F6E\u53D8\u6362\u5E76\u5217\u51FA\u73B0\u5728\u6761\u76EE\u52A8\u4F5C\u83DC\u5355 \u2726 \u533A\uFF1B\u8BFB\u53D6\u6B63\u6587\u9075\u5FAA\u300C\u5141\u8BB8 AI \u8BFB\u53D6\u5B8C\u6574\u6B63\u6587\u300D\u5F00\u5173",
+      quickCapture: "\u5FEB\u901F\u6355\u83B7\u526A\u8D34\u677F\u4E3A\u6761\u76EE",
+      quickCaptureDuplicate: "\u5DF2\u5B58\u5728\u540C\u6587\u6761\u76EE\u300C%s\u300D\uFF0C\u672A\u91CD\u590D\u4FDD\u5B58",
+      promptPackBtn: "\u5BFC\u5165\u63D0\u793A\u8BCD\u573A\u666F\u5305",
+      promptPackHint: "\u5185\u7F6E 10 \u4E2A\u6A21\u677F\uFF1A\u5BA2\u670D\u56DE\u590D / AI \u63D0\u793A\u8BCD / \u7814\u53D1\u5199\u4F5C\uFF1B\u5BFC\u5165\u5F53\u524D\u5E93\u540E\u53EF\u81EA\u7531\u4FEE\u6539",
       dataSection: "\u6570\u636E\uFF08\u5BFC\u51FA / \u5BFC\u5165\uFF09",
       librarySection: "\u5F53\u524D\u5185\u5BB9\u5E93",
       libraryNone: "\u672A\u914D\u7F6E",

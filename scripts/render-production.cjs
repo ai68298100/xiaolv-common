@@ -189,6 +189,8 @@ fs.writeFileSync(path.join(OUT, "harness.html"), html);
         customTransforms: (document.body.textContent || "").includes("自定义变换")
             && (document.querySelector(".xlc-ct-name")?.value ?? "") === "客服话术"
             && (document.body.textContent || "").includes("添加自定义变换"),
+        // R74：提示词场景包入口
+        promptPack: (document.body.textContent || "").includes("导入提示词场景包"),
     }));
     if (Object.values(settingsAssertions).some((v) => !v)) {
         throw new Error("settings smoke failed: " + JSON.stringify(settingsAssertions));

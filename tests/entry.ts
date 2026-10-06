@@ -17,6 +17,7 @@ import * as variables from "../src/model/variables";
 import * as providerSection from "../src/model/provider-section";
 import * as exportMarkdown from "../src/service/export-markdown";
 import * as importMarkdown from "../src/service/import-markdown";
+import * as promptPack from "../src/service/prompt-pack";
 import * as dedupe from "../src/model/dedupe";
 import * as capture from "../src/ui/capture";
 import * as importer from "../src/service/importer";
@@ -39,6 +40,7 @@ export {
     providerSection,
     exportMarkdown,
     importMarkdown,
+    promptPack,
     dedupe,
     capture,
     importer,

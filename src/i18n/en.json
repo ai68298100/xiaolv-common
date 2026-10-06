@@ -256,5 +256,9 @@
   "customTransformEmpty": "No custom transforms",
   "customTransformCap": "Up to 10 custom transforms",
   "customTransformNewName": "My transform",
-  "customTransformHint": "Listed alongside built-ins in the action menu ✦ section; content access follows the full-content toggle"
+  "customTransformHint": "Listed alongside built-ins in the action menu ✦ section; content access follows the full-content toggle",
+  "quickCapture": "Quick capture clipboard as item",
+  "quickCaptureDuplicate": "Duplicate of \"%s\" exists; not saved again",
+  "promptPackBtn": "Import prompt scene pack",
+  "promptPackHint": "10 built-in templates: support replies / AI prompts / dev writing; import into current library"
 }

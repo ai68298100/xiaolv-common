@@ -12,6 +12,7 @@ import {AiAssistant} from "../service/ai";
 import {ProviderRegistry} from "../service/providers";
 import {CommonItem} from "../model/item";
 import {listAskFields} from "../model/variables";
+import {PROMPT_PACK_MD} from "../service/prompt-pack";
 
 type TFn = (key: string, ...args: string[]) => string;
 
@@ -767,6 +768,27 @@ function buildAiSection(ctx: SettingsUiContext, root: HTMLElement): void {
     ctHint.className = "xlc-form-hint";
     ctHint.textContent = t("customTransformHint");
     aiSec.appendChild(ctHint);
+    // 提示词场景包（F7 收尾）：内置模板集一键导入当前库（真实块，可改可再分享）
+    const packRow = document.createElement("div");
+    packRow.className = "xlc-setting-row";
+    const packText = document.createElement("span");
+    packText.className = "xlc-setting-text";
+    packText.textContent = t("promptPackHint");
+    packRow.appendChild(packText);
+    const packBtn = document.createElement("button");
+    packBtn.type = "button";
+    packBtn.className = "b3-button";
+    packBtn.textContent = t("promptPackBtn");
+    packBtn.addEventListener("click", () => {
+        const parsed = parseMarkdownPack(PROMPT_PACK_MD);
+        if (parsed.items.length === 0) {
+            ctx.notify("error", t("importFailed", "builtin pack empty"));
+            return;
+        }
+        openImportPolicyDialog(ctx, {items: parsed.items, pack: parsed.pack}, parsed.issues, {kind: "markdown-pack", items: parsed.items});
+    });
+    packRow.appendChild(packBtn);
+    aiSec.appendChild(packRow);
     root.appendChild(aiSec);
 }
 

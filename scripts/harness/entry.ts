@@ -82,6 +82,8 @@ const T = (key: string, ...args: string[]): string => {
         customTransformPrompt: "变换指令，如：改写为客服话术：", customTransformEmpty: "暂无自定义变换",
         customTransformCap: "最多 10 个自定义变换", customTransformNewName: "我的变换",
         customTransformHint: "与内置变换并列出现在条目动作菜单 ✦ 区；读取正文遵循「允许 AI 读取完整正文」开关",
+        quickCapture: "快速捕获剪贴板为条目", quickCaptureDuplicate: "已存在同文条目「%s」，未重复保存",
+        promptPackBtn: "导入提示词场景包", promptPackHint: "内置 10 个模板：客服回复 / AI 提示词 / 研发写作；导入当前库后可自由修改",
         dataSection: "数据（导出 / 导入）", librarySection: "当前内容库", libraryNone: "未配置",
         reindexBtn: "重建索引", clearRecents: "清空最近使用", clearRecentsConfirm: "清空最近使用记录？",
         exportBtn: "导出全部条目 (JSON)", importBtn: "导入 JSON", exportMdBtn: "导出 Markdown 包（含资源）",

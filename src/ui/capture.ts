@@ -78,6 +78,33 @@ export class CaptureDialog {
         }
     }
 
+    /** 快速捕获剪贴板（F8）：无表单一步入库——类型推断 + 首行作标题；
+     *  同文已存在则诚实提示不重复写入（不打断）。 */
+    async quickCaptureFromClipboard(): Promise<void> {
+        let text = "";
+        try {
+            text = (await this.deps.readClipboardText()).trim();
+        } catch {
+            text = "";
+        }
+        if (!text) {
+            this.deps.notify("error", this.deps.t("clipboardReadFailed"));
+            return;
+        }
+        const content = text.slice(0, 100_000);
+        const dup = await this.deps.findDuplicate(content);
+        if (dup) {
+            this.deps.notify("info", this.deps.t("quickCaptureDuplicate", dup.title));
+            return;
+        }
+        const created = await this.deps.createItem({itemType: inferTypeFromText(content), markdown: content});
+        if (created.ok) {
+            this.deps.notify("info", this.deps.t("saved", created.message));
+        } else {
+            this.deps.notify("error", created.message);
+        }
+    }
+
     /** 手动新建（空表单） */
     newManual(): void {
         this.openForm("", "text", null);

@@ -314,6 +314,15 @@ export default class XiaolvCommonPlugin extends Plugin {
             callback: () => void this.capture.saveSelection(),
         });
         this.addCommand({
+            langKey: "saveClipboard",
+            callback: () => void this.capture.captureFromClipboard(),
+        });
+        this.addCommand({
+            langKey: "quickCapture",
+            hotkey: "⌥⇧V",
+            callback: () => void this.capture.quickCaptureFromClipboard(),
+        });
+        this.addCommand({
             langKey: "captureBlock",
             hotkey: "⌥⇧B",
             callback: () => void this.capture.captureCurrentBlock(),
