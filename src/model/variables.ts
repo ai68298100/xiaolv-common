@@ -3,6 +3,8 @@
 // —— ask 与动态占位符（placeholders.ts）分离：ask 在插入前由填充卡片收集，存储内容永远保留模板原文。
 // 不可用变量诚实降级：插入路径上未填充的 ask 展开为 __名称__（可见可改，绝不静默丢）。
 // code 条目不处理变量：代码中的 {{xlc:…}} 是字面文本（与 r23 决策一致）。
+// 片段嵌套（R72/F5）：{{xlc:snippet:标题}} 引用其他条目，插入时由 library.expandSnippetRefs 展开
+// （深度 ≤3、环检测；此处只提供语法模式与光标/检测工具）。
 
 import {LIMITS} from "../constants";
 
@@ -78,6 +80,9 @@ export function applyAskDefaults(text: string): string {
 
 /** {{xlc:cursor}} 光标落点标记：宿主官方 API 无法定位文内光标，插入时移除标记（光标自然落在插入内容之后）。 */
 export const CURSOR_TOKEN = "{{xlc:cursor}}";
+
+/** 片段引用语法（F5）：标题不含 }；展开语义见 library.expandSnippetRefs */
+export const SNIPPET_PATTERN = /\{\{xlc:snippet:([^}]+)\}\}/g;
 
 export function stripCursorToken(text: string): string {
     return text.split(CURSOR_TOKEN).join("");

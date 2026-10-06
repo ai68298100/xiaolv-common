@@ -24,7 +24,7 @@ import {
 import {LibraryConfig} from "../model/storage";
 import {SearchEntry} from "../model/search";
 import {getPinyinAdapter} from "../model/pinyin";
-import {countAskFields} from "../model/variables";
+import {countAskFields, SNIPPET_PATTERN} from "../model/variables";
 
 export interface IndexBuildResult {
     entries: SearchEntry[];
@@ -386,6 +386,50 @@ export class LibraryService {
     }
 
     /** 现场取条目内容（kramdown）。禁止用索引摘要充当正文。 */
+    /** F5 片段嵌套：展开 {{xlc:snippet:标题}} 引用（插入语义；ask 变量保留给填充卡）。
+     *  深度 ≤3；按条目标题精确匹配（重名取索引首个）；已见条目不重复展开（防环，兄弟引用允许）；
+     *  标题缺失 / 成环 / 超深 → 替换为 __片段：标题__（可见可改，不静默丢）。 */
+    /** F5 片段嵌套：展开 {{xlc:snippet:标题}} 引用（插入语义；ask 变量保留给填充卡）。
+     *  maxDepth = 引用层数上限（默认 3）；按条目标题精确匹配（重名取索引首个）；
+     *  已见条目不重复展开（防环，兄弟引用允许）；标题缺失 / 成环 / 超出层数 →
+     *  替换为 __片段：标题__（可见可改，不静默丢）。 */
+    async expandSnippetRefs(text: string, opts?: {maxDepth?: number}): Promise<string> {
+        const maxDepth = opts?.maxDepth ?? 3;
+        if (!text || !text.includes("{{xlc:snippet:")) return text;
+        const idx = await this.ensureIndex();
+        const byTitle = new Map<string, CommonItem>();
+        for (const item of idx.items.values()) {
+            if (item.title && !byTitle.has(item.title)) byTitle.set(item.title, item);
+        }
+        const expand = async (input: string, level: number, seen: Set<string>): Promise<string> => {
+            if (!input || !input.includes("{{xlc:snippet:")) return input;
+            let out = input;
+            for (const match of input.matchAll(SNIPPET_PATTERN)) {
+                const token = match[0];
+                const title = (match[1] ?? "").trim().slice(0, LIMITS.title);
+                const marker = `__片段：${title || "?"}__`;
+                let replacement = marker;
+                if (level <= maxDepth) {
+                    const target = title ? byTitle.get(title) : undefined;
+                    if (target && !seen.has(target.id)) {
+                        seen.add(target.id);
+                        try {
+                            const kd = await this.getItemKramdown(target);
+                            if (kd.ok) {
+                                replacement = await expand(kd.data, level + 1, seen);
+                            }
+                        } finally {
+                            seen.delete(target.id);
+                        }
+                    }
+                }
+                out = out.split(token).join(replacement);
+            }
+            return out;
+        };
+        return expand(text, 1, new Set());
+    }
+
     async getItemKramdown(item: CommonItem): Promise<Receipt<string>> {
         try {
             const data = parseKramdown(await this.kernel.request("getBlockKramdown", {id: item.blockId}));

@@ -71,7 +71,7 @@ Interfaces: `getCapabilities / search / get / save / update / remove / insert / 
 ```bash
 pnpm i
 pnpm run check   # tsc --noEmit
-pnpm test        # esbuild + node --test (156 tests)
+pnpm test        # esbuild + node --test (179 tests)
 pnpm run build   # dist/ + package.zip
 pnpm run test:ui # production UI smoke (13 DOM assertions + screenshots)
 ```

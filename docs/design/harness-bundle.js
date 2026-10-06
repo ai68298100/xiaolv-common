@@ -452,6 +452,7 @@
     const snippets = [
       "{{xlc:ask:\u5B57\u6BB5}}",
       "{{xlc:ask:\u5B57\u6BB5|\u9009\u9879A,\u9009\u9879B}}",
+      "{{xlc:snippet:\u6807\u9898}}",
       "{{xlc:cursor}}",
       "{{xlc:date}}",
       "{{xlc:doc}}",

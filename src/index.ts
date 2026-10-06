@@ -713,7 +713,8 @@ export default class XiaolvCommonPlugin extends Plugin {
                 const got = await this.library.getItem(itemId);
                 if (!got.ok) return "";
                 const kd = await this.library.getItemKramdown(got.data);
-                const text = kd.ok ? kd.data : "";
+                // 片段引用展开后预览（F5）：预览/填充卡所见 = 插入所得；变量仍保留给填充卡
+                const text = kd.ok ? await this.library.expandSnippetRefs(kd.data) : "";
                 if (text) this.previewCache.set(itemId, text);
                 return text;
             },

@@ -158,6 +158,7 @@ export function buildVariableBar(t: (key: string, ...args: string[]) => string, 
     const snippets = [
         "{{xlc:ask:字段}}",
         "{{xlc:ask:字段|选项A,选项B}}",
+        "{{xlc:snippet:标题}}",
         "{{xlc:cursor}}",
         "{{xlc:date}}",
         "{{xlc:doc}}",

@@ -158,11 +158,14 @@ export class ActionExecutor {
      *  {{xlc:clipboard}} 异步替换（读取失败=空串，语义同无文档）。
      *  code 条目跳过替换：代码中的 {{xlc:…}} 是字面文本（例如演示模板的代码），绝不能被改写。 */
     /** 公开渲染入口：定向插入（insertToDoc）与 provider payload 共用（R50/R51 语义统一）。
-     *  fills：变量填充卡收集的 ask 值（R67）；插入语义，含光标移除与未填充兜底。 */
+     *  fills：变量填充卡收集的 ask 值（R67）；插入语义，含片段展开（R72）、光标移除与未填充兜底。 */
     async renderForInsert(text: string, item?: CommonItem, fills?: Record<string, string>): Promise<string> {
         let payload = text;
         if (item?.itemType !== "code") {
-            if (fills) payload = expandAsks(payload, fills);
+            payload = await this.library.expandSnippetRefs(payload);
+            if (fills) {
+                payload = expandAsks(payload, fills);
+            }
             payload = applyAskDefaults(stripCursorToken(payload));
         }
         return (await this.applyOutput(payload, item)) ?? payload;
@@ -215,13 +218,16 @@ export class ActionExecutor {
         }
     }
 
-    /** 现场解析条目内容；变量填充卡收集的 ask 值在此展开（模型层纯字符串替换；code 条目不处理变量）。 */
+    /** 现场解析条目内容；先展开片段引用（F5，code 条目不处理），再应用变量填充卡的 ask 值。 */
     private async resolveWithFills(item: CommonItem, fills?: Record<string, string>) {
         const content = await this.resolveContent(item);
         if (!content) return null;
-        if (fills && item.itemType !== "code") {
-            const expanded = expandAsks(content.kramdown, fills);
-            content.kramdown = expanded;
+        if (item.itemType !== "code") {
+            let kramdown = await this.library.expandSnippetRefs(content.kramdown);
+            if (fills) {
+                kramdown = expandAsks(kramdown, fills);
+            }
+            content.kramdown = kramdown;
         }
         return content;
     }
