@@ -145,7 +145,8 @@ export class CommonSearchDialog {
         input.setAttribute("aria-label", this.deps.t("searchPlaceholder"));
         input.addEventListener("input", () => {
             this.currentScope = "all";
-            this.deps.setLastQuery(input.value);
+            // 持久化剥离 ? 前缀：重开弹窗预填普通查询，绝不自动触发 AI 语义找
+            this.deps.setLastQuery(input.value.replace(/^\?+/, ""));
             // IME 组合输入（中文输入法组词）期间跳过刷新——候选词未上屏不过滤；
             // compositionend 后统一刷新一次
             if (this.isComposing) return;
