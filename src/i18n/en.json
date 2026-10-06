@@ -235,5 +235,18 @@
   "aiShareContentSub": "Needed by tidy/transform/draft; metadata-only when off",
   "pinyinToggleSub": "Local full-spelling / initials matching",
   "placeholdersToggleSub": "Replaces {{xlc:date}} etc. at insert/copy time",
-  "aiSuggestion": "AI suggestion"
+  "aiSuggestion": "AI suggestion",
+  "packBtn": "Template pack",
+  "packExportTitle": "Export · Template pack",
+  "packCategoryLabel": "Category",
+  "allCategories": "All categories",
+  "packNameLabel": "Pack name",
+  "packNameDefault": "Xiaolv Common pack",
+  "packContentsHint": "- Item Markdown + metadata (title/tags/category)\n- Variable list ({{xlc:ask:…}} fields and options)\n- Asset references (assets bundled as-is)",
+  "packTrustHint": "Recipients get real SiYuan blocks they can edit and re-share — you share live blocks, not text snapshots.",
+  "packExportBtn": "Export .md pack",
+  "packVarsBadge": "%s with variables",
+  "emptyFavorites": "No favorites yet",
+  "emptyFavoritesSub": "Tap the ☆ on a row to pin it here",
+  "emptyRecent": "No recently used items"
 }

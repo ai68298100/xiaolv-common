@@ -31,6 +31,7 @@ import {CommonSearchDialog} from "./ui/dialog";
 import {CaptureDialog, confirmDelete, classifyLinkTarget} from "./ui/capture";
 import {ICONS} from "./ui/icons";
 import {openSetupDialog, openSettingsDialog, type SettingsUiContext} from "./ui/settings-dialog";
+import {buildVariableBar} from "./ui/variable-form";
 import type {TransformKind} from "./service/ai";
 
 type TFn = (key: string, ...args: string[]) => string;
@@ -917,6 +918,8 @@ export default class XiaolvCommonPlugin extends Plugin {
         contentEl.value = initialKramdown;
         contentWrap.appendChild(contentEl);
         form.appendChild(contentWrap);
+        // 变量快捷插入条（F1 编辑侧：与捕获表单同款，点选在光标处插入）
+        contentWrap.after(buildVariableBar(t, () => contentEl));
         // 来源状态与重新指定（文本单独 span：异步回填路径不得抹掉行内按钮）
         const srcRow = document.createElement("div");
         srcRow.className = "xlc-form-sourcerow";

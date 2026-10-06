@@ -146,3 +146,38 @@ export function openVariableFillCard(options: VariableFillOptions): void {
 function safeListId(name: string): string {
     return name.replace(/[^0-9a-zA-Z\u4e00-\u9fa5_-]/g, "").slice(0, 24) || "f";
 }
+
+/** 变量快捷插入条（F1 创作侧，原型屏 3）：点选在目标 textarea 光标处插入变量语法。捕获与编辑弹窗共用。 */
+export function buildVariableBar(t: (key: string, ...args: string[]) => string, getTarget: () => HTMLTextAreaElement): HTMLElement {
+    const bar = document.createElement("div");
+    bar.className = "xlc-varbar";
+    const cap = document.createElement("span");
+    cap.className = "xlc-varbar-cap";
+    cap.textContent = t("insertVariable");
+    bar.appendChild(cap);
+    const snippets = [
+        "{{xlc:ask:字段}}",
+        "{{xlc:ask:字段|选项A,选项B}}",
+        "{{xlc:cursor}}",
+        "{{xlc:date}}",
+        "{{xlc:doc}}",
+        "{{xlc:clipboard}}",
+    ];
+    for (const snippet of snippets) {
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = "xlc-varbtn";
+        btn.textContent = snippet;
+        btn.addEventListener("click", () => {
+            const el = getTarget();
+            const start = el.selectionStart ?? el.value.length;
+            const end = el.selectionEnd ?? start;
+            el.value = el.value.slice(0, start) + snippet + el.value.slice(end);
+            const caret = start + snippet.length;
+            el.focus();
+            el.setSelectionRange(caret, caret);
+        });
+        bar.appendChild(btn);
+    }
+    return bar;
+}

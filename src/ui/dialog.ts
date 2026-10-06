@@ -599,11 +599,18 @@ export class CommonSearchDialog {
             } else if (loading) {
                 status.textContent = this.deps.t("indexing");
             } else {
-                // 空态文案移入列表大空态（图标 + 主文案 + 语义找提示）；status 保持安静
+                // 空态文案移入列表大空态（图标 + 主文案 + 语义找提示）；status 保持安静；
+                // 收藏/最近范围给分区专属文案（无 AI 建议提示）
                 status.textContent = "";
-                this.emptyMessage = query.text.trim() && !query.text.trim().startsWith("?") && this.deps.aiEnabled()
-                    ? this.deps.t("semanticSuggestion")
-                    : this.deps.t("empty");
+                if (!query.text.trim() && this.currentScope === "favorites") {
+                    this.emptyMessage = this.deps.t("emptyFavorites");
+                } else if (!query.text.trim() && this.currentScope === "recent") {
+                    this.emptyMessage = this.deps.t("emptyRecent");
+                } else if (query.text.trim() && !query.text.trim().startsWith("?") && this.deps.aiEnabled()) {
+                    this.emptyMessage = this.deps.t("semanticSuggestion");
+                } else {
+                    this.emptyMessage = this.deps.t("empty");
+                }
             }
         }
         if (footer) {
@@ -647,6 +654,11 @@ export class CommonSearchDialog {
                 const hint = document.createElement("div");
                 hint.className = "xlc-empty-hint";
                 hint.textContent = this.deps.t("aiSemanticHint");
+                empty.appendChild(hint);
+            } else if (this.emptyMessage === this.deps.t("emptyFavorites")) {
+                const hint = document.createElement("div");
+                hint.className = "xlc-empty-hint";
+                hint.textContent = this.deps.t("emptyFavoritesSub");
                 empty.appendChild(hint);
             }
             list.appendChild(empty);
@@ -948,17 +960,20 @@ export class CommonSearchDialog {
             if (missing) paneWarn.textContent = "⚠ " + this.deps.t("sourceGone");
         }
         this.paintPaneVars(null, entry?.itemType);
-        paneBody.textContent = this.deps.t("aiWorking");
-        void this.deps.preview(id).then((text) => {
-            if (seq !== this.previewSeq) return;
-            const finalText = text || this.deps.t("previewUnavailable");
-            paneBody.textContent = finalText;
-            this.paintPaneVars(text, entry?.itemType);
-        }).catch(() => {
-            if (seq !== this.previewSeq) return;
-            paneBody.textContent = this.deps.t("kernelError", "preview");
-            this.paintPaneVars(null, entry?.itemType);
-        });
+            paneBody.textContent = this.deps.t("aiWorking");
+            void this.deps.preview(id).then((text) => {
+                if (seq !== this.previewSeq) return;
+                const finalText = text || this.deps.t("previewUnavailable");
+                paneBody.textContent = finalText;
+                // 代码条目预览用等宽字体（纯文本渲染不变，仅观感）
+                paneBody.classList.toggle("xlc-pane-body--code", entry?.itemType === "code");
+                this.paintPaneVars(text, entry?.itemType);
+            }).catch(() => {
+                if (seq !== this.previewSeq) return;
+                paneBody.textContent = this.deps.t("kernelError", "preview");
+                paneBody.classList.remove("xlc-pane-body--code");
+                this.paintPaneVars(null, entry?.itemType);
+            });
     }
 
     /** 普通点击 = 主动作（insert；blockref = 插入引用）。含变量时先弹填充卡片（F1）。 */

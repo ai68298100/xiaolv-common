@@ -442,6 +442,40 @@
   function safeListId(name) {
     return name.replace(/[^0-9a-zA-Z\u4e00-\u9fa5_-]/g, "").slice(0, 24) || "f";
   }
+  function buildVariableBar(t, getTarget) {
+    const bar = document.createElement("div");
+    bar.className = "xlc-varbar";
+    const cap = document.createElement("span");
+    cap.className = "xlc-varbar-cap";
+    cap.textContent = t("insertVariable");
+    bar.appendChild(cap);
+    const snippets = [
+      "{{xlc:ask:\u5B57\u6BB5}}",
+      "{{xlc:ask:\u5B57\u6BB5|\u9009\u9879A,\u9009\u9879B}}",
+      "{{xlc:cursor}}",
+      "{{xlc:date}}",
+      "{{xlc:doc}}",
+      "{{xlc:clipboard}}"
+    ];
+    for (const snippet of snippets) {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "xlc-varbtn";
+      btn.textContent = snippet;
+      btn.addEventListener("click", () => {
+        var _a, _b;
+        const el = getTarget();
+        const start = (_a = el.selectionStart) != null ? _a : el.value.length;
+        const end = (_b = el.selectionEnd) != null ? _b : start;
+        el.value = el.value.slice(0, start) + snippet + el.value.slice(end);
+        const caret = start + snippet.length;
+        el.focus();
+        el.setSelectionRange(caret, caret);
+      });
+      bar.appendChild(btn);
+    }
+    return bar;
+  }
 
   // src/ui/dialog.ts
   var TYPE_BADGES2 = {
@@ -939,7 +973,15 @@
           status.textContent = this.deps.t("indexing");
         } else {
           status.textContent = "";
-          this.emptyMessage = query.text.trim() && !query.text.trim().startsWith("?") && this.deps.aiEnabled() ? this.deps.t("semanticSuggestion") : this.deps.t("empty");
+          if (!query.text.trim() && this.currentScope === "favorites") {
+            this.emptyMessage = this.deps.t("emptyFavorites");
+          } else if (!query.text.trim() && this.currentScope === "recent") {
+            this.emptyMessage = this.deps.t("emptyRecent");
+          } else if (query.text.trim() && !query.text.trim().startsWith("?") && this.deps.aiEnabled()) {
+            this.emptyMessage = this.deps.t("semanticSuggestion");
+          } else {
+            this.emptyMessage = this.deps.t("empty");
+          }
         }
       }
       if (footer) {
@@ -980,6 +1022,11 @@
           const hint = document.createElement("div");
           hint.className = "xlc-empty-hint";
           hint.textContent = this.deps.t("aiSemanticHint");
+          empty.appendChild(hint);
+        } else if (this.emptyMessage === this.deps.t("emptyFavorites")) {
+          const hint = document.createElement("div");
+          hint.className = "xlc-empty-hint";
+          hint.textContent = this.deps.t("emptyFavoritesSub");
           empty.appendChild(hint);
         }
         list.appendChild(empty);
@@ -1260,10 +1307,12 @@
         if (seq !== this.previewSeq) return;
         const finalText = text || this.deps.t("previewUnavailable");
         paneBody.textContent = finalText;
+        paneBody.classList.toggle("xlc-pane-body--code", (entry == null ? void 0 : entry.itemType) === "code");
         this.paintPaneVars(text, entry == null ? void 0 : entry.itemType);
       }).catch(() => {
         if (seq !== this.previewSeq) return;
         paneBody.textContent = this.deps.t("kernelError", "preview");
+        paneBody.classList.remove("xlc-pane-body--code");
         this.paintPaneVars(null, entry == null ? void 0 : entry.itemType);
       });
     }
@@ -1754,21 +1803,40 @@
 
   // src/service/export-markdown.ts
   init_constants();
-  async function buildMarkdownExport(items, kramdownById, fetchAssetBytes) {
-    var _a;
+  async function buildMarkdownExport(items, kramdownById, fetchAssetBytes, pack) {
+    var _a, _b;
     const entries = [];
     const skippedAssets = [];
     const assetEntries = /* @__PURE__ */ new Map();
     const usedNames = /* @__PURE__ */ new Set(["items.md"]);
     let assetCount = 0;
+    const varNames = [];
+    for (const item of items) {
+      if (item.itemType === "code") continue;
+      for (const field of listAskFields((_a = kramdownById.get(item.id)) != null ? _a : "")) {
+        if (!varNames.includes(field.name)) varNames.push(field.name);
+        if (varNames.length >= LIMITS.maxAskFields) break;
+      }
+      if (varNames.length >= LIMITS.maxAskFields) break;
+    }
     const mdParts = [
       "# \u5C0F\u9A74\u5E38\u7528 \xB7 \u6761\u76EE\u5BFC\u51FA",
       "",
       `> \u5BFC\u51FA\u81EA\u601D\u6E90\u63D2\u4EF6\u300C\u5C0F\u9A74\u5E38\u7528\u300D\uFF0C\u5171 ${items.length} \u6761\u3002\u8D44\u6E90\u4F4D\u4E8E assets/\uFF0C\u6761\u76EE\u5185\u94FE\u63A5\u4E3A\u76F8\u5BF9\u8DEF\u5F84\u3002`,
       ""
     ];
+    if (pack && pack.name.trim()) {
+      const manifest = [
+        `<!-- xlc-pack`,
+        `name: ${pack.name.trim().slice(0, LIMITS.title)}`,
+        `items: ${items.length}`,
+        varNames.length ? `vars: ${varNames.join(",")}` : "",
+        `-->`
+      ].filter(Boolean).join("\n");
+      mdParts.unshift(manifest, "");
+    }
     for (const item of items) {
-      const kramdown = (_a = kramdownById.get(item.id)) != null ? _a : "";
+      const kramdown = (_b = kramdownById.get(item.id)) != null ? _b : "";
       const meta = [
         `<!-- xlc-item`,
         `id: ${item.id}`,
@@ -1802,13 +1870,14 @@
     }
     entries.push({ name: "items.md", data: new TextEncoder().encode(mdParts.join("\n")) });
     entries.push(...assetEntries.values());
-    return { entries, itemCount: items.length, assetCount, skippedAssets };
+    return { entries, itemCount: items.length, assetCount, skippedAssets, varNames };
   }
 
   // src/service/import-markdown.ts
   init_constants();
   var ITEM_COMMENT_START = "<!-- xlc-item";
   var ITEM_COMMENT_END = "-->";
+  var PACK_COMMENT_START = "<!-- xlc-pack";
   var TITLE_RE = /^##\s+(.+)$/;
   function parseMetadata(lines) {
     const fields = /* @__PURE__ */ new Map();
@@ -1822,10 +1891,24 @@
     }
     return { fields, titleHint };
   }
+  function parsePackManifest(md, firstItemAt) {
+    var _a, _b;
+    const start = md.indexOf(PACK_COMMENT_START);
+    if (start === -1 || start > firstItemAt) return void 0;
+    const end = md.indexOf(ITEM_COMMENT_END, start);
+    if (end === -1) return void 0;
+    const fields = parseMetadata(md.slice(start + PACK_COMMENT_START.length, end).split("\n")).fields;
+    const name = ((_a = fields.get("name")) != null ? _a : "").slice(0, LIMITS.title);
+    const vars = ((_b = fields.get("vars")) != null ? _b : "").split(",").map((s) => s.trim()).filter(Boolean).slice(0, LIMITS.maxAskFields);
+    if (!name) return void 0;
+    return { name, vars };
+  }
   function parseMarkdownPack(md) {
     const items = [];
     const issues = [];
     if (!md || !md.includes(ITEM_COMMENT_START)) return { items, issues };
+    const firstItemAt = md.indexOf(ITEM_COMMENT_START);
+    const pack = parsePackManifest(md, firstItemAt);
     const commentStarts = [];
     const commentEnds = [];
     let hasUnclosed = false;
@@ -1894,7 +1977,7 @@
       });
     });
     if (hasUnclosed) issues.push({ index: commentStarts.length, reason: "metadata-comment-unclosed" });
-    return { items, issues };
+    return { items, issues, pack };
   }
 
   // src/ui/settings-dialog.ts
@@ -1986,6 +2069,136 @@
     buildProviderSection(ctx, root);
     buildDataSection(ctx, root);
     body.appendChild(root);
+  }
+  async function openPackExportDialog(ctx) {
+    const t = ctx.t;
+    const idx = await ctx.library.ensureIndex();
+    const kramdownById = /* @__PURE__ */ new Map();
+    const all = [];
+    for (const item of idx.items.values()) {
+      const kd = await ctx.library.getItemKramdown(item);
+      if (kd.ok) {
+        all.push(item);
+        kramdownById.set(item.id, kd.data);
+      }
+    }
+    const categories = Array.from(new Set(all.map((i) => i.category).filter(Boolean))).sort((a, b) => a.localeCompare(b, "zh-Hans-CN"));
+    const dialog = new import_siyuan3.Dialog({
+      title: t("packExportTitle"),
+      content: "",
+      width: "min(460px, 92vw)",
+      height: "auto"
+    });
+    const body = dialog.element.querySelector(".b3-dialog__content");
+    if (!body) return;
+    body.innerHTML = "";
+    const wrap = document.createElement("div");
+    wrap.className = "xlc-form";
+    const meta = document.createElement("div");
+    meta.className = "xlc-import-meta";
+    wrap.appendChild(meta);
+    const paintMeta = (count, varCount) => {
+      meta.textContent = "";
+      const countBadge = document.createElement("span");
+      countBadge.className = "xlc-badge xlc-badge--markdown";
+      countBadge.textContent = t("itemCountBadge", String(count));
+      meta.appendChild(countBadge);
+      if (varCount > 0) {
+        const varBadge = document.createElement("span");
+        varBadge.className = "xlc-badge xlc-badge--var";
+        varBadge.textContent = t("packVarsBadge", String(varCount));
+        meta.appendChild(varBadge);
+      }
+    };
+    const catWrap = document.createElement("div");
+    catWrap.className = "xlc-form-field";
+    const catLabel = document.createElement("span");
+    catLabel.className = "xlc-form-label";
+    catLabel.textContent = t("packCategoryLabel");
+    catWrap.appendChild(catLabel);
+    const catSelect = document.createElement("select");
+    catSelect.className = "b3-select";
+    const allOpt = document.createElement("option");
+    allOpt.value = "";
+    allOpt.textContent = t("allCategories");
+    catSelect.appendChild(allOpt);
+    for (const c of categories) {
+      const opt = document.createElement("option");
+      opt.value = c;
+      opt.textContent = c;
+      catSelect.appendChild(opt);
+    }
+    catWrap.appendChild(catSelect);
+    wrap.appendChild(catWrap);
+    const nameWrap = document.createElement("div");
+    nameWrap.className = "xlc-form-field";
+    const nameLabel = document.createElement("span");
+    nameLabel.className = "xlc-form-label";
+    nameLabel.textContent = t("packNameLabel");
+    nameWrap.appendChild(nameLabel);
+    const nameInput = document.createElement("input");
+    nameInput.className = "b3-text-field";
+    nameInput.value = t("packNameDefault");
+    nameWrap.appendChild(nameInput);
+    wrap.appendChild(nameWrap);
+    const contents = document.createElement("div");
+    contents.className = "xlc-form-hint";
+    contents.style.lineHeight = "1.8";
+    contents.textContent = t("packContentsHint");
+    wrap.appendChild(contents);
+    const trustHint = document.createElement("div");
+    trustHint.className = "xlc-form-hint";
+    trustHint.style.marginTop = "8px";
+    trustHint.textContent = t("packTrustHint");
+    wrap.appendChild(trustHint);
+    const actions = document.createElement("div");
+    actions.className = "xlc-form-actions";
+    const cancelBtn = document.createElement("button");
+    cancelBtn.className = "b3-button";
+    cancelBtn.textContent = t("cancel");
+    cancelBtn.addEventListener("click", () => dialog.destroy());
+    actions.appendChild(cancelBtn);
+    const exportBtn = document.createElement("button");
+    exportBtn.className = "b3-button xlc-btn-primary";
+    exportBtn.textContent = t("packExportBtn");
+    exportBtn.addEventListener("click", () => {
+      const packName = nameInput.value.trim() || t("packNameDefault");
+      const category = catSelect.value;
+      const items = category ? all.filter((i) => i.category === category) : all;
+      if (items.length === 0) {
+        ctx.notify("error", t("invalidItem"));
+        return;
+      }
+      dialog.destroy();
+      void (async () => {
+        const result = await buildMarkdownExport(items, kramdownById, (assetPath) => ctx.fetchAssetBytes(assetPath), { name: packName });
+        const zipBytes = buildZip(result.entries);
+        const blob = new Blob([zipBytes], { type: "application/zip" });
+        const a = document.createElement("a");
+        a.href = URL.createObjectURL(blob);
+        const safeName = packName.replace(/[\\/:*?"<>|\s]+/g, "-").slice(0, 40) || "pack";
+        a.download = `${safeName}-${(/* @__PURE__ */ new Date()).toISOString().slice(0, 10)}.zip`;
+        a.click();
+        URL.revokeObjectURL(a.href);
+        ctx.notify("info", t("exportMdDone", String(result.itemCount), String(result.assetCount), String(result.skippedAssets.length)));
+      })();
+    });
+    actions.appendChild(exportBtn);
+    wrap.appendChild(actions);
+    body.appendChild(wrap);
+    const repaint = () => {
+      var _a;
+      const category = catSelect.value;
+      const items = category ? all.filter((i) => i.category === category) : all;
+      const vars = /* @__PURE__ */ new Set();
+      for (const item of items) {
+        if (item.itemType === "code") continue;
+        for (const f of listAskFields((_a = kramdownById.get(item.id)) != null ? _a : "")) vars.add(f.name);
+      }
+      paintMeta(items.length, vars.size);
+    };
+    catSelect.addEventListener("change", repaint);
+    repaint();
   }
   function buildInsertSection(ctx, root) {
     const t = ctx.t;
@@ -2450,28 +2663,8 @@
         ctx.notify("info", t("exportDone", String(count)));
       });
     });
-    mkBtn(t("exportMdBtn"), () => {
-      void (async () => {
-        const idx = await ctx.library.ensureIndex();
-        const items = [];
-        const kramdownById = /* @__PURE__ */ new Map();
-        for (const item of idx.items.values()) {
-          const kd = await ctx.library.getItemKramdown(item);
-          if (kd.ok) {
-            items.push(item);
-            kramdownById.set(item.id, kd.data);
-          }
-        }
-        const result = await buildMarkdownExport(items, kramdownById, (assetPath) => ctx.fetchAssetBytes(assetPath));
-        const zipBytes = buildZip(result.entries);
-        const blob = new Blob([zipBytes], { type: "application/zip" });
-        const a = document.createElement("a");
-        a.href = URL.createObjectURL(blob);
-        a.download = `xiaolv-common-md-${(/* @__PURE__ */ new Date()).toISOString().slice(0, 10)}.zip`;
-        a.click();
-        URL.revokeObjectURL(a.href);
-        ctx.notify("info", t("exportMdDone", String(result.itemCount), String(result.assetCount), String(result.skippedAssets.length)));
-      })();
+    mkBtn(t("packBtn"), () => {
+      void openPackExportDialog(ctx);
     });
     const importBtn = mkBtn(t("importBtn"), () => {
       const fileInput = document.createElement("input");
@@ -2494,7 +2687,7 @@
               ctx.notify("error", t("importFailed", "no xlc-item metadata found"));
               return;
             }
-            openImportPolicyDialog(ctx, { items: parsed.items }, parsed.issues, { kind: "markdown-pack", items: parsed.items });
+            openImportPolicyDialog(ctx, { items: parsed.items, pack: parsed.pack }, parsed.issues, { kind: "markdown-pack", items: parsed.items });
             return;
           }
           const validation = validateImport(text);
@@ -2591,6 +2784,12 @@
       metaInvalid.className = "xlc-badge xlc-badge--warn";
       metaInvalid.textContent = t("invalidSkipBadge", String(issues.length));
       meta.appendChild(metaInvalid);
+    }
+    if (parsed.pack) {
+      const metaPack = document.createElement("span");
+      metaPack.className = "xlc-badge xlc-badge--var";
+      metaPack.textContent = `${parsed.pack.name} \xB7 ${t("packVarsBadge", String(parsed.pack.vars.length))}`;
+      meta.appendChild(metaPack);
     }
     wrap.appendChild(meta);
     const preview = document.createElement("p");
@@ -2820,37 +3019,7 @@
       typeWrap.appendChild(typeSelect);
       metaRow.appendChild(typeWrap);
       const contentEl = field(t("contentLabel"), defaultText, true, "xlc-form-content");
-      const varbar = document.createElement("div");
-      varbar.className = "xlc-varbar";
-      const varbarCap = document.createElement("span");
-      varbarCap.className = "xlc-varbar-cap";
-      varbarCap.textContent = t("insertVariable");
-      varbar.appendChild(varbarCap);
-      const VAR_SNIPPETS = [
-        "{{xlc:ask:\u5B57\u6BB5}}",
-        "{{xlc:ask:\u5B57\u6BB5|\u9009\u9879A,\u9009\u9879B}}",
-        "{{xlc:cursor}}",
-        "{{xlc:date}}",
-        "{{xlc:doc}}",
-        "{{xlc:clipboard}}"
-      ];
-      for (const snippet of VAR_SNIPPETS) {
-        const btn = document.createElement("button");
-        btn.type = "button";
-        btn.className = "xlc-varbtn";
-        btn.textContent = snippet;
-        btn.addEventListener("click", () => {
-          var _a2, _b;
-          const el = contentEl;
-          const start = (_a2 = el.selectionStart) != null ? _a2 : el.value.length;
-          const end = (_b = el.selectionEnd) != null ? _b : start;
-          el.value = el.value.slice(0, start) + snippet + el.value.slice(end);
-          const caret = start + snippet.length;
-          el.focus();
-          el.setSelectionRange(caret, caret);
-        });
-        varbar.appendChild(btn);
-      }
+      const varbar = buildVariableBar(t, () => contentEl);
       contentEl.parentElement.after(varbar);
       const titleEl = field(t("title"), (_a = overrides == null ? void 0 : overrides.title) != null ? _a : "", false, "xlc-form-title");
       form.appendChild(metaRow);
@@ -3155,6 +3324,19 @@
       useCount: "%s \u6B21",
       quickNew: "\uFF0B \u65B0\u5EFA",
       quickInsertSelected: "\u63D2\u5165\u9009\u4E2D",
+      packBtn: "\u6A21\u677F\u5305",
+      packExportTitle: "\u5BFC\u51FA \xB7 \u6A21\u677F\u5305",
+      packCategoryLabel: "\u5206\u7C7B",
+      allCategories: "\u5168\u90E8\u5206\u7C7B",
+      packNameLabel: "\u5305\u540D\u79F0",
+      packNameDefault: "\u5C0F\u9A74\u5E38\u7528\u6A21\u677F\u5305",
+      packExportBtn: "\u5BFC\u51FA .md \u5305",
+      packVarsBadge: "%s \u6761\u542B\u53D8\u91CF",
+      packContentsHint: "\xB7 \u6761\u76EE Markdown + \u5143\u6570\u636E\uFF08\u6807\u9898/\u6807\u7B7E/\u5206\u7C7B\uFF09\n\xB7 \u53D8\u91CF\u6E05\u5355\uFF08{{xlc:ask:\u2026}} \u5B57\u6BB5\u4E0E\u9009\u9879\uFF09\n\xB7 \u8D44\u6E90\u5F15\u7528\uFF08assets \u539F\u6837\u6253\u5305\uFF09",
+      packTrustHint: "\u4ED6\u4EBA\u5BFC\u5165\u540E\u5373\u4E3A\u771F\u5B9E\u601D\u6E90\u5757\uFF0C\u53EF\u7EE7\u7EED\u7F16\u8F91\u4E0E\u518D\u5206\u4EAB\u2014\u2014\u5206\u4EAB\u7684\u662F\u300C\u6D3B\u7684\u5757\u300D\uFF0C\u4E0D\u662F\u6587\u672C\u5FEB\u7167\u3002",
+      emptyFavorites: "\u8FD8\u6CA1\u6709\u6536\u85CF\u7684\u6761\u76EE",
+      emptyFavoritesSub: "\u70B9\u51FB\u6761\u76EE\u53F3\u4FA7 \u2606 \u4E00\u952E\u6536\u85CF\uFF0C\u6536\u85CF\u4F1A\u7F6E\u9876\u663E\u793A",
+      emptyRecent: "\u6682\u65E0\u6700\u8FD1\u4F7F\u7528\u7684\u6761\u76EE",
       "sort.manual": "\u624B\u52A8/\u7F6E\u9876",
       "sort.recent": "\u6700\u8FD1\u4F7F\u7528",
       "sort.title": "\u6807\u9898",
@@ -3312,7 +3494,19 @@
         library: {
           listNotebooks: async () => ({ ok: true, data: [{ id: "20240101", name: "\u7B14\u8BB0" }] }),
           searchDocs: async (k) => k ? [{ id: "20240101120001-hijklmn", hPath: "/\u5E38\u7528\u5185\u5BB9\u5E93", box: "nb", name: "\u5E38\u7528\u5185\u5BB9\u5E93" }] : [],
-          reindex: async () => ({ entries: [], items: /* @__PURE__ */ new Map(), truncated: false, docsScanned: 1, errors: [], builtAt: 1 })
+          reindex: async () => ({ entries: [], items: /* @__PURE__ */ new Map(), truncated: false, docsScanned: 1, errors: [], builtAt: 1 }),
+          ensureIndex: async () => ({
+            entries: ENTRIES.map((e) => ({ ...e })),
+            items: new Map(ENTRIES.map((e) => [e.id, e])),
+            truncated: false,
+            docsScanned: 1,
+            errors: [],
+            builtAt: 1
+          }),
+          getItemKramdown: async (item) => {
+            var _a;
+            return { ok: true, data: (_a = PREVIEWS[item.id]) != null ? _a : "\u5185\u5BB9\u793A\u4F8B {{xlc:ask:\u793A\u4F8B\u5B57\u6BB5}}" };
+          }
         },
         ai: { updateSettings: () => {
         }, getSettings: () => ({ enabled: true, shareContent: true }) },

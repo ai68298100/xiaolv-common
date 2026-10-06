@@ -3,6 +3,7 @@
 import {Dialog, confirm} from "siyuan";
 import {ItemType} from "../model/item";
 import {NewItemInput} from "../service/library";
+import {buildVariableBar} from "./variable-form";
 
 /** 块引用目标校验（官方 data-id 属性值） */
 export function isBlockRefTarget(blockId: string): boolean {
@@ -208,36 +209,7 @@ export class CaptureDialog {
 
         const contentEl = field(t("contentLabel"), defaultText, true, "xlc-form-content");
         // 变量快捷插入条（F1 捕获侧，原型屏 3）：点选在内容光标处插入变量语法
-        const varbar = document.createElement("div");
-        varbar.className = "xlc-varbar";
-        const varbarCap = document.createElement("span");
-        varbarCap.className = "xlc-varbar-cap";
-        varbarCap.textContent = t("insertVariable");
-        varbar.appendChild(varbarCap);
-        const VAR_SNIPPETS = [
-            "{{xlc:ask:字段}}",
-            "{{xlc:ask:字段|选项A,选项B}}",
-            "{{xlc:cursor}}",
-            "{{xlc:date}}",
-            "{{xlc:doc}}",
-            "{{xlc:clipboard}}",
-        ];
-        for (const snippet of VAR_SNIPPETS) {
-            const btn = document.createElement("button");
-            btn.type = "button";
-            btn.className = "xlc-varbtn";
-            btn.textContent = snippet;
-            btn.addEventListener("click", () => {
-                const el = contentEl as HTMLTextAreaElement;
-                const start = el.selectionStart ?? el.value.length;
-                const end = el.selectionEnd ?? start;
-                el.value = el.value.slice(0, start) + snippet + el.value.slice(end);
-                const caret = start + snippet.length;
-                el.focus();
-                el.setSelectionRange(caret, caret);
-            });
-            varbar.appendChild(btn);
-        }
+        const varbar = buildVariableBar(t, () => contentEl as HTMLTextAreaElement);
         (contentEl.parentElement as HTMLElement).after(varbar);
         const titleEl = field(t("title"), overrides?.title ?? "", false, "xlc-form-title");
         // 原型顺序：标题下方挂 别名|类型 双栏

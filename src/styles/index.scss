@@ -603,6 +603,13 @@
     word-break: break-word;
     color: var(--b3-theme-on-background);
     overscroll-behavior: contain;
+
+    // 代码条目预览：等宽字体（仍为纯文本渲染，仅观感）
+    &--code {
+      font-family: var(--mono, ui-monospace, monospace);
+      font-size: 12px;
+      line-height: 1.65;
+    }
   }
 
   .xlc-pane-foot {

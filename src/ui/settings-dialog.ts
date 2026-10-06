@@ -11,6 +11,7 @@ import {LibraryService} from "../service/library";
 import {AiAssistant} from "../service/ai";
 import {ProviderRegistry} from "../service/providers";
 import {CommonItem} from "../model/item";
+import {listAskFields} from "../model/variables";
 
 type TFn = (key: string, ...args: string[]) => string;
 
@@ -131,6 +132,150 @@ export function openSettingsDialog(ctx: SettingsUiContext): void {
     buildProviderSection(ctx, root);
     buildDataSection(ctx, root);
     body.appendChild(root);
+}
+
+/** 模板包导出（F6，原型屏 8 右帧）：包名 / 分类筛选 / 内容清单 → items.md+assets ZIP。
+ *  分享的是「活的块」：导入方得到真实思源块，可继续编辑与再分享。 */
+async function openPackExportDialog(ctx: SettingsUiContext): Promise<void> {
+    const t = ctx.t;
+    const idx = await ctx.library.ensureIndex();
+    const kramdownById = new Map<string, string>();
+    const all: CommonItem[] = [];
+    for (const item of idx.items.values()) {
+        const kd = await ctx.library.getItemKramdown(item);
+        if (kd.ok) {
+            all.push(item);
+            kramdownById.set(item.id, kd.data);
+        }
+    }
+    const categories = Array.from(new Set(all.map((i) => i.category).filter(Boolean)))
+        .sort((a, b) => a.localeCompare(b, "zh-Hans-CN"));
+
+    const dialog = new Dialog({
+        title: t("packExportTitle"),
+        content: "",
+        width: "min(460px, 92vw)",
+        height: "auto",
+    });
+    const body = dialog.element.querySelector(".b3-dialog__content");
+    if (!body) return;
+    body.innerHTML = "";
+    const wrap = document.createElement("div");
+    wrap.className = "xlc-form";
+
+    // 元数据徽标行（随筛选联动）
+    const meta = document.createElement("div");
+    meta.className = "xlc-import-meta";
+    wrap.appendChild(meta);
+    const paintMeta = (count: number, varCount: number): void => {
+        meta.textContent = "";
+        const countBadge = document.createElement("span");
+        countBadge.className = "xlc-badge xlc-badge--markdown";
+        countBadge.textContent = t("itemCountBadge", String(count));
+        meta.appendChild(countBadge);
+        if (varCount > 0) {
+            const varBadge = document.createElement("span");
+            varBadge.className = "xlc-badge xlc-badge--var";
+            varBadge.textContent = t("packVarsBadge", String(varCount));
+            meta.appendChild(varBadge);
+        }
+    };
+
+    // 分类筛选（全部 / 各分类）
+    const catWrap = document.createElement("div");
+    catWrap.className = "xlc-form-field";
+    const catLabel = document.createElement("span");
+    catLabel.className = "xlc-form-label";
+    catLabel.textContent = t("packCategoryLabel");
+    catWrap.appendChild(catLabel);
+    const catSelect = document.createElement("select");
+    catSelect.className = "b3-select";
+    const allOpt = document.createElement("option");
+    allOpt.value = "";
+    allOpt.textContent = t("allCategories");
+    catSelect.appendChild(allOpt);
+    for (const c of categories) {
+        const opt = document.createElement("option");
+        opt.value = c;
+        opt.textContent = c;
+        catSelect.appendChild(opt);
+    }
+    catWrap.appendChild(catSelect);
+    wrap.appendChild(catWrap);
+
+    // 包名称
+    const nameWrap = document.createElement("div");
+    nameWrap.className = "xlc-form-field";
+    const nameLabel = document.createElement("span");
+    nameLabel.className = "xlc-form-label";
+    nameLabel.textContent = t("packNameLabel");
+    nameWrap.appendChild(nameLabel);
+    const nameInput = document.createElement("input");
+    nameInput.className = "b3-text-field";
+    nameInput.value = t("packNameDefault");
+    nameWrap.appendChild(nameInput);
+    wrap.appendChild(nameWrap);
+
+    // 包含内容说明
+    const contents = document.createElement("div");
+    contents.className = "xlc-form-hint";
+    contents.style.lineHeight = "1.8";
+    contents.textContent = t("packContentsHint");
+    wrap.appendChild(contents);
+    const trustHint = document.createElement("div");
+    trustHint.className = "xlc-form-hint";
+    trustHint.style.marginTop = "8px";
+    trustHint.textContent = t("packTrustHint");
+    wrap.appendChild(trustHint);
+
+    const actions = document.createElement("div");
+    actions.className = "xlc-form-actions";
+    const cancelBtn = document.createElement("button");
+    cancelBtn.className = "b3-button";
+    cancelBtn.textContent = t("cancel");
+    cancelBtn.addEventListener("click", () => dialog.destroy());
+    actions.appendChild(cancelBtn);
+    const exportBtn = document.createElement("button");
+    exportBtn.className = "b3-button xlc-btn-primary";
+    exportBtn.textContent = t("packExportBtn");
+    exportBtn.addEventListener("click", () => {
+        const packName = nameInput.value.trim() || t("packNameDefault");
+        const category = catSelect.value;
+        const items = category ? all.filter((i) => i.category === category) : all;
+        if (items.length === 0) {
+            ctx.notify("error", t("invalidItem"));
+            return;
+        }
+        dialog.destroy();
+        void (async () => {
+            const result = await buildMarkdownExport(items, kramdownById, (assetPath) => ctx.fetchAssetBytes(assetPath), {name: packName});
+            const zipBytes = buildZip(result.entries);
+            const blob = new Blob([zipBytes as unknown as BlobPart], {type: "application/zip"});
+            const a = document.createElement("a");
+            a.href = URL.createObjectURL(blob);
+            const safeName = packName.replace(/[\\/:*?"<>|\s]+/g, "-").slice(0, 40) || "pack";
+            a.download = `${safeName}-${new Date().toISOString().slice(0, 10)}.zip`;
+            a.click();
+            URL.revokeObjectURL(a.href);
+            ctx.notify("info", t("exportMdDone", String(result.itemCount), String(result.assetCount), String(result.skippedAssets.length)));
+        })();
+    });
+    actions.appendChild(exportBtn);
+    wrap.appendChild(actions);
+    body.appendChild(wrap);
+
+    const repaint = (): void => {
+        const category = catSelect.value;
+        const items = category ? all.filter((i) => i.category === category) : all;
+        const vars = new Set<string>();
+        for (const item of items) {
+            if (item.itemType === "code") continue;
+            for (const f of listAskFields(kramdownById.get(item.id) ?? "")) vars.add(f.name);
+        }
+        paintMeta(items.length, vars.size);
+    };
+    catSelect.addEventListener("change", repaint);
+    repaint();
 }
 
 /** 变量与插入（F1/F3，原型屏 5）：插入前询问 / 使用计数开关 / 清空统计 */
@@ -631,28 +776,8 @@ function buildDataSection(ctx: SettingsUiContext, root: HTMLElement): void {
             ctx.notify("info", t("exportDone", String(count)));
         });
     });
-    mkBtn(t("exportMdBtn"), () => {
-        void (async () => {
-            const idx = await ctx.library.ensureIndex();
-            const items: CommonItem[] = [];
-            const kramdownById = new Map<string, string>();
-            for (const item of idx.items.values()) {
-                const kd = await ctx.library.getItemKramdown(item);
-                if (kd.ok) {
-                    items.push(item);
-                    kramdownById.set(item.id, kd.data);
-                }
-            }
-            const result = await buildMarkdownExport(items, kramdownById, (assetPath) => ctx.fetchAssetBytes(assetPath));
-            const zipBytes = buildZip(result.entries);
-            const blob = new Blob([zipBytes as unknown as BlobPart], {type: "application/zip"});
-            const a = document.createElement("a");
-            a.href = URL.createObjectURL(blob);
-            a.download = `xiaolv-common-md-${new Date().toISOString().slice(0, 10)}.zip`;
-            a.click();
-            URL.revokeObjectURL(a.href);
-            ctx.notify("info", t("exportMdDone", String(result.itemCount), String(result.assetCount), String(result.skippedAssets.length)));
-        })();
+    mkBtn(t("packBtn"), () => {
+        void openPackExportDialog(ctx);
     });
     const importBtn = mkBtn(t("importBtn"), () => {
         const fileInput = document.createElement("input");
@@ -674,7 +799,7 @@ function buildDataSection(ctx: SettingsUiContext, root: HTMLElement): void {
                         ctx.notify("error", t("importFailed", "no xlc-item metadata found"));
                         return;
                     }
-                    openImportPolicyDialog(ctx, {items: parsed.items}, parsed.issues, {kind: "markdown-pack", items: parsed.items});
+                    openImportPolicyDialog(ctx, {items: parsed.items, pack: parsed.pack}, parsed.issues, {kind: "markdown-pack", items: parsed.items});
                     return;
                 }
                 const validation = validateImport(text);
@@ -753,7 +878,7 @@ async function runTagAudit(ctx: SettingsUiContext): Promise<void> {
 /** 导入策略确认（导入前校验已过；策略三选 → importBundleText → 汇总回执）。导出供渲染 harness 取证。 */
 export function openImportPolicyDialog(
     ctx: SettingsUiContext,
-    parsed: {items: Array<{id: string; title: string}>},
+    parsed: {items: Array<{id: string; title: string}>; pack?: {name: string; vars: string[]}},
     issues: ImportIssue[],
     source: {kind: "json"; text: string} | {kind: "markdown-pack"; items: ExportedItem[]},
 ): void {
@@ -769,7 +894,7 @@ export function openImportPolicyDialog(
     body.innerHTML = "";
     const wrap = document.createElement("div");
     wrap.className = "xlc-form";
-    // 元数据徽标行（原型屏 8：条目数 / 无效将跳过）
+    // 元数据徽标行（原型屏 8：条目数 / 无效将跳过 / 模板包名·变量）
     const meta = document.createElement("div");
     meta.className = "xlc-import-meta";
     const metaCount = document.createElement("span");
@@ -781,6 +906,12 @@ export function openImportPolicyDialog(
         metaInvalid.className = "xlc-badge xlc-badge--warn";
         metaInvalid.textContent = t("invalidSkipBadge", String(issues.length));
         meta.appendChild(metaInvalid);
+    }
+    if (parsed.pack) {
+        const metaPack = document.createElement("span");
+        metaPack.className = "xlc-badge xlc-badge--var";
+        metaPack.textContent = `${parsed.pack.name} · ${t("packVarsBadge", String(parsed.pack.vars.length))}`;
+        meta.appendChild(metaPack);
     }
     wrap.appendChild(meta);
     const preview = document.createElement("p");

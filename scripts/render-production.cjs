@@ -191,6 +191,46 @@ fs.writeFileSync(path.join(OUT, "harness.html"), html);
     }
     console.log("  smoke ✓ settings: 5 assertions");
     await page.screenshot({path: path.join(OUT, "production-settings-light.png")});
+    // 模板包导出对话框（R71/F6，原型屏 8 右帧：分类筛选 / 包名 / 内容清单）
+    await page.evaluate(() => {
+        const stage = document.getElementById("stage");
+        stage.className = "b3-scope light";
+        document.querySelectorAll(".b3-dialog").forEach((el) => el.remove());
+        stage.innerHTML = "";
+        window.XlcHarness.openSettings();
+        const dialogRoot = document.querySelector(".b3-dialog");
+        if (dialogRoot) stage.appendChild(dialogRoot);
+        const container = document.querySelector(".b3-dialog__container");
+        if (container) {
+            container.style.margin = "0 auto";
+            container.style.maxWidth = "620px";
+        }
+        const packBtn = Array.from(document.querySelectorAll(".b3-button")).find((b) => b.textContent === "模板包");
+        if (packBtn) packBtn.click();
+    });
+    await page.waitForTimeout(600);
+    // harness 伪影修正：新开的模板包 Dialog 自挂载 body（无 b3 变量作用域会透明），移入 stage
+    await page.evaluate(() => {
+        const stage = document.getElementById("stage");
+        document.body.querySelectorAll(":scope > .b3-dialog").forEach((el) => stage.appendChild(el));
+    });
+    const packAssertions = await page.evaluate(() => {
+        const dialogs = Array.from(document.querySelectorAll(".b3-dialog__container"));
+        const packDialog = dialogs.find((c) => (c.querySelector(".b3-dialog__header")?.textContent ?? "").includes("模板包"));
+        return {
+            open: !!packDialog,
+            nameDefault: (packDialog?.querySelector(".b3-text-field")?.value ?? "") === "小驴常用模板包",
+            categoryOptions: packDialog ? packDialog.querySelectorAll("select option").length >= 3 : false,
+            badges: (packDialog?.textContent ?? "").includes("条目") && (packDialog?.textContent ?? "").includes("含变量"),
+            contentsHint: (packDialog?.textContent ?? "").includes("assets"),
+            exportBtn: Array.from(packDialog?.querySelectorAll("button") ?? []).some((b) => (b.textContent ?? "").includes("导出")),
+        };
+    });
+    if (Object.values(packAssertions).some((v) => !v)) {
+        throw new Error("pack-export smoke failed: " + JSON.stringify(packAssertions));
+    }
+    console.log("  smoke ✓ pack-export: 6 assertions");
+    await page.screenshot({path: path.join(OUT, "production-pack-export-light.png")});
     // 首跑引导（库选择器，全新安装第一屏）
     await page.evaluate(() => {
         const stage = document.getElementById("stage");

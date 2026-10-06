@@ -7,6 +7,7 @@ import {LibraryService} from "./library";
 import {importBundle as importJsonBundleCore} from "./importer";
 const ITEM_COMMENT_START = "<!-- xlc-item";
 const ITEM_COMMENT_END = "-->";
+const PACK_COMMENT_START = "<!-- xlc-pack";
 const TITLE_RE = /^##\s+(.+)$/;
 
 function parseMetadata(lines: string[]): {fields: Map<string, string>; titleHint: string} {
@@ -25,6 +26,21 @@ function parseMetadata(lines: string[]): {fields: Map<string, string>; titleHint
 export interface MarkdownPackParseResult {
     items: ExportedItem[];
     issues: Array<{index: number; reason: string}>;
+    /** 包清单（F6）：xlc-pack 注释中的包名与变量清单；旧包/外来 MD 无此信息 */
+    pack?: {name: string; vars: string[]};
+}
+
+/** 解析首部 xlc-pack 清单（存在且位于首个条目之前才有效；字段缺失容忍）。 */
+function parsePackManifest(md: string, firstItemAt: number): {name: string; vars: string[]} | undefined {
+    const start = md.indexOf(PACK_COMMENT_START);
+    if (start === -1 || start > firstItemAt) return undefined;
+    const end = md.indexOf(ITEM_COMMENT_END, start);
+    if (end === -1) return undefined;
+    const fields = parseMetadata(md.slice(start + PACK_COMMENT_START.length, end).split("\n")).fields;
+    const name = (fields.get("name") ?? "").slice(0, LIMITS.title);
+    const vars = (fields.get("vars") ?? "").split(",").map((s) => s.trim()).filter(Boolean).slice(0, LIMITS.maxAskFields);
+    if (!name) return undefined;
+    return {name, vars};
 }
 
 /** 解析 items.md → 可导入条目。无 xlc-item 注释的内容一律忽略（不吞外来文本）。 */
@@ -32,6 +48,8 @@ export function parseMarkdownPack(md: string): MarkdownPackParseResult {
     const items: ExportedItem[] = [];
     const issues: Array<{index: number; reason: string}> = [];
     if (!md || !md.includes(ITEM_COMMENT_START)) return {items, issues};
+    const firstItemAt = md.indexOf(ITEM_COMMENT_START);
+    const pack = parsePackManifest(md, firstItemAt);
 
     // 以元数据注释为界切块；每块起点回溯到紧邻注释前的 `## ` 标题行（标题在注释之前）
     const commentStarts: number[] = [];
@@ -107,7 +125,7 @@ export function parseMarkdownPack(md: string): MarkdownPackParseResult {
         });
     });
     if (hasUnclosed) issues.push({index: commentStarts.length, reason: "metadata-comment-unclosed"});
-    return {items, issues};
+    return {items, issues, pack};
 }
 
 /** Markdown 包逐条应用：复用 importer 的单一真源（含 R21 overwrite 更新语义与 conflict 防御），完成后重建索引。 */
