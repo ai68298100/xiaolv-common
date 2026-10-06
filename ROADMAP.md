@@ -1,7 +1,7 @@
 # 小驴常用开发路线
 
-> 定位：基于思源文档和块的常用内容快速调用器（参考 Quicker「常用语」，深度融合思源）。条目锚定真实思源块，来源可回链、失效可见；不复制正文进私有库。
-> 精准定位与功能-效果总表：[docs/positioning.md](docs/positioning.md)。UI 质感基准：[docs/design/prototype.html](docs/design/prototype.html)（生产渲染证据 docs/design/production-*.png）。
+> 定位：**思源笔记的内容资产层**——高频内容是有元数据、有来源、可检索、可变通、可共享的真实块资产（v3，2026-10-07 调研后修订）。三大一级场景：客服/邮件模板、AI 提示词库、研发/写作常用件。
+> 精准定位与调研证据：[docs/positioning.md](docs/positioning.md)。UI 基准：[docs/design/prototype.html](docs/design/prototype.html)（v3）+ [docs/design/design-spec.md](docs/design/design-spec.md)。生产证据：docs/design/production-*.png。
 > 状态：v0.1.0 开发中。当期账本：[docs/dev-plan-2026-10-06.md](docs/dev-plan-2026-10-06.md)。
 
 ## R2：AI 融入与原型质感（2026-10-06，用户指令立项）
@@ -81,8 +81,28 @@
 - [x] tree 模式 BFS 多层展开（root+3 层子文档，200 文档上限，超出如实报错）
 - [ ] 真实宿主下拼音与树模式行为核对（随 B-001）
 
+## R66+ 新功能规划（2026-10-07，用户指令：同类调研后立项）
+
+> 决策依据与对标见 positioning.md §五/§六；交互基准见 prototype.html v3 与 design-spec.md。
+
+### P0 · v0.2 变量与智能排序（补齐同类合格线）
+- [ ] F1 插入时变量填充：`{{xlc:ask:字段}}` / `{{xlc:ask:字段|A,B}}` 下拉 / 日期字段 → 插入前轻量填充卡片（Enter 插入 / Esc 取消 / Tab 切字段；原型屏 4）
+- [ ] F2 变量系统 v2：`{{xlc:cursor}}` / `{{xlc:doc}}` / `{{xlc:clipboard}}`（不可用诚实降级）
+- [ ] F3 使用计数 + 「常用」智能排序档（侧车存储、可重建、排序可关）
+
+### P1 · v0.3 规模化组织（库 >200 条）
+- [ ] F4 分类分组导航（sticky 组头 + 分类筛选 + 空分类态；原型屏 1 分组形态）
+- [ ] F5 片段嵌套 `{{xlc:snippet:标题}}`（防环、深度 ≤3）
+- [ ] F6 模板包分享（MD 包清单元数据 + 一键导入为包；对接 parseMarkdownPack）
+
+### P2 · v0.4+ AI 与生态放大
+- [ ] F7 提示词场景包 + 自定义 AI 变换指令（不只 5 个预设）
+- [ ] F8 全局快速捕获（桌面全局快捷键 → 剪贴板 → 库）
+- [ ] F9 provider 生态扩展（第三方内容源，协议已备）
+
 ## 暂缓与明确不做
 
 - 密码管理、剪贴板历史管理、云同步、任意应用自动发送、任意 JS/SQL 执行器
+- 全局热字符串自动替换（Espanso/Beeftext 核心形态；宿主输入拦截风险高，与定位边界冲突——我们的触发形态是「呼出面板 + 键盘直达」）
 - 雷切第二切换器、片段实验室 CSS/JS 管理
 - 全文索引大库优化（等真实库规模反馈）

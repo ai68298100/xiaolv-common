@@ -2,18 +2,23 @@
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8">
-<title>小驴常用 · 界面原型 v2（2026-10-06）</title>
+<title>小驴常用 · 界面原型 v3（2026-10-07）</title>
 <style>
-/* ============ 原型设计基准 ============
-   原则：与思源 b3 视觉融合为基线（变量语义一致），在此之上做克制的精致化：
-   10px 圆角、双层阴影、类型彩色徽标（b3 派生淡彩）、AI 紫罗兰高光、8px 间距网格。
-   本文件是生产 UI 的质感基准（src/styles/index.scss 须达到同等效果）。
-   v2：吸收已实现的新功能——序号直达（Alt+1~9）、排序 chip、提供方分区、
-   行内来源失效徽标、菜单「创建副本/插入到指定文档/存为新条目」、footer 计数与真源声明、
-   设置页（分区卡片 + switch + 状态徽标）。 */
+/* ============ 原型设计基准 v3 ============
+   定位：思源笔记的内容资产层（docs/positioning.md v3）。
+   原则：与思源 b3 视觉融合为基线（变量语义一致，不硬编码主题色），在此之上做克制的精致化：
+   · 4px 间距栅格；字号阶梯 11/11.5/12/12.5/13/13.5/15/16；圆角梯度 4/6/8/10/12/16
+   · 阴影三级（低透明多层叠加，禁纯黑硬阴影）；单一缓动 cubic-bezier(.33,1,.68,1)，120-220ms
+   · 类型彩色徽标（b3 派生淡彩）、AI 主色高光、变量系统高亮（{{}} 紫罗兰）
+   · 主色只给核心动作；中性色承担大部分面积；1px 半透明描边分层，不靠实色边框
+   v3 新增：屏 0 设计规范板；屏 4 变量填充卡片（F1/F2）；使用计数（F3）；设置含变量区；
+   屏 8 导入策略/模板包。完整规范：docs/design/design-spec.md。
+   本文件是生产 UI 的质感基准（src/styles/index.scss 须达到同等效果）。 */
 :root {
   --font: "PingFang SC", "Microsoft YaHei", -apple-system, "Segoe UI", sans-serif;
-  --radius: 10px;
+  --mono: "SF Mono", "Cascadia Code", Consolas, "PingFang SC", monospace;
+  --radius-xs: 4px; --radius-sm: 6px; --radius-md: 8px; --radius: 10px; --radius-lg: 12px; --radius-xl: 16px;
+  --ease: cubic-bezier(.33, 1, .68, 1);
 }
 /* 亮色主题（对齐思源 daylight 语义） */
 .t-light {
@@ -28,8 +33,11 @@
   --b3-border-color: #e5e7eb;
   --b3-list-hover: #eef1f6;
   --b3-menu-background: #ffffff;
+  --shadow-1: 0 1px 2px rgba(31,35,41,.05), 0 1px 3px rgba(31,35,41,.04);
+  --shadow-2: 0 1px 2px rgba(31,35,41,.05), 0 4px 14px rgba(31,35,41,.07);
   --shadow: 0 8px 32px rgba(31,35,41,.14), 0 2px 8px rgba(31,35,41,.08);
   --badge-text-bg: rgba(53,117,240,.08);
+  --hairline: rgba(31,35,41,.06);
 }
 /* 暗色主题（对齐思源 mid-night 语义） */
 .t-dark {
@@ -44,20 +52,25 @@
   --b3-border-color: #36363a;
   --b3-list-hover: #2c2c31;
   --b3-menu-background: #26262a;
+  --shadow-1: 0 1px 2px rgba(0,0,0,.3), 0 1px 3px rgba(0,0,0,.25);
+  --shadow-2: 0 1px 2px rgba(0,0,0,.3), 0 4px 14px rgba(0,0,0,.35);
   --shadow: 0 8px 32px rgba(0,0,0,.5), 0 2px 8px rgba(0,0,0,.35);
   --badge-text-bg: rgba(90,138,242,.14);
+  --hairline: rgba(255,255,255,.06);
 }
 * { box-sizing: border-box; margin: 0; }
-body { font-family: var(--font); background: #eceef1; padding: 32px; display: flex; flex-wrap: wrap; gap: 40px; }
+body { font-family: var(--font); background: #eceef1; padding: 32px; display: flex; flex-wrap: wrap; gap: 40px; align-items: flex-start; }
 body > section > h2 { font-size: 13px; color: #666; margin: 0 0 10px 4px; font-weight: 600; }
-.pair { display: flex; gap: 24px; }
+.pair { display: flex; gap: 20px; flex-wrap: wrap; }
 .frame {
-  width: 760px; height: 520px; border-radius: 14px; overflow: hidden;
+  width: 750px; height: 520px; border-radius: 14px; overflow: hidden;
   box-shadow: 0 2px 12px rgba(0,0,0,.12); position: relative;
   display: flex; flex-direction: column; font-size: 13px; color: var(--b3-theme-on-background);
 }
-.frame.dark { }
-.badge { font-size: 11px; padding: 1px 8px; border-radius: 999px; line-height: 18px; white-space: nowrap; }
+.frame.t-light, .frame.t-dark { background: #eceef1; }
+
+/* ---------- 基础组件（设计 token 落地） ---------- */
+.badge { font-size: 11px; padding: 0 8px; border-radius: 999px; line-height: 18px; white-space: nowrap; font-weight: 600; letter-spacing: .3px; }
 .badge.text  { color:#4a8a4a; background:rgba(94,168,94,.13); }
 .badge.md    { color:#3575f0; background:var(--badge-text-bg); }
 .badge.url   { color:#b0680a; background:rgba(232,152,45,.13); }
@@ -65,28 +78,62 @@ body > section > h2 { font-size: 13px; color: #666; margin: 0 0 10px 4px; font-w
 .badge.image { color:#3a9ab5; background:rgba(80,175,200,.13); }
 .badge.asset { color:#8a8a93; background:rgba(140,140,150,.14); }
 .badge.ref   { color:#d05a8a; background:rgba(220,110,155,.13); }
-.badge.warn  { color:#c2503a; background:rgba(226,106,80,.13); }
+.badge.warn  { color:#c2503a; background:rgba(226,106,80,.12); }
 .badge.ai    { color:var(--b3-theme-primary); background:var(--badge-text-bg); }
+.t-dark .badge.md, .t-dark .badge.ai { color:#8fb0f5; }
+.badge.var   { color:#8a5ad0; background:rgba(150,105,224,.12); font-family: var(--mono); font-weight: 500; letter-spacing: 0; }
+.t-dark .badge.var { color:#b49ae0; }
 .ai-chip { display:inline-flex; align-items:center; gap:4px; color:var(--b3-theme-primary); font-size:11px; }
 button { font-family: var(--font); cursor: pointer; }
 .ordinal {
   display:inline-flex; width:16px; height:16px; align-items:center; justify-content:center;
   border:1px solid var(--b3-border-color); border-radius:4px; font-size:10.5px; font-weight:600;
-  color:var(--b3-theme-on-surface); flex-shrink:0;
+  color:var(--b3-theme-on-surface); flex-shrink:0; font-variant-numeric: tabular-nums;
 }
+.row.on .ordinal { color:var(--b3-theme-primary); border-color:var(--b3-theme-primary-light); background:var(--b3-theme-background); }
 .warnmini {
-  display:inline-flex; align-items:center; font-size:10.5px; font-weight:600; padding:0 6px;
-  border-radius:999px; line-height:16px; color:#c2503a; background:rgba(226,106,80,.12); flex-shrink:0;
+  display:inline-flex; width:18px; height:18px; align-items:center; justify-content:center;
+  border-radius:50%; font-size:11px; color:#c2503a; background:rgba(226,106,80,.12); flex-shrink:0;
 }
+.kbd { font-size:11px; color: var(--b3-theme-on-surface); border:1px solid var(--b3-border-color); border-bottom-width:2px; border-radius:4px; padding:0 6px; line-height:18px; background:var(--b3-theme-surface); white-space:nowrap; }
 .btn {
   border: 1px solid var(--b3-border-color); background: var(--b3-theme-background); color: var(--b3-theme-on-background);
-  border-radius: 8px; padding: 5px 12px; font-size: 12.5px;
+  border-radius: 8px; padding: 5px 12px; font-size: 12.5px; line-height: 18px; min-height: 28px;
+  transition: background-color 120ms var(--ease), border-color 120ms var(--ease), transform 120ms var(--ease);
 }
-.btn.primary { background: var(--b3-theme-primary); border-color: var(--b3-theme-primary); color: var(--b3-theme-on-primary); }
+.btn:hover { background: var(--b3-list-hover); }
+.btn:active { transform: scale(.97); }
+.btn.primary { background: var(--b3-theme-primary); border-color: var(--b3-theme-primary); color: var(--b3-theme-on-primary); box-shadow: var(--shadow-1); }
+.btn.primary:hover { background: var(--b3-theme-primary); filter: brightness(1.06); }
 .btn.ai { border-color: var(--b3-theme-primary-light); color: var(--b3-theme-primary); background: var(--badge-text-bg); }
-.btn.ghost { border: none; background: transparent; color: var(--b3-theme-on-surface); }
+.btn.ghost { border-color: transparent; background: transparent; color: var(--b3-theme-on-surface); }
+.btn.ghost:hover { background: var(--b3-list-hover); color: var(--b3-theme-on-background); }
+.chip {
+  border:1px solid var(--b3-border-color); background:transparent; color:var(--b3-theme-on-surface);
+  border-radius:999px; padding:2px 11px; font-size:12px; line-height:20px; min-height:26px;
+}
+.chip.on { background: var(--b3-theme-primary-lighter); border-color: transparent; color: var(--b3-theme-primary); font-weight: 600; }
+.chip.ai-chip { border-style: dashed; }
 
-/* ---------- 屏1：桌面搜索弹窗（双栏 + 预览） ---------- */
+/* ---------- 屏 0：设计规范板 ---------- */
+.spec-board { width: 1180px; border-radius: 14px; background: #fff; box-shadow: 0 2px 12px rgba(0,0,0,.12); padding: 24px 28px; color: #1f2329; }
+.spec-board h3 { font-size: 15px; margin: 18px 0 10px; padding-top: 14px; border-top: 1px solid #e5e7eb; }
+.spec-board h3:first-child { margin-top: 0; padding-top: 0; border-top: none; }
+.spec-row { display: flex; gap: 12px; flex-wrap: wrap; align-items: flex-start; }
+.swatch { width: 108px; border-radius: 8px; overflow: hidden; border: 1px solid #e5e7eb; font-size: 11px; }
+.swatch .c { height: 44px; }
+.swatch .l { padding: 5px 8px; background: #fff; color: #5f6672; line-height: 1.5; }
+.type-item { display: flex; align-items: baseline; gap: 10px; margin-right: 28px; }
+.type-item .demo { color: #1f2329; }
+.type-item .cap { font-size: 11px; color: #8a8f99; }
+.radius-item .d { background: #eef1f6; border: 1.5px solid #c6d5fa; width: 56px; height: 40px; }
+.shadow-item .d { background: #fff; width: 96px; height: 40px; margin-bottom: 8px; }
+.shadow-item .cap, .radius-item .cap { font-size: 11px; color: #8a8f99; }
+.motion-demo { width: 120px; height: 28px; border-radius: 6px; background: linear-gradient(90deg, #c6d5fa, #3575f0); position: relative; overflow: hidden; }
+.motion-demo::after { content: ""; position: absolute; left: 82px; top: 4px; width: 20px; height: 20px; border-radius: 5px; background: #3575f0; box-shadow: var(--shadow-1); }
+.spec-state { display: flex; gap: 14px; align-items: center; }
+
+/* ---------- 屏 1：桌面搜索弹窗 ---------- */
 .dlg {
   width: 720px; margin: 20px auto 0; height: 480px; background: var(--b3-theme-background);
   border-radius: var(--radius); box-shadow: var(--shadow); display: flex; flex-direction: column; overflow: hidden;
@@ -94,65 +141,73 @@ button { font-family: var(--font); cursor: pointer; }
 }
 .dlg-head { display:flex; align-items:center; gap:8px; padding: 12px 14px 8px; }
 .dlg-title { font-weight: 600; font-size: 14px; margin-right: auto; }
-.kbd { font-size:11px; color: var(--b3-theme-on-surface); border:1px solid var(--b3-border-color); border-bottom-width:2px; border-radius:4px; padding:0 5px; }
 .search {
   margin: 0 14px; display:flex; align-items:center; gap:8px;
-  background: var(--b3-theme-surface); border: 1.5px solid transparent; border-radius: 8px; padding: 0 10px; height: 36px;
+  background: var(--b3-theme-surface); border: 1.5px solid transparent; border-radius: 8px; padding: 0 10px; height: 38px;
 }
 .search:focus-within { border-color: var(--b3-theme-primary); background: var(--b3-theme-background); }
 .search .q { color: var(--b3-theme-primary); font-weight:600; }
 .search input { flex:1; border:none; outline:none; background:transparent; color:var(--b3-theme-on-background); font-size:13.5px; font-family:var(--font); }
 .filters { display:flex; align-items:center; gap:6px; padding: 8px 14px; flex-wrap: wrap; }
-.chip {
-  border:1px solid var(--b3-border-color); background:transparent; color:var(--b3-theme-on-surface);
-  border-radius:999px; padding:2px 11px; font-size:12px; line-height:20px;
-}
-.chip.on { background: var(--b3-theme-primary-lighter); border-color: transparent; color: var(--b3-theme-primary); font-weight: 600; }
-.chip.ai-chip { border-style: dashed; }
 .dlg-body { flex:1; display:flex; min-height:0; border-top:1px solid var(--b3-border-color); }
 .list { width: 330px; overflow:auto; border-right:1px solid var(--b3-border-color); }
+.group-head {
+  padding: 5px 12px; font-size: 11px; font-weight: 600; letter-spacing: .4px; color: var(--b3-theme-on-surface);
+  background: var(--b3-theme-surface); border-bottom: 1px solid var(--b3-border-color);
+  position: sticky; top: 0; display: flex; align-items: center; gap: 6px;
+}
 .row {
-  display:flex; gap:9px; padding: 9px 12px; align-items:flex-start; border-bottom:1px solid var(--b3-border-color); cursor:pointer;
+  display:flex; gap:9px; padding: 10px 12px; align-items:flex-start; border-bottom:1px solid var(--b3-border-color); cursor:pointer;
+  transition: background-color 120ms var(--ease);
 }
 .row:hover { background: var(--b3-list-hover); }
 .row.on { background: var(--b3-list-hover); box-shadow: inset 3px 0 0 var(--b3-theme-primary); }
 .row .tt { font-size:13px; font-weight:500; margin-bottom:2px; display:flex; align-items:center; gap:6px; }
 .row .tt .t { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .row .meta { font-size:11.5px; color:var(--b3-theme-on-surface); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-.row .star { margin-left:auto; color:var(--b3-theme-on-surface); font-size:13px; }
+.row .meta .use { font-variant-numeric: tabular-nums; }
+.row .star { margin-left:auto; color:var(--b3-theme-on-surface); font-size:13px; opacity:.5; }
+.row:hover .star, .row .star.fav { opacity: 1; }
 .row .star.fav { color:#e8a020; }
 .pane { flex:1; display:flex; flex-direction:column; min-width:0; }
 .pane-head { padding:10px 14px 6px; display:flex; align-items:center; gap:8px; }
-.pane-title { font-weight:600; font-size:13.5px; }
+.pane-title { font-weight:600; font-size:13.5px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.pane-vars { margin: 2px 14px 4px; padding: 6px 10px; border-radius: 6px; font-size: 11.5px; line-height: 1.7; color: #8a5ad0; background: rgba(150,105,224,.08); display:flex; align-items:center; gap:6px; flex-wrap: wrap; }
+.t-dark .pane-vars { color:#b49ae0; }
+.pane-vars code { font-family: var(--mono); font-size: 10.5px; background: rgba(150,105,224,.12); border-radius: 4px; padding: 1px 5px; }
 .pane-body { flex:1; overflow:auto; padding: 4px 14px; font-size:12.5px; line-height:1.75; color:var(--b3-theme-on-background); white-space:pre-wrap; }
 .pane-foot { padding:8px 14px 12px; display:flex; gap:6px; flex-wrap:wrap; }
 .pane-foot .spacer { flex:1; }
 .srcwarn { margin: 4px 14px 8px; padding:6px 10px; border-radius:6px; background:rgba(226,106,80,.08); color:#c2503a; font-size:12px; }
 .dlg-foot { padding:7px 14px; font-size:11.5px; color:var(--b3-theme-on-surface); border-top:1px solid var(--b3-border-color); display:flex; gap:12px; }
+.dlg-foot .count { font-variant-numeric: tabular-nums; }
+.dlg-foot .claim { margin-left: auto; }
+.dlg-foot .gear { cursor: pointer; }
 
-/* ---------- 屏2：动作菜单（含 AI 变换） ---------- */
-.menu-wrap { position:relative; width:760px; height:520px; }
+/* ---------- 屏 2：动作菜单 ---------- */
+.menu-wrap { position:relative; width:750px; height:520px; }
 .menu {
-  position:absolute; right:150px; top:96px; width: 300px;
+  position:absolute; right:150px; top:88px; width: 320px;
   background: var(--b3-menu-background); border:1px solid var(--b3-border-color); border-radius:12px;
   box-shadow: var(--shadow); overflow:hidden;
 }
 .menu .sec { padding:6px 8px; border-bottom:1px solid var(--b3-border-color); display:flex; gap:4px; flex-wrap:wrap; }
 .menu .sec:last-child { border-bottom:none; }
 .mi {
-  display:flex; width:100%; align-items:center; gap:8px; padding:8px 10px; border:none; background:transparent;
+  display:flex; width:100%; align-items:center; gap:8px; padding:7px 10px; border:none; background:transparent;
   color:var(--b3-theme-on-background); font-size:13px; border-radius:7px; text-align:left;
 }
 .mi:hover { background: var(--b3-list-hover); }
 .mi .ic { width:16px; text-align:center; color:var(--b3-theme-on-surface); }
 .mi.ai { color: var(--b3-theme-primary); }
+.mi.ai .ic { color: var(--b3-theme-primary); }
 .menu .preview {
   max-height:130px; overflow:auto; margin:8px; padding:8px 10px; font-size:12px; line-height:1.7; color:var(--b3-theme-on-background);
   background:var(--b3-theme-surface); border:1px solid var(--b3-border-color); border-radius:8px; white-space:pre-wrap;
 }
-.menu .lbl { font-size:11px; color:var(--b3-theme-on-surface); padding:8px 12px 0; }
+.menu .lbl { font-size:11px; color:var(--b3-theme-on-surface); padding:10px 14px 2px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 
-/* ---------- 屏3：捕获表单（AI 整理 + 草稿） ---------- */
+/* ---------- 屏 3：捕获表单 ---------- */
 .form { width: 460px; margin: 24px auto 0; background:var(--b3-theme-background); border-radius:12px; box-shadow:var(--shadow); border:1px solid var(--b3-border-color); padding:18px 20px 16px; height:472px; overflow:auto; }
 .form h3 { font-size:15px; margin-bottom:12px; }
 .fld { margin-bottom:11px; }
@@ -162,12 +217,61 @@ button { font-family: var(--font); cursor: pointer; }
   width:100%; border:1px solid var(--b3-border-color); border-radius:8px; background:var(--b3-theme-surface);
   color:var(--b3-theme-on-background); padding:7px 10px; font-size:13px; font-family:var(--font); outline:none;
 }
-.inp:focus { border-color: var(--b3-theme-primary); }
-.sugrow { display:flex; gap:6px; align-items:center; background:var(--badge-text-bg); border:1px dashed var(--b3-theme-primary-light); border-radius:8px; padding:6px 10px; font-size:12px; color:var(--b3-theme-primary); margin-bottom:11px; }
+.inp:focus { border-color: var(--b3-theme-primary); background: var(--b3-theme-background); }
+.varbar { display:flex; gap:6px; align-items:center; flex-wrap:wrap; margin-bottom:11px; }
+.varbar .cap { font-size:11px; color:var(--b3-theme-on-surface); margin-right:2px; }
+.varbtn { font-family: var(--mono); font-size: 11px; border: 1px solid rgba(150,105,224,.35); color: #8a5ad0; background: rgba(150,105,224,.07); border-radius: 999px; padding: 1px 9px; line-height: 18px; }
+.t-dark .varbtn { color: #b49ae0; }
+.sugrow { white-space: nowrap; display:flex; gap:6px; align-items:center; background:var(--badge-text-bg); border:1px dashed var(--b3-theme-primary-light); border-radius:8px; padding:6px 10px; font-size:12px; color:var(--b3-theme-primary); margin-bottom:11px; }
 .form-foot { display:flex; justify-content:flex-end; gap:8px; margin-top:14px; }
-.hintline { font-size:11px; color:var(--b3-theme-on-surface); margin-top:2px; }
+.hintline { font-size:11px; color:var(--b3-theme-on-surface); margin-top:2px; line-height:1.6; }
 
-/* ---------- 屏4：移动端 sheet ---------- */
+/* ---------- 屏 4：变量填充卡片（F1 插入时表单） ---------- */
+.insert-stage { position: relative; }
+.insert-ghost {
+  position:absolute; left:70px; top:26px; right:70px; bottom:26px; border-radius:8px; border:1.5px dashed var(--b3-border-color);
+  color:var(--b3-theme-on-surface); font-size:12px; display:flex; align-items:center; justify-content:center; text-align:center; line-height:1.8;
+}
+.varform {
+  position:absolute; left:50%; top:50%; transform: translate(-50%, -50%); width: 360px;
+  background: var(--b3-menu-background); border:1px solid var(--b3-border-color); border-radius:12px;
+  box-shadow: var(--shadow); padding: 16px 18px 14px;
+}
+.varform .vf-head { display:flex; align-items:center; gap:8px; margin-bottom: 12px; }
+.varform .vf-title { font-weight: 600; font-size: 13.5px; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.varform .vf-sub { font-size: 11px; color: var(--b3-theme-on-surface); margin: -8px 0 12px; line-height: 1.6; }
+.vf-field { margin-bottom: 10px; }
+.vf-field label { display:block; font-size: 11.5px; color: var(--b3-theme-on-surface); margin-bottom: 4px; }
+.vf-field label .tag { font-family: var(--mono); font-size: 10px; color: #8a5ad0; margin-left: 4px; }
+.t-dark .vf-field label .tag { color: #b49ae0; }
+.vf-field .inp { padding: 6px 10px; font-size: 12.5px; }
+.vf-foot { display:flex; align-items:center; gap:8px; margin-top: 14px; }
+.vf-foot .kbdhint { font-size: 11px; color: var(--b3-theme-on-surface); margin-right: auto; }
+
+/* ---------- 屏 5：设置（分区卡片） ---------- */
+.setdlg { width: 560px; margin: 20px auto 0; background:var(--b3-theme-background); border-radius:12px; box-shadow:var(--shadow); border:1px solid var(--b3-border-color); padding:6px 18px 18px; height:472px; overflow:auto; }
+.setdlg h3 { font-size:15px; margin:10px 0 0; }
+.set-card { border:1px solid var(--b3-border-color); background:var(--b3-theme-surface); border-radius:10px; padding:12px 14px; margin-top:12px; box-shadow: var(--shadow-1); }
+.set-card h4 { font-size:12px; font-weight:600; color:var(--b3-theme-on-surface); margin:0 0 8px; letter-spacing:.4px; }
+.set-row { display:flex; align-items:center; gap:10px; font-size:12.5px; color:var(--b3-theme-on-background); padding:3px 0; }
+.set-row .sub { font-size:11px; color:var(--b3-theme-on-surface); }
+.set-row .grow { flex:1; min-width:0; }
+.switch { position:relative; width:34px; height:20px; border-radius:999px; border:none; background:var(--b3-border-color); flex-shrink:0; transition:background .12s; }
+.switch.on { background:var(--b3-theme-primary); }
+.switch::after { content:""; position:absolute; top:2px; left:2px; width:16px; height:16px; border-radius:50%; background:#fff; box-shadow:0 1px 2px rgba(0,0,0,.2); transition:transform .12s; }
+.switch.on::after { transform:translateX(14px); }
+.set-foot { display:flex; gap:6px; flex-wrap:wrap; align-items:center; margin-top:10px; }
+.set-foot .hint { font-size:11px; color:var(--b3-theme-on-surface); margin-right:auto; }
+
+/* ---------- 屏 6：首跑引导 ---------- */
+.setupdlg { width: 520px; margin: 30px auto 0; background:var(--b3-theme-background); border-radius:12px; box-shadow:var(--shadow); border:1px solid var(--b3-border-color); padding: 20px 22px 18px; height: auto; }
+.steps { display:flex; gap:6px; align-items:center; margin-bottom: 14px; }
+.step-dot { width: 18px; height: 18px; border-radius: 50%; font-size: 10.5px; display:flex; align-items:center; justify-content:center; border:1px solid var(--b3-border-color); color:var(--b3-theme-on-surface); font-variant-numeric: tabular-nums; }
+.step-dot.on { background: var(--b3-theme-primary); border-color: var(--b3-theme-primary); color: var(--b3-theme-on-primary); font-weight: 600; }
+.step-line { flex: 0 0 24px; height: 1px; background: var(--b3-border-color); }
+.step-cap { font-size: 11px; color: var(--b3-theme-on-surface); margin-left: 4px; }
+
+/* ---------- 屏 7：移动端 ---------- */
 .phone { width: 340px; height: 640px; border-radius: 24px; background: var(--b3-theme-background); position:relative; overflow:hidden; box-shadow: 0 2px 12px rgba(0,0,0,.18); border:1px solid var(--b3-border-color); display:flex; flex-direction:column; }
 .ph-status { height:34px; display:flex; align-items:center; justify-content:space-between; padding:0 18px; font-size:11px; color:var(--b3-theme-on-surface); }
 .ph-editor { flex:1; padding:12px 14px; color:var(--b3-theme-on-surface); font-size:12px; }
@@ -181,30 +285,110 @@ button { font-family: var(--font); cursor: pointer; }
 .grabber { width:36px; height:4px; border-radius:2px; background:var(--b3-border-color); margin:4px auto 8px; }
 .sheet .search { margin:0 0 8px; }
 .ph-sec { font-size:11px; color:var(--b3-theme-on-surface); margin:6px 2px; }
-.sheet .row { border-radius:10px; border-bottom:none; margin-bottom:2px; padding:10px; min-height:52px; }
+.sheet .row { border-radius:10px; border:1px solid var(--b3-border-color); margin-bottom:8px; padding:10px; min-height:52px; }
+.sheet .row.on { border-color: var(--b3-theme-primary-light); box-shadow: inset 3px 0 0 var(--b3-theme-primary); }
 .sheet-foot { display:flex; gap:8px; padding-top:8px; }
 .sheet-foot .btn { flex:1; padding:9px 0; font-size:13px; border-radius:10px; }
+.mmenu {
+  position:absolute; left:10px; right:10px; bottom:10px;
+  background:var(--b3-menu-background); border:1px solid var(--b3-border-color); border-radius:16px 16px 0 0;
+  border-bottom:none; box-shadow:var(--shadow); padding-bottom:16px;
+}
+.mmenu .sec { padding:4px 10px 6px; border-bottom:1px solid var(--b3-border-color); }
+.mmenu .sec:last-child { border-bottom:none; }
+.mmenu .mi { min-height: 44px; border-radius: 10px; }
 
-/* ---------- 屏5：设置（分区卡片 + switch + 状态徽标） ---------- */
-.setdlg { width: 560px; margin: 20px auto 0; background:var(--b3-theme-background); border-radius:12px; box-shadow:var(--shadow); border:1px solid var(--b3-border-color); padding:6px 18px 18px; height:472px; overflow:auto; }
-.set-card { border:1px solid var(--b3-border-color); background:var(--b3-theme-surface); border-radius:10px; padding:12px 14px; margin-top:12px; }
-.set-card h4 { font-size:12px; font-weight:600; color:var(--b3-theme-on-surface); margin:0 0 8px; letter-spacing:.4px; }
-.set-row { display:flex; align-items:center; gap:10px; font-size:12.5px; color:var(--b3-theme-on-background); padding:3px 0; }
-.set-row .sub { font-size:11px; color:var(--b3-theme-on-surface); }
-.set-row .grow { flex:1; min-width:0; }
-.switch { position:relative; width:34px; height:20px; border-radius:999px; border:none; background:var(--b3-border-color); flex-shrink:0; transition:background .12s; }
-.switch.on { background:var(--b3-theme-primary); }
-.switch::after { content:""; position:absolute; top:2px; left:2px; width:16px; height:16px; border-radius:50%; background:#fff; box-shadow:0 1px 2px rgba(0,0,0,.2); transition:transform .12s; }
-.switch.on::after { transform:translateX(14px); }
-.set-foot { display:flex; gap:6px; flex-wrap:wrap; align-items:center; margin-top:10px; }
-.set-foot .hint { font-size:11px; color:var(--b3-theme-on-surface); margin-right:auto; }
+/* ---------- 屏 8：导入策略 / 模板包 ---------- */
+.importdlg { width: 440px; margin: 60px auto 0; background:var(--b3-theme-background); border-radius:12px; box-shadow:var(--shadow); border:1px solid var(--b3-border-color); padding:18px 20px 16px; }
+.importdlg h3 { font-size:15px; margin-bottom:8px; }
+.import-meta { display:flex; gap:8px; flex-wrap:wrap; margin-bottom: 14px; }
+.policy-list { display:flex; flex-direction:column; gap:8px; }
+.policy {
+  display:flex; align-items:center; gap:10px; text-align:left; width:100%;
+  border:1px solid var(--b3-border-color); background:var(--b3-theme-surface); border-radius:10px; padding:10px 12px;
+  color:var(--b3-theme-on-background); font-size:12.5px;
+}
+.policy:hover { border-color: var(--b3-theme-primary-light); }
+.policy .p-t { font-weight: 600; }
+.policy .p-d { font-size: 11px; color: var(--b3-theme-on-surface); }
 </style>
 </head>
 <body>
 
-<!-- ======== 屏 1：桌面搜索弹窗（双栏 + AI 语义） ======== -->
+<!-- ======== 屏 0：设计规范板 ======== -->
 <section>
-<h2>屏 1 · 桌面搜索弹窗（双栏预览 · 语义找 · 筛选 chips）</h2>
+<h2>屏 0 · 设计规范板（Design Tokens——色彩 / 字阶 / 间距 / 圆角 / 阴影 / 动效 / 组件态）</h2>
+<div class="spec-board">
+  <h3>色彩 · 双主题（语义对齐思源 b3；固定色仅徽标淡彩与中性阴影）</h3>
+  <div class="spec-row">
+    <div class="swatch"><div class="c" style="background:#3575f0"></div><div class="l">primary<br>#3575f0 · 暗 #5a8af2</div></div>
+    <div class="swatch"><div class="c" style="background:#ffffff;border-bottom:1px solid #e5e7eb"></div><div class="l">background<br>#ffffff · 暗 #1e1e1f</div></div>
+    <div class="swatch"><div class="c" style="background:#f7f8fa;border-bottom:1px solid #e5e7eb"></div><div class="l">surface<br>#f7f8fa · 暗 #26262a</div></div>
+    <div class="swatch"><div class="c" style="background:#1f2329"></div><div class="l">on-background<br>#1f2329 · 暗 #dcdcdc</div></div>
+    <div class="swatch"><div class="c" style="background:#7d8085"></div><div class="l">on-surface<br>#7d8085 · 暗 #8a8a93</div></div>
+    <div class="swatch"><div class="c" style="background:#e5e7eb"></div><div class="l">border<br>#e5e7eb · 暗 #36363a</div></div>
+    <div class="swatch"><div class="c" style="background:rgba(53,117,240,.08)"></div><div class="l">ai-tint<br>主色 8% 淡彩底</div></div>
+    <div class="swatch"><div class="c" style="background:rgba(150,105,224,.10)"></div><div class="l">var-tint<br>变量紫 10%（新）</div></div>
+  </div>
+  <div class="spec-row" style="margin-top:12px">
+    <span class="badge md">MD</span><span class="badge text">TXT</span><span class="badge url">URL</span><span class="badge code">CODE</span><span class="badge image">IMG</span><span class="badge asset">FILE</span><span class="badge ref">REF</span><span class="badge warn">⚠</span><span class="badge ai">✦ AI</span><span class="badge var">{{var}}</span>
+  </div>
+
+  <h3>字号阶梯（每级即实际用途，不做任意字号）</h3>
+  <div class="spec-row">
+    <div class="type-item"><span class="demo" style="font-size:16px;font-weight:600">16</span><span class="cap">弹窗标题</span></div>
+    <div class="type-item"><span class="demo" style="font-size:15px;font-weight:600">15</span><span class="cap">表单标题</span></div>
+    <div class="type-item"><span class="demo" style="font-size:14px;font-weight:600">14</span><span class="cap">面板标题</span></div>
+    <div class="type-item"><span class="demo" style="font-size:13.5px;font-weight:600">13.5</span><span class="cap">预览标题</span></div>
+    <div class="type-item"><span class="demo" style="font-size:13px">13</span><span class="cap">行标题/菜单项/正文输入</span></div>
+    <div class="type-item"><span class="demo" style="font-size:12.5px">12.5</span><span class="cap">按钮/预览正文</span></div>
+    <div class="type-item"><span class="demo" style="font-size:12px">12</span><span class="cap">chip/次级说明</span></div>
+    <div class="type-item"><span class="demo" style="font-size:11.5px">11.5</span><span class="cap">meta/foot</span></div>
+    <div class="type-item"><span class="demo" style="font-size:11px">11</span><span class="cap">kbd/徽标/分组头</span></div>
+  </div>
+
+  <h3>间距 4px 栅格 · 圆角梯度（嵌套外大内小）</h3>
+  <div class="spec-row" style="align-items:center">
+    <div class="radius-item"><div class="d" style="border-radius:4px"></div><div class="cap">4 · ordinal</div></div>
+    <div class="radius-item"><div class="d" style="border-radius:6px"></div><div class="cap">6 · 警条/小件</div></div>
+    <div class="radius-item"><div class="d" style="border-radius:8px"></div><div class="cap">8 · 按钮/输入/搜索</div></div>
+    <div class="radius-item"><div class="d" style="border-radius:10px"></div><div class="cap">10 · 弹窗主体/行卡</div></div>
+    <div class="radius-item"><div class="d" style="border-radius:12px"></div><div class="cap">12 · 菜单/表单卡/设置卡</div></div>
+    <div class="radius-item"><div class="d" style="border-radius:16px"></div><div class="cap">16 · 底部 sheet</div></div>
+    <div class="radius-item"><div class="d" style="border-radius:999px;width:96px"></div><div class="cap">999 · chip/徽标/开关</div></div>
+  </div>
+
+  <h3>阴影三级（多层低透明叠加，禁纯黑硬阴影）· 动效</h3>
+  <div class="spec-row">
+    <div class="shadow-item"><div class="d" style="box-shadow:0 1px 2px rgba(31,35,41,.05),0 1px 3px rgba(31,35,41,.04)"></div><div class="cap">L1 卡片/主按钮</div></div>
+    <div class="shadow-item"><div class="d" style="box-shadow:0 1px 2px rgba(31,35,41,.05),0 4px 14px rgba(31,35,41,.07)"></div><div class="cap">L2 浮层（菜单替代底）</div></div>
+    <div class="shadow-item"><div class="d" style="box-shadow:0 8px 32px rgba(31,35,41,.14),0 2px 8px rgba(31,35,41,.08)"></div><div class="cap">L3 弹窗/菜单</div></div>
+    <div class="spec-state" style="margin-left:24px">
+      <div style="position:relative;width:160px;height:28px"><div class="motion-demo"></div></div>
+      <span class="cap" style="font-size:11px;color:#8a8f99">cubic-bezier(.33,1,.68,1) · 120/160/220ms · 只动 transform/opacity/背景</span>
+    </div>
+  </div>
+
+  <h3>组件态（缺哪个哪个是半成品）</h3>
+  <div class="spec-row spec-state">
+    <button class="btn">默认</button>
+    <button class="btn" style="background:#eef1f6">hover</button>
+    <button class="btn primary">主要</button>
+    <button class="btn ai">✦ AI</button>
+    <button class="btn ghost">ghost</button>
+    <button class="btn" disabled style="opacity:.5;cursor:not-allowed">disabled</button>
+    <span class="chip">chip</span>
+    <span class="chip on">chip on</span>
+    <span class="chip ai-chip" style="color:#3575f0">✦ AI 找到的</span>
+    <span class="kbd">↩ 插入</span>
+    <span class="ordinal">1</span>
+  </div>
+</div>
+</section>
+
+<!-- ======== 屏 1：桌面搜索弹窗 ======== -->
+<section>
+<h2>屏 1 · 桌面搜索弹窗（双栏预览 · 分组置顶 · 变量徽标 · 使用计数）</h2>
 <div class="pair">
 <div class="frame t-light">
   <div class="dlg">
@@ -212,64 +396,57 @@ button { font-family: var(--font); cursor: pointer; }
       <span class="dlg-title">小驴常用</span>
       <span class="kbd">↑↓</span><span class="kbd">↩ 插入</span><span class="kbd">⌃↩ 复制</span><span class="kbd">⌥1-9 直达</span><span class="kbd">Esc</span>
     </div>
-    <div class="search"><span class="q">?</span><input value="给客户延期上线 的道歉回复" placeholder="搜索常用内容（? 前缀 = AI 语义找）"></div>
+    <div class="search"><span class="q">?</span><input value="客户延期" placeholder="搜索常用内容（? 前缀 = AI 语义找）"></div>
     <div class="filters">
-      <button class="chip ai-chip ai" style="color:var(--b3-theme-primary)">✦ AI 找到的 · 5 条</button>
-      <button class="chip">类型 ▾</button><button class="chip">标签 ▾</button>
-      <button class="chip">★ 收藏</button><button class="chip">🕐 最近</button>
-      <button class="chip">⇅ 手动/置顶</button>
+      <button class="chip">类型 ▾</button><button class="chip">标签 ▾</button><button class="chip">分类 ▾</button>
+      <button class="chip">★ 收藏</button><button class="chip">🕐 最近</button><button class="chip on">⇅ 常用</button>
     </div>
     <div class="dlg-body">
       <div class="list">
+        <div class="group-head">📌 置顶 · 1</div>
         <div class="row on">
           <div style="flex:1;min-width:0">
-            <div class="tt"><span class="ordinal">1</span><span class="badge md">MD</span><span class="t">项目延期道歉与补偿方案</span><span class="warnmini">⚠ 来源失效</span></div>
-            <div class="meta">尊敬的王总：关于本期交付延期…</div>
+            <div class="tt"><span class="ordinal">1</span><span class="badge md">MD</span><span class="t">项目延期道歉与补偿方案</span><span class="badge var">2 变量</span></div>
+            <div class="meta">尊敬的 {{xlc:ask:客户}} ：关于本期交付延期… · <span class="use">32 次</span></div>
           </div>
           <span class="star fav">★</span>
         </div>
+        <div class="group-head">全部 · 4</div>
         <div class="row">
           <div style="flex:1;min-width:0">
             <div class="tt"><span class="ordinal">2</span><span class="badge text">TXT</span><span class="t">延期简短版（IM 用）</span></div>
-            <div class="meta">您好，本次迭代因联调超期，上线推迟 2 天…</div>
+            <div class="meta">您好，本次迭代因联调超期… · <span class="use">18 次</span></div>
           </div>
           <span class="star">☆</span>
         </div>
         <div class="row">
           <div style="flex:1;min-width:0">
-            <div class="tt"><span class="ordinal">3</span><span class="badge md">MD</span><span class="t">客服投诉标准回复流程</span><span class="ai-chip">✦</span></div>
-            <div class="meta">第一步 先致歉安抚，第二步 同步进展…</div>
+            <div class="tt"><span class="ordinal">3</span><span class="badge code">CODE</span><span class="t">SQL 分页模板</span><span class="badge var">1 变量</span></div>
+            <div class="meta">SELECT * FROM {{xlc:ask:表名}} LIMIT… · <span class="use">11 次</span></div>
           </div>
           <span class="star">☆</span>
         </div>
         <div class="row">
           <div style="flex:1;min-width:0">
-            <div class="tt"><span class="badge url">URL</span><span class="t">SLA 赔付标准文档</span></div>
-            <div class="meta">https://wiki.example.com/sla</div>
+            <div class="tt"><span class="badge url">URL</span><span class="t">SLA 赔付标准文档</span><span class="warnmini" title="来源失效">⚠</span></div>
+            <div class="meta">https://wiki.example.com/sla · <span class="use">4 次</span></div>
           </div>
           <span class="star">☆</span>
-        </div>
-        <div style="padding:6px 12px; font-size:11.5px; font-weight:600; color:var(--b3-theme-primary); background:rgba(53,117,240,.06); border-bottom:1px solid var(--b3-border-color);">✦ 提供方内容 · 2</div>
-        <div class="row" style="background:rgba(53,117,240,.03)">
-          <div style="flex:1;min-width:0">
-            <div class="tt"><span class="badge ai">小驴雷切</span><span class="t">当前工作台</span></div>
-            <div class="meta">快速回到工作台布局（提供方演示数据）</div>
-          </div>
         </div>
       </div>
       <div class="pane">
-        <div class="pane-head"><span class="pane-title">项目延期道歉与补偿方案</span><span class="badge ai">✦ AI 找到的</span></div>
-        <div class="srcwarn">⚠ 来源块已不存在（原文档被重组）· 点按可重新指定来源</div>
-        <div class="pane-body">尊敬的王总：
+        <div class="pane-head"><span class="pane-title">项目延期道歉与补偿方案</span><span class="badge ai">✦ 常用 · 32 次</span></div>
+        <div class="pane-vars">插入时将询问 2 个变量：<code>{{xlc:ask:客户名称}}</code><code>{{xlc:ask:补偿比例}}</code> · 光标落点 <code>{{xlc:cursor}}</code></div>
+        <div class="pane-body">尊敬的 {{xlc:ask:客户名称}}：
 
-    关于本期「会员系统」交付延期，我们深表歉意。经复盘，主要原因为第三方支付联调超期。目前联调已完成 92%，预计推迟 2 个工作日上线。
+关于本期「会员系统」交付延期，我们深表歉意。经复盘，主要原因为第三方支付联调超期。目前联调已完成 92%，预计推迟 2 个工作日上线。
 
-    为弥补影响，我们提供以下补偿：
-  1. 本期服务费减免 5%；
-  2. 上线后 48 小时专属值守；
-  3. 下期迭代优先排入贵方需求。
+为弥补影响，我们提供以下补偿：
+1. 本期服务费减免 {{xlc:ask:补偿比例}}；
+2. 上线后 48 小时专属值守；
+3. 下期迭代优先排入贵方需求。
 
-  再次感谢理解与支持，有任何问题随时联系我。</div>
+再次感谢理解与支持，有任何问题随时联系我。{{xlc:cursor}}</div>
         <div class="pane-foot">
           <button class="btn primary">插入</button>
           <button class="btn ai">✦ AI 变换</button>
@@ -279,37 +456,38 @@ button { font-family: var(--font); cursor: pointer; }
         </div>
       </div>
     </div>
-    <div class="dlg-foot"><span>共 128 条</span><span style="margin-left:auto">思源块真源 · 失效可见</span><span>⚙ 设置</span></div>
+    <div class="dlg-foot"><span class="count">共 128 条 · 常用排序</span><span class="claim">思源块真源 · 失效可见</span><span class="gear">⚙ 设置</span></div>
   </div>
 </div>
 <div class="frame t-dark">
   <div class="dlg">
     <div class="dlg-head"><span class="dlg-title">小驴常用</span><span class="kbd">↑↓</span><span class="kbd">↩ 插入</span><span class="kbd">⌥1-9</span><span class="kbd">Esc</span></div>
-    <div class="search"><span class="q">?</span><input value="给客户延期上线 的道歉回复"></div>
+    <div class="search"><span class="q" style="opacity:.55">?</span><input value="" placeholder="搜索常用内容（? 前缀 = AI 语义找）"></div>
     <div class="filters">
-      <button class="chip ai-chip">✦ AI 找到的 · 5 条</button>
+      <button class="chip ai-chip" style="color:var(--b3-theme-primary)">✦ AI 找到的 · 5 条</button>
       <button class="chip on">全部类型</button><button class="chip">★ 收藏</button>
     </div>
     <div class="dlg-body">
       <div class="list">
         <div class="row on">
           <div style="flex:1;min-width:0">
-            <div class="tt"><span class="badge md">MD</span><span class="t">项目延期道歉与补偿方案</span></div>
-            <div class="meta">尊敬的王总：关于本期交付延期…</div>
+            <div class="tt"><span class="ordinal">1</span><span class="badge md">MD</span><span class="t">项目延期道歉与补偿方案</span><span class="badge var">2 变量</span></div>
+            <div class="meta">尊敬的 {{客户}} ：关于本期交付延期… · <span class="use">32 次</span></div>
           </div><span class="star fav">★</span>
         </div>
         <div class="row">
           <div style="flex:1;min-width:0">
             <div class="tt"><span class="badge text">TXT</span><span class="t">延期简短版（IM 用）</span></div>
-            <div class="meta">您好，本次迭代因联调超期…</div>
+            <div class="meta">您好，本次迭代因联调超期… · <span class="use">18 次</span></div>
           </div><span class="star">☆</span>
         </div>
       </div>
       <div class="pane">
         <div class="pane-head"><span class="pane-title">项目延期道歉与补偿方案</span><span class="badge ai">✦ AI 找到的</span></div>
+        <div class="pane-vars">插入时将询问 2 个变量：<code>{{xlc:ask:客户名称}}</code><code>{{xlc:ask:补偿比例}}</code></div>
         <div class="pane-body">尊敬的王总：
 
-    关于本期「会员系统」交付延期，我们深表歉意。预计推迟 2 个工作日上线…</div>
+关于本期「会员系统」交付延期，我们深表歉意。预计推迟 2 个工作日上线…</div>
         <div class="pane-foot">
           <button class="btn primary">插入</button>
           <button class="btn ai">✦ AI 变换</button>
@@ -319,17 +497,39 @@ button { font-family: var(--font); cursor: pointer; }
         </div>
       </div>
     </div>
-    <div class="dlg-foot"><span>共 128 条</span><span style="margin-left:auto">AI 由思源 设置→人工智能 提供</span></div>
+    <div class="dlg-foot"><span class="count">共 128 条</span><span class="claim">AI 由思源 设置→人工智能 提供</span></div>
   </div>
 </div>
 </div>
 </section>
 
-<!-- ======== 屏 2：动作菜单（AI 变换） ======== -->
+<!-- ======== 屏 2：动作菜单 ======== -->
 <section>
-<h2>屏 2 · 动作菜单（分组动作 + AI 变换预览，原文保护）</h2>
+<h2>屏 2 · 动作菜单（默认态 + AI 变换态，原文保护）</h2>
 <div class="pair">
 <div class="frame t-light">
+  <div class="menu-wrap">
+    <div class="menu">
+      <div class="lbl">常用结束语 · 动作</div>
+      <div class="sec">
+        <button class="mi"><span class="ic">＋</span><b>插入</b></button>
+        <button class="mi"><span class="ic">⧉</span>复制</button>
+        <button class="mi"><span class="ic">⤓</span>插入到指定文档</button>
+        <button class="mi ai"><span class="ic">✦</span>AI 变换 ▾</button>
+      </div>
+      <div class="sec">
+        <button class="mi"><span class="ic">↗</span>打开来源</button>
+        <button class="mi"><span class="ic">✎</span>编辑</button>
+        <button class="mi"><span class="ic">⧉</span>创建副本</button>
+        <button class="mi"><span class="ic">🗑</span>删除</button>
+      </div>
+      <div class="preview" style="color:var(--b3-theme-on-surface)">预览：祝好，
+李明 | 项目组
+185-0000-0000（原文 300 字，此处截断展示）</div>
+    </div>
+  </div>
+</div>
+<div class="frame t-dark">
   <div class="menu-wrap">
     <div class="menu">
       <div class="lbl">项目延期道歉与补偿方案 · AI 变换</div>
@@ -342,7 +542,7 @@ button { font-family: var(--font); cursor: pointer; }
       </div>
       <div class="preview">Apologize sincerely for the delay of the "Membership System" delivery this phase. Root cause: third-party payment integration overrun. Integration is 92% complete; launch postponed by 2 business days…
 
-（变换预览 · 仅内存，不改原文）</div>
+（变换预览 · 仅内存，不改原文；变量原样保留）</div>
       <div class="sec">
         <button class="mi"><span class="ic">＋</span><b>插入变换结果</b></button>
         <button class="mi"><span class="ic">⧉</span>复制变换结果</button>
@@ -350,41 +550,17 @@ button { font-family: var(--font); cursor: pointer; }
         <button class="mi"><span class="ic">🗎</span>存为新条目</button>
       </div>
       <div class="sec">
-        <button class="mi"><span class="ic">↗</span>打开来源</button>
-        <button class="mi"><span class="ic">✎</span>编辑</button>
-        <button class="mi"><span class="ic">⧉</span>创建副本</button>
-        <button class="mi"><span class="ic">⤓</span>插入到指定文档</button>
-        <button class="mi"><span class="ic">🗑</span>删除</button>
+        <button class="mi"><span class="ic">←</span>返回动作</button>
       </div>
-    </div>
-  </div>
-</div>
-<div class="frame t-dark">
-  <div class="menu-wrap">
-    <div class="menu">
-      <div class="lbl">常用结束语 · 动作</div>
-      <div class="sec">
-        <button class="mi"><span class="ic">＋</span><b>插入</b></button>
-        <button class="mi"><span class="ic">⧉</span>复制</button>
-        <button class="mi"><span class="ic">✦</span>AI 变换 ▾</button>
-      </div>
-      <div class="sec">
-        <button class="mi"><span class="ic">↗</span>打开来源</button>
-        <button class="mi"><span class="ic">✎</span>编辑</button>
-        <button class="mi"><span class="ic">🗑</span>删除</button>
-      </div>
-      <div class="preview" style="color:var(--b3-theme-on-surface)">预览：祝好，
-李明 | 项目组
-185-0000-0000（原文 300 字，此处截断展示）</div>
     </div>
   </div>
 </div>
 </div>
 </section>
 
-<!-- ======== 屏 3：捕获表单（AI 整理 + AI 草稿） ======== -->
+<!-- ======== 屏 3：捕获表单 ======== -->
 <section>
-<h2>屏 3 · 捕获表单（类型推断 · AI 整理建议 · AI 草稿）</h2>
+<h2>屏 3 · 捕获表单（类型推断 · AI 整理/草稿 · 变量快捷插入）</h2>
 <div class="pair">
 <div class="frame t-light">
   <div class="form">
@@ -394,28 +570,29 @@ button { font-family: var(--font); cursor: pointer; }
       <input class="inp" value="一封给客户的项目延期通知模板">
     </div>
     <div class="fld">
-      <label>内容</label>
-      <textarea class="inp" rows="6">尊敬的 __客户名称__：
+      <label>内容 <span class="opt" style="color:#8a5ad0">插入变量 ▾</span></label>
+      <textarea class="inp" rows="6">尊敬的 {{xlc:ask:客户名称}}：
 
-关于 __项目名称__ 的交付计划调整，我们深表歉意。主要原因：__原因__。当前进度：__百分比__，预计推迟 __天数__ 个工作日。
+关于 __项目名称__ 的交付计划调整，我们深表歉意。当前进度 {{xlc:ask:进度}}，预计推迟 __天数__ 个工作日。
 
 补偿方案：
 1. __补偿项 1__
 2. __补偿项 2__
 
-再次感谢理解与支持。</textarea>
+再次感谢理解与支持。{{xlc:cursor}}</textarea>
     </div>
+    <div class="varbar"><span class="cap">点选插入：</span><button class="varbtn">{{xlc:ask:字段}}</button><button class="varbtn">{{xlc:ask:字段|A,B}}</button><button class="varbtn">{{xlc:cursor}}</button><button class="varbtn">{{xlc:date}}</button><button class="varbtn">{{xlc:doc}}</button></div>
     <div class="sugrow">✦ AI 建议：<b>项目延期通知模板</b> · 标签 客户沟通/模板 · 分类 客服<button class="btn ai" style="margin-left:auto;padding:2px 10px">全部采纳</button></div>
     <div class="fld"><label>标题</label><input class="inp" value="项目延期通知模板"></div>
     <div style="display:flex;gap:10px">
-      <div class="fld" style="flex:1"><label>别名</label><input class="inp" value="延期通知"></div>
-      <div class="fld" style="width:130px"><label>类型</label><input class="inp" value="Markdown" readonly></div>
+      <div class="fld" style="flex:1;margin-bottom:0"><label>别名</label><input class="inp" value="延期通知"></div>
+      <div class="fld" style="width:130px;margin-bottom:0"><label>类型</label><input class="inp" value="Markdown" readonly style="color:var(--b3-theme-on-surface)"></div>
     </div>
-    <div style="display:flex;gap:10px">
-      <div class="fld" style="flex:1"><label>标签（逗号分隔）</label><input class="inp" value="客户沟通, 模板"></div>
-      <div class="fld" style="width:130px"><label>分类</label><input class="inp" value="客服"></div>
+    <div style="display:flex;gap:10px;margin-top:11px">
+      <div class="fld" style="flex:1;margin-bottom:0"><label>标签（逗号分隔）</label><input class="inp" value="客户沟通, 模板"></div>
+      <div class="fld" style="width:130px;margin-bottom:0"><label>分类</label><input class="inp" value="客服"></div>
     </div>
-    <div class="hintline">条目将保存为真实思源块 · 库：常用内容库 · 可在属性面板修改</div>
+    <div class="hintline">条目将保存为真实思源块 · 变量在插入时询问 · 库：常用内容库</div>
     <div class="form-foot"><button class="btn">取消</button><button class="btn primary">保存条目</button></div>
   </div>
 </div>
@@ -426,14 +603,15 @@ button { font-family: var(--font); cursor: pointer; }
       <label>AI 草稿 <span class="opt">✦ 描述需求，AI 生成</span></label>
       <input class="inp" value="周报开头三句话模板">
     </div>
-    <div class="fld"><label>内容</label>
+    <div class="fld"><label>内容 <span class="opt" style="color:#b49ae0">插入变量 ▾</span></label>
       <textarea class="inp" rows="6">本周进展：
-1. __事项__（状态：__进度__）
-2. __事项__（状态：__进度__）
+1. __事项__（状态：{{xlc:ask:进度}}）
+2. __事项__（状态：{{xlc:ask:进度}}）
 
 风险与依赖：__风险__
-下周计划：__计划__</textarea>
+下周计划：{{xlc:cursor}}</textarea>
     </div>
+    <div class="varbar"><span class="cap">点选插入：</span><button class="varbtn">{{xlc:ask:字段}}</button><button class="varbtn">{{xlc:ask:字段|A,B}}</button><button class="varbtn">{{xlc:cursor}}</button><button class="varbtn">{{xlc:doc}}</button></div>
     <div class="sugrow">✦ AI 建议：<b>周报开头模板</b> · 标签 周报/写作 · 分类 模板<button class="btn ai" style="margin-left:auto;padding:2px 10px">全部采纳</button></div>
     <div class="fld"><label>标题</label><input class="inp" value="周报开头模板"></div>
     <div class="hintline">AI 使用思源 设置→人工智能 的模型 · 正文出域可随时关闭</div>
@@ -443,9 +621,191 @@ button { font-family: var(--font); cursor: pointer; }
 </div>
 </section>
 
-<!-- ======== 屏 4：移动端 sheet ======== -->
+<!-- ======== 屏 4：变量填充卡片（F1/F2 新功能） ======== -->
 <section>
-<h2>屏 4 · 移动端底部 sheet（触控优先 · 插入降级诚实提示）</h2>
+<h2>屏 4 · 变量填充卡片（插入前轻量表单：Enter 插入 · Tab 切字段 · Esc 取消）</h2>
+<div class="pair">
+<div class="frame t-light insert-stage">
+  <div class="insert-ghost">← 来源：搜索弹窗按 ↩（条目含变量）<br>填充结果直接插入光标处；{{xlc:cursor}} 决定落点 →</div>
+  <div class="varform">
+    <div class="vf-head">
+      <span class="badge md">MD</span>
+      <span class="vf-title">项目延期道歉与补偿方案</span>
+      <span class="kbd">Esc 取消</span>
+    </div>
+    <div class="vf-sub">本条目含 3 个变量，填写后一次性插入；内容保存为草稿值不回写库。</div>
+    <div class="vf-field">
+      <label>客户名称<span class="tag">{{xlc:ask:客户名称}}</span></label>
+      <input class="inp" value="王总">
+    </div>
+    <div class="vf-field">
+      <label>补偿比例<span class="tag">{{xlc:ask:补偿比例|5%,10%,自定义}}</span></label>
+      <input class="inp" value="5%">
+    </div>
+    <div class="vf-field">
+      <label>跟进日期<span class="tag">{{xlc:ask:跟进日期|date}}</span></label>
+      <input class="inp" value="2026-10-09">
+    </div>
+    <div class="vf-foot">
+      <span class="kbdhint">Tab 下一项 · Enter 插入</span>
+      <button class="btn">取消</button>
+      <button class="btn primary">插入</button>
+    </div>
+  </div>
+</div>
+<div class="frame t-dark insert-stage">
+  <div class="insert-ghost">搜索「?客户投诉」→ AI 找到「投诉标准回复」→ ↩ 触发填充</div>
+  <div class="varform">
+    <div class="vf-head">
+      <span class="badge md">MD</span>
+      <span class="vf-title">投诉标准回复流程</span>
+      <span class="kbd">Esc 取消</span>
+    </div>
+    <div class="vf-sub">含 2 个变量 · 下拉字段用 ↑↓ 选择</div>
+    <div class="vf-field">
+      <label>投诉类型<span class="tag">{{xlc:ask:投诉类型|物流,质量,服务}}</span></label>
+      <input class="inp" value="物流">
+    </div>
+    <div class="vf-field">
+      <label>工单号<span class="tag">{{xlc:ask:工单号}}</span></label>
+      <input class="inp" value="T-20261007-0042" placeholder="">
+    </div>
+    <div class="vf-field" style="opacity:.6">
+      <label>当前文档名（自动）<span class="tag">{{xlc:doc}}</span></label>
+      <input class="inp" value="客户沟通手册" disabled>
+    </div>
+    <div class="vf-foot">
+      <span class="kbdhint">Tab 下一项 · Enter 插入</span>
+      <button class="btn">取消</button>
+      <button class="btn primary">插入</button>
+    </div>
+  </div>
+</div>
+</div>
+</section>
+
+<!-- ======== 屏 5：设置 ======== -->
+<section>
+<h2>屏 5 · 设置（库 / AI / 变量 / 搜索 / 提供方 / 数据 六卡）</h2>
+<div class="pair">
+<div class="frame t-light">
+  <div class="setdlg">
+    <h3>设置 · 小驴常用</h3>
+    <div class="set-card">
+      <h4>当前内容库</h4>
+      <div class="set-row"><span class="grow">doc · 1 个文档<div class="sub">条目以真实块保存在库文档中</div></span><button class="btn">更改内容库</button></div>
+    </div>
+    <div class="set-card">
+      <h4>AI 助手</h4>
+      <div class="set-row"><span class="grow">启用 AI 助手<div class="sub">使用思源 设置→人工智能 的模型，插件不保存密钥</div></span><button class="switch on"></button></div>
+      <div class="set-row"><span class="grow">允许 AI 读取条目完整正文<div class="sub">关闭时仅元数据出域</div></span><button class="switch on"></button></div>
+    </div>
+    <div class="set-card">
+      <h4>变量与插入</h4>
+      <div class="set-row"><span class="grow">插入前询问变量<div class="sub">含 {{xlc:ask:…}} 的条目弹出填充卡片</div></span><button class="switch on"></button></div>
+      <div class="set-row"><span class="grow">记录使用次数<div class="sub">仅本地侧车存储，可一键清除，用于「常用」排序</div></span><button class="switch on"></button></div>
+      <div class="set-foot">
+        <span class="hint">日期格式 yyyy-MM-dd</span>
+        <button class="btn">清空使用统计</button>
+      </div>
+    </div>
+    <div class="set-card">
+      <h4>搜索</h4>
+      <div class="set-row"><span class="grow">拼音搜索<div class="sub">全拼/首字母本地匹配</div></span><button class="switch on"></button></div>
+      <div class="set-row"><span class="grow">动态占位符<div class="sub">插入时替换 {{xlc:date}} 等</div></span><button class="switch on"></button></div>
+    </div>
+    <div class="set-card">
+      <h4>提供方内容</h4>
+      <div class="set-row"><span class="badge ai">可执行</span>小驴雷切（v1）</div>
+      <div class="set-row"><span class="badge warn">待重载</span>小驴打卡（v1）</div>
+    </div>
+    <div class="set-card">
+      <h4>数据（导出 / 导入）</h4>
+      <div class="set-foot">
+        <span class="hint">当前内容库：doc · 1</span>
+        <button class="btn">重建索引</button><button class="btn">清空最近使用</button>
+        <button class="btn ai">✦ AI 标签体检</button>
+        <button class="btn">导出 JSON</button><button class="btn">模板包</button><button class="btn">导入 JSON</button>
+      </div>
+    </div>
+  </div>
+</div>
+<div class="frame t-dark">
+  <div class="setdlg">
+    <h3>设置 · 小驴常用</h3>
+    <div class="set-card">
+      <h4>当前内容库</h4>
+      <div class="set-row"><span class="grow">doc · 1 个文档</span><button class="btn">更改内容库</button></div>
+    </div>
+    <div class="set-card">
+      <h4>AI 助手</h4>
+      <div class="set-row"><span class="grow">启用 AI 助手</span><button class="switch on"></button></div>
+      <div class="set-row"><span class="grow">允许 AI 读取条目完整正文</span><button class="switch"></button></div>
+    </div>
+    <div class="set-card">
+      <h4>变量与插入</h4>
+      <div class="set-row"><span class="grow">插入前询问变量</span><button class="switch on"></button></div>
+      <div class="set-row"><span class="grow">记录使用次数</span><button class="switch on"></button></div>
+    </div>
+    <div class="set-card">
+      <h4>搜索</h4>
+      <div class="set-row"><span class="grow">拼音搜索</span><button class="switch on"></button></div>
+    </div>
+    <div class="set-card">
+      <h4>数据（导出 / 导入）</h4>
+      <div class="set-foot">
+        <span class="hint">当前内容库：doc · 1</span>
+        <button class="btn">重建索引</button><button class="btn">模板包</button>
+      </div>
+    </div>
+  </div>
+</div>
+</div>
+</section>
+
+<!-- ======== 屏 6：首跑引导 ======== -->
+<section>
+<h2>屏 6 · 首跑引导（两步：选库方式 → 确认落点；全程不静默写入）</h2>
+<div class="pair">
+<div class="frame t-light">
+  <div class="setupdlg">
+    <div class="steps">
+      <span class="step-dot on">1</span><span class="step-line"></span><span class="step-dot">2</span>
+      <span class="step-cap">第 1 步 · 选择库方式</span>
+    </div>
+    <p class="hintline" style="font-size:12px;margin-bottom:14px;line-height:1.7">条目将以真实块的形式保存在你选择的文档中（可在思源中正常编辑、随思源同步）。创建新文档前会明确提示，不会静默写入。</p>
+    <div class="fld"><label>库方式</label><input class="inp" value="选择现有文档" readonly style="background:var(--b3-theme-surface)"></div>
+    <div class="fld"><label>搜索文档</label><input class="inp" value="常用"></div>
+    <div class="policy-list" style="margin-bottom:4px">
+      <button class="policy" style="border-color:var(--b3-theme-primary-light);background:var(--badge-text-bg)"><span style="color:var(--b3-theme-primary)">✓</span><span><span class="p-t">/常用内容库</span><span class="p-d">　根文档 · 0 条目</span></span></button>
+      <button class="policy"><span style="color:var(--b3-theme-on-surface)">○</span><span><span class="p-t">/工作手册/客服话术</span><span class="p-d">　子文档 · 12 条目</span></span></button>
+    </div>
+    <div class="fld" style="margin-top:12px"><label>或新建库文档</label>
+      <div style="display:flex;gap:8px"><input class="inp" value="常用内容库"><button class="btn" style="white-space:nowrap">创建</button></div>
+    </div>
+    <div class="form-foot"><button class="btn ghost">稍后再说</button><button class="btn primary">下一步：确认</button></div>
+  </div>
+</div>
+<div class="frame t-dark">
+  <div class="setupdlg">
+    <div class="steps">
+      <span class="step-dot" style="color:var(--b3-theme-primary)">✓</span><span class="step-line"></span><span class="step-dot on">2</span>
+      <span class="step-cap">第 2 步 · 确认落点</span>
+    </div>
+    <p class="hintline" style="font-size:12px;margin-bottom:14px;line-height:1.7">将把文档 <b style="color:var(--b3-theme-on-background)">/常用内容库</b>（笔记本「笔记」）设为内容库。之后随时可在 设置 → 当前内容库 更改。</p>
+    <div class="policy-list">
+      <div class="policy" style="cursor:default"><span style="color:var(--b3-theme-primary)">✓</span><span><span class="p-t">/常用内容库</span><span class="p-d">　将创建 · 条目以真实块保存于此</span></span></div>
+    </div>
+    <div class="hintline" style="margin-top:12px">创建动作有明确 confirm 提示 · 不动你已有的任何文档</div>
+    <div class="form-foot"><button class="btn ghost">上一步</button><button class="btn primary">完成设置</button></div>
+  </div>
+</div>
+</div>
+</section>
+
+<!-- ======== 屏 7：移动端 ======== -->
+<section>
+<h2>屏 7 · 移动端（底部 sheet 触控优先 + 长按动作菜单；插入降级诚实提示）</h2>
 <div class="pair">
 <div class="phone t-light">
   <div class="ph-status"><span>9:41</span><span>📶 🔋</span></div>
@@ -460,7 +820,7 @@ button { font-family: var(--font); cursor: pointer; }
     <div class="ph-sec">最近使用</div>
     <div class="row on">
       <div style="flex:1;min-width:0">
-        <div class="tt"><span class="badge text">TXT</span><span class="t">会议纪要开头</span></div>
+        <div class="tt"><span class="badge text">TXT</span><span class="t">会议纪要开头</span><span class="badge var">2 变量</span></div>
         <div class="meta">时间：__ 地点：__ 与会：__</div>
       </div><span class="star fav">★</span>
     </div>
@@ -489,92 +849,57 @@ button { font-family: var(--font); cursor: pointer; }
     <div class="h" style="width:42%"></div><div class="h"></div><div class="h" style="width:88%"></div>
   </div>
   <div class="sheet-mask"></div>
-  <div class="sheet">
-    <div class="grabber"></div>
-    <div class="search"><input placeholder="搜索常用内容（? = AI 找）"></div>
-    <div class="ph-sec">★ 收藏</div>
-    <div class="row on">
-      <div style="flex:1;min-width:0">
-        <div class="tt"><span class="badge md">MD</span><span class="t">会议纪要开头</span></div>
-        <div class="meta">时间：__ 地点：__</div>
-      </div><span class="star fav">★</span>
+  <div class="mmenu">
+    <div class="lbl" style="font-size:11px;color:var(--b3-theme-on-surface);padding:10px 14px 2px">会议纪要开头 · 动作</div>
+    <div class="sec">
+      <button class="mi"><span class="ic">＋</span><b>插入（复制到剪贴板）</b></button>
+      <button class="mi"><span class="ic">⧉</span>复制</button>
+      <button class="mi ai"><span class="ic">✦</span>AI 变换 ▾</button>
     </div>
-    <div class="row">
-      <div style="flex:1;min-width:0">
-        <div class="tt"><span class="badge image">IMG</span><span class="t">产品截图-登录页</span></div>
-        <div class="meta">assets/login-20240611.png</div>
-      </div><span class="star">☆</span>
-    </div>
-    <div class="sheet-foot">
-      <button class="btn">＋ 新建</button>
-      <button class="btn ai">✦ AI 找</button>
-      <button class="btn primary">复制选中</button>
+    <div class="sec">
+      <button class="mi"><span class="ic">✎</span>编辑</button>
+      <button class="mi"><span class="ic">⧉</span>创建副本</button>
+      <button class="mi"><span class="ic">🗑</span>删除</button>
     </div>
   </div>
 </div>
 </div>
 </section>
 
-<!-- ======== 屏 5：设置（分区卡片 + switch + 提供方状态徽标） ======== -->
+<!-- ======== 屏 8：导入策略 / 模板包 ======== -->
 <section>
-<h2>屏 5 · 设置（分区卡片 · switch · 提供方状态 · 数据按钮组）</h2>
+<h2>屏 8 · 导入与模板包（策略三选 · 逐项回执；模板包 = MD 包 + 清单元数据）</h2>
 <div class="pair">
 <div class="frame t-light">
-  <div class="setdlg">
-    <h3 style="font-size:15px; margin:10px 0 0;">设置 · 小驴常用</h3>
-    <div class="set-card">
-      <h4>当前内容库</h4>
-      <div class="set-row"><span class="grow">doc · 1 个文档<div class="sub">条目以真实块保存在库文档中</div></span><button class="btn">更改内容库</button></div>
+  <div class="importdlg">
+    <h3>导入 · 选择重复处理策略</h3>
+    <div class="import-meta">
+      <span class="badge md">18 条目</span>
+      <span class="badge warn">3 条格式无效将跳过</span>
+      <span class="badge var">模板包 · 6 条含变量</span>
     </div>
-    <div class="set-card">
-      <h4>AI 助手</h4>
-      <div class="set-row"><span class="grow">启用 AI 助手<div class="sub">使用思源 设置→人工智能 的模型，插件不保存密钥</div></span><button class="switch on" aria-label="启用 AI 助手"></button></div>
-      <div class="set-row"><span class="grow">允许 AI 读取条目完整正文<div class="sub">关闭时仅元数据出域</div></span><button class="switch on"></button></div>
+    <div class="policy-list">
+      <button class="policy"><span style="color:var(--b3-theme-primary)">⃝</span><span><span class="p-t">跳过重复（保留现有）</span><br><span class="p-d">同名同源条目不动，仅新增缺失项</span></span></button>
+      <button class="policy"><span style="color:var(--b3-theme-primary)">⇄</span><span><span class="p-t">覆盖重复</span><br><span class="p-d">以导入内容更新现有条目（原文块被改写前确认）</span></span></button>
+      <button class="policy" style="border-color:var(--b3-theme-primary-light);background:var(--badge-text-bg)"><span style="color:var(--b3-theme-primary)">＋</span><span><span class="p-t">重名并存（推荐）</span><br><span class="p-d">导入项加「导入」后缀，现有条目不受影响</span></span></button>
     </div>
-    <div class="set-card">
-      <h4>搜索</h4>
-      <div class="set-row"><span class="grow">拼音搜索<div class="sub">全拼/首字母本地匹配</div></span><button class="switch on"></button></div>
-      <div class="set-row"><span class="grow">动态占位符<div class="sub">插入时替换 {{xlc:date}} 等</div></span><button class="switch on"></button></div>
-    </div>
-    <div class="set-card">
-      <h4>提供方内容</h4>
-      <div class="set-row"><span class="badge ai">可执行</span>小驴打卡（v1）</div>
-      <div class="set-row"><span class="badge warn">待重载</span>小驴雷切（v1）</div>
-    </div>
-    <div class="set-card">
-      <h4>数据（导出 / 导入）</h4>
-      <div class="set-foot">
-        <span class="hint">当前内容库：doc · 1</span>
-        <button class="btn">重建索引</button><button class="btn">清空最近使用</button>
-        <button class="btn ai">✦ AI 标签体检</button>
-        <button class="btn">导出 JSON</button><button class="btn">导入 JSON</button>
-      </div>
-    </div>
+    <div class="hintline" style="margin-top:12px">导入完成将逐项回执：新增 / 跳过 / 覆盖 / 改名 / 失败</div>
   </div>
 </div>
 <div class="frame t-dark">
-  <div class="setdlg">
-    <h3 style="font-size:15px; margin:10px 0 0;">设置 · 小驴常用</h3>
-    <div class="set-card">
-      <h4>当前内容库</h4>
-      <div class="set-row"><span class="grow">doc · 1 个文档</span><button class="btn">更改内容库</button></div>
+  <div class="importdlg">
+    <h3>导出 · 模板包</h3>
+    <div class="import-meta">
+      <span class="badge md">24 条目</span>
+      <span class="badge var">含变量说明</span>
+      <span class="badge ai">✦ 选中分类：客服</span>
     </div>
-    <div class="set-card">
-      <h4>AI 助手</h4>
-      <div class="set-row"><span class="grow">启用 AI 助手</span><button class="switch on"></button></div>
-      <div class="set-row"><span class="grow">允许 AI 读取条目完整正文</span><button class="switch"></button></div>
+    <div class="fld"><label>包名称</label><input class="inp" value="客服话术包"></div>
+    <div class="fld"><label>包含内容</label>
+      <div class="hintline" style="line-height:1.8">· 条目 Markdown + 元数据（标题/标签/分类）<br>· 变量清单（{{xlc:ask:…}} 字段与选项说明）<br>· 资源引用（assets 原样打包）</div>
     </div>
-    <div class="set-card">
-      <h4>搜索</h4>
-      <div class="set-row"><span class="grow">拼音搜索</span><button class="switch on"></button></div>
-    </div>
-    <div class="set-card">
-      <h4>数据（导出 / 导入）</h4>
-      <div class="set-foot">
-        <span class="hint">当前内容库：doc · 1</span>
-        <button class="btn">重建索引</button><button class="btn">导出 JSON</button>
-      </div>
-    </div>
+    <div class="hintline">他人导入后即为真实思源块，可继续编辑与再分享——分享的是「活的块」，不是文本快照。</div>
+    <div class="form-foot"><button class="btn">取消</button><button class="btn primary">导出 .md 包</button></div>
   </div>
 </div>
 </div>
