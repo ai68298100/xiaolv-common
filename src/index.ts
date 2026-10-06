@@ -12,7 +12,7 @@ import "@/styles/index.scss";
 import {LIMITS, STORAGE_KEYS} from "./constants";
 import {createKernelClient, parseExistingMap, type IKernelClient} from "./kernel/client";
 import {CommonItem, isItemType} from "./model/item";
-import {buildBundle, validateImport, ConflictPolicy, ImportReceipt} from "./model/transfer";
+import {ExportedItem, buildBundle, validateImport, ConflictPolicy, ImportReceipt} from "./model/transfer";
 import {importBundle as importBundleCore} from "./service/importer";
 import {parseMarkdownPack} from "./service/import-markdown";
 import {LibraryConfig, CONFIG_VERSION, migrateState, normalizeLibraryConfig, normalizeState, PluginState} from "./model/storage";
@@ -1034,7 +1034,7 @@ export default class XiaolvCommonPlugin extends Plugin {
         return importBundleCore(this.library, validation.parsed, policy);
     }
 
-    async importMarkdownItems(items: Array<{id: string; title: string; itemType: string; kramdown: string}>, policy: ConflictPolicy): Promise<ImportReceipt> {
+    async importMarkdownItems(items: ReadonlyArray<ExportedItem>, policy: ConflictPolicy): Promise<ImportReceipt> {
         const {importMarkdownBundle} = await import("./service/import-markdown");
         return importMarkdownBundle(this.library, items, policy);
     }

@@ -3,7 +3,7 @@
 import {Dialog, confirm} from "siyuan";
 import {CONFIG_VERSION, LibraryConfig, PluginState} from "../model/storage";
 import {LIMITS} from "../constants";
-import {validateImport, ConflictPolicy, ImportIssue, ImportReceipt} from "../model/transfer";
+import {validateImport, ConflictPolicy, ImportIssue, ImportReceipt, ExportedItem} from "../model/transfer";
 import {buildZip} from "../model/zip";
 import {buildMarkdownExport} from "../service/export-markdown";
 import {parseMarkdownPack} from "../service/import-markdown";
@@ -26,7 +26,7 @@ export interface SettingsUiContext {
     persistSoon(): void;
     exportBundle(): Promise<string>;
     importBundleText(text: string, policy: ConflictPolicy): Promise<ImportReceipt>;
-    importMarkdownItems(items: Array<{id: string; title: string; itemType: string; kramdown: string}>, policy: ConflictPolicy): Promise<ImportReceipt>;
+    importMarkdownItems(items: ReadonlyArray<ExportedItem>, policy: ConflictPolicy): Promise<ImportReceipt>;
     fetchAssetBytes(assetPath: string): Promise<Uint8Array | null>;
     aiErrorText(err: unknown): string;
     applyPinyinAdapter(): void;
@@ -584,7 +584,7 @@ function openImportPolicyDialog(
     ctx: SettingsUiContext,
     parsed: {items: Array<{id: string; title: string}>},
     issues: ImportIssue[],
-    source: {kind: "json"; text: string} | {kind: "markdown-pack"; items: Array<{id: string; title: string; itemType: string; kramdown: string}>},
+    source: {kind: "json"; text: string} | {kind: "markdown-pack"; items: ExportedItem[]},
 ): void {
     const t = ctx.t;
     const dialog = new Dialog({

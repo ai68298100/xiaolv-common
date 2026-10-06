@@ -96,6 +96,69 @@ id: xlc-md0000000005`;
     assert.equal(result.issues.length, 2);
 });
 
+test("R61：md 包 overwrite 同类型更新走 updateBlock（不删旧建新）", async () => {
+    const {importMarkdownBundle} = importMarkdown;
+    const {LibraryService} = require("./.build/entry.cjs").library;
+    const DOC = "20240101120001-hijklmn";
+    const B_OLD = "20240101120000-aaaaaaa";
+    const calls = [];
+    let liveBlocks = [B_OLD];
+    const blocks = {
+        [B_OLD]: {"custom-xlc-id": "xlc-md0000000001", "custom-xlc-title": "原标题", "custom-xlc-type": "text"},
+    };
+    const kernel = {
+        request(endpoint, payload = {}) {
+            calls.push({endpoint, payload});
+            switch (endpoint) {
+                case "getChildBlocks":
+                    return Promise.resolve(liveBlocks.map((id) => ({id, type: "p"})));
+                case "batchGetBlockAttrs": {
+                    const out = {};
+                    for (const id of payload.ids ?? []) out[id] = blocks[id] ?? {};
+                    return Promise.resolve(out);
+                }
+                case "getBlockAttrs":
+                    return Promise.resolve(blocks[payload.id] ?? {"custom-xlc-id": "xlc-md0000000001", "custom-xlc-title": "原标题"});
+                case "appendBlock": {
+                    const n = calls.filter((c) => c.endpoint === "appendBlock").length;
+                    const newId = "202401011200" + String(n).padStart(2, "0") + "-newb" + String(n).padStart(3, "0");
+                    blocks[newId] = {"custom-xlc-id": "xlc-new" + String(n).padStart(8, "0")};
+                    liveBlocks.push(newId);
+                    return Promise.resolve([{doOperations: [{id: newId}]}]);
+                }
+                case "deleteBlock":
+                    liveBlocks = liveBlocks.filter((id) => id !== payload.id);
+                    return Promise.resolve(null);
+                default:
+                    return Promise.resolve(null);
+            }
+        },
+    };
+    const library = new LibraryService(kernel);
+    library.setConfig({configVersion: 1, mode: "doc", notebookIds: [], containerDocIds: [DOC], createdDocIds: [], configuredAt: 1});
+    await library.ensureIndex();
+    const mdText = [
+        "## 覆盖后标题",
+        "",
+        "<!-- xlc-item",
+        "id: xlc-md0000000001",
+        "type: text",
+        "-->",
+        "",
+        "覆盖后的正文",
+    ].join("\n");
+    const parsed = importMarkdown.parseMarkdownPack(mdText);
+    const receipt = await importMarkdownBundle(library, parsed.items, "overwrite");
+    assert.equal(receipt.overwritten, 1);
+    assert.equal(receipt.failed, 0);
+    // 同类型 overwrite：updateBlock 原地更新，不删旧建新（appendBlock 零调用）
+    assert.ok(calls.some((c) => c.endpoint === "updateBlock"), "same-type overwrite must updateBlock");
+    assert.ok(!calls.some((c) => c.endpoint === "appendBlock"), "same-type overwrite must NOT append");
+    const idx = await library.reindex();
+    const ids = idx.entries.filter((e) => e.id === "xlc-md0000000001").length;
+    assert.equal(ids, 1, "exactly one block per logical id");
+});
+
 test("无元数据注释的外来 Markdown 一律忽略（不吞外来文本）", () => {
     assert.deepEqual(importMarkdown.parseMarkdownPack("# 随便一篇笔记\n\n正文"), {items: [], issues: []});
     assert.deepEqual(importMarkdown.parseMarkdownPack(""), {items: [], issues: []});

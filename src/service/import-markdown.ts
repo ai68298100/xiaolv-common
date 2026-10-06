@@ -1,9 +1,10 @@
 // Markdown 包解析（R31）：把 buildMarkdownExport 的 items.md 解析回可导入条目。
 // 与导出格式严格互逆：条目以 <!-- xlc-item ... --> 元数据注释为界（正文含 ## 标题不误切）；
 // 无元数据注释的段落不识别（外来 Markdown 请走思源原生导入）。
-import {ExportedItem, ConflictPolicy, ImportReceipt, classifyConflict} from "../model/transfer";
+import {ExportedItem, ConflictPolicy, ImportReceipt, ParsedImport} from "../model/transfer";
 import {LIMITS} from "../constants";
-import {LibraryService, NewItemInput} from "./library";
+import {LibraryService} from "./library";
+import {importBundle as importJsonBundleCore} from "./importer";
 const ITEM_COMMENT_START = "<!-- xlc-item";
 const ITEM_COMMENT_END = "-->";
 const TITLE_RE = /^##\s+(.+)$/;
@@ -109,48 +110,22 @@ export function parseMarkdownPack(md: string): MarkdownPackParseResult {
     return {items, issues};
 }
 
-/** Markdown 包逐条应用（与 JSON 导入共用 classifyConflict/overwrite 语义），完成后重建索引。 */
+/** Markdown 包逐条应用：复用 importer 的单一真源（含 R21 overwrite 更新语义与 conflict 防御），完成后重建索引。 */
 export async function importMarkdownBundle(
     library: LibraryService,
-    items: Array<{id: string; title: string; itemType: string; kramdown: string; tags?: string[]; category?: string; source?: {sourceDocId?: string; sourceBlockId?: string}}>,
+    items: ReadonlyArray<ExportedItem>,
     policy: "skip" | "overwrite" | "rename",
 ): Promise<ImportReceipt> {
-    const receipt: ImportReceipt = {total: 0, created: 0, skipped: 0, overwritten: 0, renamed: 0, failed: 0, lines: []};
-    for (const incoming of items) {
-        receipt.total++;
-        const decision = classifyConflict(incoming.id, library.getIndex()?.items.has(incoming.id) ?? false, policy);
-        const applied = await applyMarkdownItem(library, incoming, decision.kind === "rename" ? undefined : incoming.id);
-        if (applied) {
-            if (decision.kind === "overwrite") receipt.overwritten++;
-            else if (decision.kind === "rename") receipt.renamed++;
-            else receipt.created++;
-        } else {
-            receipt.failed++;
-        }
-    }
-    await library.reindex();
-    return receipt;
+    // 委托 importer.importBundle：overwrite=更新既有块（类型变化删旧建新）、
+    // createItem 侧 conflict 防御自动生效（绝不双块）；全字段保真与 JSON 导入一致
+    const parsed: ParsedImport = {schemaVersion: 1, items: items as ExportedItem[], unknownTopFields: []};
+    return importJsonBundleCore(library, parsed, policy);
 }
 
-async function applyMarkdownItem(library: LibraryService, incoming: {id: string; title: string; itemType: string; kramdown: string; tags?: string[]; category?: string; source?: {sourceDocId?: string; sourceBlockId?: string}}, logicalId: string | undefined): Promise<boolean> {
-    const input: NewItemInput = {
-        itemType: isKnownMdType(incoming.itemType) ? incoming.itemType : "text",
-        markdown: incoming.kramdown,
-        title: incoming.title || undefined,
-        tags: incoming.tags,
-        category: incoming.category || undefined,
-        source: {
-            sourceDocId: incoming.source?.sourceDocId ?? "",
-            sourceBlockId: incoming.source?.sourceBlockId ?? "",
-        },
-    };
-    if (logicalId) input.logicalId = logicalId;
-    const created = await library.createItem(input);
-    return created.ok;
-}
-
-function isKnownMdType(v: string): v is NewItemInput["itemType"] {
-    return ["text", "markdown", "url", "code", "image", "asset", "blockref", "structure"].includes(v);
+interface ParsedImportLike {
+    schemaVersion: number;
+    items: ExportedItem[];
+    unknownTopFields: string[];
 }
 
 /** 供 parseMarkdownPack 使用的元数据行渲染（与 buildMarkdownExport 格式一致） */
