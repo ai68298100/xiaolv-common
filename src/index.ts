@@ -795,6 +795,7 @@ export default class XiaolvCommonPlugin extends Plugin {
                 this.notify("info", this.i18nFn()("insertNoEditor"));
                 return copied;
             },
+            copyText: async (text) => this.host.writeClipboard(text),
             aiEnabled: () => this.state.ai.enabled,
             aiSemantic: async (desc, filters) => {
                 try {

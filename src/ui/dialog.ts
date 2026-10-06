@@ -44,6 +44,8 @@ export interface DialogDeps {
     toggleFavorite: (itemId: string) => boolean;
     isFavorite: (itemId: string) => boolean;
     insertRaw: (markdown: string) => Promise<boolean>;
+    /** 写剪贴板（复制变换结果用，区别于条目原始内容的 runAction copy） */
+    copyText: (text: string) => Promise<boolean>;
     getSort: () => "manual" | "recent" | "frequent" | "title";
     cycleSort: () => void;
     openSetup: () => void;
@@ -1170,18 +1172,32 @@ export class CommonSearchDialog {
             menu.appendChild(box);
             const sec = document.createElement("div");
             sec.className = "xlc-menu-sec";
-            const mk = (icon: string, label: string, run: () => Promise<void>): void => {
-                sec.appendChild(this.menuButton(icon, label, "xlc-menu-item", run));
+            // 结果未就绪（AI 处理中）时结果类操作禁用——防止插入空块
+            const resultButtons: HTMLButtonElement[] = [];
+            const syncReady = (): void => {
+                const ready = Boolean(box.dataset.transformed);
+                for (const b of resultButtons) b.disabled = !ready;
             };
-            mk("＋", this.deps.t("aiInsertTransformed"), async () => {
-                await this.deps.insertRaw(box.dataset.transformed ?? "");
+            const insertBtn = this.menuButton("＋", this.deps.t("aiInsertTransformed"), "xlc-menu-item", async () => {
+                const transformed = box.dataset.transformed ?? "";
+                if (!transformed) return;
+                this.destroy();
+                await this.deps.insertRaw(transformed);
             });
-            mk("⧉", this.deps.t("aiCopyTransformed"), async () => {
-                await this.deps.runAction(entry.id, "copy");
+            const copyBtn = this.menuButton("⧉", this.deps.t("aiCopyTransformed"), "xlc-menu-item", async () => {
+                // 复制的是「变换结果」本体（此前误复制条目原文，R77 修正）
+                const transformed = box.dataset.transformed ?? "";
+                if (!transformed) return;
+                await this.deps.copyText(transformed);
             });
-            mk("↩", this.deps.t("aiInsertOriginal"), async () => {
+            resultButtons.push(insertBtn, copyBtn);
+            sec.appendChild(insertBtn);
+            sec.appendChild(copyBtn);
+            syncReady();
+            (menu as HTMLElement & {syncTransformReady?: () => void}).syncTransformReady = syncReady;
+            sec.appendChild(this.menuButton("↩", this.deps.t("aiInsertOriginal"), "xlc-menu-item", async () => {
                 await this.deps.runAction(entry.id, entry.itemType === "blockref" ? "insert-ref" : "insert");
-            });
+            }));
             sec.appendChild(this.menuButton("🗎", this.deps.t("saveTransformed"), "xlc-menu-item", async () => {
                 const transformed = box.dataset.transformed ?? "";
                 this.destroy();
@@ -1194,10 +1210,11 @@ export class CommonSearchDialog {
                 rebuild(buildDefault);
             }));
             menu.appendChild(secBack);
-            // 把最终文本挂到 dataset 供按钮使用（runTransformView 完成后填充）
+            // 把最终文本挂到 dataset 供按钮使用（runTransformView 完成后填充并解除结果按钮禁用）
             (menu as HTMLElement & {applyTransform?: (text: string) => void}).applyTransform = (text: string): void => {
                 box.dataset.transformed = text;
                 box.textContent = text.slice(0, 800);
+                (menu as HTMLElement & {syncTransformReady?: () => void}).syncTransformReady?.();
             };
         };
 

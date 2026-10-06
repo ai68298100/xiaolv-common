@@ -399,6 +399,31 @@ fs.writeFileSync(path.join(OUT, "harness.html"), html);
         throw new Error("action-menu smoke failed: " + JSON.stringify(menuAssertions));
     }
     console.log("  smoke ✓ action-menu: 7 assertions");
+    // R77：自定义变换「客服话术」→ 变换视图（结果未就绪时插/复制禁用，防空块）→ 就绪后复制变换结果本体
+    await page.evaluate(() => {
+        (window).__xlcCopied = undefined;
+        (window).__xlcInsertDisabledBefore = null;
+        const custom = Array.from(document.querySelectorAll(".xlc-menu-item")).find((b) => (b.textContent ?? "").includes("客服话术"));
+        if (!custom) throw new Error("custom transform item missing");
+        custom.click();
+        // rebuild 同步完成：此刻 AI 结果未回，结果类按钮必须处于禁用态
+        const insert = Array.from(document.querySelectorAll(".xlc-menu-item")).find((b) => (b.textContent ?? "").includes("插入变换结果"));
+        (window).__xlcInsertDisabledBefore = !!insert && insert.disabled;
+    });
+    await page.waitForTimeout(400);
+    const r77 = await page.evaluate(() => {
+        const insert = Array.from(document.querySelectorAll(".xlc-menu-item")).find((b) => (b.textContent ?? "").includes("插入变换结果"));
+        const ready = !!insert && !insert.disabled;
+        const copyBtn = Array.from(document.querySelectorAll(".xlc-menu-item")).find((b) => (b.textContent ?? "").includes("复制变换结果"));
+        if (copyBtn) copyBtn.click();
+        return {disabledBefore: (window).__xlcInsertDisabledBefore, ready};
+    });
+    await page.waitForTimeout(200);
+    const r77Copy = await page.evaluate(() => ({copiedTransformed: (window).__xlcCopied === "客服话术结果示例"}));
+    if (!r77.disabledBefore || !r77.ready || !r77Copy.copiedTransformed) {
+        throw new Error("transform-result-guard failed: " + JSON.stringify({...r77, ...r77Copy}));
+    }
+    console.log("  smoke ✓ transform-result-guard: 3 assertions");
     await page.screenshot({path: path.join(OUT, "production-action-menu-light.png")});
     // 变量填充卡片（F1，原型屏 4）：活动条目含 ask → Enter 触发填充卡
     await page.evaluate(() => {

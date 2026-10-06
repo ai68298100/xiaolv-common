@@ -1493,19 +1493,32 @@
         menu.appendChild(box);
         const sec = document.createElement("div");
         sec.className = "xlc-menu-sec";
-        const mk = (icon, label, run) => {
-          sec.appendChild(this.menuButton(icon, label, "xlc-menu-item", run));
+        const resultButtons = [];
+        const syncReady = () => {
+          const ready = Boolean(box.dataset.transformed);
+          for (const b of resultButtons) b.disabled = !ready;
         };
-        mk("\uFF0B", this.deps.t("aiInsertTransformed"), async () => {
+        const insertBtn = this.menuButton("\uFF0B", this.deps.t("aiInsertTransformed"), "xlc-menu-item", async () => {
           var _a2;
-          await this.deps.insertRaw((_a2 = box.dataset.transformed) != null ? _a2 : "");
+          const transformed = (_a2 = box.dataset.transformed) != null ? _a2 : "";
+          if (!transformed) return;
+          this.destroy();
+          await this.deps.insertRaw(transformed);
         });
-        mk("\u29C9", this.deps.t("aiCopyTransformed"), async () => {
-          await this.deps.runAction(entry.id, "copy");
+        const copyBtn = this.menuButton("\u29C9", this.deps.t("aiCopyTransformed"), "xlc-menu-item", async () => {
+          var _a2;
+          const transformed = (_a2 = box.dataset.transformed) != null ? _a2 : "";
+          if (!transformed) return;
+          await this.deps.copyText(transformed);
         });
-        mk("\u21A9", this.deps.t("aiInsertOriginal"), async () => {
+        resultButtons.push(insertBtn, copyBtn);
+        sec.appendChild(insertBtn);
+        sec.appendChild(copyBtn);
+        syncReady();
+        menu.syncTransformReady = syncReady;
+        sec.appendChild(this.menuButton("\u21A9", this.deps.t("aiInsertOriginal"), "xlc-menu-item", async () => {
           await this.deps.runAction(entry.id, entry.itemType === "blockref" ? "insert-ref" : "insert");
-        });
+        }));
         sec.appendChild(this.menuButton("\u{1F5CE}", this.deps.t("saveTransformed"), "xlc-menu-item", async () => {
           var _a2;
           const transformed = (_a2 = box.dataset.transformed) != null ? _a2 : "";
@@ -1520,8 +1533,10 @@
         }));
         menu.appendChild(secBack);
         menu.applyTransform = (text) => {
+          var _a2;
           box.dataset.transformed = text;
           box.textContent = text.slice(0, 800);
+          (_a2 = menu.syncTransformReady) == null ? void 0 : _a2.call(menu);
         };
       };
       const runTransformView = async (run) => {
@@ -3661,6 +3676,9 @@
       duplicateItem: "\u521B\u5EFA\u526F\u672C",
       insertToDoc: "\u63D2\u5165\u5230\u6307\u5B9A\u6587\u6863",
       insertToDocPick: "\u9009\u62E9\u76EE\u6807\u6587\u6863\uFF08\u8F93\u5165\u5173\u952E\u8BCD\u641C\u7D22\uFF09",
+      aiInsertTransformed: "\u63D2\u5165\u53D8\u6362\u7ED3\u679C",
+      aiCopyTransformed: "\u590D\u5236\u53D8\u6362\u7ED3\u679C",
+      aiInsertOriginal: "\u63D2\u5165\u539F\u6587",
       saveTransformed: "\u5B58\u4E3A\u65B0\u6761\u76EE",
       deleteConfirm: "\u5220\u9664\u6761\u76EE\u300C%s\u300D\uFF1F",
       providerSection: "\u63D0\u4F9B\u65B9\u5185\u5BB9",
@@ -3742,6 +3760,10 @@
       toggleFavorite: () => true,
       isFavorite: (id) => id === "xlc-demo0000001",
       insertRaw: async () => true,
+      copyText: async (text) => {
+        window.__xlcCopied = text;
+        return true;
+      },
       getSort: () => "manual",
       cycleSort: () => {
       },
