@@ -224,5 +224,8 @@
   "setupLater": "Later",
   "setupConfirmHint": "Creating asks for explicit confirmation and never touches existing docs; change later in Settings.",
   "setupSummaryDoc": "Items will be saved as real blocks in this doc",
-  "setupSummaryNotebook": "The whole notebook becomes the library"
+  "setupSummaryNotebook": "The whole notebook becomes the library",
+  "useCount": "%s uses",
+  "quickNew": "＋ New",
+  "quickInsertSelected": "Insert selected"
 }

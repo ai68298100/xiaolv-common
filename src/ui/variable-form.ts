@@ -27,7 +27,7 @@ export function openVariableFillCard(options: VariableFillOptions): void {
     const dialog = new Dialog({
         title: t("varFormTitle"),
         content: "",
-        width: "min(420px, 92vw)",
+        width: "min(380px, 92vw)",
         height: "auto",
     });
     const body = dialog.element.querySelector(".b3-dialog__content");

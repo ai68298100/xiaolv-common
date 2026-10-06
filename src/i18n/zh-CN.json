@@ -224,5 +224,8 @@
   "setupLater": "稍后再说",
   "setupConfirmHint": "创建动作有明确 confirm 提示 · 不动你已有的任何文档；之后可在 设置 → 当前内容库 更改。",
   "setupSummaryDoc": "条目将以真实块保存于此文档",
-  "setupSummaryNotebook": "整个笔记本作为内容库"
+  "setupSummaryNotebook": "整个笔记本作为内容库",
+  "useCount": "%s 次",
+  "quickNew": "＋ 新建",
+  "quickInsertSelected": "插入选中"
 }

@@ -330,7 +330,7 @@
     const dialog = new import_siyuan.Dialog({
       title: t("varFormTitle"),
       content: "",
-      width: "min(420px, 92vw)",
+      width: "min(380px, 92vw)",
       height: "auto"
     });
     const body = dialog.element.querySelector(".b3-dialog__content");
@@ -466,6 +466,8 @@
       this.lastPreviewId = null;
       /** 空状态文案（refresh 计算后交 renderList 渲染大空态；瞬态/错误仍走 status 行） */
       this.emptyMessage = "";
+      /** 使用计数快照（refresh 时取自侧车；行 meta 与预览徽标展示用） */
+      this.usageCounts = /* @__PURE__ */ new Map();
       /** 动作菜单 document 监听兜底清理（destroy 时调用；防键盘关弹窗残留监听） */
       this.menuDismiss = null;
       this.inputDebounce = null;
@@ -720,7 +722,27 @@
       footer.className = "xlc-footer";
       const count = document.createElement("span");
       count.className = "xlc-footer-count";
-      count.textContent = isMobile ? this.deps.t("usageHintMobile") : "";
+      if (isMobile) {
+        const footBtns = document.createElement("div");
+        footBtns.className = "xlc-mobile-foot";
+        const newBtn = document.createElement("button");
+        newBtn.className = "b3-button";
+        newBtn.textContent = this.deps.t("quickNew");
+        newBtn.addEventListener("click", () => this.deps.newItem());
+        footBtns.appendChild(newBtn);
+        const insertBtn = document.createElement("button");
+        insertBtn.className = "b3-button xlc-btn-primary";
+        insertBtn.textContent = this.deps.t("quickInsertSelected");
+        insertBtn.addEventListener("click", () => {
+          const entry = this.results[this.activeIndex];
+          if (entry) void this.runPrimary(entry);
+        });
+        footBtns.appendChild(insertBtn);
+        footer.appendChild(footBtns);
+        count.textContent = this.deps.t("usageHintMobile");
+      } else {
+        count.textContent = "";
+      }
       footer.appendChild(count);
       if (!isMobile) {
         const claim = document.createElement("span");
@@ -750,6 +772,10 @@
       badge.style.display = "none";
       badge.textContent = "\u2726 " + this.deps.t("aiFound");
       head.appendChild(badge);
+      const usage = document.createElement("span");
+      usage.className = "xlc-badge xlc-badge--ai xlc-pane-usage";
+      usage.style.display = "none";
+      head.appendChild(usage);
       return head;
     }
     buildPaneFoot() {
@@ -850,6 +876,7 @@
       var _a, _b, _c, _d, _e, _f;
       const seq = ++this.searchSeq;
       const query = this.buildQuery();
+      this.usageCounts = new Map(Object.entries(this.deps.getUsage()).map(([id, u]) => [id, u.count]));
       const list = (_a = this.dialog) == null ? void 0 : _a.element.querySelector(".xlc-list");
       const status = (_b = this.dialog) == null ? void 0 : _b.element.querySelector(".xlc-status");
       const footer = (_c = this.dialog) == null ? void 0 : _c.element.querySelector(".xlc-footer");
@@ -913,7 +940,8 @@
       if (footer) {
         const count = footer.querySelector(".xlc-footer-count");
         if (count && !this.deps.isMobile()) {
-          count.textContent = this.deps.t("totalItems", String(total)) + (truncated ? " \u26A0" : "");
+          const sortSuffix = this.deps.getSort() === "frequent" ? ` \xB7 ${this.deps.t("sort.frequent")}` : "";
+          count.textContent = this.deps.t("totalItems", String(total)) + sortSuffix + (truncated ? " \u26A0" : "");
         }
       }
       this.providerRows = [];
@@ -930,7 +958,7 @@
       this.updatePreview();
     }
     renderList(list) {
-      var _a, _b;
+      var _a, _b, _c;
       list.innerHTML = "";
       if (this.results.length === 0 && this.providerRows.length === 0 && this.emptyMessage) {
         const empty = document.createElement("div");
@@ -1016,7 +1044,9 @@
         main.appendChild(title);
         const meta = document.createElement("div");
         meta.className = "xlc-row-meta";
-        meta.textContent = [entry.tags.join(" / "), entry.summary].filter(Boolean).join(" \xB7 ").slice(0, 160);
+        const useCount = (_c = this.usageCounts.get(entry.id)) != null ? _c : 0;
+        const metaBase = [entry.tags.join(" / "), entry.summary].filter(Boolean).join(" \xB7 ").slice(0, 140);
+        meta.textContent = metaBase + (useCount > 0 ? ` \xB7 ${this.deps.t("useCount", String(useCount))}` : "");
         main.appendChild(meta);
         row.appendChild(main);
         if (this.deps.isSourceMissing(entry)) {
@@ -1173,29 +1203,42 @@
       paneVars.style.display = "flex";
     }
     updatePreview(forceId) {
-      var _a, _b, _c, _d, _e, _f;
+      var _a, _b, _c, _d, _e, _f, _g;
       const paneBody = (_a = this.dialog) == null ? void 0 : _a.element.querySelector(".xlc-pane-body");
       const paneTitle = (_b = this.dialog) == null ? void 0 : _b.element.querySelector(".xlc-pane-title");
       const paneWarn = (_c = this.dialog) == null ? void 0 : _c.element.querySelector(".xlc-pane-warn");
       const paneAi = (_d = this.dialog) == null ? void 0 : _d.element.querySelector(".xlc-pane-ai");
-      if (!paneBody || !paneTitle || !paneWarn || !paneAi) return;
+      const paneUsage = (_e = this.dialog) == null ? void 0 : _e.element.querySelector(".xlc-pane-usage");
+      if (!paneBody || !paneTitle || !paneWarn || !paneAi || !paneUsage) return;
+      const paintUsageBadge = (entry2) => {
+        var _a2;
+        const count = entry2 ? (_a2 = this.usageCounts.get(entry2.id)) != null ? _a2 : 0 : 0;
+        if (this.aiResults || count <= 0) {
+          paneUsage.style.display = "none";
+          return;
+        }
+        paneUsage.textContent = `\u2726 ${this.deps.t("sort.frequent")} \xB7 ${this.deps.t("useCount", String(count))}`;
+        paneUsage.style.display = "inline-block";
+      };
       if (this.activeProvider >= 0) {
         const row = this.providerRows[this.activeProvider];
         if (!row) return;
         this.lastPreviewId = row.virtualId;
         paneTitle.textContent = row.title || row.providerName;
         paneAi.style.display = "none";
+        paneUsage.style.display = "none";
         paneWarn.style.display = "none";
         this.paintPaneVars(null, "provider");
         paneBody.textContent = row.payload;
         return;
       }
       const entry = this.results[this.activeIndex];
-      const id = (_e = forceId != null ? forceId : entry == null ? void 0 : entry.id) != null ? _e : null;
+      const id = (_f = forceId != null ? forceId : entry == null ? void 0 : entry.id) != null ? _f : null;
       if (!id || id === this.lastPreviewId) return;
       const seq = ++this.previewSeq;
-      if (paneTitle) paneTitle.textContent = (_f = entry == null ? void 0 : entry.title) != null ? _f : "";
+      if (paneTitle) paneTitle.textContent = (_g = entry == null ? void 0 : entry.title) != null ? _g : "";
       if (paneAi) paneAi.style.display = this.aiResults ? "" : "none";
+      paintUsageBadge(entry);
       if (paneWarn) {
         const missing = Boolean(entry && this.deps.isSourceMissing(entry));
         paneWarn.style.display = missing ? "" : "none";
@@ -3098,9 +3141,13 @@
       setupSummaryDoc: "\u6761\u76EE\u5C06\u4EE5\u771F\u5B9E\u5757\u4FDD\u5B58\u4E8E\u6B64\u6587\u6863",
       setupSummaryNotebook: "\u6574\u4E2A\u7B14\u8BB0\u672C\u4F5C\u4E3A\u5185\u5BB9\u5E93",
       create: "\u521B\u5EFA",
+      useCount: "%s \u6B21",
+      quickNew: "\uFF0B \u65B0\u5EFA",
+      quickInsertSelected: "\u63D2\u5165\u9009\u4E2D",
       "sort.manual": "\u624B\u52A8/\u7F6E\u9876",
       "sort.recent": "\u6700\u8FD1\u4F7F\u7528",
       "sort.title": "\u6807\u9898",
+      "sort.frequent": "\u5E38\u7528",
       totalItems: "\u5171 %s \u6761",
       duplicateItem: "\u521B\u5EFA\u526F\u672C",
       insertToDoc: "\u63D2\u5165\u5230\u6307\u5B9A\u6587\u6863",
@@ -3188,6 +3235,14 @@
       openSetup: () => {
       },
       promptVariables: () => true,
+      getUsage: () => ({
+        "xlc-demo0000001": { count: 32, lastAt: 400 },
+        "xlc-demo0000002": { count: 18, lastAt: 300 },
+        "xlc-demo0000003": { count: 11, lastAt: 200 },
+        "xlc-demo0000005": { count: 4, lastAt: 100 }
+      }),
+      newItem: () => {
+      },
       providerSearch: async (query) => query.includes("\u5DE5\u4F5C\u53F0") ? [
         { virtualId: "pv:xiaolv-speed-switch:1", providerId: "xiaolv-speed-switch", providerName: "\u5C0F\u9A74\u96F7\u5207", title: "\u5F53\u524D\u5DE5\u4F5C\u53F0", payload: "\u5FEB\u901F\u56DE\u5230\u5DE5\u4F5C\u53F0\u5E03\u5C40\uFF08\u63D0\u4F9B\u65B9\u6F14\u793A\u6570\u636E\uFF09" },
         { virtualId: "pv:xiaolv-checkin:1", providerId: "xiaolv-checkin", providerName: "\u5C0F\u9A74\u6253\u5361", title: "\u4ECA\u65E5\u6253\u5361\u72B6\u6001", payload: "\u5DF2\u5B8C\u6210 3/4 \u9879\u4E60\u60EF\u6253\u5361\uFF08\u63D0\u4F9B\u65B9\u6F14\u793A\u6570\u636E\uFF09" }

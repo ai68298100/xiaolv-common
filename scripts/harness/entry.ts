@@ -56,7 +56,8 @@ const T = (key: string, ...args: string[]): string => {
         setupConfirmHint: "创建动作有明确 confirm 提示 · 不动你已有的任何文档；之后可在 设置 → 当前内容库 更改。",
         setupSummaryDoc: "条目将以真实块保存于此文档", setupSummaryNotebook: "整个笔记本作为内容库",
         create: "创建",
-        "sort.manual": "手动/置顶", "sort.recent": "最近使用", "sort.title": "标题",
+        useCount: "%s 次", quickNew: "＋ 新建", quickInsertSelected: "插入选中",
+        "sort.manual": "手动/置顶", "sort.recent": "最近使用", "sort.title": "标题", "sort.frequent": "常用",
         totalItems: "共 %s 条",
         duplicateItem: "创建副本", insertToDoc: "插入到指定文档", insertToDocPick: "选择目标文档（输入关键词搜索）",
         saveTransformed: "存为新条目", deleteConfirm: "删除条目「%s」？",
@@ -111,6 +112,13 @@ function makeDeps(overrides: {aiEnabled?: boolean; missing?: boolean; mobile?: b
         insertTarget: null,
         openSetup: () => {},
         promptVariables: () => true,
+        getUsage: () => ({
+            "xlc-demo0000001": {count: 32, lastAt: 400},
+            "xlc-demo0000002": {count: 18, lastAt: 300},
+            "xlc-demo0000003": {count: 11, lastAt: 200},
+            "xlc-demo0000005": {count: 4, lastAt: 100},
+        }),
+        newItem: () => {},
         providerSearch: async (query: string) => query.includes("工作台") ? [
             {virtualId: "pv:xiaolv-speed-switch:1", providerId: "xiaolv-speed-switch", providerName: "小驴雷切", title: "当前工作台", payload: "快速回到工作台布局（提供方演示数据）"},
             {virtualId: "pv:xiaolv-checkin:1", providerId: "xiaolv-checkin", providerName: "小驴打卡", title: "今日打卡状态", payload: "已完成 3/4 项习惯打卡（提供方演示数据）"},

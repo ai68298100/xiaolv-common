@@ -51,6 +51,10 @@ export interface DialogDeps {
     providerSearch: (query: string) => Promise<ProviderRow[]>;
     insertProviderPayload: (payload: string, target?: {docId: string; hPath: string}) => Promise<boolean>;
     copyProviderPayload: (payload: string) => Promise<boolean>;
+    /** 使用计数（F3 展示：行 meta 与预览徽标；侧车只读） */
+    getUsage: () => Record<string, {count: number; lastAt: number}>;
+    /** 手动新建条目（移动端「＋ 新建」入口） */
+    newItem: () => void;
     /** AI 语义找（? 前缀触发；仅元数据出域；候选先按当前筛选过滤） */
     aiSemantic: (desc: string, filters: {itemType: string; tag: string; scope: "all" | "favorites" | "recent"}) => Promise<{ok: true; entries: SearchEntry[]} | {ok: false; message: string}>;
     /** AI 变换（需正文出域权限） */
@@ -84,6 +88,8 @@ export class CommonSearchDialog {
     private lastPreviewId: string | null = null;
     /** 空状态文案（refresh 计算后交 renderList 渲染大空态；瞬态/错误仍走 status 行） */
     private emptyMessage = "";
+    /** 使用计数快照（refresh 时取自侧车；行 meta 与预览徽标展示用） */
+    private usageCounts = new Map<string, number>();
     /** 动作菜单 document 监听兜底清理（destroy 时调用；防键盘关弹窗残留监听） */
     private menuDismiss: (() => void) | null = null;
     private inputDebounce: ReturnType<typeof setTimeout> | null = null;
@@ -368,12 +374,33 @@ export class CommonSearchDialog {
         }
         root.appendChild(bodyWrap);
 
-        // 底栏（原型：左计数 / 右真源声明 + 设置入口；移动端左=点按提示）
+        // 底栏（原型：左计数 / 右真源声明 + 设置入口；移动端=操作钮行 + 点按提示）
         const footer = document.createElement("div");
         footer.className = "xlc-footer";
         const count = document.createElement("span");
         count.className = "xlc-footer-count";
-        count.textContent = isMobile ? this.deps.t("usageHintMobile") : "";
+        if (isMobile) {
+            // 操作钮行（原型屏 7：＋新建 / 插入选中；44px 命中）
+            const footBtns = document.createElement("div");
+            footBtns.className = "xlc-mobile-foot";
+            const newBtn = document.createElement("button");
+            newBtn.className = "b3-button";
+            newBtn.textContent = this.deps.t("quickNew");
+            newBtn.addEventListener("click", () => this.deps.newItem());
+            footBtns.appendChild(newBtn);
+            const insertBtn = document.createElement("button");
+            insertBtn.className = "b3-button xlc-btn-primary";
+            insertBtn.textContent = this.deps.t("quickInsertSelected");
+            insertBtn.addEventListener("click", () => {
+                const entry = this.results[this.activeIndex];
+                if (entry) void this.runPrimary(entry);
+            });
+            footBtns.appendChild(insertBtn);
+            footer.appendChild(footBtns);
+            count.textContent = this.deps.t("usageHintMobile");
+        } else {
+            count.textContent = "";
+        }
         footer.appendChild(count);
         if (!isMobile) {
             const claim = document.createElement("span");
@@ -405,6 +432,11 @@ export class CommonSearchDialog {
         badge.style.display = "none";
         badge.textContent = "✦ " + this.deps.t("aiFound");
         head.appendChild(badge);
+        // 使用徽标（F3，原型屏 1：「✦ 常用 · N 次」；AI 徽标优先，二者不同时现）
+        const usage = document.createElement("span");
+        usage.className = "xlc-badge xlc-badge--ai xlc-pane-usage";
+        usage.style.display = "none";
+        head.appendChild(usage);
         return head;
     }
 
@@ -506,6 +538,8 @@ export class CommonSearchDialog {
     private async refresh(): Promise<void> {
         const seq = ++this.searchSeq;
         const query = this.buildQuery();
+        // 使用计数快照（F3 展示；侧车只读，不入索引）
+        this.usageCounts = new Map(Object.entries(this.deps.getUsage()).map(([id, u]) => [id, u.count]));
         const list = this.dialog?.element.querySelector<HTMLElement>(".xlc-list");
         const status = this.dialog?.element.querySelector<HTMLElement>(".xlc-status");
         const footer = this.dialog?.element.querySelector<HTMLElement>(".xlc-footer");
@@ -573,7 +607,9 @@ export class CommonSearchDialog {
         if (footer) {
             const count = footer.querySelector<HTMLElement>(".xlc-footer-count");
             if (count && !this.deps.isMobile()) {
-                count.textContent = this.deps.t("totalItems", String(total)) + (truncated ? " ⚠" : "");
+                // 原型屏 1：常用排序时计数带排序名
+                const sortSuffix = this.deps.getSort() === "frequent" ? ` · ${this.deps.t("sort.frequent")}` : "";
+                count.textContent = this.deps.t("totalItems", String(total)) + sortSuffix + (truncated ? " ⚠" : "");
             }
         }
         // 提供方分区（有查询词且注册了可执行 provider 时；pv: 虚拟行不进键盘导航/执行器）
@@ -683,8 +719,12 @@ export class CommonSearchDialog {
             main.appendChild(title);
             const meta = document.createElement("div");
             meta.className = "xlc-row-meta";
-            meta.textContent = [entry.tags.join(" / "), entry.summary]
-                .filter(Boolean).join(" · ").slice(0, 160);
+            // 使用次数（F3 展示，原型屏 1：meta 尾部「· N 次」；先截断正文再拼计数，保证计数恒可见）
+            const useCount = this.usageCounts.get(entry.id) ?? 0;
+            const metaBase = [entry.tags.join(" / "), entry.summary]
+                .filter(Boolean).join(" · ")
+                .slice(0, 140);
+            meta.textContent = metaBase + (useCount > 0 ? ` · ${this.deps.t("useCount", String(useCount))}` : "");
             main.appendChild(meta);
             row.appendChild(main);
 
@@ -861,7 +901,18 @@ export class CommonSearchDialog {
         const paneTitle = this.dialog?.element.querySelector<HTMLElement>(".xlc-pane-title");
         const paneWarn = this.dialog?.element.querySelector<HTMLElement>(".xlc-pane-warn");
         const paneAi = this.dialog?.element.querySelector<HTMLElement>(".xlc-pane-ai");
-        if (!paneBody || !paneTitle || !paneWarn || !paneAi) return;
+        const paneUsage = this.dialog?.element.querySelector<HTMLElement>(".xlc-pane-usage");
+        if (!paneBody || !paneTitle || !paneWarn || !paneAi || !paneUsage) return;
+        const paintUsageBadge = (entry: SearchEntry | undefined): void => {
+            const count = entry ? (this.usageCounts.get(entry.id) ?? 0) : 0;
+            // AI 徽标优先（原型：AI 结果态只显示 AI 找到的）
+            if (this.aiResults || count <= 0) {
+                paneUsage.style.display = "none";
+                return;
+            }
+            paneUsage.textContent = `✦ ${this.deps.t("sort.frequent")} · ${this.deps.t("useCount", String(count))}`;
+            paneUsage.style.display = "inline-block";
+        };
         // 提供方行：预览直接展示 payload（无内核取用、无来源语义、无变量询问）
         if (this.activeProvider >= 0) {
             const row = this.providerRows[this.activeProvider];
@@ -869,6 +920,7 @@ export class CommonSearchDialog {
             this.lastPreviewId = row.virtualId;
             paneTitle.textContent = row.title || row.providerName;
             paneAi.style.display = "none";
+            paneUsage.style.display = "none";
             paneWarn.style.display = "none";
             this.paintPaneVars(null, "provider");
             paneBody.textContent = row.payload;
@@ -880,6 +932,7 @@ export class CommonSearchDialog {
         const seq = ++this.previewSeq;
         if (paneTitle) paneTitle.textContent = entry?.title ?? "";
         if (paneAi) paneAi.style.display = this.aiResults ? "" : "none";
+        paintUsageBadge(entry);
         if (paneWarn) {
             const missing = Boolean(entry && this.deps.isSourceMissing(entry));
             paneWarn.style.display = missing ? "" : "none";

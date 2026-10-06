@@ -121,6 +121,8 @@ fs.writeFileSync(path.join(OUT, "harness.html"), html);
         groupHeads: document.querySelectorAll(".xlc-group-head").length >= 2,
         pinnedGroup: (document.querySelector(".xlc-group-head")?.textContent ?? "").includes("置顶"),
         varBadge: (document.querySelector(".xlc-badge--var")?.textContent ?? "").includes("变量"),
+        // R68：行 meta 使用次数（F3 展示）
+        rowUseCount: ((document.querySelectorAll(".xlc-row-meta")[0] ?? {textContent: ""}).textContent ?? "").includes("32 次"),
         paneVars: (() => {
             const el = document.querySelector(".xlc-pane-vars");
             const text = el?.textContent ?? "";
@@ -135,6 +137,11 @@ fs.writeFileSync(path.join(OUT, "harness.html"), html);
         providerHeader: (document.querySelector(".xlc-provider-header")?.textContent ?? "").includes("提供方内容"),
         providerRows: document.querySelectorAll(".xlc-row--provider").length >= 1,
         footerGear: (document.querySelector(".xlc-footer-gear")?.textContent ?? "").includes("设置"),
+        // R68：非 AI 结果态显示「✦ 常用 · N 次」预览徽标
+        paneUsageBadge: (() => {
+            const el = document.querySelector(".xlc-pane-usage");
+            return el !== null && el.offsetParent !== null && (el.textContent ?? "").includes("32");
+        })(),
     }));
     // 窄容器（<620px）：单列降级（预览隐藏）
     await page.setViewportSize({width: 420, height: 720});
@@ -419,17 +426,22 @@ fs.writeFileSync(path.join(OUT, "harness.html"), html);
     await page.waitForTimeout(500);
     const mobileAssertions = await page.evaluate(() => {
         const root = document.querySelector(".xlc-dialog--mobile");
+        const footBtns = document.querySelectorAll(".xlc-mobile-foot .b3-button");
         return {
             mobileRoot: !!root,
             rows: document.querySelectorAll(".xlc-row[data-xlc-index]").length >= 3,
             cardRows: !!document.querySelector(".xlc-dialog--mobile .xlc-row"),
             kbdHidden: !document.querySelector(".xlc-kbdrow") || document.querySelector(".xlc-kbdrow").offsetParent === null,
+            // R68：移动端操作钮行（＋新建 / 插入选中）
+            footButtons: footBtns.length === 2
+                && (footBtns[0].textContent ?? "").includes("新建")
+                && (footBtns[1].textContent ?? "").includes("插入选中"),
         };
     });
     if (Object.values(mobileAssertions).some((v) => !v)) {
         throw new Error("mobile smoke failed: " + JSON.stringify(mobileAssertions));
     }
-    console.log("  smoke ✓ mobile: 4 assertions");
+    console.log("  smoke ✓ mobile: 5 assertions");
     await page.screenshot({path: path.join(OUT, "production-mobile-light.png")});
     await page.setViewportSize({width: 1280, height: 720});
     // 设置暗色

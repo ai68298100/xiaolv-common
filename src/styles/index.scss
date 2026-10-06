@@ -199,7 +199,7 @@
     border: 1.5px solid transparent;
     border-radius: var(--xlc-radius-sm);
     padding: 0 10px;
-    height: 36px;
+    height: 38px;
     transition: border-color var(--xlc-dur-fast) var(--xlc-ease),
                 background-color var(--xlc-dur-fast) var(--xlc-ease),
                 box-shadow var(--xlc-dur-fast) var(--xlc-ease);
@@ -1376,7 +1376,23 @@
   .xlc-footer {
     border-top: none;
     padding-top: 0;
+    flex-wrap: wrap;
+    row-gap: 6px;
 
     .xlc-footer-claim { display: none; }
+  }
+
+  // 操作钮行（F3/原型屏 7：＋新建 / 插入选中；40px 触控命中）
+  .xlc-mobile-foot {
+    display: flex;
+    gap: 8px;
+    width: 100%;
+
+    .b3-button {
+      flex: 1;
+      min-height: 40px;
+      border-radius: var(--xlc-radius);
+      font-size: 13px;
+    }
   }
 }

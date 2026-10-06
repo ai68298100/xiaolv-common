@@ -751,6 +751,8 @@ export default class XiaolvCommonPlugin extends Plugin {
                 return {ok: receipt.ok, message: msg};
             },
             promptVariables: () => this.state.insert.promptVariables,
+            getUsage: () => this.state.usage,
+            newItem: () => this.capture.newManual(),
             openSource: async (itemId) => {
                 const got = await this.library.getItem(itemId);
                 if (!got.ok) {
