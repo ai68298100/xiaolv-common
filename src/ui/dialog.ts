@@ -998,7 +998,8 @@ export class CommonSearchDialog {
                 const row = this.providerRows[this.activeProvider];
                 if (row) {
                     this.destroy();
-                    await this.deps.insertProviderPayload(row.payload);
+                    // 定向模式一致性（R50）：provider payload 同样插入目标文档
+                    await this.deps.insertProviderPayload(row.payload, this.insertTarget ?? undefined);
                 }
                 return;
             }

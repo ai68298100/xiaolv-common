@@ -352,7 +352,7 @@
       input.setAttribute("aria-label", this.deps.t("searchPlaceholder"));
       input.addEventListener("input", () => {
         this.currentScope = "all";
-        this.deps.setLastQuery(input.value);
+        this.deps.setLastQuery(input.value.replace(/^\?+/, ""));
         if (this.isComposing) return;
         if (this.inputDebounce) clearTimeout(this.inputDebounce);
         this.inputDebounce = setTimeout(() => void this.refresh(), 200);
@@ -1141,7 +1141,7 @@
       document.addEventListener("pointerdown", dismiss, true);
     }
     async onKeydown(e) {
-      var _a;
+      var _a, _b;
       const list = (_a = this.dialog) == null ? void 0 : _a.element.querySelector(".xlc-list");
       if (!list) return;
       if (e.key === "ArrowDown") {
@@ -1161,7 +1161,7 @@
           const row = this.providerRows[this.activeProvider];
           if (row) {
             this.destroy();
-            await this.deps.insertProviderPayload(row.payload);
+            await this.deps.insertProviderPayload(row.payload, (_b = this.insertTarget) != null ? _b : void 0);
           }
           return;
         }
