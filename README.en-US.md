@@ -1,5 +1,7 @@
 # LvCommon (小驴常用)
 
+[![CI](https://github.com/ai68298100/xiaolv-common/actions/workflows/ci.yml/badge.svg)](https://github.com/ai68298100/xiaolv-common/actions/workflows/ci.yml)
+
 A quick-recall content launcher for SiYuan Notes: turn frequently used content — canned replies, email templates, code snippets, links, images, attachments, block structures and block references — into searchable, insertable, source-linked **items anchored to real SiYuan blocks**. Capture once, reuse everywhere; AI helps with tidy-up and variation, while SiYuan blocks stay the single source of truth.
 
 > Runs fully standalone (no dependency on other Lv plugins), and exposes the `xiaolv-common/v1` protocol for sibling plugins.

@@ -1,5 +1,7 @@
 # 小驴常用（LvCommon）
 
+[![CI](https://github.com/ai68298100/xiaolv-common/actions/workflows/ci.yml/badge.svg)](https://github.com/ai68298100/xiaolv-common/actions/workflows/ci.yml)
+
 基于思源文档和块的**常用内容快速调用器**：常用语、客服回复、邮件模板、多行 Markdown、代码、网址、图片、附件、思源块结构与块引用——一条目锚定一个真实思源块，来源可回链、失效可见。
 
 > 独立运行，不依赖小驴雷切；同时提供 `xiaolv-common/v1` 协议供小驴系列插件联动。

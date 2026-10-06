@@ -1,0 +1,45 @@
+# 小驴常用 CI：每次 push / PR 自动执行全部门禁
+# （类型检查 → 单元测试 → 密钥扫描 → 生产构建 → UI 生产渲染冒烟）。
+# 桌面内核链路验收（pnpm e2e）需要思源实例令牌，不在 CI 内执行（见 scripts/e2e-acceptance.cjs）。
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  gates:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 12.5.1
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: 安装依赖（含 playwright，浏览器在下一步装）
+        run: pnpm install --frozen-lockfile
+
+      - name: 安装 Chromium（UI 冒烟用）
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: 类型检查
+        run: pnpm run check
+
+      - name: 单元/模型测试
+        run: pnpm test
+
+      - name: 密钥扫描
+        run: pnpm run scan
+
+      - name: 生产构建
+        run: pnpm run build
+
+      - name: UI 生产渲染冒烟
+        run: pnpm run test:ui
