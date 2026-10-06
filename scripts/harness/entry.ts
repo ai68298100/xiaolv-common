@@ -45,7 +45,7 @@ const T = (key: string, ...args: string[]): string => {
         semanticSuggestion: "没有本地结果。试试 AI 语义找：在关键词前加 ?", aiSemanticHint: "输入 ? 加描述，如「?给客户的道歉回复」，AI 在元数据中找最相关条目",
         varCountBadge: "%s 变量", paneVarsLabel: "插入时将询问 %s 个变量：", insertVariable: "插入变量：",
         varFormTitle: "填写变量", varFormSub: "本条目含 %s 个变量，填写后一次性插入；填写值仅用于本次，不回写库。", varFormHint: "Tab 下一项 · Enter 插入",
-        groupPinned: "置顶", groupAll: "全部", insertSection: "变量与插入",
+        groupPinned: "置顶", groupAll: "全部", groupUncategorized: "无分类", insertSection: "变量与插入",
         promptVariablesToggle: "插入前询问变量", promptVariablesSub: "含 {{xlc:ask:…}} 的条目插入前弹出填充卡片",
         recordUsageToggle: "记录使用次数", recordUsageSub: "仅本地存储，可一键清除；用于「常用」排序",
         usageStatsHint: "使用统计仅保存在本机", clearUsageBtn: "清空使用统计", clearUsageConfirm: "清空全部使用计数？", clearUsageDone: "已清空使用统计",

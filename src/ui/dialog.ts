@@ -671,12 +671,59 @@ export class CommonSearchDialog {
             }
             list.appendChild(empty);
         }
-        // 分组头（F4-lite，原型屏 1）：手动/置顶排序 + 全部范围时，收藏行前插「置顶」组，其余为「全部」
-        const grouping = this.deps.getSort() === "manual" && this.currentScope === "all";
-        const favoriteCount = grouping ? this.results.filter((e) => this.deps.isFavorite(e.id)).length : 0;
-        const showPinnedHead = grouping && favoriteCount > 0;
-        let pinnedPlaced = false;
-        let restHeadPlaced = false;
+        // 分组头（F4 完整形态，原型屏 1）：浏览态（全部范围 + 非标题排序）按
+        // 「置顶(manual) → 分类(α) → 无分类」分区展示；搜索结果同样分组（原型屏 1 同款）。
+        // 分组 = 对 this.results 重排到展示序（仅展示副本，不动索引/真源），键盘/Alt+N 线性导航不变。
+        const grouping = this.currentScope === "all" && this.deps.getSort() !== "title";
+        const groupLabels: Array<{label: string; count: number}> = [];
+        if (grouping && this.results.length > 0) {
+            const isManual = this.deps.getSort() === "manual";
+            const favs: SearchEntry[] = [];
+            const rest: SearchEntry[] = [];
+            for (const e of this.results) {
+                if (e && this.deps.isFavorite(e.id)) favs.push(e);
+                else rest.push(e);
+            }
+            const byCat = new Map<string, SearchEntry[]>();
+            const uncategorized: SearchEntry[] = [];
+            for (const e of rest) {
+                const cat = e?.category ?? "";
+                if (!cat) {
+                    uncategorized.push(e);
+                    continue;
+                }
+                const bucket = byCat.get(cat) ?? [];
+                bucket.push(e);
+                byCat.set(cat, bucket);
+            }
+            const catKeys = Array.from(byCat.keys()).sort((a, b) => a.localeCompare(b, "zh-Hans-CN"));
+            const ordered: SearchEntry[] = [];
+            if (isManual && favs.length > 0) {
+                groupLabels.push({label: "📌 " + this.deps.t("groupPinned"), count: favs.length});
+                ordered.push(...favs);
+            }
+            for (const key of catKeys) {
+                const bucket = byCat.get(key) ?? [];
+                groupLabels.push({label: key, count: bucket.length});
+                ordered.push(...bucket);
+            }
+            if (uncategorized.length > 0) {
+                groupLabels.push({label: this.deps.t("groupUncategorized"), count: uncategorized.length});
+                ordered.push(...uncategorized);
+            }
+            if (groupLabels.length > 1) {
+                this.results = ordered;
+            } else {
+                groupLabels.length = 0;
+            }
+        }
+        let headCursor = -1;
+        const headStarts: number[] = [];
+        let groupAcc = 0;
+        for (const g of groupLabels) {
+            headStarts.push(groupAcc);
+            groupAcc += g.count;
+        }
         const placeGroupHead = (label: string, count: number): void => {
             const head = document.createElement("div");
             head.className = "xlc-group-head";
@@ -686,19 +733,14 @@ export class CommonSearchDialog {
             list.appendChild(head);
         };
         for (let i = 0; i < this.results.length; i++) {
+            while (headCursor + 1 < groupLabels.length && i === headStarts[headCursor + 1]) {
+                headCursor++;
+                const head = groupLabels[headCursor];
+                if (head) placeGroupHead(head.label, head.count);
+            }
             const entry = this.results[i];
             if (!entry) continue;
             const fav = this.deps.isFavorite(entry.id);
-            if (showPinnedHead) {
-                if (fav && !pinnedPlaced) {
-                    placeGroupHead("📌 " + this.deps.t("groupPinned"), favoriteCount);
-                    pinnedPlaced = true;
-                }
-                if (!fav && pinnedPlaced && !restHeadPlaced) {
-                    placeGroupHead(this.deps.t("groupAll"), this.results.length - favoriteCount);
-                    restHeadPlaced = true;
-                }
-            }
             const row = document.createElement("div");
             row.className = "xlc-row"
                 + (i === this.activeIndex ? " xlc-row--active" : "")

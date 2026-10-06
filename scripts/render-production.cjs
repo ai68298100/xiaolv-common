@@ -371,7 +371,8 @@ fs.writeFileSync(path.join(OUT, "harness.html"), html);
     });
     await page.waitForTimeout(800);
     await page.evaluate(() => {
-        const row = document.querySelectorAll(".xlc-list .xlc-row[data-xlc-index]")[1];
+        const row = Array.from(document.querySelectorAll(".xlc-list .xlc-row[data-xlc-index]"))
+            .find((el) => (el.textContent ?? "").includes("延期简短版")) ?? document.querySelectorAll(".xlc-list .xlc-row[data-xlc-index]")[0];
         row.dispatchEvent(new MouseEvent("contextmenu", {bubbles: true, cancelable: true}));
     });
     await page.waitForTimeout(600);

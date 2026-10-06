@@ -261,5 +261,6 @@
   "quickCaptureDuplicate": "Duplicate of \"%s\" exists; not saved again",
   "promptPackBtn": "Import prompt scene pack",
   "promptPackHint": "10 built-in templates: support replies / AI prompts / dev writing; import into current library",
-  "clearSearch": "Clear search"
+  "clearSearch": "Clear search",
+  "groupUncategorized": "Uncategorized"
 }

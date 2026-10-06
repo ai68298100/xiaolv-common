@@ -865,7 +865,7 @@
       this.updatePreview();
     }
     renderList(list) {
-      var _a, _b, _c;
+      var _a, _b, _c, _d, _e, _f;
       list.innerHTML = "";
       if (this.results.length === 0 && this.providerRows.length === 0 && this.emptyMessage) {
         const empty = document.createElement("div");
@@ -891,11 +891,56 @@
         }
         list.appendChild(empty);
       }
-      const grouping = this.deps.getSort() === "manual" && this.currentScope === "all";
-      const favoriteCount = grouping ? this.results.filter((e) => this.deps.isFavorite(e.id)).length : 0;
-      const showPinnedHead = grouping && favoriteCount > 0;
-      let pinnedPlaced = false;
-      let restHeadPlaced = false;
+      const grouping = this.currentScope === "all" && this.deps.getSort() !== "title";
+      const groupLabels = [];
+      if (grouping && this.results.length > 0) {
+        const isManual = this.deps.getSort() === "manual";
+        const favs = [];
+        const rest = [];
+        for (const e of this.results) {
+          if (e && this.deps.isFavorite(e.id)) favs.push(e);
+          else rest.push(e);
+        }
+        const byCat = /* @__PURE__ */ new Map();
+        const uncategorized = [];
+        for (const e of rest) {
+          const cat = (_a = e == null ? void 0 : e.category) != null ? _a : "";
+          if (!cat) {
+            uncategorized.push(e);
+            continue;
+          }
+          const bucket = (_b = byCat.get(cat)) != null ? _b : [];
+          bucket.push(e);
+          byCat.set(cat, bucket);
+        }
+        const catKeys = Array.from(byCat.keys()).sort((a, b) => a.localeCompare(b, "zh-Hans-CN"));
+        const ordered = [];
+        if (isManual && favs.length > 0) {
+          groupLabels.push({ label: "\u{1F4CC} " + this.deps.t("groupPinned"), count: favs.length });
+          ordered.push(...favs);
+        }
+        for (const key of catKeys) {
+          const bucket = (_c = byCat.get(key)) != null ? _c : [];
+          groupLabels.push({ label: key, count: bucket.length });
+          ordered.push(...bucket);
+        }
+        if (uncategorized.length > 0) {
+          groupLabels.push({ label: this.deps.t("groupUncategorized"), count: uncategorized.length });
+          ordered.push(...uncategorized);
+        }
+        if (groupLabels.length > 1) {
+          this.results = ordered;
+        } else {
+          groupLabels.length = 0;
+        }
+      }
+      let headCursor = -1;
+      const headStarts = [];
+      let groupAcc = 0;
+      for (const g of groupLabels) {
+        headStarts.push(groupAcc);
+        groupAcc += g.count;
+      }
       const placeGroupHead = (label, count) => {
         const head = document.createElement("div");
         head.className = "xlc-group-head";
@@ -905,19 +950,14 @@
         list.appendChild(head);
       };
       for (let i = 0; i < this.results.length; i++) {
+        while (headCursor + 1 < groupLabels.length && i === headStarts[headCursor + 1]) {
+          headCursor++;
+          const head = groupLabels[headCursor];
+          if (head) placeGroupHead(head.label, head.count);
+        }
         const entry = this.results[i];
         if (!entry) continue;
         const fav = this.deps.isFavorite(entry.id);
-        if (showPinnedHead) {
-          if (fav && !pinnedPlaced) {
-            placeGroupHead("\u{1F4CC} " + this.deps.t("groupPinned"), favoriteCount);
-            pinnedPlaced = true;
-          }
-          if (!fav && pinnedPlaced && !restHeadPlaced) {
-            placeGroupHead(this.deps.t("groupAll"), this.results.length - favoriteCount);
-            restHeadPlaced = true;
-          }
-        }
         const row = document.createElement("div");
         row.className = "xlc-row" + (i === this.activeIndex ? " xlc-row--active" : "") + (fav ? " xlc-row--fav" : "");
         row.dataset.xlcIndex = String(i);
@@ -936,13 +976,13 @@
         }
         const badge = document.createElement("span");
         badge.className = `xlc-badge xlc-badge--${entry.itemType}`;
-        badge.textContent = (_a = TYPE_BADGES2[entry.itemType]) != null ? _a : "TXT";
+        badge.textContent = (_d = TYPE_BADGES2[entry.itemType]) != null ? _d : "TXT";
         title.appendChild(badge);
         const titleText = document.createElement("span");
         titleText.className = "xlc-row-titletext";
         titleText.textContent = entry.title || this.deps.t("unknownType");
         title.appendChild(titleText);
-        if (((_b = entry.varCount) != null ? _b : 0) > 0) {
+        if (((_e = entry.varCount) != null ? _e : 0) > 0) {
           const varBadge = document.createElement("span");
           varBadge.className = "xlc-badge xlc-badge--var";
           varBadge.textContent = this.deps.t("varCountBadge", String(entry.varCount));
@@ -951,7 +991,7 @@
         main.appendChild(title);
         const meta = document.createElement("div");
         meta.className = "xlc-row-meta";
-        const useCount = (_c = this.usageCounts.get(entry.id)) != null ? _c : 0;
+        const useCount = (_f = this.usageCounts.get(entry.id)) != null ? _f : 0;
         const metaBase = [entry.tags.join(" / "), entry.summary].filter(Boolean).join(" \xB7 ").slice(0, 140);
         meta.textContent = metaBase + (useCount > 0 ? ` \xB7 ${this.deps.t("useCount", String(useCount))}` : "");
         main.appendChild(meta);
@@ -3507,6 +3547,7 @@
       varFormHint: "Tab \u4E0B\u4E00\u9879 \xB7 Enter \u63D2\u5165",
       groupPinned: "\u7F6E\u9876",
       groupAll: "\u5168\u90E8",
+      groupUncategorized: "\u65E0\u5206\u7C7B",
       insertSection: "\u53D8\u91CF\u4E0E\u63D2\u5165",
       promptVariablesToggle: "\u63D2\u5165\u524D\u8BE2\u95EE\u53D8\u91CF",
       promptVariablesSub: "\u542B {{xlc:ask:\u2026}} \u7684\u6761\u76EE\u63D2\u5165\u524D\u5F39\u51FA\u586B\u5145\u5361\u7247",
