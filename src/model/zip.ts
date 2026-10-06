@@ -14,7 +14,7 @@ const CRC_TABLE = (() => {
 
 export function crc32(data: Uint8Array): number {
     let c = 0 ^ -1;
-    for (let i = 0; i < data.length; i++) c = (c >>> 8) ^ CRC_TABLE[(c ^ data[i]) & 0xff];
+    for (const byte of data) c = (c >>> 8) ^ (CRC_TABLE[(c ^ byte) & 0xff] ?? 0);
     return (c ^ -1) >>> 0;
 }
 

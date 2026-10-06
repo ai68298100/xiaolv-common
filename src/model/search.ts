@@ -84,7 +84,9 @@ export function matchEntry(entry: SearchEntry, rawQuery: string): Omit<ScoredRes
             {score: entry.py ? scoreHaystack(entry.py, q, 3) : 0, matchedBy: "pinyin"},
             {score: entry.pyi ? scoreHaystack(entry.pyi, q, 3, 2) : 0, matchedBy: "pinyin-initials"},
         ];
-        const top = candidates.reduce((a, b) => (b.score > a.score ? b : a), candidates[0]);
+        const first = candidates[0];
+        if (!first) continue;
+        const top = candidates.reduce((a, b) => (b.score > a.score ? b : a), first);
         if (top.score > 0 && (!best || top.score > best.score)) best = top;
     }
     return best ? {entry, score: best.score, matchedBy: best.matchedBy} : null;
@@ -135,7 +137,7 @@ export function searchEntries(entries: readonly SearchEntry[], query: SearchQuer
     const results: ScoredResult[] = [];
     for (let order = 0; order < entries.length; order++) {
         const entry = entries[order];
-        if (!passesFilters(entry, query, ctx)) continue;
+        if (!entry || !passesFilters(entry, query, ctx)) continue;
         const text = query.text.trim();
         if (text) {
             const m = matchEntry(entry, text);

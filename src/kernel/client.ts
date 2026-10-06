@@ -176,7 +176,7 @@ export function parseDocSearch(data: unknown): IDocSearchHit[] {
         const m = path.match(/(\d{14}-[0-9a-z]{7})\.sy$/);
         if (!m) continue;
         out.push({
-            id: m[1],
+            id: m[1] ?? "",
             hPath: typeof obj.hPath === "string" ? obj.hPath : "",
             box: typeof obj.box === "string" ? obj.box : "",
             name: typeof obj.name === "string" ? obj.name : "",

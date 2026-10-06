@@ -6,8 +6,7 @@
 // AI：? 前缀语义找条目（默认仅元数据出域）；动作菜单 AI 变换（预览后选插入，原文永不被改写）。
 import {Dialog} from "siyuan";
 import {ITEM_TYPES, ItemType} from "../model/item";
-import {SearchEntry, SearchQuery, SearchContext} from "../model/search";
-import {CommonItem} from "../model/item";
+import {SearchEntry, SearchQuery} from "../model/search";
 import {InsertMode} from "../model/actions";
 import {TransformKind} from "../service/ai";
 import {ProviderRow} from "../model/provider-section";
@@ -88,7 +87,6 @@ export class CommonSearchDialog {
     private activeIndex = 0;
     private searchSeq = 0;
     private previewSeq = 0;
-    private ctx: SearchContext;
     private currentScope: "all" | "favorites" | "recent" = "all";
     private lastPreviewId: string | null = null;
     /** 空状态文案（refresh 计算后交 renderList 渲染大空态；瞬态/错误仍走 status 行） */
@@ -101,9 +99,7 @@ export class CommonSearchDialog {
     /** IME 组合输入中（中文输入法组词期间跳过刷新，compositionend 后统一刷新） */
     private isComposing = false;
 
-    constructor(private readonly deps: DialogDeps, ctx: SearchContext) {
-        this.ctx = ctx;
-    }
+    constructor(private readonly deps: DialogDeps) {}
 
     /** 定向插入目标（文档树入口；设置后 Enter/点按插入到该文档而非活动编辑器） */
     insertTarget?: {docId: string; hPath: string} | null;
@@ -138,10 +134,6 @@ export class CommonSearchDialog {
             input.focus();
         }
         void this.refresh();
-    }
-
-    updateContext(ctx: SearchContext): void {
-        this.ctx = ctx;
     }
 
     private buildDom(isMobile: boolean): HTMLElement {
@@ -695,6 +687,7 @@ export class CommonSearchDialog {
         };
         for (let i = 0; i < this.results.length; i++) {
             const entry = this.results[i];
+            if (!entry) continue;
             const fav = this.deps.isFavorite(entry.id);
             if (showPinnedHead) {
                 if (fav && !pinnedPlaced) {

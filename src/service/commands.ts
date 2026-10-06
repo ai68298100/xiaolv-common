@@ -7,7 +7,7 @@ import {ActionContext, InsertMode, InsertPlan, OpenTarget, planAction, planOpenS
 import {applyPlaceholders, listPlaceholders} from "../model/placeholders";
 import {applyAskDefaults, expandAsks, stripCursorToken} from "../model/variables";
 import {CommonItem} from "../model/item";
-import {LibraryService, Receipt, SourceHealth} from "./library";
+import {LibraryService, SourceHealth} from "./library";
 
 /** 占位符应用钩子：由入口注入（读设置 + 当前时间 + 当前文档 + 剪贴板）；未注入则原样保留 */
 export interface IPlaceholderHook {
@@ -142,10 +142,13 @@ export class ActionExecutor {
     constructor(
         private readonly library: LibraryService,
         private readonly host: IHostBridge,
-        private readonly notify: (kind: "info" | "error", message: string) => void,
+        notify: (kind: "info" | "error", message: string) => void,
         private readonly onItemUsed?: (item: CommonItem) => void,
         private readonly placeholders?: IPlaceholderHook,
-    ) {}
+    ) {
+        // notify 保留在签名中以维持调用方兼容（index.ts 注入）；当前执行器回执走 receipt 返回
+        void notify;
+    }
 
     /** provider payload 渲染（xiaolv-common/v1 语义定案）：与库条目一致，插入前应用动态占位符。
      *  提供方如需字面花括号，请使用非 xlc 命名空间。 */
@@ -328,7 +331,7 @@ export class ActionExecutor {
         return {ok: false, mode: plan.mode, message: "unsupported", downgraded: false, pendingVerification: plan.pendingVerification};
     }
 
-    private async openTarget(target: OpenTarget, item: CommonItem): Promise<ExecutionReceipt> {
+    private async openTarget(target: OpenTarget, _item: CommonItem): Promise<ExecutionReceipt> {
         let opened = false;
         if (target.kind === "url" && target.url) opened = this.host.openExternal(target.url);
         else if (target.kind === "asset" && target.assetPath) opened = this.host.openAsset(target.assetPath);

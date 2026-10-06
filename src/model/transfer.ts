@@ -1,7 +1,6 @@
 // 导入导出 v1：JSON 捆绑包。导入前校验 → 冲突分类 → 逐项回执；失败不落库（不覆盖原始数据）。
 import {EXPORT_SCHEMA_VERSION, LIMITS, PROTOCOL_NAME} from "../constants";
-import {CommonItem, newLogicalId, normalizeUnknownItem} from "./item";
-import {envelope} from "./protocol";
+import {CommonItem, newLogicalId} from "./item";
 
 export interface ExportBundle {
     protocol: typeof PROTOCOL_NAME;
@@ -165,7 +164,7 @@ export interface ConflictDecision {
  * - ID 已存在 → 按用户策略：skip（保留现有）/ overwrite（覆盖现有条目块）/ rename（新 ID 并存）。
  *   内容级 diff（同 ID 同内容自动 skip）需要逐条取 kramdown，首版不做并如实记录于已知限制。
  */
-export function classifyConflict(incomingId: string, idExists: boolean, policy: ConflictPolicy, random = Math.random): ConflictDecision {
+export function classifyConflict(_incomingId: string, idExists: boolean, policy: ConflictPolicy, random = Math.random): ConflictDecision {
     if (!idExists) return {kind: "new"};
     if (policy === "overwrite") return {kind: "overwrite"};
     if (policy === "rename") return {kind: "rename", newId: newLogicalId(Date.now(), random)};

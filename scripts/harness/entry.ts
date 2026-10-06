@@ -165,11 +165,7 @@ function makeDeps(overrides: {aiEnabled?: boolean; missing?: boolean; mobile?: b
 
 (window as unknown as {XlcHarness: unknown}).XlcHarness = {
     openDialog(overrides?: {aiEnabled?: boolean; missing?: boolean; scope?: "all" | "favorites"; query?: string; mobile?: boolean; empty?: boolean}): CommonSearchDialog {
-        const dialog = new CommonSearchDialog(makeDeps(overrides), {
-            favorites: new Set(["xlc-demo0000001"]),
-            recents: new Map([["xlc-demo0000002", 2]]),
-            now: 1,
-        });
+        const dialog = new CommonSearchDialog(makeDeps(overrides));
         dialog.open();
         // 预填搜索与选中态，让截图呈现工作状态
         const input = document.querySelector<HTMLInputElement>(".xlc-search-input");

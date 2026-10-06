@@ -190,10 +190,10 @@ export function parseSemanticPick(raw: string, max: number): number[] {
 function extractJson(raw: string): string | null {
     if (!raw) return null;
     const fenced = raw.match(/```(?:json)?\s*([\s\S]*?)```/);
-    const body = fenced ? fenced[1] : raw;
+    const body = fenced ? fenced[1] ?? "" : raw;
     const start = body.search(/[[{]/);
     if (start === -1) return null;
-    const open = body[start];
+    const open = body[start] ?? "";
     const close = open === "{" ? "}" : "]";
     const end = body.lastIndexOf(close);
     if (end <= start) return null;

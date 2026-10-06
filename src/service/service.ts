@@ -1,6 +1,6 @@
 // XiaolvCommonService：xiaolv-common/v1 对外服务接口（跨插件协议面）。
 // 不抛异常：全部返回 ActionResult；内部组装 library/executor/registry/sidecar。
-import {CAPABILITIES, ActionResult, CapabilityAi, CapabilityDescriptor, CommonItemRef, ProviderDescriptor, envelope, failureEnvelope, negotiateProtocol, normalizeSaveInput, successEnvelope} from "../model/protocol";
+import {CAPABILITIES, ActionResult, CapabilityDescriptor, CommonItemRef, ProviderDescriptor, envelope, failureEnvelope, negotiateProtocol, normalizeSaveInput, successEnvelope} from "../model/protocol";
 import {SearchQuery, SearchContext, searchEntries, listByScope} from "../model/search";
 import {InsertMode} from "../model/actions";
 import {CommonItem, isItemType} from "../model/item";

@@ -67,7 +67,7 @@ export function expandAsks(text: string, fills: Record<string, string>): string 
     return text.replace(ASK_PATTERN, (_match, rawName: string, rawOptions?: string) => {
         const field = parseAskField(rawName, rawOptions);
         if (!field) return _match;
-        const filled = Object.prototype.hasOwnProperty.call(fills, field.name) ? cleanFillValue(fills[field.name]) : "";
+        const filled = Object.prototype.hasOwnProperty.call(fills, field.name) ? cleanFillValue(fills[field.name] ?? "") : "";
         if (filled) return filled;
         return `__${field.name}__`;
     });

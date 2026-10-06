@@ -1,7 +1,7 @@
 // Markdown 包解析（R31）：把 buildMarkdownExport 的 items.md 解析回可导入条目。
 // 与导出格式严格互逆：条目以 <!-- xlc-item ... --> 元数据注释为界（正文含 ## 标题不误切）；
 // 无元数据注释的段落不识别（外来 Markdown 请走思源原生导入）。
-import {ExportedItem, ConflictPolicy, ImportReceipt, ParsedImport} from "../model/transfer";
+import {ExportedItem, ImportReceipt, ParsedImport} from "../model/transfer";
 import {LIMITS} from "../constants";
 import {LibraryService} from "./library";
 import {importBundle as importJsonBundleCore} from "./importer";
@@ -71,12 +71,14 @@ export function parseMarkdownPack(md: string): MarkdownPackParseResult {
     }
     const chunks: string[] = [];
     for (let i = 0; i < commentStarts.length; i++) {
-        const lowerBound = i > 0 ? commentEnds[i - 1] : 0;
+        const itemStart = commentStarts[i] ?? 0;
+        const lowerBound = i > 0 ? commentEnds[i - 1] ?? 0 : 0;
         // 回溯：注释前最近的行首 `## `（标题行），但不越过上一条目的注释结束
-        const titleLineStart = md.lastIndexOf("\n## ", commentStarts[i]) + 1;
-        const chunkStart = Math.max(Math.min(titleLineStart, commentStarts[i]), lowerBound);
-        const chunkEnd = i + 1 < commentStarts.length
-            ? Math.max(md.lastIndexOf("\n## ", commentStarts[i + 1]) + 1, commentStarts[i + 1])
+        const titleLineStart = md.lastIndexOf("\n## ", itemStart) + 1;
+        const chunkStart = Math.max(Math.min(titleLineStart, itemStart), lowerBound);
+        const nextStart = commentEnds[i + 1];
+        const chunkEnd = nextStart !== undefined
+            ? Math.max(md.lastIndexOf("\n## ", nextStart) + 1, nextStart)
             : md.length;
         chunks.push(md.slice(chunkStart, chunkEnd));
     }
@@ -100,7 +102,8 @@ export function parseMarkdownPack(md: string): MarkdownPackParseResult {
         const before = chunk.slice(0, chunk.indexOf(ITEM_COMMENT_START));
         for (const line of before.split("\n")) {
             const m = line.match(TITLE_RE);
-            if (m) title = m[1].trim();
+            const matched = m?.[1];
+            if (matched) title = matched.trim();
         }
         if (!title && fields.get("alias")) title = fields.get("alias") ?? "";
         // 正文：注释结束后去掉紧跟的空行
@@ -138,12 +141,6 @@ export async function importMarkdownBundle(
     // createItem 侧 conflict 防御自动生效（绝不双块）；全字段保真与 JSON 导入一致
     const parsed: ParsedImport = {schemaVersion: 1, items: items as ExportedItem[], unknownTopFields: []};
     return importJsonBundleCore(library, parsed, policy);
-}
-
-interface ParsedImportLike {
-    schemaVersion: number;
-    items: ExportedItem[];
-    unknownTopFields: string[];
 }
 
 /** 供 parseMarkdownPack 使用的元数据行渲染（与 buildMarkdownExport 格式一致） */

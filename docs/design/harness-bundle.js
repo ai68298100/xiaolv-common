@@ -265,6 +265,7 @@
       (_a2 = options.onCancel) == null ? void 0 : _a2.call(options);
     });
     root.addEventListener("keydown", (ev) => {
+      var _a2;
       if (ev.key === "Enter" && !ev.altKey && !ev.ctrlKey && !ev.metaKey) {
         ev.preventDefault();
         confirm3();
@@ -278,7 +279,7 @@
         const index = focusables.indexOf(document.activeElement);
         ev.preventDefault();
         const next = ev.shiftKey ? (index - 1 + focusables.length) % focusables.length : (index + 1) % focusables.length;
-        focusables[next].focus();
+        (_a2 = focusables[next]) == null ? void 0 : _a2.focus();
       }
     });
     dialog.element.addEventListener("click", (ev) => {
@@ -339,7 +340,7 @@
   };
   var TRANSFORM_KINDS = ["polish", "shorten", "formal", "translate-en", "bulletize"];
   var CommonSearchDialog = class {
-    constructor(deps, ctx) {
+    constructor(deps) {
       this.deps = deps;
       this.dialog = null;
       this.results = [];
@@ -360,7 +361,6 @@
       this.inputDebounce = null;
       /** IME 组合输入中（中文输入法组词期间跳过刷新，compositionend 后统一刷新） */
       this.isComposing = false;
-      this.ctx = ctx;
     }
     open() {
       const isMobile = this.deps.isMobile();
@@ -392,9 +392,6 @@
         input.focus();
       }
       void this.refresh();
-    }
-    updateContext(ctx) {
-      this.ctx = ctx;
     }
     buildDom(isMobile) {
       const root = document.createElement("div");
@@ -908,6 +905,7 @@
       };
       for (let i = 0; i < this.results.length; i++) {
         const entry = this.results[i];
+        if (!entry) continue;
         const fav = this.deps.isFavorite(entry.id);
         if (showPinnedHead) {
           if (fav && !pinnedPlaced) {
@@ -1612,8 +1610,9 @@
     return table;
   })();
   function crc32(data) {
+    var _a;
     let c = 0 ^ -1;
-    for (let i = 0; i < data.length; i++) c = c >>> 8 ^ CRC_TABLE[(c ^ data[i]) & 255];
+    for (const byte of data) c = c >>> 8 ^ ((_a = CRC_TABLE[(c ^ byte) & 255]) != null ? _a : 0);
     return (c ^ -1) >>> 0;
   }
   function dosDateTime() {
@@ -1705,8 +1704,9 @@
   }
   function extractAssetPath(kramdown) {
     const m = kramdown.match(/\]\((assets\/[^)\s]+)[^)]*\)/);
-    if (!m) return null;
-    return isValidAssetPath(m[1]) ? m[1] : null;
+    const path = m == null ? void 0 : m[1];
+    if (!path) return null;
+    return isValidAssetPath(path) ? path : null;
   }
 
   // src/service/export-markdown.ts
@@ -1810,6 +1810,7 @@
     return { name, vars };
   }
   function parseMarkdownPack(md) {
+    var _a, _b;
     const items = [];
     const issues = [];
     if (!md || !md.includes(ITEM_COMMENT_START)) return { items, issues };
@@ -1834,14 +1835,16 @@
     }
     const chunks = [];
     for (let i = 0; i < commentStarts.length; i++) {
-      const lowerBound = i > 0 ? commentEnds[i - 1] : 0;
-      const titleLineStart = md.lastIndexOf("\n## ", commentStarts[i]) + 1;
-      const chunkStart = Math.max(Math.min(titleLineStart, commentStarts[i]), lowerBound);
-      const chunkEnd = i + 1 < commentStarts.length ? Math.max(md.lastIndexOf("\n## ", commentStarts[i + 1]) + 1, commentStarts[i + 1]) : md.length;
+      const itemStart = (_a = commentStarts[i]) != null ? _a : 0;
+      const lowerBound = i > 0 ? (_b = commentEnds[i - 1]) != null ? _b : 0 : 0;
+      const titleLineStart = md.lastIndexOf("\n## ", itemStart) + 1;
+      const chunkStart = Math.max(Math.min(titleLineStart, itemStart), lowerBound);
+      const nextStart = commentEnds[i + 1];
+      const chunkEnd = nextStart !== void 0 ? Math.max(md.lastIndexOf("\n## ", nextStart) + 1, nextStart) : md.length;
       chunks.push(md.slice(chunkStart, chunkEnd));
     }
     chunks.forEach((chunk, index) => {
-      var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k;
+      var _a2, _b2, _c, _d, _e, _f, _g, _h, _i, _j, _k;
       const endIdx = chunk.indexOf(ITEM_COMMENT_END);
       if (endIdx === -1) {
         issues.push({ index, reason: "metadata-comment-unclosed" });
@@ -1849,17 +1852,18 @@
       }
       const metaLines = chunk.slice(0, endIdx).split("\n");
       const { fields } = parseMetadata(metaLines);
-      const id = (_a = fields.get("id")) != null ? _a : "";
+      const id = (_a2 = fields.get("id")) != null ? _a2 : "";
       if (!/^xlc-[0-9a-z]{10,40}$/.test(id)) {
         issues.push({ index, reason: "invalid-id" });
         return;
       }
-      const itemType = (_b = fields.get("type")) != null ? _b : "text";
+      const itemType = (_b2 = fields.get("type")) != null ? _b2 : "text";
       let title = "";
       const before = chunk.slice(0, chunk.indexOf(ITEM_COMMENT_START));
       for (const line of before.split("\n")) {
         const m = line.match(TITLE_RE);
-        if (m) title = m[1].trim();
+        const matched = m == null ? void 0 : m[1];
+        if (matched) title = matched.trim();
       }
       if (!title && fields.get("alias")) title = (_c = fields.get("alias")) != null ? _c : "";
       const body = chunk.slice(endIdx + ITEM_COMMENT_END.length).replace(/^\s*\n/, "").replace(/\n\s*$/, "");
@@ -3698,11 +3702,7 @@
   window.XlcHarness = {
     openDialog(overrides) {
       var _a;
-      const dialog = new CommonSearchDialog(makeDeps(overrides), {
-        favorites: /* @__PURE__ */ new Set(["xlc-demo0000001"]),
-        recents: /* @__PURE__ */ new Map([["xlc-demo0000002", 2]]),
-        now: 1
-      });
+      const dialog = new CommonSearchDialog(makeDeps(overrides));
       dialog.open();
       const input = document.querySelector(".xlc-search-input");
       if (input) {

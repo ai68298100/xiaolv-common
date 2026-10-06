@@ -145,7 +145,7 @@ export function openVariableFillCard(options: VariableFillOptions): void {
             const next = ev.shiftKey
                 ? (index - 1 + focusables.length) % focusables.length
                 : (index + 1) % focusables.length;
-            focusables[next].focus();
+            focusables[next]?.focus();
         }
     });
     dialog.element.addEventListener("click", (ev) => {

@@ -1,7 +1,7 @@
 // 动作计划：纯函数层。给定条目 + 已解析内容 + 动作意图 + 端侧上下文 → 输出InsertPlan。
 // 不触碰宿主，全部可单测；宿主执行在 service/commands.ts。
 import {LIMITS} from "../constants";
-import {BLOCK_ID_RE, CommonItem, ItemType} from "./item";
+import {BLOCK_ID_RE, CommonItem} from "./item";
 
 export type InsertMode =
     | "insert"          // 插入到当前文档光标处
@@ -55,14 +55,15 @@ export function isValidAssetPath(path: string): boolean {
 
 export function extractAssetPath(kramdown: string): string | null {
     const m = kramdown.match(/\]\((assets\/[^)\s]+)[^)]*\)/);
-    if (!m) return null;
-    return isValidAssetPath(m[1]) ? m[1] : null;
+    const path = m?.[1];
+    if (!path) return null;
+    return isValidAssetPath(path) ? path : null;
 }
 
 export function extractCodeFence(kramdown: string): {language: string; code: string} | null {
     const m = kramdown.match(/^```([\w+#.-]*)\s*\n([\s\S]*?)\n?```\s*$/);
     if (!m) return null;
-    return {language: m[1], code: m[2]};
+    return {language: m[1] ?? "", code: m[2] ?? ""};
 }
 
 // 首行文本 → 块引用锚文本（引用需要一段锚文字）

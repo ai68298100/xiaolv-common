@@ -17,7 +17,6 @@ import {
     ISourceRef,
     ItemType,
     isBlockId,
-    isItemType,
     newLogicalId,
     normalizeCommonItem,
 } from "../model/item";
@@ -329,7 +328,7 @@ export class LibraryService {
 
         // 单遍按原 doc 顺序落位；无 custom-xlc-id 的块不是条目（用户普通内容混排安全）
         outer: for (let d = 0; d < perDoc.length; d++) {
-            for (const {child, attrs} of perDoc[d]) {
+            for (const {child, attrs} of perDoc[d] ?? []) {
                 if (items.size >= maxItems) {
                     truncated = true;
                     break outer;

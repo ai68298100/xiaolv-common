@@ -93,22 +93,6 @@ export function cleanTagList(v: unknown): string[] {
     return out;
 }
 
-const SOURCE_TYPES: readonly ISourceRef["sourceType"][] = [
-    "", "selection", "block", "doc-fragment", "clipboard", "manual", "resource", "external",
-];
-
-function normalizeSource(v: unknown): ISourceRef {
-    const raw = (v ?? {}) as Record<string, unknown>;
-    const sourceType = typeof raw.sourceType === "string" && (SOURCE_TYPES as readonly string[]).includes(raw.sourceType)
-        ? raw.sourceType as ISourceRef["sourceType"]
-        : "";
-    return {
-        sourceDocId: isBlockId(raw.sourceDocId) ? raw.sourceDocId : "",
-        sourceBlockId: isBlockId(raw.sourceBlockId) ? raw.sourceBlockId : "",
-        sourceType,
-    };
-}
-
 // SiYuan 块类型（getChildBlocks）：p 段落 / h 标题 / c 代码 / l 列表 / t 表格 /
 // b 引用 / s 超级块 / i iframe / html / m 公式 / query_embed 嵌入
 export function inferItemType(blockType: string, subtype: string, kramdown: string): ItemType {

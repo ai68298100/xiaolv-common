@@ -1,6 +1,5 @@
 // 小驴常用插件入口：生命周期、命令注册、UI 装配、协议事件、首次引导。
 import {
-    App,
     Dialog,
     Plugin,
     showMessage,
@@ -14,7 +13,6 @@ import {createKernelClient, parseExistingMap, type IKernelClient} from "./kernel
 import {CommonItem, isItemType} from "./model/item";
 import {ExportedItem, buildBundle, validateImport, ConflictPolicy, ImportReceipt} from "./model/transfer";
 import {importBundle as importBundleCore} from "./service/importer";
-import {parseMarkdownPack} from "./service/import-markdown";
 import {importMarkdownBundle} from "./service/import-markdown";
 import {LibraryConfig, CONFIG_VERSION, migrateState, normalizeLibraryConfig, normalizeState, PluginState} from "./model/storage";
 import {SearchContext, collectCategories, collectTags, searchEntries, applyBasicFilters} from "./model/search";
@@ -24,7 +22,7 @@ import {setPinyinAdapter, createNoopPinyinAdapter} from "./model/pinyin";
 import {createTinyPinyinAdapter} from "./model/pinyin-tiny";
 import {buildProviderRows} from "./model/provider-section";
 import {CapabilityDescriptor, ProviderDescriptor} from "./model/protocol";
-import {LibraryService, NewItemInput, SourceHealth} from "./service/library";
+import {LibraryService} from "./service/library";
 import {ActionExecutor, HostBridge} from "./service/commands";
 import {AiAssistant, AiUnavailableError, SearchMetaEntry} from "./service/ai";
 import {ProviderRegistry} from "./service/providers";
@@ -471,8 +469,10 @@ export default class XiaolvCommonPlugin extends Plugin {
                     icon: "iconXlcCommon",
                     label: this.i18nFn()("insertToDocMenu"),
                     click: () => {
-                        void this.library.getDocPath(ids[0]).then((path) => {
-                            this.openSearch({docId: ids[0], hPath: path});
+                        const docId = ids[0];
+                        if (!docId) return;
+                        void this.library.getDocPath(docId).then((path) => {
+                            this.openSearch({docId, hPath: path});
                         });
                     },
                 });
@@ -730,7 +730,7 @@ export default class XiaolvCommonPlugin extends Plugin {
                 // 手动/置顶 → 最近 → 常用（F3）→ 标题
                 const order = ["manual", "recent", "frequent", "title"] as const;
                 const idx = order.indexOf(this.state.sort);
-                this.state.sort = order[(idx + 1) % order.length];
+                this.state.sort = order[(idx + 1) % order.length] ?? "manual";
                 this.persistSoon();
             },
             runAction: async (itemId, mode) => {
@@ -877,7 +877,7 @@ export default class XiaolvCommonPlugin extends Plugin {
                 this.searchDialog = null;
             },
             isMobile: () => this.host.isMobile(),
-        }, this.searchContext());
+        });
         this.searchDialog.insertTarget = insertTarget ? {docId: insertTarget.docId, hPath: insertTarget.hPath} : null;
         this.searchDialog.open();
     }
