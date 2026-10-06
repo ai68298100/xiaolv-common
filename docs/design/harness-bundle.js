@@ -438,6 +438,17 @@
       if (ev.key === "Enter" && !ev.altKey && !ev.ctrlKey && !ev.metaKey) {
         ev.preventDefault();
         confirm3();
+        return;
+      }
+      if (ev.key === "Tab") {
+        const focusables = Array.from(
+          root.querySelectorAll("input, button")
+        ).filter((el) => !el.hasAttribute("disabled"));
+        if (focusables.length === 0) return;
+        const index = focusables.indexOf(document.activeElement);
+        ev.preventDefault();
+        const next = ev.shiftKey ? (index - 1 + focusables.length) % focusables.length : (index + 1) % focusables.length;
+        focusables[next].focus();
       }
     });
     dialog.element.addEventListener("click", (ev) => {
@@ -572,7 +583,19 @@
       input.setAttribute("aria-label", this.deps.t("searchPlaceholder"));
       const syncQMark = () => {
         qMark.classList.toggle("xlc-search-q--off", input.value.startsWith("?"));
+        clearBtn.classList.toggle("xlc-search-clear--on", input.value.length > 0);
       };
+      const clearBtn = document.createElement("button");
+      clearBtn.type = "button";
+      clearBtn.className = "xlc-search-clear";
+      clearBtn.textContent = "\xD7";
+      clearBtn.setAttribute("aria-label", this.deps.t("clearSearch"));
+      clearBtn.addEventListener("click", () => {
+        input.value = "";
+        syncQMark();
+        input.focus();
+        input.dispatchEvent(new Event("input", { bubbles: true }));
+      });
       input.addEventListener("input", () => {
         syncQMark();
         this.currentScope = "all";
@@ -594,6 +617,7 @@
       input.addEventListener("keydown", (e) => void this.onKeydown(e));
       search.appendChild(qMark);
       search.appendChild(input);
+      search.appendChild(clearBtn);
       top.appendChild(search);
       if (!isMobile) {
         const kbdRow = document.createElement("div");
@@ -1165,6 +1189,8 @@
       var _a, _b, _c, _d;
       const menu = document.createElement("div");
       menu.className = "xlc-menu";
+      menu.setAttribute("role", "menu");
+      menu.setAttribute("aria-label", row.providerName + " \xB7 " + this.deps.t("providerSection"));
       const lbl = document.createElement("div");
       lbl.className = "xlc-menu-lbl";
       lbl.textContent = row.providerName + " \xB7 " + this.deps.t("providerSection");
@@ -1369,6 +1395,7 @@
       const btn = document.createElement("button");
       btn.type = "button";
       btn.className = cls;
+      btn.setAttribute("role", "menuitem");
       const ic = document.createElement("span");
       ic.className = "xlc-menu-ic";
       ic.textContent = icon;
@@ -1381,6 +1408,8 @@
       var _a, _b, _c, _d;
       const menu = document.createElement("div");
       menu.className = "xlc-menu";
+      menu.setAttribute("role", "menu");
+      menu.setAttribute("aria-label", entry.title || this.deps.t("unknownType"));
       const rebuild = (render) => {
         menu.innerHTML = "";
         render();
@@ -3711,6 +3740,7 @@
       pinyinToggleSub: "\u5168\u62FC/\u9996\u5B57\u6BCD\u672C\u5730\u5339\u914D",
       placeholdersToggleSub: "\u63D2\u5165\u65F6\u66FF\u6362 {{xlc:date}} \u7B49\u4E3A\u5F53\u524D\u65E5\u671F\u65F6\u95F4",
       aiSuggestion: "AI \u5EFA\u8BAE",
+      clearSearch: "\u6E05\u7A7A\u641C\u7D22",
       customTransformSection: "\u81EA\u5B9A\u4E49\u53D8\u6362",
       customTransformAdd: "\uFF0B \u6DFB\u52A0\u81EA\u5B9A\u4E49\u53D8\u6362",
       customTransformName: "\u540D\u79F0",

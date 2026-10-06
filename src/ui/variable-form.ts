@@ -128,11 +128,24 @@ export function openVariableFillCard(options: VariableFillOptions): void {
         dialog.destroy();
         options.onCancel?.();
     });
-    // Enter=插入（单行输入语义）；Esc 由宿主 Dialog 处理关闭，这里补 onCancel
+    // Enter=插入（单行输入语义）；Tab 在卡片内循环（模态焦点不逃逸）
     root.addEventListener("keydown", (ev) => {
         if (ev.key === "Enter" && !ev.altKey && !ev.ctrlKey && !ev.metaKey) {
             ev.preventDefault();
             confirm();
+            return;
+        }
+        if (ev.key === "Tab") {
+            const focusables = Array.from(
+                root.querySelectorAll<HTMLElement>("input, button"),
+            ).filter((el) => !el.hasAttribute("disabled"));
+            if (focusables.length === 0) return;
+            const index = focusables.indexOf(document.activeElement as HTMLElement);
+            ev.preventDefault();
+            const next = ev.shiftKey
+                ? (index - 1 + focusables.length) % focusables.length
+                : (index + 1) % focusables.length;
+            focusables[next].focus();
         }
     });
     dialog.element.addEventListener("click", (ev) => {

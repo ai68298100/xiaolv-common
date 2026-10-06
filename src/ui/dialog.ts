@@ -164,7 +164,20 @@ export class CommonSearchDialog {
         // 输入以 ? 开头时隐藏装饰性 ? 提示（避免「??」双写；功能前缀仍在输入框内）
         const syncQMark = (): void => {
             qMark.classList.toggle("xlc-search-q--off", input.value.startsWith("?"));
+            clearBtn.classList.toggle("xlc-search-clear--on", input.value.length > 0);
         };
+        // 清空按钮（通用输入细节）：有输入时出现，一键清空并回焦
+        const clearBtn = document.createElement("button");
+        clearBtn.type = "button";
+        clearBtn.className = "xlc-search-clear";
+        clearBtn.textContent = "×";
+        clearBtn.setAttribute("aria-label", this.deps.t("clearSearch"));
+        clearBtn.addEventListener("click", () => {
+            input.value = "";
+            syncQMark();
+            input.focus();
+            input.dispatchEvent(new Event("input", {bubbles: true}));
+        });
         input.addEventListener("input", () => {
             syncQMark();
             this.currentScope = "all";
@@ -190,6 +203,7 @@ export class CommonSearchDialog {
         input.addEventListener("keydown", (e) => void this.onKeydown(e));
         search.appendChild(qMark);
         search.appendChild(input);
+        search.appendChild(clearBtn);
         top.appendChild(search);
         // 头部快捷键提示（桌面；原型头部右侧 kbd chips）
         if (!isMobile) {
@@ -804,6 +818,8 @@ export class CommonSearchDialog {
     private async showProviderMenu(row: ProviderRow, anchor: HTMLElement): Promise<void> {
         const menu = document.createElement("div");
         menu.className = "xlc-menu";
+        menu.setAttribute("role", "menu");
+        menu.setAttribute("aria-label", row.providerName + " · " + this.deps.t("providerSection"));
         const lbl = document.createElement("div");
         lbl.className = "xlc-menu-lbl";
         lbl.textContent = row.providerName + " · " + this.deps.t("providerSection");
@@ -1029,6 +1045,7 @@ export class CommonSearchDialog {
         const btn = document.createElement("button");
         btn.type = "button";
         btn.className = cls;
+        btn.setAttribute("role", "menuitem");
         const ic = document.createElement("span");
         ic.className = "xlc-menu-ic";
         ic.textContent = icon;
@@ -1041,6 +1058,8 @@ export class CommonSearchDialog {
     private async showActionMenu(entry: SearchEntry): Promise<void> {
         const menu = document.createElement("div");
         menu.className = "xlc-menu";
+        menu.setAttribute("role", "menu");
+        menu.setAttribute("aria-label", entry.title || this.deps.t("unknownType"));
         const rebuild = (render: () => void): void => {
             menu.innerHTML = "";
             render();

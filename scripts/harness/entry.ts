@@ -77,7 +77,7 @@ const T = (key: string, ...args: string[]): string => {
         aiEnabledSub: "使用思源 设置→人工智能 的模型，插件不保存密钥", aiShareContentSub: "整理/变换/草稿需要；关闭时仅元数据",
         searchSection: "搜索", pinyinToggle: "拼音搜索", placeholdersToggle: "动态占位符", placeholdersHint: "支持 {{xlc:date}} 等",
         pinyinToggleSub: "全拼/首字母本地匹配", placeholdersToggleSub: "插入时替换 {{xlc:date}} 等为当前日期时间",
-        aiSuggestion: "AI 建议",
+        aiSuggestion: "AI 建议", clearSearch: "清空搜索",
         customTransformSection: "自定义变换", customTransformAdd: "＋ 添加自定义变换", customTransformName: "名称",
         customTransformPrompt: "变换指令，如：改写为客服话术：", customTransformEmpty: "暂无自定义变换",
         customTransformCap: "最多 10 个自定义变换", customTransformNewName: "我的变换",

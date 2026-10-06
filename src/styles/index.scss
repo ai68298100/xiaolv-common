@@ -236,6 +236,39 @@
         opacity: .75;
       }
     }
+
+    // 清空按钮（有输入时出现，R84）
+    .xlc-search-clear {
+      display: none;
+      flex-shrink: 0;
+      width: 18px;
+      height: 18px;
+      border: none;
+      border-radius: 50%;
+      background-color: var(--b3-border-color);
+      color: var(--b3-theme-on-surface);
+      font-size: 12px;
+      line-height: 1;
+      cursor: pointer;
+      transition: background-color var(--xlc-dur-fast) var(--xlc-ease),
+                  color var(--xlc-dur-fast) var(--xlc-ease);
+
+      &:hover {
+        background-color: var(--b3-theme-on-surface);
+        color: var(--b3-theme-background);
+      }
+
+      &:focus-visible {
+        outline: 2px solid var(--b3-theme-primary);
+        outline-offset: 1px;
+      }
+
+      &--on {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+      }
+    }
   }
 
   // ---- 筛选 chips（含自绘箭头的轻量下拉）----

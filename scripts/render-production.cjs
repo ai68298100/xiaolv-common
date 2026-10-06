@@ -123,6 +123,11 @@ fs.writeFileSync(path.join(OUT, "harness.html"), html);
         varBadge: (document.querySelector(".xlc-badge--var")?.textContent ?? "").includes("变量"),
         // R68：行 meta 使用次数（F3 展示）
         rowUseCount: ((document.querySelectorAll(".xlc-row-meta")[0] ?? {textContent: ""}).textContent ?? "").includes("32 次"),
+        // R84：搜索清空按钮（有输入时出现，点击清空）
+        searchClear: (() => {
+            const btn = document.querySelector(".xlc-search-clear");
+            return !!btn && btn.classList.contains("xlc-search-clear--on");
+        })(),
         // R69：kbd 补 ⌥1-9；标题内联 ★ 去重；提示行含光标落点
         kbdAltChips: Array.from(document.querySelectorAll(".xlc-kbd")).some((el) => (el.textContent ?? "").includes("1-9")),
         favmarkGone: document.querySelectorAll(".xlc-row-favmark").length === 0,

@@ -260,5 +260,6 @@
   "quickCapture": "快速捕获剪贴板为条目",
   "quickCaptureDuplicate": "已存在同文条目「%s」，未重复保存",
   "promptPackBtn": "导入提示词场景包",
-  "promptPackHint": "内置 10 个模板：客服回复 / AI 提示词 / 研发写作；导入当前库后可自由修改"
+  "promptPackHint": "内置 10 个模板：客服回复 / AI 提示词 / 研发写作；导入当前库后可自由修改",
+  "clearSearch": "清空搜索"
 }
