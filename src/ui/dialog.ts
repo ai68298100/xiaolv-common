@@ -1257,6 +1257,10 @@ export class CommonSearchDialog {
             } else if (e.key === "ArrowUp") {
                 e.preventDefault();
                 focusMenuItem(-1);
+            } else if (e.key === "Tab") {
+                // 菜单为模态浮层：Tab/Shift+Tab 在菜单项间循环（不逃逸到弹窗底层）
+                e.preventDefault();
+                focusMenuItem(e.shiftKey ? -1 : 1);
             }
         });
         const dismiss = (e: Event) => {

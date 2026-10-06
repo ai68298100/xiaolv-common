@@ -65,6 +65,15 @@ async function cleanup() {
         return finish();
     }
 
+    // 信息项（不计入验收）：AI 模型可用性
+    try {
+        const models = await api("/api/ai/listModels");
+        const count = Array.isArray(models.data) ? models.data.length : 0;
+        console.log(`ℹ（信息项，不计入验收）AI 模型：${count} 个${count === 0 ? "（未配置不影响内核链路验收）" : ""}`);
+    } catch {
+        console.log("ℹ（信息项，不计入验收）AI 端点不可用（不影响内核链路验收）");
+    }
+
     // 2. 笔记本
     let notebook = "";
     try {

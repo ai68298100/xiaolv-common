@@ -219,6 +219,15 @@ export class ActionExecutor {
     }
 
     /** 现场解析条目内容；先展开片段引用（F5，code 条目不处理），再应用变量填充卡的 ask 值。 */
+    /** 使用记录统一出口（F3）：侧车失败不影响动作回执 */
+    private noteUsed(item: CommonItem): void {
+        try {
+            this.onItemUsed?.(item);
+        } catch {
+            // 忽略
+        }
+    }
+
     private async resolveWithFills(item: CommonItem, fills?: Record<string, string>) {
         const content = await this.resolveContent(item);
         if (!content) return null;
@@ -257,6 +266,9 @@ export class ActionExecutor {
         if (plan.mode === "insert" && this.host.isMobile()) {
             const text = (await insertRender(plan.markdown)) ?? "";
             const copied = text ? await this.host.writeClipboard(text) : false;
+            if (copied) {
+                this.noteUsed(item);
+            }
             return {
                 ok: copied,
                 mode: plan.mode,
@@ -272,6 +284,9 @@ export class ActionExecutor {
             }
             if (!this.host.hasActiveEditor()) {
                 const copied = await this.host.writeClipboard(md);
+                if (copied) {
+                    this.noteUsed(item);
+                }
                 return {
                     ok: true,
                     mode: plan.mode,
@@ -283,11 +298,7 @@ export class ActionExecutor {
             const inserted = this.host.insertMarkdown(md);
             if (inserted) {
                 this.emitEvent(EVENTS.itemInserted, item, {insertMode: plan.mode});
-                try {
-                    this.onItemUsed?.(item);
-                } catch {
-                    // 侧车记录失败不影响插入回执
-                }
+                this.noteUsed(item);
             }
             return {
                 ok: inserted,
@@ -300,6 +311,10 @@ export class ActionExecutor {
         if (plan.mode === "copy" || plan.mode === "copy-content") {
             const text = (await this.applyOutput(plan.clipboardText, item)) ?? "";
             const copied = await this.host.writeClipboard(text);
+            // F3 口径：复制成功同样计使用（最近 + 计数）
+            if (copied) {
+                this.noteUsed(item);
+            }
             return {
                 ok: copied,
                 mode: plan.mode,

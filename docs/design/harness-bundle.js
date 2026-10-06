@@ -1575,6 +1575,9 @@
         } else if (e.key === "ArrowUp") {
           e.preventDefault();
           focusMenuItem(-1);
+        } else if (e.key === "Tab") {
+          e.preventDefault();
+          focusMenuItem(e.shiftKey ? -1 : 1);
         }
       });
       const dismiss = (e) => {
