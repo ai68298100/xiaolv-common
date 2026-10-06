@@ -11,7 +11,6 @@ import {LibraryService} from "../service/library";
 import {AiAssistant} from "../service/ai";
 import {ProviderRegistry} from "../service/providers";
 import {CommonItem} from "../model/item";
-import {listAskFields} from "../model/variables";
 import {PROMPT_PACK_MD} from "../service/prompt-pack";
 
 type TFn = (key: string, ...args: string[]) => string;
@@ -140,15 +139,9 @@ export function openSettingsDialog(ctx: SettingsUiContext): void {
 async function openPackExportDialog(ctx: SettingsUiContext): Promise<void> {
     const t = ctx.t;
     const idx = await ctx.library.ensureIndex();
-    const kramdownById = new Map<string, string>();
-    const all: CommonItem[] = [];
-    for (const item of idx.items.values()) {
-        const kd = await ctx.library.getItemKramdown(item);
-        if (kd.ok) {
-            all.push(item);
-            kramdownById.set(item.id, kd.data);
-        }
-    }
+    // 性能（R76 修正 R71 回归）：打开对话框零 kramdown 预取——
+    // 「含变量」徽标用写入期 varCount 属性（索引免费读取），正文在点导出时才按筛选取
+    const all: CommonItem[] = Array.from(idx.items.values());
     const categories = Array.from(new Set(all.map((i) => i.category).filter(Boolean)))
         .sort((a, b) => a.localeCompare(b, "zh-Hans-CN"));
 
@@ -249,6 +242,8 @@ async function openPackExportDialog(ctx: SettingsUiContext): Promise<void> {
         }
         dialog.destroy();
         void (async () => {
+            // 导出时才按筛选取正文（打开对话框零预取）
+            const kramdownById = await collectKramdown(ctx, items);
             const result = await buildMarkdownExport(items, kramdownById, (assetPath) => ctx.fetchAssetBytes(assetPath), {name: packName});
             const zipBytes = buildZip(result.entries);
             const blob = new Blob([zipBytes as unknown as BlobPart], {type: "application/zip"});
@@ -268,15 +263,25 @@ async function openPackExportDialog(ctx: SettingsUiContext): Promise<void> {
     const repaint = (): void => {
         const category = catSelect.value;
         const items = category ? all.filter((i) => i.category === category) : all;
-        const vars = new Set<string>();
-        for (const item of items) {
-            if (item.itemType === "code") continue;
-            for (const f of listAskFields(kramdownById.get(item.id) ?? "")) vars.add(f.name);
-        }
-        paintMeta(items.length, vars.size);
+        // 含变量条数用写入期 varCount 徽标（零内核调用；行为以插入时现场内容为准）
+        const withVars = items.filter((i) => (i.varCount ?? 0) > 0).length;
+        paintMeta(items.length, withVars);
     };
     catSelect.addEventListener("change", repaint);
     repaint();
+}
+
+/** 收集筛选后条目的 kramdown（导出确认时才取正文） */
+async function collectKramdown(
+    ctx: SettingsUiContext,
+    items: readonly CommonItem[],
+): Promise<Map<string, string>> {
+    const kramdownById = new Map<string, string>();
+    for (const item of items) {
+        const kd = await ctx.library.getItemKramdown(item);
+        if (kd.ok) kramdownById.set(item.id, kd.data);
+    }
+    return kramdownById;
 }
 
 /** 变量与插入（F1/F3，原型屏 5）：插入前询问 / 使用计数开关 / 清空统计 */

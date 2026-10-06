@@ -1225,6 +1225,23 @@ export class CommonSearchDialog {
             }
         };
         menu.addEventListener("keydown", escHandler);
+        // ↑↓ 在菜单项间移动焦点（键盘全链路；Enter 由焦点按钮原生触发，循环滚动）
+        const focusMenuItem = (offset: number): void => {
+            const items = Array.from(menu.querySelectorAll<HTMLElement>(".xlc-menu-item"));
+            if (items.length === 0) return;
+            const current = items.indexOf(document.activeElement as HTMLElement);
+            const next = items[((current + offset) % items.length + items.length) % items.length];
+            next?.focus();
+        };
+        menu.addEventListener("keydown", (e) => {
+            if (e.key === "ArrowDown") {
+                e.preventDefault();
+                focusMenuItem(1);
+            } else if (e.key === "ArrowUp") {
+                e.preventDefault();
+                focusMenuItem(-1);
+            }
+        });
         const dismiss = (e: Event) => {
             if (!menu.contains(e.target as Node)) {
                 menu.remove();

@@ -230,12 +230,14 @@ fs.writeFileSync(path.join(OUT, "harness.html"), html);
             badges: (packDialog?.textContent ?? "").includes("条目") && (packDialog?.textContent ?? "").includes("含变量"),
             contentsHint: (packDialog?.textContent ?? "").includes("assets"),
             exportBtn: Array.from(packDialog?.querySelectorAll("button") ?? []).some((b) => (b.textContent ?? "").includes("导出")),
+            // R76 性能门禁：打开对话框零 kramdown 预取（正文延迟到点导出时才取）
+            noPrefetch: ((window).__xlcKdCalls ?? 0) === 0,
         };
     });
     if (Object.values(packAssertions).some((v) => !v)) {
         throw new Error("pack-export smoke failed: " + JSON.stringify(packAssertions));
     }
-    console.log("  smoke ✓ pack-export: 6 assertions");
+    console.log("  smoke ✓ pack-export: 7 assertions");
     await page.screenshot({path: path.join(OUT, "production-pack-export-light.png")});
     // 首跑引导（库选择器，全新安装第一屏）
     await page.evaluate(() => {
@@ -383,12 +385,20 @@ fs.writeFileSync(path.join(OUT, "harness.html"), html);
                 const p = document.querySelector(".xlc-menu-preview");
                 return !!p && p.getBoundingClientRect().height >= 36;
             })(),
+            // R76 键盘导航：菜单内 ArrowDown 把焦点移到菜单项
+            kbNavFocus: (() => {
+                const m = document.querySelector(".xlc-menu");
+                if (!m) return false;
+                m.dispatchEvent(new KeyboardEvent("keydown", {key: "ArrowDown", bubbles: true, cancelable: true}));
+                const active = document.activeElement;
+                return !!active && active.classList.contains("xlc-menu-item");
+            })(),
         };
     });
     if (Object.values(menuAssertions).some((v) => !v)) {
         throw new Error("action-menu smoke failed: " + JSON.stringify(menuAssertions));
     }
-    console.log("  smoke ✓ action-menu: 6 assertions");
+    console.log("  smoke ✓ action-menu: 7 assertions");
     await page.screenshot({path: path.join(OUT, "production-action-menu-light.png")});
     // 变量填充卡片（F1，原型屏 4）：活动条目含 ask → Enter 触发填充卡
     await page.evaluate(() => {

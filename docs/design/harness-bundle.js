@@ -1546,6 +1546,22 @@
         }
       };
       menu.addEventListener("keydown", escHandler);
+      const focusMenuItem = (offset) => {
+        const items = Array.from(menu.querySelectorAll(".xlc-menu-item"));
+        if (items.length === 0) return;
+        const current = items.indexOf(document.activeElement);
+        const next = items[((current + offset) % items.length + items.length) % items.length];
+        next == null ? void 0 : next.focus();
+      };
+      menu.addEventListener("keydown", (e) => {
+        if (e.key === "ArrowDown") {
+          e.preventDefault();
+          focusMenuItem(1);
+        } else if (e.key === "ArrowUp") {
+          e.preventDefault();
+          focusMenuItem(-1);
+        }
+      });
       const dismiss = (e) => {
         if (!menu.contains(e.target)) {
           menu.remove();
@@ -2251,15 +2267,7 @@
   async function openPackExportDialog(ctx) {
     const t = ctx.t;
     const idx = await ctx.library.ensureIndex();
-    const kramdownById = /* @__PURE__ */ new Map();
-    const all = [];
-    for (const item of idx.items.values()) {
-      const kd = await ctx.library.getItemKramdown(item);
-      if (kd.ok) {
-        all.push(item);
-        kramdownById.set(item.id, kd.data);
-      }
-    }
+    const all = Array.from(idx.items.values());
     const categories = Array.from(new Set(all.map((i) => i.category).filter(Boolean))).sort((a, b) => a.localeCompare(b, "zh-Hans-CN"));
     const dialog = new import_siyuan3.Dialog({
       title: t("packExportTitle"),
@@ -2349,6 +2357,7 @@
       }
       dialog.destroy();
       void (async () => {
+        const kramdownById = await collectKramdown(ctx, items);
         const result = await buildMarkdownExport(items, kramdownById, (assetPath) => ctx.fetchAssetBytes(assetPath), { name: packName });
         const zipBytes = buildZip(result.entries);
         const blob = new Blob([zipBytes], { type: "application/zip" });
@@ -2365,18 +2374,24 @@
     wrap.appendChild(actions);
     body.appendChild(wrap);
     const repaint = () => {
-      var _a;
       const category = catSelect.value;
       const items = category ? all.filter((i) => i.category === category) : all;
-      const vars = /* @__PURE__ */ new Set();
-      for (const item of items) {
-        if (item.itemType === "code") continue;
-        for (const f of listAskFields((_a = kramdownById.get(item.id)) != null ? _a : "")) vars.add(f.name);
-      }
-      paintMeta(items.length, vars.size);
+      const withVars = items.filter((i) => {
+        var _a;
+        return ((_a = i.varCount) != null ? _a : 0) > 0;
+      }).length;
+      paintMeta(items.length, withVars);
     };
     catSelect.addEventListener("change", repaint);
     repaint();
+  }
+  async function collectKramdown(ctx, items) {
+    const kramdownById = /* @__PURE__ */ new Map();
+    for (const item of items) {
+      const kd = await ctx.library.getItemKramdown(item);
+      if (kd.ok) kramdownById.set(item.id, kd.data);
+    }
+    return kramdownById;
   }
   function buildInsertSection(ctx, root) {
     const t = ctx.t;
@@ -3819,8 +3834,9 @@
             builtAt: 1
           }),
           getItemKramdown: async (item) => {
-            var _a;
-            return { ok: true, data: (_a = PREVIEWS[item.id]) != null ? _a : "\u5185\u5BB9\u793A\u4F8B {{xlc:ask:\u793A\u4F8B\u5B57\u6BB5}}" };
+            var _a, _b;
+            window.__xlcKdCalls = ((_a = window.__xlcKdCalls) != null ? _a : 0) + 1;
+            return { ok: true, data: (_b = PREVIEWS[item.id]) != null ? _b : "\u5185\u5BB9\u793A\u4F8B {{xlc:ask:\u793A\u4F8B\u5B57\u6BB5}}" };
           }
         },
         ai: { updateSettings: () => {

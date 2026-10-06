@@ -197,7 +197,11 @@ function makeDeps(overrides: {aiEnabled?: boolean; missing?: boolean; mobile?: b
                     items: new Map(ENTRIES.map((e) => [e.id, e])) as never,
                     truncated: false, docsScanned: 1, errors: [], builtAt: 1,
                 }),
-                getItemKramdown: async (item: {id: string}) => ({ok: true, data: PREVIEWS[item.id] ?? "内容示例 {{xlc:ask:示例字段}}"}),
+                getItemKramdown: async (item: {id: string}) => {
+                    // 内核调用计数（性能门禁：模板包对话框零预取）
+                    (window as unknown as {__xlcKdCalls?: number}).__xlcKdCalls = ((window as unknown as {__xlcKdCalls?: number}).__xlcKdCalls ?? 0) + 1;
+                    return {ok: true, data: PREVIEWS[item.id] ?? "内容示例 {{xlc:ask:示例字段}}"};
+                },
             },
             ai: {updateSettings: () => {}, getSettings: () => ({enabled: true, shareContent: true})},
             registry: {
