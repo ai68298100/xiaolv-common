@@ -4,7 +4,7 @@ import type {App} from "siyuan";
 import {getActiveEditor, openTab} from "siyuan";
 import {EVENTS} from "../constants";
 import {ActionContext, InsertMode, InsertPlan, OpenTarget, planAction, planOpenSource} from "../model/actions";
-import {applyPlaceholders} from "../model/placeholders";
+import {applyPlaceholders, listPlaceholders} from "../model/placeholders";
 import {applyAskDefaults, expandAsks, stripCursorToken} from "../model/variables";
 import {CommonItem} from "../model/item";
 import {LibraryService, Receipt, SourceHealth} from "./library";
@@ -177,7 +177,6 @@ export class ActionExecutor {
         if (!this.placeholders) return text;
         try {
             if (!this.placeholders.enabled()) return text;
-            const {listPlaceholders} = await import("../model/placeholders");
             const needsDoc = listPlaceholders(text).some((k) => k === "title" || k === "path" || k === "doc");
             const doc = needsDoc ? await this.placeholders.currentDoc() : null;
             let output = applyPlaceholders(text, this.placeholders.now(), true, doc);

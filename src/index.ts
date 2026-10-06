@@ -15,8 +15,10 @@ import {CommonItem, isItemType} from "./model/item";
 import {ExportedItem, buildBundle, validateImport, ConflictPolicy, ImportReceipt} from "./model/transfer";
 import {importBundle as importBundleCore} from "./service/importer";
 import {parseMarkdownPack} from "./service/import-markdown";
+import {importMarkdownBundle} from "./service/import-markdown";
 import {LibraryConfig, CONFIG_VERSION, migrateState, normalizeLibraryConfig, normalizeState, PluginState} from "./model/storage";
-import {SearchContext} from "./model/search";
+import {SearchContext, collectCategories, collectTags, searchEntries, applyBasicFilters} from "./model/search";
+import {findDuplicateByContent} from "./model/dedupe";
 import {LruCache, PREVIEW_CACHE_CAPACITY, PREVIEW_CACHE_TTL_MS} from "./model/lru";
 import {setPinyinAdapter, createNoopPinyinAdapter} from "./model/pinyin";
 import {createTinyPinyinAdapter} from "./model/pinyin-tiny";
@@ -193,7 +195,6 @@ export default class XiaolvCommonPlugin extends Plugin {
             findDuplicate: async (content) => {
                 try {
                     const idx = await this.library.ensureIndex();
-                    const {findDuplicateByContent} = await import("./model/dedupe");
                     return findDuplicateByContent(content, idx.entries);
                 } catch {
                     return null; // 去重检查失败不阻断保存
@@ -542,7 +543,6 @@ export default class XiaolvCommonPlugin extends Plugin {
                 const loading = !this.library.getIndex();
                 // SWR：索引超过 5 分钟透明重建（重建期间弹窗状态行显示「正在构建索引…」）
                 const idx = await this.library.ensureIndex(5 * 60_000);
-                const {searchEntries} = await import("./model/search");
                 const results = searchEntries(idx.entries, query, this.searchContext());
                 const entries = results.map((r) => r.entry);
                 void this.prefetchSourceHealth(entries);
@@ -691,12 +691,10 @@ export default class XiaolvCommonPlugin extends Plugin {
                 return this.host.writeClipboard((payload ?? "").trim());
             },
             getTags: async () => {
-                const {collectTags} = await import("./model/search");
                 const idx = await this.library.ensureIndex();
                 return collectTags(idx.entries);
             },
             getCategories: async () => {
-                const {collectCategories} = await import("./model/search");
                 const idx = await this.library.ensureIndex();
                 return collectCategories(idx.entries);
             },
@@ -800,7 +798,6 @@ export default class XiaolvCommonPlugin extends Plugin {
             aiSemantic: async (desc, filters) => {
                 try {
                     const idx = await this.library.ensureIndex();
-                    const {applyBasicFilters} = await import("./model/search");
                     // 语义找候选先按类型/标签/收藏范围过滤（与普通搜索的筛选语义一致）
                     const safeItemType = filters.itemType && isItemType(filters.itemType) ? filters.itemType : "";
                     const scoped = applyBasicFilters(idx.entries, {itemType: safeItemType, tag: filters.tag, scope: filters.scope}, this.searchContext());
@@ -1115,7 +1112,6 @@ export default class XiaolvCommonPlugin extends Plugin {
     }
 
     async importMarkdownItems(items: ReadonlyArray<ExportedItem>, policy: ConflictPolicy): Promise<ImportReceipt> {
-        const {importMarkdownBundle} = await import("./service/import-markdown");
         return importMarkdownBundle(this.library, items, policy);
     }
 

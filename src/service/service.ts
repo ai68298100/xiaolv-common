@@ -248,7 +248,6 @@ export class XiaolvCommonService {
     async searchForAgent(rawQuery: unknown): Promise<{result: string; structuredContent: unknown}> {
         const query = typeof rawQuery === "string" ? rawQuery.slice(0, 200) : "";
         const idx = await this.deps.library.ensureIndex();
-        const {searchEntries} = await import("../model/search");
         const results = searchEntries(idx.entries, {text: query, scope: "all"}, this.searchCtx(), 10);
         const items = results.map((r) => ({
             id: r.entry.id,

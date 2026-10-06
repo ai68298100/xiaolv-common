@@ -11,6 +11,7 @@ import {LibraryService} from "../service/library";
 import {AiAssistant} from "../service/ai";
 import {ProviderRegistry} from "../service/providers";
 import {CommonItem} from "../model/item";
+import {collectTags} from "../model/search";
 import {PROMPT_PACK_MD} from "../service/prompt-pack";
 
 type TFn = (key: string, ...args: string[]) => string;
@@ -926,7 +927,6 @@ function buildDataSection(ctx: SettingsUiContext, root: HTMLElement): void {
 async function runTagAudit(ctx: SettingsUiContext): Promise<void> {
     const t = ctx.t;
     const idx = await ctx.library.ensureIndex();
-    const {collectTags} = await import("../model/search");
     const tags = collectTags(idx.entries);
     if (tags.length < 2) {
         ctx.notify("info", t("tagAuditTooFew"));

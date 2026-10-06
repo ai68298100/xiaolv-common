@@ -6,15 +6,8 @@
   var __getOwnPropNames = Object.getOwnPropertyNames;
   var __getProtoOf = Object.getPrototypeOf;
   var __hasOwnProp = Object.prototype.hasOwnProperty;
-  var __esm = (fn, res) => function __init() {
-    return fn && (res = (0, fn[__getOwnPropNames(fn)[0]])(fn = 0)), res;
-  };
   var __commonJS = (cb, mod) => function __require() {
     return mod || (0, cb[__getOwnPropNames(cb)[0]])((mod = { exports: {} }).exports, mod), mod.exports;
-  };
-  var __export = (target, all) => {
-    for (var name in all)
-      __defProp(target, name, { get: all[name], enumerable: true });
   };
   var __copyProps = (to, from, except, desc) => {
     if (from && typeof from === "object" || typeof from === "function") {
@@ -88,200 +81,38 @@
     }
   });
 
-  // src/constants.ts
-  var PROTOCOL_NAME, LIMITS, EXPORT_SCHEMA_VERSION;
-  var init_constants = __esm({
-    "src/constants.ts"() {
-      "use strict";
-      PROTOCOL_NAME = "xiaolv-common";
-      LIMITS = {
-        title: 512,
-        alias: 256,
-        tag: 64,
-        tags: 32,
-        category: 64,
-        summary: 240,
-        contentChars: 1e5,
-        queryChars: 200,
-        maxItems: 2e3,
-        maxDocs: 200,
-        maxFavorites: 500,
-        maxRecents: 200,
-        maxProviders: 32,
-        maxImportBytes: 4 * 1024 * 1024,
-        walkDepth: 8,
-        kernelTimeoutMs: 8e3,
-        askValueChars: 2e3,
-        maxUsage: 2e3,
-        maxAskFields: 16,
-        maxCustomTransforms: 10,
-        customNameChars: 20,
-        customPromptChars: 500
-      };
-      EXPORT_SCHEMA_VERSION = 1;
-    }
-  });
-
-  // src/model/pinyin.ts
-  function createNoopPinyinAdapter() {
-    return {
-      capabilities: { initials: false, fullPinyin: false },
-      expand(query) {
-        const q = query.trim();
-        return q ? [q] : [];
-      },
-      annotate() {
-        return null;
-      }
-    };
-  }
-  function getPinyinAdapter() {
-    return active;
-  }
-  var active;
-  var init_pinyin = __esm({
-    "src/model/pinyin.ts"() {
-      "use strict";
-      active = createNoopPinyinAdapter();
-    }
-  });
-
-  // src/model/search.ts
-  var search_exports = {};
-  __export(search_exports, {
-    applyBasicFilters: () => applyBasicFilters,
-    collectCategories: () => collectCategories,
-    collectTags: () => collectTags,
-    listByScope: () => listByScope,
-    matchEntry: () => matchEntry,
-    passesFilters: () => passesFilters,
-    searchEntries: () => searchEntries
-  });
-  function normalizeText(s) {
-    return s.toLowerCase().replace(/\s+/g, " ").trim();
-  }
-  function scoreHaystack(haystack, needle, weight, prefixWeight) {
-    if (!needle) return 0;
-    const idx = haystack.indexOf(needle);
-    if (idx === -1) return 0;
-    let score = weight;
-    if (idx === 0 && prefixWeight !== void 0) score += prefixWeight;
-    if (haystack === needle) score += 4;
-    return score;
-  }
-  function matchEntry(entry, rawQuery) {
-    const expansions = getPinyinAdapter().expand(rawQuery.slice(0, LIMITS.queryChars));
-    if (expansions.length === 0) return null;
-    const title = normalizeText(entry.title);
-    const alias = normalizeText(entry.alias);
-    const tags = entry.tags.map(normalizeText);
-    const category = normalizeText(entry.category);
-    const summary = normalizeText(entry.summary);
-    let best = null;
-    for (const q of expansions.map(normalizeText)) {
-      if (!q) continue;
-      const candidates = [
-        { score: scoreHaystack(title, q, 8, 3), matchedBy: "title" },
-        { score: scoreHaystack(alias, q, 6, 2), matchedBy: "alias" },
-        { score: Math.max(0, ...tags.map((t) => scoreHaystack(t, q, 4))), matchedBy: "tags" },
-        { score: scoreHaystack(category, q, 4), matchedBy: "category" },
-        { score: scoreHaystack(summary, q, 2), matchedBy: "summary" },
-        // 拼音注解（适配器启用时才存在）：全拼/首字母低权重命中
-        { score: entry.py ? scoreHaystack(entry.py, q, 3) : 0, matchedBy: "pinyin" },
-        { score: entry.pyi ? scoreHaystack(entry.pyi, q, 3, 2) : 0, matchedBy: "pinyin-initials" }
-      ];
-      const top = candidates.reduce((a, b) => b.score > a.score ? b : a, candidates[0]);
-      if (top.score > 0 && (!best || top.score > best.score)) best = top;
-    }
-    return best ? { entry, score: best.score, matchedBy: best.matchedBy } : null;
-  }
-  function passesFilters(entry, query, ctx) {
-    if (query.itemType && entry.itemType !== query.itemType) return false;
-    if (query.tag && !entry.tags.includes(query.tag)) return false;
-    if (query.category && entry.category !== query.category) return false;
-    if (query.scope === "favorites" && !ctx.favorites.has(entry.id)) return false;
-    return true;
-  }
-  function applyBasicFilters(entries, query, ctx) {
-    return entries.filter((e) => passesFilters(e, { text: "", itemType: query.itemType, tag: query.tag, scope: query.scope }, ctx));
-  }
-  function compareResults(a, b, ctx) {
-    var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k, _l;
-    if (!ctx.sort || ctx.sort === "manual") {
-      const ma = (_b = (_a = ctx.manualOrder) == null ? void 0 : _a.get(a.entry.id)) != null ? _b : Number.MAX_SAFE_INTEGER;
-      const mb = (_d = (_c = ctx.manualOrder) == null ? void 0 : _c.get(b.entry.id)) != null ? _d : Number.MAX_SAFE_INTEGER;
-      if (ma !== mb) return ma - mb;
-    }
-    if (ctx.sort === "frequent") {
-      const ca = (_f = (_e = ctx.usage) == null ? void 0 : _e.get(a.entry.id)) != null ? _f : 0;
-      const cb = (_h = (_g = ctx.usage) == null ? void 0 : _g.get(b.entry.id)) != null ? _h : 0;
-      if (cb !== ca) return cb - ca;
-      const ra2 = (_i = ctx.recents.get(a.entry.id)) != null ? _i : 0;
-      const rb2 = (_j = ctx.recents.get(b.entry.id)) != null ? _j : 0;
-      if (rb2 !== ra2) return rb2 - ra2;
-    }
-    if (b.score !== a.score) return b.score - a.score;
-    if (ctx.sort === "title" && a.score === 0 && b.score === 0) {
-      return a.entry.title.localeCompare(b.entry.title, "zh-Hans-CN");
-    }
-    const ra = (_k = ctx.recents.get(a.entry.id)) != null ? _k : 0;
-    const rb = (_l = ctx.recents.get(b.entry.id)) != null ? _l : 0;
-    if (rb !== ra) return rb - ra;
-    if (b.entry.updatedAt !== a.entry.updatedAt) return b.entry.updatedAt - a.entry.updatedAt;
-    return a.order - b.order;
-  }
-  function searchEntries(entries, query, ctx, cap = 100) {
-    const results = [];
-    for (let order = 0; order < entries.length; order++) {
-      const entry = entries[order];
-      if (!passesFilters(entry, query, ctx)) continue;
-      const text = query.text.trim();
-      if (text) {
-        const m = matchEntry(entry, text);
-        if (m) results.push({ ...m, order });
-      } else {
-        results.push({ entry, score: 0, matchedBy: "none", order });
-      }
-    }
-    results.sort((a, b) => compareResults(a, b, ctx));
-    return results.slice(0, cap);
-  }
-  function listByScope(entries, scope, ctx, cap = 100) {
-    if (scope === "favorites") {
-      return entries.map((entry, order) => ({ entry, order })).filter(({ entry }) => ctx.favorites.has(entry.id)).sort((a, b) => compareResults(
-        { entry: a.entry, score: 0, matchedBy: "none", order: a.order },
-        { entry: b.entry, score: 0, matchedBy: "none", order: b.order },
-        ctx
-      )).slice(0, cap).map(({ entry }) => entry);
-    }
-    return entries.filter((e) => ctx.recents.has(e.id)).sort((a, b) => {
-      var _a, _b;
-      return ((_a = ctx.recents.get(b.id)) != null ? _a : 0) - ((_b = ctx.recents.get(a.id)) != null ? _b : 0);
-    }).slice(0, cap);
-  }
-  function collectTags(entries) {
-    const tags = /* @__PURE__ */ new Set();
-    for (const e of entries) for (const t of e.tags) tags.add(t);
-    return Array.from(tags).sort((a, b) => a.localeCompare(b, "zh-Hans-CN"));
-  }
-  function collectCategories(entries) {
-    const categories = /* @__PURE__ */ new Set();
-    for (const e of entries) if (e.category) categories.add(e.category);
-    return Array.from(categories).sort((a, b) => a.localeCompare(b, "zh-Hans-CN"));
-  }
-  var init_search = __esm({
-    "src/model/search.ts"() {
-      "use strict";
-      init_constants();
-      init_pinyin();
-    }
-  });
-
   // src/ui/dialog.ts
   var import_siyuan2 = __toESM(require_stub_dom());
 
+  // src/constants.ts
+  var PROTOCOL_NAME = "xiaolv-common";
+  var LIMITS = {
+    title: 512,
+    alias: 256,
+    tag: 64,
+    tags: 32,
+    category: 64,
+    summary: 240,
+    contentChars: 1e5,
+    queryChars: 200,
+    maxItems: 2e3,
+    maxDocs: 200,
+    maxFavorites: 500,
+    maxRecents: 200,
+    maxProviders: 32,
+    maxImportBytes: 4 * 1024 * 1024,
+    walkDepth: 8,
+    kernelTimeoutMs: 8e3,
+    askValueChars: 2e3,
+    maxUsage: 2e3,
+    maxAskFields: 16,
+    maxCustomTransforms: 10,
+    customNameChars: 20,
+    customPromptChars: 500
+  };
+  var EXPORT_SCHEMA_VERSION = 1;
+
   // src/model/item.ts
-  init_constants();
   var ITEM_TYPES = [
     "text",
     "markdown",
@@ -294,7 +125,6 @@
   ];
 
   // src/model/variables.ts
-  init_constants();
   var ASK_PATTERN = /\{\{xlc:ask:([^|}]+)(?:\|([^}]*))?\}\}/g;
   function parseAskField(rawName, rawOptions) {
     const name = rawName.trim().slice(0, LIMITS.tag);
@@ -1694,14 +1524,9 @@
   var import_siyuan3 = __toESM(require_stub_dom());
 
   // src/model/storage.ts
-  init_constants();
   var CONFIG_VERSION = 1;
 
-  // src/ui/settings-dialog.ts
-  init_constants();
-
   // src/model/transfer.ts
-  init_constants();
   function validateImport(jsonText) {
     const issues = [];
     let obj;
@@ -1874,7 +1699,6 @@
   }
 
   // src/model/actions.ts
-  init_constants();
   var ASSET_PATH_RE = /^(assets\/[^\s/][^\s]*|assets\/[^\s/])$/;
   function isValidAssetPath(path) {
     return ASSET_PATH_RE.test(path) && !path.includes("..");
@@ -1886,7 +1710,6 @@
   }
 
   // src/service/export-markdown.ts
-  init_constants();
   async function buildMarkdownExport(items, kramdownById, fetchAssetBytes, pack) {
     var _a, _b;
     const entries = [];
@@ -1958,7 +1781,6 @@
   }
 
   // src/service/import-markdown.ts
-  init_constants();
   var ITEM_COMMENT_START = "<!-- xlc-item";
   var ITEM_COMMENT_END = "-->";
   var PACK_COMMENT_START = "<!-- xlc-pack";
@@ -2062,6 +1884,28 @@
     });
     if (hasUnclosed) issues.push({ index: commentStarts.length, reason: "metadata-comment-unclosed" });
     return { items, issues, pack };
+  }
+
+  // src/model/pinyin.ts
+  function createNoopPinyinAdapter() {
+    return {
+      capabilities: { initials: false, fullPinyin: false },
+      expand(query) {
+        const q = query.trim();
+        return q ? [q] : [];
+      },
+      annotate() {
+        return null;
+      }
+    };
+  }
+  var active = createNoopPinyinAdapter();
+
+  // src/model/search.ts
+  function collectTags(entries) {
+    const tags = /* @__PURE__ */ new Set();
+    for (const e of entries) for (const t of e.tags) tags.add(t);
+    return Array.from(tags).sort((a, b) => a.localeCompare(b, "zh-Hans-CN"));
   }
 
   // src/service/prompt-pack.ts
@@ -3052,8 +2896,7 @@
   async function runTagAudit(ctx) {
     const t = ctx.t;
     const idx = await ctx.library.ensureIndex();
-    const { collectTags: collectTags2 } = await Promise.resolve().then(() => (init_search(), search_exports));
-    const tags = collectTags2(idx.entries);
+    const tags = collectTags(idx.entries);
     if (tags.length < 2) {
       ctx.notify("info", t("tagAuditTooFew"));
       return;
