@@ -29,6 +29,8 @@ export function openVariableFillCard(options: VariableFillOptions): void {
         content: "",
         width: "min(360px, 92vw)",
         height: "auto",
+        // 所有关闭路径（Esc/scrim/取消）统一走 onCancel：上层搜索弹窗焦点回归（R128）
+        destroyCallback: () => options.onCancel?.(),
     });
     // 原型屏 4：紧凑卡形态，卡头（徽标+标题+Esc 取消）即标题，隐藏宿主标题栏
     const container = dialog.element.querySelector(".b3-dialog__container");
@@ -154,10 +156,6 @@ export function openVariableFillCard(options: VariableFillOptions): void {
             focusables[next]?.focus();
         }
     });
-    dialog.element.addEventListener("click", (ev) => {
-        // 宿主 scrim 点击关闭时补 onCancel（destroyCallback 无法区分来源，统一挂一次性）
-        if ((ev.target as HTMLElement).classList.contains("b3-dialog__scrim")) options.onCancel?.();
-    }, {once: true});
     inputs[0]?.focus();
 }
 

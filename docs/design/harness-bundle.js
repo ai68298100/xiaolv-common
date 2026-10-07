@@ -194,7 +194,12 @@
       title: t("varFormTitle"),
       content: "",
       width: "min(360px, 92vw)",
-      height: "auto"
+      height: "auto",
+      // 所有关闭路径（Esc/scrim/取消）统一走 onCancel：上层搜索弹窗焦点回归（R128）
+      destroyCallback: () => {
+        var _a2;
+        return (_a2 = options.onCancel) == null ? void 0 : _a2.call(options);
+      }
     });
     const container = dialog.element.querySelector(".b3-dialog__container");
     if (container) container.classList.add("xlc-varform-host");
@@ -308,10 +313,6 @@
         (_a2 = focusables[next]) == null ? void 0 : _a2.focus();
       }
     });
-    dialog.element.addEventListener("click", (ev) => {
-      var _a2;
-      if (ev.target.classList.contains("b3-dialog__scrim")) (_a2 = options.onCancel) == null ? void 0 : _a2.call(options);
-    }, { once: true });
     (_b = inputs[0]) == null ? void 0 : _b.focus();
   }
   function safeListId(name) {
@@ -1550,7 +1551,9 @@
         onConfirm: (fills) => {
           this.destroy();
           void perform(fills);
-        }
+        },
+        // 取消/关闭（Esc/scrim/取消钮）后焦点回搜索框，与浮层菜单一致（R128）
+        onCancel: () => this.restoreFocusToSearch()
       });
     }
     /** 菜单按钮统一构造：图标列 + 文本（createTextNode 注入，绝不 innerHTML） */

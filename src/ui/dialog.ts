@@ -1363,6 +1363,8 @@ export class CommonSearchDialog {
                 this.destroy();
                 void perform(fills);
             },
+            // 取消/关闭（Esc/scrim/取消钮）后焦点回搜索框，与浮层菜单一致（R128）
+            onCancel: () => this.restoreFocusToSearch(),
         });
     }
 
