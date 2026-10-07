@@ -78,9 +78,19 @@ common?.registerProvider(
 common?.unregisterProvider("xiaolv-speed-switch");
 ```
 
-## 占位符语义（R24 定案）
+## 占位符语义（R24 定案；R67 扩展）
 
-提供方 payload 在**插入/复制时由消费端（小驴常用）统一渲染动态占位符**（`{{xlc:date}}` 等，与库条目一致）；关闭占位符开关则原样插入。需要字面花括号的提供方请使用非 `xlc:` 命名空间。
+提供方 payload 在**插入/复制时由消费端（小驴常用）统一渲染动态占位符**，与库条目一致；关闭占位符开关则原样插入。需要字面花括号的提供方请使用非 `xlc:` 命名空间。
+
+**支持的变量**：
+
+| 变量 | 展开值 |
+| --- | --- |
+| `{{xlc:date}}` / `{{xlc:time}}` / `{{xlc:datetime}}` / `{{xlc:weekday}}` | 当前日期/时间/日期时间/星期 |
+| `{{xlc:title}}` / `{{xlc:doc}}` / `{{xlc:path}}` | 当前文档标题/文档名（doc 同 title）/完整路径 |
+| `{{xlc:clipboard}}` | 剪贴板文本（读取失败替换为空串） |
+
+**不适用于提供方 payload 的变量**（仅限库条目插入）：`{{xlc:ask:…}}`（需填充卡交互）、`{{xlc:cursor}}`（光标标记）、`{{xlc:snippet:…}}`（片段嵌套需库索引查找）。
 
 ## payload 尺寸契约（R34）
 
