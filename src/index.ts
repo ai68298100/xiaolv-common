@@ -978,7 +978,7 @@ export default class XiaolvCommonPlugin extends Plugin {
         srcRow.className = "xlc-form-sourcerow";
         const srcText = document.createElement("span");
         srcText.textContent = item.source.sourceDocId
-            ? `src: ${item.source.sourceDocId}${item.source.sourceBlockId ? ` / ${item.source.sourceBlockId}` : ""}`
+            ? `来源：${item.source.sourceDocId}${item.source.sourceBlockId ? ` / ${item.source.sourceBlockId}` : ""}`
             : t("sourceMissing");
         srcRow.appendChild(srcText);
         // 异步补全为可读路径（内核权威 hPath；失败保持 ID 显示）
@@ -1001,7 +1001,7 @@ export default class XiaolvCommonPlugin extends Plugin {
                     this.previewCache.clear();
                     this.notify("info", t("relinkDone"));
                     void this.library.getDocPath(docId).then((path) => {
-                        srcText.textContent = path ? `来源：${path}` : `src: ${docId}`;
+                        srcText.textContent = path ? `来源：${path}` : `来源：${docId}`;
                     }).catch(() => undefined);
                 } else {
                     this.notify("error", result.message);
@@ -1036,7 +1036,23 @@ export default class XiaolvCommonPlugin extends Plugin {
         const save = document.createElement("button");
         save.className = "b3-button xlc-btn-primary";
         save.textContent = t("save");
+        // 单行输入 Enter 提交（与捕获表单一致；textarea 换行合法，不绑）
+        const submitOnEnter = (el: HTMLInputElement): void => {
+            el.addEventListener("keydown", (ev) => {
+                if (ev.key === "Enter" && !ev.altKey && !ev.ctrlKey && !ev.metaKey) {
+                    ev.preventDefault();
+                    save.click();
+                }
+            });
+        };
+        [titleEl, aliasEl, tagsEl, categoryEl].forEach((el) => submitOnEnter(el));
+        // 保存防重入 + 按钮禁用（连点会双写块）；失败恢复并诚实回执（R106）
+        let saving = false;
         save.addEventListener("click", () => {
+            if (saving) return;
+            saving = true;
+            save.disabled = true;
+            cancel.disabled = true;
             void this.library.updateItem(item.id, {
                 title: titleEl.value,
                 alias: aliasEl.value,
@@ -1049,8 +1065,16 @@ export default class XiaolvCommonPlugin extends Plugin {
                     this.notify("info", t("updated", result.data.item.title));
                     dialog.destroy();
                 } else {
+                    saving = false;
+                    save.disabled = false;
+                    cancel.disabled = false;
                     this.notify("error", result.message);
                 }
+            }).catch((err) => {
+                saving = false;
+                save.disabled = false;
+                cancel.disabled = false;
+                this.notify("error", t("kernelError", err instanceof Error ? err.message : String(err)));
             });
         });
         actions.appendChild(cancel);

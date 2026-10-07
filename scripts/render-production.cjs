@@ -404,6 +404,8 @@ fs.writeFileSync(path.join(OUT, "harness.html"), html);
         throw new Error("action-menu smoke failed: " + JSON.stringify(menuAssertions));
     }
     console.log("  smoke ✓ action-menu: 7 assertions");
+    // 默认视图证据（R106）：预览盒在分区之后 + 删除项危险色；变换视图截图在守门点击之后
+    await page.screenshot({path: path.join(OUT, "production-action-menu-default-light.png")});
     // R77：自定义变换「客服话术」→ 变换视图（结果未就绪时插/复制禁用，防空块）→ 就绪后复制变换结果本体
     await page.evaluate(() => {
         (window).__xlcCopied = undefined;
