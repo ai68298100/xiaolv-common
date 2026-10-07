@@ -62,11 +62,12 @@ export function openVariableFillCard(options: VariableFillOptions): void {
     root.appendChild(sub);
 
     // 字段区：text→input / select→input+datalist（↑↓ 选择，保键盘一致） / date→input[type=date]
+    // wrap 用 label 元素：点字段任意处聚焦输入框，读屏器可朗读字段名（R115）
     const inputs: HTMLInputElement[] = [];
     for (const field of options.fields) {
-        const wrap = document.createElement("div");
+        const wrap = document.createElement("label");
         wrap.className = "xlc-varform-field";
-        const label = document.createElement("label");
+        const label = document.createElement("span");
         label.className = "xlc-varform-label";
         label.textContent = field.name;
         const tag = document.createElement("span");

@@ -29,6 +29,7 @@
 | `--b3-list-hover` | #eef1f6 | #2c2c31 | hover/选中行底 |
 
 固定淡彩（两主题通用，原型同款）：TXT `#4a8a4a/13%` · MD/AI=主色 9% · URL `#b0680a/13%` · CODE `#8a5ad0/13%` · IMG `#3a9ab5/13%` · FILE `#8a8a93/14%` · REF `#d05a8a/13%` · WARN `#c2503a/12%` · **VAR `#8a5ad0/12%`（v3 新增，与 CODE 同族紫但等宽字体+小写语法呈现）**。收藏星 `#e8a020`。
+**暗色例外（R115，优于原型的 a11y 决策）**：徽标/语法标签的**文字色**在暗色主题整体提亮（VAR/CODE `#b49ae0`、TXT `#7fbf7f`、URL `#e0a350`、IMG `#7cc7de`、FILE `#b0b0bc`、REF `#ec8fb8`、WARN `#ec9078`，全部 ≥4.5:1）——原型 `.t-dark` 仅覆盖 var/md/ai 三种属疏漏；**背景淡彩保持固定**，亮色主题取值不变。暗色标记三重约定：`[data-theme-mode="dark"]` / `body.body--dark` / `body.b3-theme-dark`。
 
 ### 2.2 字号阶梯（禁止任意字号；数字等宽 `tabular-nums`）
 

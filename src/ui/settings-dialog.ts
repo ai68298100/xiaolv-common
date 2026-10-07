@@ -189,12 +189,14 @@ async function openPackExportDialog(ctx: SettingsUiContext): Promise<void> {
     // 分类筛选（全部 / 各分类）
     const catWrap = document.createElement("div");
     catWrap.className = "xlc-form-field";
-    const catLabel = document.createElement("span");
+    const catLabel = document.createElement("label");
     catLabel.className = "xlc-form-label";
     catLabel.textContent = t("packCategoryLabel");
     catWrap.appendChild(catLabel);
     const catSelect = document.createElement("select");
     catSelect.className = "b3-select";
+    catSelect.id = "xlc-pack-category";
+    catLabel.htmlFor = catSelect.id;
     const allOpt = document.createElement("option");
     allOpt.value = "";
     allOpt.textContent = t("allCategories");
@@ -211,12 +213,14 @@ async function openPackExportDialog(ctx: SettingsUiContext): Promise<void> {
     // 包名称
     const nameWrap = document.createElement("div");
     nameWrap.className = "xlc-form-field";
-    const nameLabel = document.createElement("span");
+    const nameLabel = document.createElement("label");
     nameLabel.className = "xlc-form-label";
     nameLabel.textContent = t("packNameLabel");
     nameWrap.appendChild(nameLabel);
     const nameInput = document.createElement("input");
     nameInput.className = "b3-text-field";
+    nameInput.id = "xlc-pack-name";
+    nameLabel.htmlFor = nameInput.id;
     nameInput.value = t("packNameDefault");
     nameWrap.appendChild(nameInput);
     wrap.appendChild(nameWrap);
@@ -424,12 +428,14 @@ function buildLibraryPickerSection(ctx: SettingsUiContext, root: HTMLElement, on
     const step1 = document.createElement("div");
     const modeWrap = document.createElement("div");
     modeWrap.className = "xlc-form-field";
-    const modeLabel = document.createElement("span");
+    const modeLabel = document.createElement("label");
     modeLabel.className = "xlc-form-label";
     modeLabel.textContent = t("setupModeLabel");
     modeWrap.appendChild(modeLabel);
     const modeSelect = document.createElement("select");
     modeSelect.className = "b3-select";
+    modeSelect.id = "xlc-setup-mode";
+    modeLabel.htmlFor = modeSelect.id;
     const modes: Array<{v: "doc" | "tree" | "notebook"; label: string}> = [
         {v: "doc", label: t("setupPickDoc")},
         {v: "tree", label: t("setupPickDoc") + " (+子文档)"},
@@ -450,6 +456,7 @@ function buildLibraryPickerSection(ctx: SettingsUiContext, root: HTMLElement, on
     const pickerInput = document.createElement("input");
     pickerInput.className = "b3-text-field";
     pickerInput.placeholder = t("docPicker");
+    pickerInput.setAttribute("aria-label", t("docPicker"));
     pickerWrap.appendChild(pickerInput);
     const pickerList = document.createElement("div");
     pickerList.className = "xlc-doclist";
@@ -496,12 +503,14 @@ function buildLibraryPickerSection(ctx: SettingsUiContext, root: HTMLElement, on
     const nbWrap = document.createElement("div");
     nbWrap.className = "xlc-form-field";
     nbWrap.style.display = "none";
-    const nbLabel = document.createElement("span");
+    const nbLabel = document.createElement("label");
     nbLabel.className = "xlc-form-label";
     nbLabel.textContent = t("setupNotebook");
     nbWrap.appendChild(nbLabel);
     const nbSelect = document.createElement("select");
     nbSelect.className = "b3-select";
+    nbSelect.id = "xlc-setup-notebook";
+    nbLabel.htmlFor = nbSelect.id;
     nbWrap.appendChild(nbSelect);
     step1.appendChild(nbWrap);
     void ctx.library.listNotebooks().then((result) => {
@@ -529,7 +538,7 @@ function buildLibraryPickerSection(ctx: SettingsUiContext, root: HTMLElement, on
     // 新建库文档（立即动作：confirm → 创建 → 配置落地）
     const nameWrap = document.createElement("div");
     nameWrap.className = "xlc-form-field";
-    const nameLabel = document.createElement("span");
+    const nameLabel = document.createElement("label");
     nameLabel.className = "xlc-form-label";
     nameLabel.textContent = t("setupNewDoc");
     nameWrap.appendChild(nameLabel);
@@ -537,6 +546,8 @@ function buildLibraryPickerSection(ctx: SettingsUiContext, root: HTMLElement, on
     nameRow.className = "xlc-form-row";
     const nameInput = document.createElement("input");
     nameInput.className = "b3-text-field";
+    nameInput.id = "xlc-setup-newdoc";
+    nameLabel.htmlFor = nameInput.id;
     nameInput.value = t("setupNewDocName");
     nameRow.appendChild(nameInput);
     const createBtn = document.createElement("button");
@@ -748,6 +759,7 @@ function buildAiSection(ctx: SettingsUiContext, root: HTMLElement): void {
             const nameInput = document.createElement("input");
             nameInput.className = "b3-text-field xlc-ct-name";
             nameInput.placeholder = t("customTransformName");
+            nameInput.setAttribute("aria-label", t("customTransformName"));
             nameInput.value = ct.name;
             nameInput.maxLength = 20;
             nameInput.addEventListener("change", () => {
@@ -758,6 +770,7 @@ function buildAiSection(ctx: SettingsUiContext, root: HTMLElement): void {
             const promptInput = document.createElement("input");
             promptInput.className = "b3-text-field xlc-ct-prompt";
             promptInput.placeholder = t("customTransformPrompt");
+            promptInput.setAttribute("aria-label", t("customTransformPrompt"));
             promptInput.value = ct.prompt;
             promptInput.maxLength = 500;
             promptInput.addEventListener("change", () => {

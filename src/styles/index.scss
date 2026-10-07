@@ -59,6 +59,8 @@
 // #8a5ad0 在暗色底上对比度约 3.6:1，10-11px 小字（徽标/语法标签）不达 AA；
 // 背景淡彩保持固定（spec 2.1 两主题通用），仅提亮文字色。
 // 暗色标记三重约定对齐思源宿主 + harness 桩（.b3-scope.dark 仅供截图证据）。
+// R115：全部类型徽标文字一并提亮（原型仅覆盖 var/md/ai，其余属疏漏；
+// 各色均调至暗底 ≥4.5:1，亮色主题取值不变）。
 [data-theme-mode="dark"],
 body.body--dark,
 body.b3-theme-dark,
@@ -67,6 +69,13 @@ body.b3-theme-dark,
   .xlc-form,
   .xlc-varform {
     --xlc-var: #b49ae0;
+    --xlc-badge-text: #7fbf7f;
+    --xlc-badge-url: #e0a350;
+    --xlc-badge-code: #b49ae0;
+    --xlc-badge-image: #7cc7de;
+    --xlc-badge-file: #b0b0bc;
+    --xlc-badge-ref: #ec8fb8;
+    --xlc-badge-warn: #ec9078;
   }
 }
 
