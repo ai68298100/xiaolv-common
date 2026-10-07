@@ -69,6 +69,7 @@ const T = (key: string, ...args: string[]): string => {
         "sort.manual": "手动/置顶", "sort.recent": "最近使用", "sort.title": "标题", "sort.frequent": "常用", sort: "排序",
         totalItems: "共 %s 条",
         duplicateItem: "创建副本", insertToDoc: "插入到指定文档", insertToDocPick: "选择目标文档（输入关键词搜索）",
+        duplicateTitle: "已存在同文条目", duplicateConfirm: "已存在「%s」，仍要保存吗？两条内容并存、互不影响。",
         aiInsertTransformed: "插入变换结果", aiCopyTransformed: "复制变换结果", aiInsertOriginal: "插入原文", saveTransformed: "存为新条目", deleteConfirm: "删除条目「%s」？",
         providerSection: "提供方内容", providerInsert: "插入（提供方）", providerCopy: "复制（提供方）",
         providerExecutable: "可执行", providerPendingReload: "待重载",

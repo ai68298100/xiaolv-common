@@ -113,4 +113,8 @@ Protocol docs: [AGENTS.md](AGENTS.md) (dev protocol) · [ROADMAP.md](ROADMAP.md)
 
 ![Desktop search (dual pane)](docs/design/production-desktop-light.png)
 
+![Search match highlighting](docs/design/production-highlight-light.png)
+
+![Empty library onboarding](docs/design/production-empty-library-light.png)
+
 ![Provider section](docs/design/production-provider-light.png)

@@ -10,6 +10,10 @@
 
 ![桌面搜索（双栏预览 + 分类分组 + 变量徽标 + 使用计数，亮色）](docs/design/production-desktop-light.png)
 
+![搜索命中高亮（查询词主色加粗）](docs/design/production-highlight-light.png)
+
+![空库引导（就地新建第一条）](docs/design/production-empty-library-light.png)
+
 ![桌面搜索（暗色）](docs/design/production-desktop-dark.png)
 
 ![变量填充卡片（插入前询问字段）](docs/design/production-variable-form-light.png)
