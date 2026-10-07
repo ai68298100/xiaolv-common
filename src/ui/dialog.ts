@@ -46,7 +46,8 @@ export interface DialogDeps {
     /** 写剪贴板（复制变换结果用，区别于条目原始内容的 runAction copy） */
     copyText: (text: string) => Promise<boolean>;
     getSort: () => "manual" | "recent" | "frequent" | "title";
-    cycleSort: () => void;
+    /** 排序直选（R108：排序应可枚举而非循环切换——Raycast 动作可枚举惯例） */
+    setSort: (sort: "manual" | "recent" | "frequent" | "title") => void;
     openSetup: () => void;
     /** 提供方候选（pv: 虚拟条目；绝不进入块执行器） */
     providerSearch: (query: string) => Promise<ProviderRow[]>;
@@ -314,7 +315,7 @@ export class CommonSearchDialog {
         aiBanner.className = "xlc-chip xlc-ai-banner";
         aiBanner.style.display = "none";
         filters.insertBefore(aiBanner, filters.firstChild);
-        // 排序切换 chip（手动/置顶 → 最近 → 标题）
+        // 排序 chip：点击弹直选菜单（4 档可枚举，当前档 ✓；替代不可见的循环切换）
         const sortChip = document.createElement("button");
         sortChip.className = "xlc-chip xlc-sort-chip";
         const paintSort = (): void => {
@@ -324,11 +325,7 @@ export class CommonSearchDialog {
             sortChip.classList.toggle("xlc-chip--on", sort !== "manual");
         };
         paintSort();
-        sortChip.addEventListener("click", () => {
-            this.deps.cycleSort();
-            paintSort();
-            void this.refresh();
-        });
+        sortChip.addEventListener("click", () => this.showSortMenu(paintSort));
         filters.appendChild(sortChip);
         root.appendChild(filters);
 
@@ -375,6 +372,11 @@ export class CommonSearchDialog {
             const pane = document.createElement("div");
             pane.className = "xlc-pane";
             pane.appendChild(this.buildPaneHead());
+            // 元数据行（R108，Raycast Detail.Metadata 惯例：结构化信息进详情面板，行保持克制）
+            const paneMeta = document.createElement("div");
+            paneMeta.className = "xlc-pane-meta";
+            paneMeta.style.display = "none";
+            pane.appendChild(paneMeta);
             // 变量提示行（F1，原型屏 1）：「插入时将询问 N 个变量：{{…}}」
             const paneVars = document.createElement("div");
             paneVars.className = "xlc-pane-vars";
@@ -1085,6 +1087,113 @@ export class CommonSearchDialog {
         paneVars.style.display = "flex";
     }
 
+    /** 排序直选菜单（R108）：4 档可枚举、当前档 ✓，替代不可见的循环切换。 */
+    private showSortMenu(paintSort: () => void): void {
+        this.menuDismiss?.();
+        this.menuDismiss = null;
+        const modes = ["manual", "recent", "frequent", "title"] as const;
+        const current = this.deps.getSort();
+        const menu = document.createElement("div");
+        menu.className = "xlc-menu xlc-menu--compact";
+        menu.setAttribute("role", "menu");
+        menu.setAttribute("aria-label", this.deps.t("sort"));
+        const lbl = document.createElement("div");
+        lbl.className = "xlc-menu-lbl";
+        lbl.textContent = this.deps.t("sort");
+        menu.appendChild(lbl);
+        const sec = document.createElement("div");
+        sec.className = "xlc-menu-sec";
+        for (const mode of modes) {
+            sec.appendChild(this.menuButton(mode === current ? "✓" : " ", this.deps.t(`sort.${mode}`), "xlc-menu-item" + (mode === current ? " xlc-menu-item--on" : ""), async () => {
+                this.menuDismiss?.();
+                this.menuDismiss = null;
+                this.deps.setSort(mode);
+                paintSort();
+                void this.refresh();
+            }));
+        }
+        menu.appendChild(sec);
+        const host = (this.dialog?.element.querySelector(".xlc-dialog")) ?? this.dialog?.element ?? document.body;
+        host.appendChild(menu);
+        const dismiss = (e: Event) => {
+            if (!menu.contains(e.target as Node)) {
+                menu.remove();
+                if (this.menuDismiss === dismissMenu) this.menuDismiss = null;
+                document.removeEventListener("pointerdown", dismiss, true);
+            }
+        };
+        const dismissMenu = (): void => {
+            menu.remove();
+            document.removeEventListener("pointerdown", dismiss, true);
+        };
+        this.menuDismiss = dismissMenu;
+        document.addEventListener("pointerdown", dismiss, true);
+        menu.querySelector<HTMLElement>(".xlc-menu-item")?.focus();
+    }
+
+    /** 预览窗格元数据行（R108，Raycast Detail.Metadata 惯例）：类型徽标 + 分类/标签可点筛选 + 更新日期。 */
+    private paintPaneMeta(entry: SearchEntry | undefined): void {
+        const meta = this.dialog?.element.querySelector<HTMLElement>(".xlc-pane-meta");
+        if (!meta) return;
+        meta.textContent = "";
+        if (!entry) {
+            meta.style.display = "none";
+            return;
+        }
+        const typeBadge = document.createElement("span");
+        typeBadge.className = `xlc-badge xlc-badge--${entry.itemType}`;
+        typeBadge.textContent = TYPE_BADGES[entry.itemType] ?? "TXT";
+        meta.appendChild(typeBadge);
+        const setFilter = (patch: {tag?: string; category?: string}): void => {
+            const current = this.deps.getFilters();
+            const next = {
+                type: current.type,
+                tag: patch.tag ?? current.tag,
+                category: patch.category ?? current.category,
+            };
+            this.deps.setFilters(next);
+            const tagSelect = this.dialog?.element.querySelector<HTMLSelectElement>(".xlc-tag-select");
+            const categorySelect = this.dialog?.element.querySelector<HTMLSelectElement>(".xlc-category-select");
+            if (tagSelect) tagSelect.value = next.tag;
+            if (categorySelect) categorySelect.value = next.category;
+            void this.refresh();
+        };
+        const toggleChip = (value: string, active: string | undefined): string => (active === value ? "" : value);
+        if (entry.category) {
+            const cat = document.createElement("button");
+            cat.type = "button";
+            cat.className = "xlc-meta-chip";
+            cat.textContent = entry.category;
+            cat.title = this.deps.t("category");
+            cat.addEventListener("click", () => setFilter({category: toggleChip(entry.category, this.deps.getFilters().category)}));
+            meta.appendChild(cat);
+        }
+        const shownTags = entry.tags.slice(0, 3);
+        for (const tag of shownTags) {
+            const chip = document.createElement("button");
+            chip.type = "button";
+            chip.className = "xlc-meta-chip";
+            chip.textContent = tag;
+            chip.title = this.deps.t("tags");
+            chip.addEventListener("click", () => setFilter({tag: toggleChip(tag, this.deps.getFilters().tag)}));
+            meta.appendChild(chip);
+        }
+        if (entry.tags.length > shownTags.length) {
+            const more = document.createElement("span");
+            more.className = "xlc-meta-chip xlc-meta-chip--static";
+            more.textContent = `+${entry.tags.length - shownTags.length}`;
+            meta.appendChild(more);
+        }
+        // 更新日期（Raycast accessory date 惯例的详情面板版；1970 级脏值不显示）
+        if (Number.isFinite(entry.updatedAt) && entry.updatedAt > 946684800000) {
+            const date = document.createElement("span");
+            date.className = "xlc-pane-meta-date";
+            date.textContent = this.deps.t("updatedAtLabel", new Date(entry.updatedAt).toLocaleDateString());
+            meta.appendChild(date);
+        }
+        meta.style.display = "flex";
+    }
+
     private updatePreview(forceId?: string): void {
         const paneBody = this.dialog?.element.querySelector<HTMLElement>(".xlc-pane-body");
         const paneTitle = this.dialog?.element.querySelector<HTMLElement>(".xlc-pane-title");
@@ -1111,6 +1220,7 @@ export class CommonSearchDialog {
             paneAi.style.display = "none";
             paneUsage.style.display = "none";
             paneWarn.style.display = "none";
+            this.paintPaneMeta(undefined);
             paneBody.classList.remove("xlc-pane-body--muted", "xlc-pane-body--code");
             this.paintPaneVars(null, "provider");
             paneBody.textContent = row.payload;
@@ -1118,6 +1228,8 @@ export class CommonSearchDialog {
         }
         const entry = this.results[this.activeIndex];
         const id = forceId ?? entry?.id ?? null;
+        // 元数据行跟活动条目走（含清空态隐藏），先于预览缓存的早退执行
+        this.paintPaneMeta(entry);
         if (!id || id === this.lastPreviewId) return;
         const seq = ++this.previewSeq;
         this.lastPreviewId = id;

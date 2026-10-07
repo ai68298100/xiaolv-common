@@ -7,11 +7,11 @@ import type {SearchEntry} from "../../src/model/search";
 import type {TransformKind} from "../../src/service/ai";
 
 const ENTRIES: SearchEntry[] = [
-    {id: "xlc-demo0000001", blockId: "20240101120000-aaaaaaa", libraryDocId: "20240101120001-hijklmn", itemType: "markdown", title: "项目延期道歉与补偿方案", alias: "延期道歉", tags: ["客户沟通", "模板"], category: "客服", summary: "尊敬的王总：关于本期交付延期……", createdAt: 1, updatedAt: 2, sourceDocId: "20240101120001-hijklmn", sourceBlockId: "20240101120002-bbbbbbb", varCount: 2},
-    {id: "xlc-demo0000002", blockId: "20240101120000-ccccccc", libraryDocId: "20240101120001-hijklmn", itemType: "text", title: "延期简短版（IM 用）", alias: "", tags: [], category: "", summary: "您好，本次迭代因联调超期，上线推迟 2 天……", createdAt: 1, updatedAt: 2},
-    {id: "xlc-demo0000003", blockId: "20240101120000-ddddddd", libraryDocId: "20240101120001-hijklmn", itemType: "code", title: "SQL 分页模板", alias: "", tags: ["开发"], category: "开发", summary: "SELECT * FROM t LIMIT …", createdAt: 1, updatedAt: 2},
-    {id: "xlc-demo0000004", blockId: "20240101120000-eeeeeee", libraryDocId: "20240101120001-hijklmn", itemType: "blockref", title: "产品需求模板（引用）", alias: "", tags: [], category: "", summary: "", createdAt: 1, updatedAt: 2, targetBlockId: "20240101120002-bbbbbbb" as unknown as string},
-    {id: "xlc-demo0000005", blockId: "20240101120000-fffffff", libraryDocId: "20240101120001-hijklmn", itemType: "url", title: "SLA 赔付标准文档", alias: "", tags: [], category: "", summary: "https://wiki.example.com/sla", createdAt: 1, updatedAt: 2, url: "https://wiki.example.com/sla"},
+    {id: "xlc-demo0000001", blockId: "20240101120000-aaaaaaa", libraryDocId: "20240101120001-hijklmn", itemType: "markdown", title: "项目延期道歉与补偿方案", alias: "延期道歉", tags: ["客户沟通", "模板"], category: "客服", summary: "尊敬的王总：关于本期交付延期……", createdAt: 1, updatedAt: Date.now() - 3 * 86_400_000, sourceDocId: "20240101120001-hijklmn", sourceBlockId: "20240101120002-bbbbbbb", varCount: 2},
+    {id: "xlc-demo0000002", blockId: "20240101120000-ccccccc", libraryDocId: "20240101120001-hijklmn", itemType: "text", title: "延期简短版（IM 用）", alias: "", tags: [], category: "", summary: "您好，本次迭代因联调超期，上线推迟 2 天……", createdAt: 1, updatedAt: Date.now() - 7 * 86_400_000},
+    {id: "xlc-demo0000003", blockId: "20240101120000-ddddddd", libraryDocId: "20240101120001-hijklmn", itemType: "code", title: "SQL 分页模板", alias: "", tags: ["开发"], category: "开发", summary: "SELECT * FROM t LIMIT …", createdAt: 1, updatedAt: Date.now() - 7 * 86_400_000},
+    {id: "xlc-demo0000004", blockId: "20240101120000-eeeeeee", libraryDocId: "20240101120001-hijklmn", itemType: "blockref", title: "产品需求模板（引用）", alias: "", tags: [], category: "", summary: "", createdAt: 1, updatedAt: Date.now() - 30 * 86_400_000, targetBlockId: "20240101120002-bbbbbbb" as unknown as string},
+    {id: "xlc-demo0000005", blockId: "20240101120000-fffffff", libraryDocId: "20240101120001-hijklmn", itemType: "url", title: "SLA 赔付标准文档", alias: "", tags: [], category: "", summary: "https://wiki.example.com/sla", createdAt: 1, updatedAt: Date.now() - 1 * 86_400_000, url: "https://wiki.example.com/sla"},
 ];
 
 const PREVIEWS: Record<string, string> = {
@@ -92,6 +92,7 @@ const T = (key: string, ...args: string[]): string => {
         setupNewDoc: "创建新库文档", setupNewDocName: "常用内容库", docPicker: "选择库文档", docPickerEmpty: "没有匹配的文档",
         captureHint: "条目将保存为真实思源块 · 变量在插入时询问", docCount: "%s 个文档",
         emptyLibrary: "内容库还是空的", emptyLibrarySub: "从选区、剪贴板或右键菜单捕获常用内容；也可以直接新建一条",
+        updatedAtLabel: "更新于 %s",
     };
     let text = map[key] ?? key;
     for (const arg of args) text = text.replace("%s", arg);
@@ -123,8 +124,8 @@ function makeDeps(overrides: {aiEnabled?: boolean; missing?: boolean; mobile?: b
             (window as unknown as {__xlcCopied?: string}).__xlcCopied = text;
             return true;
         },
-        getSort: (): "manual" | "recent" | "title" => "manual",
-        cycleSort: () => {},
+        getSort: (): "manual" | "recent" | "frequent" | "title" => "manual",
+        setSort: () => {},
         searchDocs: async (k: string) => k ? [{id: "20240101120001-hijklmn", hPath: "/常用内容库", name: "常用内容库"}] : [],
         insertToDoc: async () => true,
         duplicateItem: async () => {},

@@ -589,11 +589,7 @@
         sortChip.classList.toggle("xlc-chip--on", sort !== "manual");
       };
       paintSort();
-      sortChip.addEventListener("click", () => {
-        this.deps.cycleSort();
-        paintSort();
-        void this.refresh();
-      });
+      sortChip.addEventListener("click", () => this.showSortMenu(paintSort));
       filters.appendChild(sortChip);
       root.appendChild(filters);
       const status = document.createElement("div");
@@ -634,6 +630,10 @@
         const pane = document.createElement("div");
         pane.className = "xlc-pane";
         pane.appendChild(this.buildPaneHead());
+        const paneMeta = document.createElement("div");
+        paneMeta.className = "xlc-pane-meta";
+        paneMeta.style.display = "none";
+        pane.appendChild(paneMeta);
         const paneVars = document.createElement("div");
         paneVars.className = "xlc-pane-vars";
         paneVars.style.display = "none";
@@ -1290,6 +1290,114 @@
       }
       paneVars.style.display = "flex";
     }
+    /** 排序直选菜单（R108）：4 档可枚举、当前档 ✓，替代不可见的循环切换。 */
+    showSortMenu(paintSort) {
+      var _a, _b, _c, _d, _e, _f;
+      (_a = this.menuDismiss) == null ? void 0 : _a.call(this);
+      this.menuDismiss = null;
+      const modes = ["manual", "recent", "frequent", "title"];
+      const current = this.deps.getSort();
+      const menu = document.createElement("div");
+      menu.className = "xlc-menu xlc-menu--compact";
+      menu.setAttribute("role", "menu");
+      menu.setAttribute("aria-label", this.deps.t("sort"));
+      const lbl = document.createElement("div");
+      lbl.className = "xlc-menu-lbl";
+      lbl.textContent = this.deps.t("sort");
+      menu.appendChild(lbl);
+      const sec = document.createElement("div");
+      sec.className = "xlc-menu-sec";
+      for (const mode of modes) {
+        sec.appendChild(this.menuButton(mode === current ? "\u2713" : " ", this.deps.t(`sort.${mode}`), "xlc-menu-item" + (mode === current ? " xlc-menu-item--on" : ""), async () => {
+          var _a2;
+          (_a2 = this.menuDismiss) == null ? void 0 : _a2.call(this);
+          this.menuDismiss = null;
+          this.deps.setSort(mode);
+          paintSort();
+          void this.refresh();
+        }));
+      }
+      menu.appendChild(sec);
+      const host = (_e = (_d = (_b = this.dialog) == null ? void 0 : _b.element.querySelector(".xlc-dialog")) != null ? _d : (_c = this.dialog) == null ? void 0 : _c.element) != null ? _e : document.body;
+      host.appendChild(menu);
+      const dismiss = (e) => {
+        if (!menu.contains(e.target)) {
+          menu.remove();
+          if (this.menuDismiss === dismissMenu) this.menuDismiss = null;
+          document.removeEventListener("pointerdown", dismiss, true);
+        }
+      };
+      const dismissMenu = () => {
+        menu.remove();
+        document.removeEventListener("pointerdown", dismiss, true);
+      };
+      this.menuDismiss = dismissMenu;
+      document.addEventListener("pointerdown", dismiss, true);
+      (_f = menu.querySelector(".xlc-menu-item")) == null ? void 0 : _f.focus();
+    }
+    /** 预览窗格元数据行（R108，Raycast Detail.Metadata 惯例）：类型徽标 + 分类/标签可点筛选 + 更新日期。 */
+    paintPaneMeta(entry) {
+      var _a, _b;
+      const meta = (_a = this.dialog) == null ? void 0 : _a.element.querySelector(".xlc-pane-meta");
+      if (!meta) return;
+      meta.textContent = "";
+      if (!entry) {
+        meta.style.display = "none";
+        return;
+      }
+      const typeBadge = document.createElement("span");
+      typeBadge.className = `xlc-badge xlc-badge--${entry.itemType}`;
+      typeBadge.textContent = (_b = TYPE_BADGES2[entry.itemType]) != null ? _b : "TXT";
+      meta.appendChild(typeBadge);
+      const setFilter = (patch) => {
+        var _a2, _b2, _c, _d;
+        const current = this.deps.getFilters();
+        const next = {
+          type: current.type,
+          tag: (_a2 = patch.tag) != null ? _a2 : current.tag,
+          category: (_b2 = patch.category) != null ? _b2 : current.category
+        };
+        this.deps.setFilters(next);
+        const tagSelect = (_c = this.dialog) == null ? void 0 : _c.element.querySelector(".xlc-tag-select");
+        const categorySelect = (_d = this.dialog) == null ? void 0 : _d.element.querySelector(".xlc-category-select");
+        if (tagSelect) tagSelect.value = next.tag;
+        if (categorySelect) categorySelect.value = next.category;
+        void this.refresh();
+      };
+      const toggleChip = (value, active2) => active2 === value ? "" : value;
+      if (entry.category) {
+        const cat = document.createElement("button");
+        cat.type = "button";
+        cat.className = "xlc-meta-chip";
+        cat.textContent = entry.category;
+        cat.title = this.deps.t("category");
+        cat.addEventListener("click", () => setFilter({ category: toggleChip(entry.category, this.deps.getFilters().category) }));
+        meta.appendChild(cat);
+      }
+      const shownTags = entry.tags.slice(0, 3);
+      for (const tag of shownTags) {
+        const chip = document.createElement("button");
+        chip.type = "button";
+        chip.className = "xlc-meta-chip";
+        chip.textContent = tag;
+        chip.title = this.deps.t("tags");
+        chip.addEventListener("click", () => setFilter({ tag: toggleChip(tag, this.deps.getFilters().tag) }));
+        meta.appendChild(chip);
+      }
+      if (entry.tags.length > shownTags.length) {
+        const more = document.createElement("span");
+        more.className = "xlc-meta-chip xlc-meta-chip--static";
+        more.textContent = `+${entry.tags.length - shownTags.length}`;
+        meta.appendChild(more);
+      }
+      if (Number.isFinite(entry.updatedAt) && entry.updatedAt > 9466848e5) {
+        const date = document.createElement("span");
+        date.className = "xlc-pane-meta-date";
+        date.textContent = this.deps.t("updatedAtLabel", new Date(entry.updatedAt).toLocaleDateString());
+        meta.appendChild(date);
+      }
+      meta.style.display = "flex";
+    }
     updatePreview(forceId) {
       var _a, _b, _c, _d, _e, _f, _g;
       const paneBody = (_a = this.dialog) == null ? void 0 : _a.element.querySelector(".xlc-pane-body");
@@ -1316,6 +1424,7 @@
         paneAi.style.display = "none";
         paneUsage.style.display = "none";
         paneWarn.style.display = "none";
+        this.paintPaneMeta(void 0);
         paneBody.classList.remove("xlc-pane-body--muted", "xlc-pane-body--code");
         this.paintPaneVars(null, "provider");
         paneBody.textContent = row.payload;
@@ -1323,6 +1432,7 @@
       }
       const entry = this.results[this.activeIndex];
       const id = (_f = forceId != null ? forceId : entry == null ? void 0 : entry.id) != null ? _f : null;
+      this.paintPaneMeta(entry);
       if (!id || id === this.lastPreviewId) return;
       const seq = ++this.previewSeq;
       this.lastPreviewId = id;
@@ -3754,11 +3864,11 @@
 
   // scripts/harness/entry.ts
   var ENTRIES = [
-    { id: "xlc-demo0000001", blockId: "20240101120000-aaaaaaa", libraryDocId: "20240101120001-hijklmn", itemType: "markdown", title: "\u9879\u76EE\u5EF6\u671F\u9053\u6B49\u4E0E\u8865\u507F\u65B9\u6848", alias: "\u5EF6\u671F\u9053\u6B49", tags: ["\u5BA2\u6237\u6C9F\u901A", "\u6A21\u677F"], category: "\u5BA2\u670D", summary: "\u5C0A\u656C\u7684\u738B\u603B\uFF1A\u5173\u4E8E\u672C\u671F\u4EA4\u4ED8\u5EF6\u671F\u2026\u2026", createdAt: 1, updatedAt: 2, sourceDocId: "20240101120001-hijklmn", sourceBlockId: "20240101120002-bbbbbbb", varCount: 2 },
-    { id: "xlc-demo0000002", blockId: "20240101120000-ccccccc", libraryDocId: "20240101120001-hijklmn", itemType: "text", title: "\u5EF6\u671F\u7B80\u77ED\u7248\uFF08IM \u7528\uFF09", alias: "", tags: [], category: "", summary: "\u60A8\u597D\uFF0C\u672C\u6B21\u8FED\u4EE3\u56E0\u8054\u8C03\u8D85\u671F\uFF0C\u4E0A\u7EBF\u63A8\u8FDF 2 \u5929\u2026\u2026", createdAt: 1, updatedAt: 2 },
-    { id: "xlc-demo0000003", blockId: "20240101120000-ddddddd", libraryDocId: "20240101120001-hijklmn", itemType: "code", title: "SQL \u5206\u9875\u6A21\u677F", alias: "", tags: ["\u5F00\u53D1"], category: "\u5F00\u53D1", summary: "SELECT * FROM t LIMIT \u2026", createdAt: 1, updatedAt: 2 },
-    { id: "xlc-demo0000004", blockId: "20240101120000-eeeeeee", libraryDocId: "20240101120001-hijklmn", itemType: "blockref", title: "\u4EA7\u54C1\u9700\u6C42\u6A21\u677F\uFF08\u5F15\u7528\uFF09", alias: "", tags: [], category: "", summary: "", createdAt: 1, updatedAt: 2, targetBlockId: "20240101120002-bbbbbbb" },
-    { id: "xlc-demo0000005", blockId: "20240101120000-fffffff", libraryDocId: "20240101120001-hijklmn", itemType: "url", title: "SLA \u8D54\u4ED8\u6807\u51C6\u6587\u6863", alias: "", tags: [], category: "", summary: "https://wiki.example.com/sla", createdAt: 1, updatedAt: 2, url: "https://wiki.example.com/sla" }
+    { id: "xlc-demo0000001", blockId: "20240101120000-aaaaaaa", libraryDocId: "20240101120001-hijklmn", itemType: "markdown", title: "\u9879\u76EE\u5EF6\u671F\u9053\u6B49\u4E0E\u8865\u507F\u65B9\u6848", alias: "\u5EF6\u671F\u9053\u6B49", tags: ["\u5BA2\u6237\u6C9F\u901A", "\u6A21\u677F"], category: "\u5BA2\u670D", summary: "\u5C0A\u656C\u7684\u738B\u603B\uFF1A\u5173\u4E8E\u672C\u671F\u4EA4\u4ED8\u5EF6\u671F\u2026\u2026", createdAt: 1, updatedAt: Date.now() - 3 * 864e5, sourceDocId: "20240101120001-hijklmn", sourceBlockId: "20240101120002-bbbbbbb", varCount: 2 },
+    { id: "xlc-demo0000002", blockId: "20240101120000-ccccccc", libraryDocId: "20240101120001-hijklmn", itemType: "text", title: "\u5EF6\u671F\u7B80\u77ED\u7248\uFF08IM \u7528\uFF09", alias: "", tags: [], category: "", summary: "\u60A8\u597D\uFF0C\u672C\u6B21\u8FED\u4EE3\u56E0\u8054\u8C03\u8D85\u671F\uFF0C\u4E0A\u7EBF\u63A8\u8FDF 2 \u5929\u2026\u2026", createdAt: 1, updatedAt: Date.now() - 7 * 864e5 },
+    { id: "xlc-demo0000003", blockId: "20240101120000-ddddddd", libraryDocId: "20240101120001-hijklmn", itemType: "code", title: "SQL \u5206\u9875\u6A21\u677F", alias: "", tags: ["\u5F00\u53D1"], category: "\u5F00\u53D1", summary: "SELECT * FROM t LIMIT \u2026", createdAt: 1, updatedAt: Date.now() - 7 * 864e5 },
+    { id: "xlc-demo0000004", blockId: "20240101120000-eeeeeee", libraryDocId: "20240101120001-hijklmn", itemType: "blockref", title: "\u4EA7\u54C1\u9700\u6C42\u6A21\u677F\uFF08\u5F15\u7528\uFF09", alias: "", tags: [], category: "", summary: "", createdAt: 1, updatedAt: Date.now() - 30 * 864e5, targetBlockId: "20240101120002-bbbbbbb" },
+    { id: "xlc-demo0000005", blockId: "20240101120000-fffffff", libraryDocId: "20240101120001-hijklmn", itemType: "url", title: "SLA \u8D54\u4ED8\u6807\u51C6\u6587\u6863", alias: "", tags: [], category: "", summary: "https://wiki.example.com/sla", createdAt: 1, updatedAt: Date.now() - 1 * 864e5, url: "https://wiki.example.com/sla" }
   ];
   var PREVIEWS = {
     "xlc-demo0000001": "\u5C0A\u656C\u7684 {{xlc:ask:\u5BA2\u6237\u540D\u79F0}}\uFF1A\n\n\u5173\u4E8E\u672C\u671F\u300C\u4F1A\u5458\u7CFB\u7EDF\u300D\u4EA4\u4ED8\u5EF6\u671F\uFF0C\u6211\u4EEC\u6DF1\u8868\u6B49\u610F\u3002\u7ECF\u590D\u76D8\uFF0C\u4E3B\u8981\u539F\u56E0\u4E3A\u7B2C\u4E09\u65B9\u652F\u4ED8\u8054\u8C03\u8D85\u671F\u3002\u76EE\u524D\u8054\u8C03\u5DF2\u5B8C\u6210 92%\uFF0C\u9884\u8BA1\u63A8\u8FDF 2 \u4E2A\u5DE5\u4F5C\u65E5\u4E0A\u7EBF\u3002\n\n\u4E3A\u5F25\u8865\u5F71\u54CD\uFF0C\u6211\u4EEC\u63D0\u4F9B\u4EE5\u4E0B\u8865\u507F\uFF1A\n1. \u672C\u671F\u670D\u52A1\u8D39\u51CF\u514D {{xlc:ask:\u8865\u507F\u6BD4\u4F8B|5%,10%}}\uFF1B\n2. \u4E0A\u7EBF\u540E 48 \u5C0F\u65F6\u4E13\u5C5E\u503C\u5B88\uFF1B\n3. \u4E0B\u671F\u8FED\u4EE3\u4F18\u5148\u6392\u5165\u8D35\u65B9\u9700\u6C42\u3002\n\n\u518D\u6B21\u611F\u8C22\u7406\u89E3\u4E0E\u652F\u6301\uFF0C\u6709\u4EFB\u4F55\u95EE\u9898\u968F\u65F6\u8054\u7CFB\u6211\u3002{{xlc:cursor}}",
@@ -3955,7 +4065,8 @@
       captureHint: "\u6761\u76EE\u5C06\u4FDD\u5B58\u4E3A\u771F\u5B9E\u601D\u6E90\u5757 \xB7 \u53D8\u91CF\u5728\u63D2\u5165\u65F6\u8BE2\u95EE",
       docCount: "%s \u4E2A\u6587\u6863",
       emptyLibrary: "\u5185\u5BB9\u5E93\u8FD8\u662F\u7A7A\u7684",
-      emptyLibrarySub: "\u4ECE\u9009\u533A\u3001\u526A\u8D34\u677F\u6216\u53F3\u952E\u83DC\u5355\u6355\u83B7\u5E38\u7528\u5185\u5BB9\uFF1B\u4E5F\u53EF\u4EE5\u76F4\u63A5\u65B0\u5EFA\u4E00\u6761"
+      emptyLibrarySub: "\u4ECE\u9009\u533A\u3001\u526A\u8D34\u677F\u6216\u53F3\u952E\u83DC\u5355\u6355\u83B7\u5E38\u7528\u5185\u5BB9\uFF1B\u4E5F\u53EF\u4EE5\u76F4\u63A5\u65B0\u5EFA\u4E00\u6761",
+      updatedAtLabel: "\u66F4\u65B0\u4E8E %s"
     };
     let text = (_a = map[key]) != null ? _a : key;
     for (const arg of args) text = text.replace("%s", arg);
@@ -3991,7 +4102,7 @@
         return true;
       },
       getSort: () => "manual",
-      cycleSort: () => {
+      setSort: () => {
       },
       searchDocs: async (k) => k ? [{ id: "20240101120001-hijklmn", hPath: "/\u5E38\u7528\u5185\u5BB9\u5E93", name: "\u5E38\u7528\u5185\u5BB9\u5E93" }] : [],
       insertToDoc: async () => true,

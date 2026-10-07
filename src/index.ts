@@ -757,11 +757,8 @@ export default class XiaolvCommonPlugin extends Plugin {
                 return text;
             },
             getSort: () => this.state.sort,
-            cycleSort: () => {
-                // 手动/置顶 → 最近 → 常用（F3）→ 标题
-                const order = ["manual", "recent", "frequent", "title"] as const;
-                const idx = order.indexOf(this.state.sort);
-                this.state.sort = order[(idx + 1) % order.length] ?? "manual";
+            setSort: (sort) => {
+                this.state.sort = sort;
                 this.persistSoon();
             },
             runAction: async (itemId, mode) => {

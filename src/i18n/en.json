@@ -253,5 +253,6 @@
   "captureHint": "Items are saved as real SiYuan blocks · variables are asked on insert",
   "docCount": "%s doc(s)",
   "emptyLibrary": "Your library is empty",
-  "emptyLibrarySub": "Capture from a selection, the clipboard or context menus — or create an item right here"
+  "emptyLibrarySub": "Capture from a selection, the clipboard or context menus — or create an item right here",
+  "updatedAtLabel": "Updated %s"
 }

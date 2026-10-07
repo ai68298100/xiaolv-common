@@ -253,5 +253,6 @@
   "captureHint": "条目将保存为真实思源块 · 变量在插入时询问",
   "docCount": "%s 个文档",
   "emptyLibrary": "内容库还是空的",
-  "emptyLibrarySub": "从选区、剪贴板或右键菜单捕获常用内容；也可以直接新建一条"
+  "emptyLibrarySub": "从选区、剪贴板或右键菜单捕获常用内容；也可以直接新建一条",
+  "updatedAtLabel": "更新于 %s"
 }

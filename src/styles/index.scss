@@ -621,6 +621,62 @@
     }
   }
 
+  // 预览窗格元数据行（R108，Raycast Detail.Metadata 惯例）：
+  // 结构化信息（类型/分类/标签/更新日期）进详情面板，列表行保持克制
+  .xlc-pane-meta {
+    display: none;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+    margin: 4px 14px 0;
+    font-size: 11px;
+
+    .xlc-meta-chip {
+      display: inline-flex;
+      align-items: center;
+      font-size: 11px;
+      line-height: 18px;
+      padding: 0 8px;
+      border: 1px solid var(--b3-border-color);
+      border-radius: 999px;
+      background-color: transparent;
+      color: var(--b3-theme-on-surface);
+      font-family: inherit;
+      cursor: pointer;
+      white-space: nowrap;
+      transition: border-color var(--xlc-dur-fast) var(--xlc-ease),
+                  color var(--xlc-dur-fast) var(--xlc-ease),
+                  background-color var(--xlc-dur-fast) var(--xlc-ease);
+
+      &:hover {
+        border-color: var(--b3-theme-primary-light);
+        color: var(--b3-theme-primary);
+      }
+
+      &:focus-visible {
+        outline: 2px solid var(--b3-theme-primary);
+        outline-offset: 1px;
+      }
+
+      // 非 clickable 展示片（+N 溢出计数）
+      &--static {
+        cursor: default;
+
+        &:hover {
+          border-color: var(--b3-border-color);
+          color: var(--b3-theme-on-surface);
+        }
+      }
+    }
+
+    .xlc-pane-meta-date {
+      margin-left: auto;
+      color: var(--b3-theme-on-surface);
+      font-variant-numeric: tabular-nums;
+      white-space: nowrap;
+    }
+  }
+
   // 分组 sticky 头（F4-lite，原型屏 1）
   .xlc-group-head {
     padding: 5px 12px;
@@ -776,6 +832,11 @@
       flex-shrink: 0;
     }
 
+    // 紧凑变体（排序直选等小菜单，R108）
+    &--compact {
+      width: min(220px, calc(100% - 32px));
+    }
+
     .xlc-menu-lbl {
       font-size: 11px;
       color: var(--b3-theme-on-surface);
@@ -888,6 +949,9 @@
 
         .xlc-menu-ic { color: var(--b3-theme-primary); }
       }
+
+      // 当前档（排序直选菜单 ✓ 项，R108）
+      &--on { font-weight: 600; }
 
       // 危险动作（删除）：固定语义红，一眼可辨（R106）
       &--danger,
