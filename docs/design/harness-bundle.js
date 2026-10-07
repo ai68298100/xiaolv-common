@@ -536,7 +536,10 @@
           opt.textContent = tag;
           tagSelect.appendChild(opt);
         }
-        if (savedFilters.tag && tags.includes(savedFilters.tag)) tagSelect.value = savedFilters.tag;
+        if (savedFilters.tag && tags.includes(savedFilters.tag)) {
+          tagSelect.value = savedFilters.tag;
+          void this.refresh();
+        }
       });
       tagSelect.addEventListener("change", () => {
         var _a;
@@ -564,7 +567,10 @@
           opt.textContent = category;
           categorySelect.appendChild(opt);
         }
-        if (savedFilters.category && categories.includes(savedFilters.category)) categorySelect.value = savedFilters.category;
+        if (savedFilters.category && categories.includes(savedFilters.category)) {
+          categorySelect.value = savedFilters.category;
+          void this.refresh();
+        }
       });
       categorySelect.addEventListener("change", () => {
         this.deps.setFilters({ type: typeSelect.value, tag: tagSelect.value, category: categorySelect.value });
@@ -1414,7 +1420,8 @@
         cat.addEventListener("click", () => setFilter({ category: toggleChip(entry.category, this.deps.getFilters().category) }));
         meta.appendChild(cat);
       }
-      const shownTags = entry.tags.slice(0, 3);
+      const cleanTags = entry.tags.filter(Boolean);
+      const shownTags = cleanTags.slice(0, 3);
       for (const tag of shownTags) {
         const chip = document.createElement("button");
         chip.type = "button";
@@ -1424,10 +1431,10 @@
         chip.addEventListener("click", () => setFilter({ tag: toggleChip(tag, this.deps.getFilters().tag) }));
         meta.appendChild(chip);
       }
-      if (entry.tags.length > shownTags.length) {
+      if (cleanTags.length > shownTags.length) {
         const more = document.createElement("span");
         more.className = "xlc-meta-chip xlc-meta-chip--static";
-        more.textContent = `+${entry.tags.length - shownTags.length}`;
+        more.textContent = `+${cleanTags.length - shownTags.length}`;
         meta.appendChild(more);
       }
       if (Number.isFinite(entry.updatedAt) && entry.updatedAt > 9466848e5) {
@@ -4164,7 +4171,12 @@
     const aiOn = (_a = overrides.aiEnabled) != null ? _a : true;
     return {
       t: T,
-      search: async () => overrides.empty ? { entries: [], truncated: false, total: 0 } : { entries: ENTRIES, truncated: false, total: 128 },
+      search: async () => {
+        var _a2;
+        const w = window;
+        w.__xlcSearchCalls = ((_a2 = w.__xlcSearchCalls) != null ? _a2 : 0) + 1;
+        return overrides.empty ? { entries: [], truncated: false, total: 0 } : { entries: ENTRIES, truncated: false, total: 128 };
+      },
       getTags: async () => ["\u5BA2\u6237\u6C9F\u901A", "\u6A21\u677F", "\u5F00\u53D1"],
       getCategories: async () => ["\u5BA2\u670D", "\u5F00\u53D1"],
       preview: async (itemId) => {
@@ -4197,7 +4209,10 @@
       },
       saveTransformed: async () => {
       },
-      getFilters: () => ({ type: "", tag: "", category: "" }),
+      getFilters: () => {
+        var _a2;
+        return (_a2 = overrides.filters) != null ? _a2 : { type: "", tag: "", category: "" };
+      },
       getLibraryName: async () => "/\u5E38\u7528\u5185\u5BB9\u5E93",
       setFilters: () => {
       },

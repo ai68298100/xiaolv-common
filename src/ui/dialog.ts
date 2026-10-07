@@ -267,7 +267,12 @@ export class CommonSearchDialog {
                 opt.textContent = tag;
                 tagSelect.appendChild(opt);
             }
-            if (savedFilters.tag && tags.includes(savedFilters.tag)) tagSelect.value = savedFilters.tag;
+            if (savedFilters.tag && tags.includes(savedFilters.tag)) {
+                // 跨会话回填：选项异步补齐后才挂得上值，此时首查已按未筛选发出——
+                // 回填后重查一次，消除「筛选框已选、结果未筛」的状态错位（R118）
+                tagSelect.value = savedFilters.tag;
+                void this.refresh();
+            }
         });
         tagSelect.addEventListener("change", () => {
             this.deps.setFilters({
@@ -296,7 +301,11 @@ export class CommonSearchDialog {
                 opt.textContent = category;
                 categorySelect.appendChild(opt);
             }
-            if (savedFilters.category && categories.includes(savedFilters.category)) categorySelect.value = savedFilters.category;
+            if (savedFilters.category && categories.includes(savedFilters.category)) {
+                // 同标签筛选：异步回填后重查（R118）
+                categorySelect.value = savedFilters.category;
+                void this.refresh();
+            }
         });
         categorySelect.addEventListener("change", () => {
             this.deps.setFilters({type: typeSelect.value, tag: tagSelect.value, category: categorySelect.value});
@@ -1211,7 +1220,9 @@ export class CommonSearchDialog {
             cat.addEventListener("click", () => setFilter({category: toggleChip(entry.category, this.deps.getFilters().category)}));
             meta.appendChild(cat);
         }
-        const shownTags = entry.tags.slice(0, 3);
+        // 空字符串标签防御（索引侧按分隔符切分可能产生空段，R118）
+        const cleanTags = entry.tags.filter(Boolean);
+        const shownTags = cleanTags.slice(0, 3);
         for (const tag of shownTags) {
             const chip = document.createElement("button");
             chip.type = "button";
@@ -1221,10 +1232,10 @@ export class CommonSearchDialog {
             chip.addEventListener("click", () => setFilter({tag: toggleChip(tag, this.deps.getFilters().tag)}));
             meta.appendChild(chip);
         }
-        if (entry.tags.length > shownTags.length) {
+        if (cleanTags.length > shownTags.length) {
             const more = document.createElement("span");
             more.className = "xlc-meta-chip xlc-meta-chip--static";
-            more.textContent = `+${entry.tags.length - shownTags.length}`;
+            more.textContent = `+${cleanTags.length - shownTags.length}`;
             meta.appendChild(more);
         }
         // 更新日期（Raycast accessory date 惯例的详情面板版；1970 级脏值不显示）

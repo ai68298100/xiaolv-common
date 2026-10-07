@@ -101,13 +101,18 @@ const T = (key: string, ...args: string[]): string => {
     return text;
 };
 
-function makeDeps(overrides: {aiEnabled?: boolean; missing?: boolean; mobile?: boolean; empty?: boolean} = {}) {
+function makeDeps(overrides: {aiEnabled?: boolean; missing?: boolean; mobile?: boolean; empty?: boolean; filters?: {type: string; tag: string; category: string}} = {}) {
     const aiOn = overrides.aiEnabled ?? true;
     return {
         t: T,
-        search: async () => overrides.empty
-            ? {entries: [], truncated: false, total: 0}
-            : {entries: ENTRIES, truncated: false, total: 128},
+        search: async () => {
+            // 查询计数（R118 筛选回填竞态探测用）
+            const w = window as unknown as {__xlcSearchCalls?: number};
+            w.__xlcSearchCalls = (w.__xlcSearchCalls ?? 0) + 1;
+            return overrides.empty
+                ? {entries: [], truncated: false, total: 0}
+                : {entries: ENTRIES, truncated: false, total: 128};
+        },
         getTags: async () => ["客户沟通", "模板", "开发"],
         getCategories: async () => ["客服", "开发"],
         preview: async (itemId: string) => PREVIEWS[itemId] ?? "",
@@ -132,7 +137,7 @@ function makeDeps(overrides: {aiEnabled?: boolean; missing?: boolean; mobile?: b
         insertToDoc: async () => true,
         duplicateItem: async () => {},
         saveTransformed: async () => {},
-        getFilters: () => ({type: "", tag: "", category: ""}),
+        getFilters: () => overrides.filters ?? {type: "", tag: "", category: ""},
         getLibraryName: async () => "/常用内容库",
         setFilters: () => {},
         getLastQuery: () => "",
@@ -170,7 +175,7 @@ function makeDeps(overrides: {aiEnabled?: boolean; missing?: boolean; mobile?: b
 }
 
 (window as unknown as {XlcHarness: unknown}).XlcHarness = {
-    openDialog(overrides?: {aiEnabled?: boolean; missing?: boolean; scope?: "all" | "favorites"; query?: string; mobile?: boolean; empty?: boolean; insertTarget?: {docId: string; hPath: string}}): CommonSearchDialog {
+    openDialog(overrides?: {aiEnabled?: boolean; missing?: boolean; scope?: "all" | "favorites"; query?: string; mobile?: boolean; empty?: boolean; insertTarget?: {docId: string; hPath: string}; filters?: {type: string; tag: string; category: string}}): CommonSearchDialog {
         const dialog = new CommonSearchDialog(makeDeps(overrides));
         if (overrides?.insertTarget) dialog.insertTarget = overrides.insertTarget;
         dialog.open();
