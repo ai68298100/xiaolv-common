@@ -133,6 +133,8 @@ export function openSettingsDialog(ctx: SettingsUiContext): void {
         if (show && pickerHost.childElementCount === 0) {
             buildLibraryPickerSection(ctx, pickerHost, () => dialog.destroy());
         }
+        // 展开即聚焦文档搜索框（R129，对齐「添加即聚焦」惯例）
+        if (show) pickerHost.querySelector<HTMLInputElement>(".b3-text-field")?.focus();
     });
     libSec.appendChild(pickerHost);
     root.appendChild(libSec);

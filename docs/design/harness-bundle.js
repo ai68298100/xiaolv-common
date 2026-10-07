@@ -2547,11 +2547,13 @@
     const pickerHost = document.createElement("div");
     pickerHost.style.display = "none";
     changeBtn.addEventListener("click", () => {
+      var _a;
       const show = pickerHost.style.display === "none";
       pickerHost.style.display = show ? "" : "none";
       if (show && pickerHost.childElementCount === 0) {
         buildLibraryPickerSection(ctx, pickerHost, () => dialog.destroy());
       }
+      if (show) (_a = pickerHost.querySelector(".b3-text-field")) == null ? void 0 : _a.focus();
     });
     libSec.appendChild(pickerHost);
     root.appendChild(libSec);
