@@ -380,6 +380,9 @@
     color: var(--b3-theme-on-surface);
 
     &:not(:empty) { display: flex; }
+
+    // 内核/AI 失败：诚实可见（R106），与中性索引提示区分
+    &--error { color: var(--xlc-badge-warn); }
   }
 
   // ---- 双栏主体 ----
@@ -400,6 +403,10 @@
     border-right: 1px solid var(--b3-border-color);
     background-color: var(--b3-theme-background);
     overscroll-behavior: contain;
+    transition: opacity var(--xlc-dur) var(--xlc-ease);
+
+    // 搜索刷新中的轻量反馈（aria-busy 同步置位；R106）
+    &--loading { opacity: .55; }
   }
 
   .xlc-row {
@@ -489,6 +496,7 @@
 
     .xlc-row-meta {
       font-size: 11.5px;
+      font-variant-numeric: tabular-nums;
       color: var(--b3-theme-on-surface);
       overflow: hidden;
       text-overflow: ellipsis;
@@ -659,6 +667,9 @@
     word-break: break-word;
     color: var(--b3-theme-on-background);
     overscroll-behavior: contain;
+
+    // 占位文案（暂无预览 / AI 处理中）降调，真内容永远比占位醒目
+    &--muted { color: var(--b3-theme-on-surface); }
 
     // 代码条目预览：等宽字体（仍为纯文本渲染，仅观感）
     &--code {
@@ -831,6 +842,7 @@
       font-family: inherit;
       cursor: pointer;
       transition: background-color var(--xlc-dur-fast) var(--xlc-ease),
+                  color var(--xlc-dur-fast) var(--xlc-ease),
                   transform var(--xlc-dur-fast) var(--xlc-ease);
 
       &:hover { background-color: var(--b3-list-hover); }
@@ -840,6 +852,16 @@
       &:focus-visible {
         outline: 2px solid var(--b3-theme-primary);
         outline-offset: -2px;
+      }
+
+      // 结果未就绪（AI 变换中）的禁用项：可辨识，不再「看起来能点」（R106）
+      &:disabled {
+        opacity: .45;
+        cursor: not-allowed;
+
+        &:hover { background-color: transparent; }
+
+        &:active { transform: none; }
       }
 
       .xlc-menu-ic {
@@ -854,6 +876,10 @@
 
         .xlc-menu-ic { color: var(--b3-theme-primary); }
       }
+
+      // 危险动作（删除）：固定语义红，一眼可辨（R106）
+      &--danger,
+      &--danger .xlc-menu-ic { color: var(--xlc-badge-warn); }
     }
   }
 }
@@ -1545,6 +1571,15 @@
 
   .xlc-search { height: 40px; }
 
+  // 触控命中：清空 × 与筛选下拉提至 24/32px（18/26px 低于指尖标准，R106）
+  .xlc-search-clear {
+    width: 24px;
+    height: 24px;
+    font-size: 14px;
+  }
+
+  .xlc-filters .b3-select { height: 32px; }
+
   .xlc-chip { min-height: 32px; }
 
   .xlc-body {
@@ -1620,6 +1655,20 @@
       min-height: 40px;
       border-radius: var(--xlc-radius);
       font-size: 13px;
+    }
+  }
+}
+
+// ---------- 减动效偏好（无障碍）：关闭弹层动画与过渡，信息不依赖动效传达 ----------
+@media (prefers-reduced-motion: reduce) {
+  .xlc-dialog,
+  .xlc-form,
+  .xlc-varform {
+    *,
+    *::before,
+    *::after {
+      transition-duration: 0ms !important;
+      animation-duration: 0ms !important;
     }
   }
 }

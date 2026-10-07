@@ -383,7 +383,7 @@ export class CommonSearchDialog {
             warn.style.display = "none";
             pane.appendChild(warn);
             const paneBody = document.createElement("div");
-            paneBody.className = "xlc-pane-body";
+            paneBody.className = "xlc-pane-body xlc-pane-body--muted";
             paneBody.textContent = this.deps.t("previewUnavailable");
             pane.appendChild(paneBody);
             pane.appendChild(this.buildPaneFoot());
@@ -569,6 +569,9 @@ export class CommonSearchDialog {
         const aiBanner = this.dialog?.element.querySelector<HTMLElement>(".xlc-ai-banner");
         if (!list) return;
         this.lastPreviewId = null;
+        // 搜索刷新中的轻量反馈：列表半透明 + aria-busy（R106）
+        list.classList.add("xlc-list--loading");
+        list.setAttribute("aria-busy", "true");
         let total = 0;
         let truncated = false;
         let loading = false;
@@ -612,11 +615,15 @@ export class CommonSearchDialog {
             this.aiResults = false;
             this.emptyMessage = "";
             if (aiBanner) aiBanner.style.display = "none";
-            if (status) status.textContent = this.deps.t("kernelError", (err as Error).message);
+            if (status) {
+                status.textContent = this.deps.t("kernelError", (err as Error).message);
+                status.classList.add("xlc-status--error");
+            }
             if (footer) {
                 const count = footer.querySelector<HTMLElement>(".xlc-footer-count");
                 if (count && !this.deps.isMobile()) count.textContent = this.deps.t("totalItems", "0");
             }
+            this.finishSearchLoad(list);
             this.renderList(list);
             return;
         }
@@ -625,6 +632,8 @@ export class CommonSearchDialog {
         this.activeProvider = -1;
         if (status) {
             this.emptyMessage = "";
+            const isError = Boolean(directError || loadError);
+            status.classList.toggle("xlc-status--error", isError);
             if (directError) {
                 status.textContent = directError;
             } else if (this.results.length) {
@@ -667,8 +676,15 @@ export class CommonSearchDialog {
             }
             if (seq !== this.searchSeq) return;
         }
+        this.finishSearchLoad(list);
         this.renderList(list);
         this.updatePreview();
+    }
+
+    /** 收尾一次搜索刷新：解除列表加载反馈（成功与失败路径共用）。 */
+    private finishSearchLoad(list: HTMLElement): void {
+        list.classList.remove("xlc-list--loading");
+        list.removeAttribute("aria-busy");
     }
 
     private renderList(list: HTMLElement): void {
@@ -882,6 +898,13 @@ export class CommonSearchDialog {
             }
         }
         this.paintActive();
+        // 空结果时动作钮全部禁用：按钮不再「看起来能点、点了没反应」（R106）
+        const actionable = this.results.length > 0;
+        const scope = this.dialog?.element ?? document;
+        scope.querySelectorAll<HTMLButtonElement>(".xlc-pane-foot .b3-button")
+            .forEach((btn) => { btn.disabled = !actionable; });
+        const mobileInsert = scope.querySelector<HTMLButtonElement>(".xlc-mobile-foot .xlc-btn-primary");
+        if (mobileInsert) mobileInsert.disabled = !actionable;
     }
 
     private async showProviderMenu(row: ProviderRow, anchor: HTMLElement): Promise<void> {
@@ -1042,6 +1065,7 @@ export class CommonSearchDialog {
             paneAi.style.display = "none";
             paneUsage.style.display = "none";
             paneWarn.style.display = "none";
+            paneBody.classList.remove("xlc-pane-body--muted", "xlc-pane-body--code");
             this.paintPaneVars(null, "provider");
             paneBody.textContent = row.payload;
             return;
@@ -1060,22 +1084,26 @@ export class CommonSearchDialog {
             if (missing) paneWarn.textContent = "⚠ " + this.deps.t("sourceGone");
         }
         this.paintPaneVars(null, entry?.itemType);
-            paneBody.textContent = this.deps.t("aiWorking");
-            void this.deps.preview(id).then((text) => {
-                if (seq !== this.previewSeq) return;
-                const finalText = text || this.deps.t("previewUnavailable");
-                paneBody.textContent = finalText;
-                // 切换条目后回到顶部（长内容滚动位置不残留）
-                paneBody.scrollTop = 0;
-                // 代码条目预览用等宽字体（纯文本渲染不变，仅观感）
-                paneBody.classList.toggle("xlc-pane-body--code", entry?.itemType === "code");
-                this.paintPaneVars(text, entry?.itemType);
-            }).catch(() => {
-                if (seq !== this.previewSeq) return;
-                paneBody.textContent = this.deps.t("kernelError", "preview");
-                paneBody.classList.remove("xlc-pane-body--code");
-                this.paintPaneVars(null, entry?.itemType);
-            });
+        paneBody.classList.add("xlc-pane-body--muted");
+        paneBody.textContent = this.deps.t("aiWorking");
+        void this.deps.preview(id).then((text) => {
+            if (seq !== this.previewSeq) return;
+            const finalText = text || this.deps.t("previewUnavailable");
+            // 占位（暂无预览）保持降调；真内容恢复主文字色
+            paneBody.classList.toggle("xlc-pane-body--muted", finalText === this.deps.t("previewUnavailable"));
+            paneBody.textContent = finalText;
+            // 切换条目后回到顶部（长内容滚动位置不残留）
+            paneBody.scrollTop = 0;
+            // 代码条目预览用等宽字体（纯文本渲染不变，仅观感）
+            paneBody.classList.toggle("xlc-pane-body--code", entry?.itemType === "code");
+            this.paintPaneVars(text, entry?.itemType);
+        }).catch(() => {
+            if (seq !== this.previewSeq) return;
+            paneBody.classList.add("xlc-pane-body--muted");
+            paneBody.textContent = this.deps.t("kernelError", "preview");
+            paneBody.classList.remove("xlc-pane-body--code");
+            this.paintPaneVars(null, entry?.itemType);
+        });
     }
 
     /** 普通点击 = 主动作（insert；blockref = 插入引用）。含变量时先弹填充卡片（F1）。 */
@@ -1210,8 +1238,8 @@ export class CommonSearchDialog {
 
             const sec2 = document.createElement("div");
             sec2.className = "xlc-menu-sec";
-            const addSilent = (icon: string, label: string, run: () => Promise<unknown>): void => {
-                sec2.appendChild(this.menuButton(icon, label, "xlc-menu-item", async () => {
+            const addSilent = (icon: string, label: string, run: () => Promise<unknown>, cls = "xlc-menu-item"): void => {
+                sec2.appendChild(this.menuButton(icon, label, cls, async () => {
                     menu.remove();
                     await run();
                 }));
@@ -1219,6 +1247,8 @@ export class CommonSearchDialog {
             addSilent("↗", this.deps.t("openSource"), () => this.deps.openSource(entry.id));
             addSilent("✎", this.deps.t("edit"), () => this.deps.editItem(entry.id));
             addSilent("⧉", this.deps.t("duplicateItem"), () => this.deps.duplicateItem(entry.id));
+            // 删除 = 危险动作，固定语义红（样式层区分；确认弹窗不变）
+            addSilent("🗑", this.deps.t("delete"), () => this.deps.deleteItem(entry.id), "xlc-menu-item xlc-menu-item--danger");
             // 插入到指定文档（菜单内联文档选择器；无活动编辑器场景的主路径）
             const toDocBtn = this.menuButton("⤓", this.deps.t("insertToDoc"), "xlc-menu-item", () => {
                 let sec = menu.querySelector<HTMLElement>(".xlc-menu-pickdoc");

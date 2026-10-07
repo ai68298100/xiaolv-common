@@ -641,7 +641,7 @@
         warn.style.display = "none";
         pane.appendChild(warn);
         const paneBody = document.createElement("div");
-        paneBody.className = "xlc-pane-body";
+        paneBody.className = "xlc-pane-body xlc-pane-body--muted";
         paneBody.textContent = this.deps.t("previewUnavailable");
         pane.appendChild(paneBody);
         pane.appendChild(this.buildPaneFoot());
@@ -819,6 +819,8 @@
       const aiBanner = (_d = this.dialog) == null ? void 0 : _d.element.querySelector(".xlc-ai-banner");
       if (!list) return;
       this.lastPreviewId = null;
+      list.classList.add("xlc-list--loading");
+      list.setAttribute("aria-busy", "true");
       let total = 0;
       let truncated = false;
       let loading = false;
@@ -860,11 +862,15 @@
         this.aiResults = false;
         this.emptyMessage = "";
         if (aiBanner) aiBanner.style.display = "none";
-        if (status) status.textContent = this.deps.t("kernelError", err.message);
+        if (status) {
+          status.textContent = this.deps.t("kernelError", err.message);
+          status.classList.add("xlc-status--error");
+        }
         if (footer) {
           const count = footer.querySelector(".xlc-footer-count");
           if (count && !this.deps.isMobile()) count.textContent = this.deps.t("totalItems", "0");
         }
+        this.finishSearchLoad(list);
         this.renderList(list);
         return;
       }
@@ -873,6 +879,8 @@
       this.activeProvider = -1;
       if (status) {
         this.emptyMessage = "";
+        const isError = Boolean(directError || loadError);
+        status.classList.toggle("xlc-status--error", isError);
         if (directError) {
           status.textContent = directError;
         } else if (this.results.length) {
@@ -911,11 +919,17 @@
         }
         if (seq !== this.searchSeq) return;
       }
+      this.finishSearchLoad(list);
       this.renderList(list);
       this.updatePreview();
     }
+    /** 收尾一次搜索刷新：解除列表加载反馈（成功与失败路径共用）。 */
+    finishSearchLoad(list) {
+      list.classList.remove("xlc-list--loading");
+      list.removeAttribute("aria-busy");
+    }
     renderList(list) {
-      var _a, _b, _c, _d, _e, _f;
+      var _a, _b, _c, _d, _e, _f, _g, _h;
       list.innerHTML = "";
       if (this.results.length === 0 && this.providerRows.length === 0 && this.emptyMessage) {
         const empty = document.createElement("div");
@@ -1109,6 +1123,13 @@
         }
       }
       this.paintActive();
+      const actionable = this.results.length > 0;
+      const scope = (_h = (_g = this.dialog) == null ? void 0 : _g.element) != null ? _h : document;
+      scope.querySelectorAll(".xlc-pane-foot .b3-button").forEach((btn) => {
+        btn.disabled = !actionable;
+      });
+      const mobileInsert = scope.querySelector(".xlc-mobile-foot .xlc-btn-primary");
+      if (mobileInsert) mobileInsert.disabled = !actionable;
     }
     async showProviderMenu(row, anchor) {
       var _a, _b, _c, _d, _e, _f;
@@ -1256,6 +1277,7 @@
         paneAi.style.display = "none";
         paneUsage.style.display = "none";
         paneWarn.style.display = "none";
+        paneBody.classList.remove("xlc-pane-body--muted", "xlc-pane-body--code");
         this.paintPaneVars(null, "provider");
         paneBody.textContent = row.payload;
         return;
@@ -1274,16 +1296,19 @@
         if (missing) paneWarn.textContent = "\u26A0 " + this.deps.t("sourceGone");
       }
       this.paintPaneVars(null, entry == null ? void 0 : entry.itemType);
+      paneBody.classList.add("xlc-pane-body--muted");
       paneBody.textContent = this.deps.t("aiWorking");
       void this.deps.preview(id).then((text) => {
         if (seq !== this.previewSeq) return;
         const finalText = text || this.deps.t("previewUnavailable");
+        paneBody.classList.toggle("xlc-pane-body--muted", finalText === this.deps.t("previewUnavailable"));
         paneBody.textContent = finalText;
         paneBody.scrollTop = 0;
         paneBody.classList.toggle("xlc-pane-body--code", (entry == null ? void 0 : entry.itemType) === "code");
         this.paintPaneVars(text, entry == null ? void 0 : entry.itemType);
       }).catch(() => {
         if (seq !== this.previewSeq) return;
+        paneBody.classList.add("xlc-pane-body--muted");
         paneBody.textContent = this.deps.t("kernelError", "preview");
         paneBody.classList.remove("xlc-pane-body--code");
         this.paintPaneVars(null, entry == null ? void 0 : entry.itemType);
@@ -1405,8 +1430,8 @@
         }
         const sec2 = document.createElement("div");
         sec2.className = "xlc-menu-sec";
-        const addSilent = (icon, label, run) => {
-          sec2.appendChild(this.menuButton(icon, label, "xlc-menu-item", async () => {
+        const addSilent = (icon, label, run, cls = "xlc-menu-item") => {
+          sec2.appendChild(this.menuButton(icon, label, cls, async () => {
             menu.remove();
             await run();
           }));
@@ -1414,6 +1439,7 @@
         addSilent("\u2197", this.deps.t("openSource"), () => this.deps.openSource(entry.id));
         addSilent("\u270E", this.deps.t("edit"), () => this.deps.editItem(entry.id));
         addSilent("\u29C9", this.deps.t("duplicateItem"), () => this.deps.duplicateItem(entry.id));
+        addSilent("\u{1F5D1}", this.deps.t("delete"), () => this.deps.deleteItem(entry.id), "xlc-menu-item xlc-menu-item--danger");
         const toDocBtn = this.menuButton("\u2913", this.deps.t("insertToDoc"), "xlc-menu-item", () => {
           var _a2;
           let sec = menu.querySelector(".xlc-menu-pickdoc");
@@ -3411,7 +3437,7 @@
       const dialog = new import_siyuan4.Dialog({
         title: t("newItem"),
         content: "",
-        width: "min(520px, 92vw)",
+        width: "min(460px, 92vw)",
         height: "auto",
         destroyCallback: () => {
           closed = true;

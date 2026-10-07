@@ -217,7 +217,7 @@ export class CaptureDialog {
         const dialog = new Dialog({
             title: t("newItem"),
             content: "",
-            width: "min(520px, 92vw)",
+            width: "min(460px, 92vw)",
             height: "auto",
             destroyCallback: () => {
                 closed = true;
