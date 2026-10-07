@@ -8,19 +8,27 @@
 
 ## 界面速览（全部为生产 DOM+CSS 渲染截图，见 docs/design/）
 
-![桌面搜索（双栏预览，亮色）](docs/design/production-desktop-light.png)
+![桌面搜索（双栏预览 + 分类分组 + 变量徽标 + 使用计数，亮色）](docs/design/production-desktop-light.png)
 
 ![桌面搜索（暗色）](docs/design/production-desktop-dark.png)
 
-![捕获表单（AI 草稿/整理）](docs/design/production-capture-light.png)
+![变量填充卡片（插入前询问字段）](docs/design/production-variable-form-light.png)
 
-![设置（AI/搜索/提供方/数据）](docs/design/production-settings-light.png)
+![动作菜单（分组 + AI 变换 + 自定义指令）](docs/design/production-action-menu-light.png)
+
+![捕获表单（AI 草稿/整理 + 变量快捷插入）](docs/design/production-capture-light.png)
+
+![设置（AI/自定义变换/变量与插入/搜索/提供方/数据）](docs/design/production-settings-light.png)
+
+![模板包导出（分类筛选 + 包名 + 变量清单）](docs/design/production-pack-export-light.png)
 
 ![提供方分区](docs/design/production-provider-light.png)
 
-![窄容器单列降级](docs/design/production-narrow-light.png)
+![首跑引导（两步式：选库方式 → 确认落点）](docs/design/production-setup-light.png)
 
-![捕获表单（AI 草稿/整理）](docs/design/production-capture-light.png)
+![导入策略（三选 + 推荐档）](docs/design/production-import-policy-light.png)
+
+![窄容器单列降级](docs/design/production-narrow-light.png)
 
 ![设置（暗色）](docs/design/production-settings-dark.png)
 
