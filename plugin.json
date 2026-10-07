@@ -20,8 +20,8 @@
     "zh-CN": "小驴常用"
   },
   "description": {
-    "default": "Save and recall common content (phrases, snippets, code, links, images, assets, block structures) anchored to real SiYuan blocks — with faithful source references and honest capability receipts.",
-    "zh-CN": "基于思源文档和块的常用内容快速调用器：常用语、模板、代码、链接、图片、附件与块结构，条目锚定真实思源块，来源引用可回链、失效可见。"
+    "default": "Save and recall common content (phrases, snippets, code, links, images, assets, block structures) anchored to real SiYuan blocks — with fill-in variables, snippet nesting, AI transforms, template packs, and faithful source references.",
+    "zh-CN": "基于思源文档和块的常用内容快速调用器：常用语、模板、代码、链接、图片、附件与块结构，条目锚定真实思源块。支持插入时变量填充、片段嵌套、AI 整理/变换/语义找、模板包分享，来源可回链、失效可见。"
   },
   "readme": {
     "default": "README.md",
@@ -46,6 +46,17 @@
     "quick insert",
     "小驴常用",
     "xiaolv",
-    "xiaolv-common"
+    "xiaolv-common",
+    "变量",
+    "variables",
+    "文本扩展",
+    "text expander",
+    "AI",
+    "提示词",
+    "prompt",
+    "剪贴板",
+    "clipboard",
+    "模板包",
+    "template pack"
   ]
 }
