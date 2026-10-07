@@ -1790,6 +1790,44 @@ body.b3-theme-dark,
   }
 }
 
+// ---------- 触屏适配（R119，pointer: coarse = 触控设备，不依赖宿主类）----------
+// 1) 输入字号 16px：iOS 聚焦 <16px 输入会整页缩放（此前仅搜索框在移动弹窗内修过）
+// 2) 设置开关 34×20 → 40×24（触控目标），行距加大
+// 3) 变量按钮/删除按钮提至可点尺寸
+@media (pointer: coarse) {
+  .xlc-form .b3-text-field,
+  .xlc-form select.b3-select,
+  .xlc-varform .b3-text-field,
+  .xlc-varform-field .b3-text-field,
+  .xlc-ct-name,
+  .xlc-ct-prompt {
+    font-size: 16px;
+  }
+
+  .xlc-setting-row { padding: 6px 0; }
+
+  .xlc-switch {
+    width: 40px;
+    height: 24px;
+
+    &::after {
+      width: 18px;
+      height: 18px;
+      top: 3px;
+      left: 3px;
+    }
+
+    &:checked::after { transform: translateX(16px); }
+  }
+
+  .xlc-varbtn {
+    min-height: 28px;
+    padding: 3px 12px;
+  }
+
+  .xlc-ct-del { min-height: 32px; }
+}
+
 // ---------- 减动效偏好（无障碍）：关闭弹层动画与过渡，信息不依赖动效传达 ----------
 @media (prefers-reduced-motion: reduce) {
   .xlc-dialog,
