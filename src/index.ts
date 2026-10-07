@@ -487,7 +487,7 @@ export default class XiaolvCommonPlugin extends Plugin {
                         if (!docId) return;
                         void this.library.getDocPath(docId).then((path) => {
                             this.openSearch({docId, hPath: path});
-                        });
+                        }).catch((err) => this.notify("error", this.i18nFn()("kernelError", (err as Error).message)));
                     },
                 });
                 menu.addItem({
@@ -968,7 +968,7 @@ export default class XiaolvCommonPlugin extends Plugin {
         if (item.source.sourceDocId) {
             void this.library.getDocPath(item.source.sourceDocId).then((path) => {
                 if (path) srcText.textContent = `来源：${path}${item.source.sourceBlockId ? ` / 块 ${item.source.sourceBlockId}` : ""}`;
-            });
+            }).catch(() => undefined);
         }
         const relinkBtn = document.createElement("button");
         relinkBtn.className = "b3-button b3-button--text xlc-form-ai";
@@ -985,11 +985,11 @@ export default class XiaolvCommonPlugin extends Plugin {
                     this.notify("info", t("relinkDone"));
                     void this.library.getDocPath(docId).then((path) => {
                         srcText.textContent = path ? `来源：${path}` : `src: ${docId}`;
-                    });
+                    }).catch(() => undefined);
                 } else {
                     this.notify("error", result.message);
                 }
-            });
+            }).catch((err) => this.notify("error", t("kernelError", (err as Error).message)));
         });
         srcRow.appendChild(relinkBtn);
         if (item.source.sourceDocId || item.source.sourceBlockId) {
@@ -1005,7 +1005,7 @@ export default class XiaolvCommonPlugin extends Plugin {
                     } else {
                         this.notify("error", result.message);
                     }
-                });
+                }).catch((err) => this.notify("error", t("kernelError", (err as Error).message)));
             });
             srcRow.appendChild(clearBtn);
         }
@@ -1103,7 +1103,7 @@ export default class XiaolvCommonPlugin extends Plugin {
             this.notify("info", idx.truncated
                 ? this.i18nFn()("reindexTruncated", String(LIMITS.maxItems))
                 : this.i18nFn()("reindexDone", String(idx.entries.length)));
-        });
+        }).catch((err) => this.notify("error", this.i18nFn()("kernelError", (err as Error).message)));
     }
 
     // ---- 导入导出 ----

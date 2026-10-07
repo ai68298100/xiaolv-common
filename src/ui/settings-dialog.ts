@@ -478,6 +478,12 @@ function buildLibraryPickerSection(ctx: SettingsUiContext, root: HTMLElement, on
                 });
                 pickerList.appendChild(item);
             }
+        }).catch((err) => {
+            if (seq !== pickerSeq) return;
+            const empty = document.createElement("div");
+            empty.className = "xlc-doclist-empty";
+            empty.textContent = t("kernelError", (err as Error).message);
+            pickerList.appendChild(empty);
         });
     });
 
@@ -504,6 +510,8 @@ function buildLibraryPickerSection(ctx: SettingsUiContext, root: HTMLElement, on
             opt.textContent = nb.name;
             nbSelect.appendChild(opt);
         }
+    }).catch((err) => {
+        ctx.notify("error", t("kernelError", (err as Error).message));
     });
     const syncModeUi = (): void => {
         const notebook = modeSelect.value === "notebook";
@@ -554,6 +562,8 @@ function buildLibraryPickerSection(ctx: SettingsUiContext, root: HTMLElement, on
                 });
                 ctx.notify("info", t("libDocCreated", title));
                 onConfigured();
+            }).catch((err) => {
+                ctx.notify("error", t("kernelError", (err as Error).message));
             });
         });
     });
@@ -703,9 +713,15 @@ function buildAiSection(ctx: SettingsUiContext, root: HTMLElement): void {
     };
     const aiEnabledBox = aiRow("enabled", t("aiEnabled"), t("aiEnabledSub"));
     const aiShareBox = aiRow("shareContent", t("aiShareContent"), t("aiShareContentSub"));
-    aiEnabledBox.addEventListener("change", () => {
-        if (!aiEnabledBox.checked) aiShareBox.checked = false;
-    });
+    const syncAiShare = (): void => {
+        aiShareBox.disabled = !aiEnabledBox.checked;
+        if (!aiEnabledBox.checked) {
+            aiShareBox.checked = false;
+            ctx.state.ai.shareContent = false;
+        }
+    };
+    syncAiShare();
+    aiEnabledBox.addEventListener("change", syncAiShare);
     // 自定义变换（F7）：与内置五种并列出现在条目动作菜单 ✦ 区
     const ctLabel = document.createElement("span");
     ctLabel.className = "xlc-form-label";
@@ -823,6 +839,8 @@ function buildSearchSection(ctx: SettingsUiContext, root: HTMLElement): void {
         ctx.persistSoon();
         void ctx.library.reindex().then((idx) => {
             ctx.notify("info", t("reindexDone", String(idx.entries.length)));
+        }).catch((err) => {
+            ctx.notify("error", t("kernelError", (err as Error).message));
         });
     });
     searchSec.appendChild(pinyinRow);
@@ -863,11 +881,16 @@ function buildDataSection(ctx: SettingsUiContext, root: HTMLElement): void {
         dataBtns.appendChild(btn);
         return btn;
     };
-    mkBtn(t("reindexBtn"), () => {
-        ctx.library.reindex().then((idx) => {
+    const reindexBtn = mkBtn(t("reindexBtn"), () => {
+        reindexBtn.disabled = true;
+        void ctx.library.reindex().then((idx) => {
             ctx.notify("info", idx.truncated
                 ? t("reindexTruncated", String(LIMITS.maxItems))
                 : t("reindexDone", String(idx.entries.length)));
+        }).catch((err) => {
+            ctx.notify("error", t("kernelError", (err as Error).message));
+        }).finally(() => {
+            reindexBtn.disabled = false;
         });
     });
     mkBtn(t("clearRecents"), () => {

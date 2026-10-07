@@ -382,6 +382,7 @@
       /** 动作菜单 document 监听兜底清理（destroy 时调用；防键盘关弹窗残留监听） */
       this.menuDismiss = null;
       this.inputDebounce = null;
+      this.longPressCancel = null;
       /** IME 组合输入中（中文输入法组词期间跳过刷新，compositionend 后统一刷新） */
       this.isComposing = false;
     }
@@ -430,6 +431,8 @@
       const input = document.createElement("input");
       input.className = "b3-text-field xlc-search-input";
       input.placeholder = this.deps.t("searchPlaceholder");
+      input.setAttribute("role", "combobox");
+      input.setAttribute("aria-expanded", "true");
       input.setAttribute("aria-label", this.deps.t("searchPlaceholder"));
       const syncQMark = () => {
         qMark.classList.toggle("xlc-search-q--off", input.value.startsWith("?"));
@@ -597,8 +600,12 @@
       bodyWrap.className = "xlc-body";
       const list = document.createElement("div");
       list.className = "xlc-list";
+      list.id = "xlc-search-results";
+      list.tabIndex = 0;
       list.setAttribute("role", "listbox");
       list.setAttribute("aria-label", this.deps.t("pluginName"));
+      input.setAttribute("aria-controls", list.id);
+      list.addEventListener("keydown", (e) => void this.onKeydown(e));
       list.addEventListener("click", (e) => {
         if (e.target.closest(".xlc-row-action")) return;
         const row = e.target.closest("[data-xlc-index]");
@@ -750,26 +757,32 @@
     attachLongPress(list, isMobile) {
       let pressTimer;
       let startY = 0;
+      let startX = 0;
+      const cancel = () => {
+        if (pressTimer) clearTimeout(pressTimer);
+        pressTimer = void 0;
+      };
+      this.longPressCancel = cancel;
       list.addEventListener("touchstart", (e) => {
-        var _a, _b;
+        var _a, _b, _c, _d;
         startY = (_b = (_a = e.touches[0]) == null ? void 0 : _a.clientY) != null ? _b : 0;
+        startX = (_d = (_c = e.touches[0]) == null ? void 0 : _c.clientX) != null ? _d : 0;
         const row = e.target.closest("[data-xlc-index]");
         if (!row) return;
         const entry = this.results[Number(row.dataset.xlcIndex)];
         if (!entry) return;
+        cancel();
         pressTimer = setTimeout(() => void this.showActionMenu(entry), 550);
       }, { passive: true });
       list.addEventListener("touchmove", (e) => {
-        var _a, _b;
+        var _a, _b, _c, _d;
         const dy = Math.abs(((_b = (_a = e.touches[0]) == null ? void 0 : _a.clientY) != null ? _b : 0) - startY);
-        if (dy > 10 && pressTimer) {
-          clearTimeout(pressTimer);
-          pressTimer = void 0;
-        }
+        const dx = Math.abs(((_d = (_c = e.touches[0]) == null ? void 0 : _c.clientX) != null ? _d : 0) - startX);
+        if (Math.max(dx, dy) > 10) cancel();
       }, { passive: true });
-      list.addEventListener("touchend", () => {
-        if (pressTimer) clearTimeout(pressTimer);
-      });
+      list.addEventListener("touchend", cancel, { passive: true });
+      list.addEventListener("touchcancel", cancel, { passive: true });
+      list.addEventListener("pointercancel", cancel, { passive: true });
       list.addEventListener("contextmenu", (e) => {
         e.preventDefault();
         const row = e.target.closest("[data-xlc-index]");
@@ -986,6 +999,7 @@
         const row = document.createElement("div");
         row.className = "xlc-row" + (i === this.activeIndex ? " xlc-row--active" : "") + (fav ? " xlc-row--fav" : "");
         row.dataset.xlcIndex = String(i);
+        row.id = `xlc-result-${i}`;
         row.setAttribute("role", "option");
         row.setAttribute("aria-selected", i === this.activeIndex ? "true" : "false");
         const main = document.createElement("div");
@@ -1053,6 +1067,9 @@
           const el = document.createElement("div");
           el.className = "xlc-row xlc-row--provider";
           el.dataset.xlcVirtualId = row.virtualId;
+          el.id = `xlc-provider-${this.providerRows.indexOf(row)}`;
+          el.setAttribute("role", "option");
+          el.setAttribute("aria-selected", "false");
           const main = document.createElement("div");
           main.className = "xlc-row-main";
           const title = document.createElement("div");
@@ -1082,7 +1099,7 @@
       this.paintActive();
     }
     async showProviderMenu(row, anchor) {
-      var _a, _b, _c, _d, _e;
+      var _a, _b, _c, _d, _e, _f;
       (_a = this.menuDismiss) == null ? void 0 : _a.call(this);
       this.menuDismiss = null;
       const menu = document.createElement("div");
@@ -1120,6 +1137,7 @@
       };
       this.menuDismiss = dismissMenu;
       document.addEventListener("pointerdown", dismiss, true);
+      (_f = menu.querySelector(".xlc-menu-item")) == null ? void 0 : _f.focus();
     }
     async refreshPreservingPosition() {
       var _a;
@@ -1149,7 +1167,7 @@
       return this.activeProvider >= 0 ? this.results.length + this.activeProvider : this.activeIndex;
     }
     paintActive() {
-      var _a;
+      var _a, _b;
       const list = (_a = this.dialog) == null ? void 0 : _a.element.querySelector(".xlc-list");
       if (!list) return;
       const rows = Array.from(list.children).filter((el) => !el.dataset.xlcHead);
@@ -1157,9 +1175,12 @@
         const isReal = i < this.results.length;
         const active3 = isReal ? this.activeProvider < 0 && i === this.activeIndex : this.activeProvider >= 0 && i - this.results.length === this.activeProvider;
         child.classList.toggle("xlc-row--active", active3);
-        if (isReal) child.setAttribute("aria-selected", active3 ? "true" : "false");
+        child.setAttribute("aria-selected", active3 ? "true" : "false");
       });
       const active2 = rows[this.navPosition()];
+      const input = (_b = this.dialog) == null ? void 0 : _b.element.querySelector(".xlc-search-input");
+      if (active2 == null ? void 0 : active2.id) input == null ? void 0 : input.setAttribute("aria-activedescendant", active2.id);
+      else input == null ? void 0 : input.removeAttribute("aria-activedescendant");
       active2 == null ? void 0 : active2.scrollIntoView({ block: "nearest" });
     }
     schedulePreview(entry) {
@@ -1310,7 +1331,7 @@
       return btn;
     }
     async showActionMenu(entry) {
-      var _a, _b, _c, _d, _e;
+      var _a, _b, _c, _d, _e, _f;
       (_a = this.menuDismiss) == null ? void 0 : _a.call(this);
       this.menuDismiss = null;
       const menu = document.createElement("div");
@@ -1536,6 +1557,7 @@
         document.removeEventListener("pointerdown", dismiss, true);
       };
       document.addEventListener("pointerdown", dismiss, true);
+      (_f = menu.querySelector(".xlc-menu-item")) == null ? void 0 : _f.focus();
     }
     async onKeydown(e) {
       var _a, _b;
@@ -1586,13 +1608,15 @@
       }
     }
     destroy() {
-      var _a;
+      var _a, _b;
       if (this.inputDebounce) clearTimeout(this.inputDebounce);
+      (_a = this.longPressCancel) == null ? void 0 : _a.call(this);
+      this.longPressCancel = null;
       if (this.menuDismiss) {
         this.menuDismiss();
         this.menuDismiss = null;
       }
-      (_a = this.dialog) == null ? void 0 : _a.destroy();
+      (_b = this.dialog) == null ? void 0 : _b.destroy();
       this.dialog = null;
     }
   };
@@ -2573,6 +2597,12 @@
           });
           pickerList.appendChild(item);
         }
+      }).catch((err) => {
+        if (seq !== pickerSeq) return;
+        const empty = document.createElement("div");
+        empty.className = "xlc-doclist-empty";
+        empty.textContent = t("kernelError", err.message);
+        pickerList.appendChild(empty);
       });
     });
     const nbWrap = document.createElement("div");
@@ -2597,6 +2627,8 @@
         opt.textContent = nb.name;
         nbSelect.appendChild(opt);
       }
+    }).catch((err) => {
+      ctx.notify("error", t("kernelError", err.message));
     });
     const syncModeUi = () => {
       const notebook = modeSelect.value === "notebook";
@@ -2644,6 +2676,8 @@
           });
           ctx.notify("info", t("libDocCreated", title));
           onConfigured();
+        }).catch((err) => {
+          ctx.notify("error", t("kernelError", err.message));
         });
       });
     });
@@ -2788,9 +2822,15 @@
     };
     const aiEnabledBox = aiRow("enabled", t("aiEnabled"), t("aiEnabledSub"));
     const aiShareBox = aiRow("shareContent", t("aiShareContent"), t("aiShareContentSub"));
-    aiEnabledBox.addEventListener("change", () => {
-      if (!aiEnabledBox.checked) aiShareBox.checked = false;
-    });
+    const syncAiShare = () => {
+      aiShareBox.disabled = !aiEnabledBox.checked;
+      if (!aiEnabledBox.checked) {
+        aiShareBox.checked = false;
+        ctx.state.ai.shareContent = false;
+      }
+    };
+    syncAiShare();
+    aiEnabledBox.addEventListener("change", syncAiShare);
     const ctLabel = document.createElement("span");
     ctLabel.className = "xlc-form-label";
     ctLabel.style.marginTop = "6px";
@@ -2904,6 +2944,8 @@
       ctx.persistSoon();
       void ctx.library.reindex().then((idx) => {
         ctx.notify("info", t("reindexDone", String(idx.entries.length)));
+      }).catch((err) => {
+        ctx.notify("error", t("kernelError", err.message));
       });
     });
     searchSec.appendChild(pinyinRow);
@@ -2939,9 +2981,14 @@
       dataBtns.appendChild(btn);
       return btn;
     };
-    mkBtn(t("reindexBtn"), () => {
-      ctx.library.reindex().then((idx) => {
+    const reindexBtn = mkBtn(t("reindexBtn"), () => {
+      reindexBtn.disabled = true;
+      void ctx.library.reindex().then((idx) => {
         ctx.notify("info", idx.truncated ? t("reindexTruncated", String(LIMITS.maxItems)) : t("reindexDone", String(idx.entries.length)));
+      }).catch((err) => {
+        ctx.notify("error", t("kernelError", err.message));
+      }).finally(() => {
+        reindexBtn.disabled = false;
       });
     });
     mkBtn(t("clearRecents"), () => {

@@ -1402,6 +1402,18 @@
     .xlc-pane { display: none; }
     .xlc-kbdrow { display: none; }
   }
+
+  // 捕获/编辑表单在窄弹窗中改为单列，避免固定类型列挤压输入框。
+  .xlc-form {
+    .xlc-form-row {
+      flex-direction: column;
+      gap: 8px;
+
+      .xlc-form-field--fixed {
+        width: auto;
+      }
+    }
+  }
 }
 
 // ---------- 移动端：底部 sheet（触控优先；行 = 圆角卡片，原型屏4）----------

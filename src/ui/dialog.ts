@@ -96,6 +96,7 @@ export class CommonSearchDialog {
     /** 动作菜单 document 监听兜底清理（destroy 时调用；防键盘关弹窗残留监听） */
     private menuDismiss: (() => void) | null = null;
     private inputDebounce: ReturnType<typeof setTimeout> | null = null;
+    private longPressCancel: (() => void) | null = null;
     /** IME 组合输入中（中文输入法组词期间跳过刷新，compositionend 后统一刷新） */
     private isComposing = false;
 
@@ -152,6 +153,8 @@ export class CommonSearchDialog {
         const input = document.createElement("input");
         input.className = "b3-text-field xlc-search-input";
         input.placeholder = this.deps.t("searchPlaceholder");
+        input.setAttribute("role", "combobox");
+        input.setAttribute("aria-expanded", "true");
         input.setAttribute("aria-label", this.deps.t("searchPlaceholder"));
         // 输入以 ? 开头时隐藏装饰性 ? 提示（避免「??」双写；功能前缀仍在输入框内）
         const syncQMark = (): void => {
@@ -338,8 +341,12 @@ export class CommonSearchDialog {
         bodyWrap.className = "xlc-body";
         const list = document.createElement("div");
         list.className = "xlc-list";
+        list.id = "xlc-search-results";
+        list.tabIndex = 0;
         list.setAttribute("role", "listbox");
         list.setAttribute("aria-label", this.deps.t("pluginName"));
+        input.setAttribute("aria-controls", list.id);
+        list.addEventListener("keydown", (e) => void this.onKeydown(e));
         list.addEventListener("click", (e) => {
             if ((e.target as HTMLElement).closest(".xlc-row-action")) return;
             const row = (e.target as HTMLElement).closest<HTMLElement>("[data-xlc-index]");
@@ -503,24 +510,30 @@ export class CommonSearchDialog {
     private attachLongPress(list: HTMLElement, isMobile: boolean): void {
         let pressTimer: ReturnType<typeof setTimeout> | undefined;
         let startY = 0;
+        let startX = 0;
+        const cancel = (): void => {
+            if (pressTimer) clearTimeout(pressTimer);
+            pressTimer = undefined;
+        };
+        this.longPressCancel = cancel;
         list.addEventListener("touchstart", (e) => {
             startY = e.touches[0]?.clientY ?? 0;
+            startX = e.touches[0]?.clientX ?? 0;
             const row = (e.target as HTMLElement).closest<HTMLElement>("[data-xlc-index]");
             if (!row) return;
             const entry = this.results[Number(row.dataset.xlcIndex)];
             if (!entry) return;
+            cancel();
             pressTimer = setTimeout(() => void this.showActionMenu(entry), 550);
         }, {passive: true});
         list.addEventListener("touchmove", (e) => {
             const dy = Math.abs((e.touches[0]?.clientY ?? 0) - startY);
-            if (dy > 10 && pressTimer) {
-                clearTimeout(pressTimer);
-                pressTimer = undefined;
-            }
+            const dx = Math.abs((e.touches[0]?.clientX ?? 0) - startX);
+            if (Math.max(dx, dy) > 10) cancel();
         }, {passive: true});
-        list.addEventListener("touchend", () => {
-            if (pressTimer) clearTimeout(pressTimer);
-        });
+        list.addEventListener("touchend", cancel, {passive: true});
+        list.addEventListener("touchcancel", cancel, {passive: true});
+        list.addEventListener("pointercancel", cancel, {passive: true});
         list.addEventListener("contextmenu", (e) => {
             e.preventDefault();
             const row = (e.target as HTMLElement).closest<HTMLElement>("[data-xlc-index]");
@@ -751,6 +764,7 @@ export class CommonSearchDialog {
                 + (i === this.activeIndex ? " xlc-row--active" : "")
                 + (fav ? " xlc-row--fav" : "");
             row.dataset.xlcIndex = String(i);
+            row.id = `xlc-result-${i}`;
             row.setAttribute("role", "option");
             row.setAttribute("aria-selected", i === this.activeIndex ? "true" : "false");
 
@@ -828,6 +842,9 @@ export class CommonSearchDialog {
                 const el = document.createElement("div");
                 el.className = "xlc-row xlc-row--provider";
                 el.dataset.xlcVirtualId = row.virtualId;
+                el.id = `xlc-provider-${this.providerRows.indexOf(row)}`;
+                el.setAttribute("role", "option");
+                el.setAttribute("aria-selected", "false");
                 const main = document.createElement("div");
                 main.className = "xlc-row-main";
                 const title = document.createElement("div");
@@ -895,6 +912,7 @@ export class CommonSearchDialog {
         };
         this.menuDismiss = dismissMenu;
         document.addEventListener("pointerdown", dismiss, true);
+        menu.querySelector<HTMLElement>(".xlc-menu-item")?.focus();
     }
 
     private async refreshPreservingPosition(): Promise<void> {
@@ -937,9 +955,12 @@ export class CommonSearchDialog {
                 ? this.activeProvider < 0 && i === this.activeIndex
                 : this.activeProvider >= 0 && i - this.results.length === this.activeProvider;
             child.classList.toggle("xlc-row--active", active);
-            if (isReal) child.setAttribute("aria-selected", active ? "true" : "false");
+            child.setAttribute("aria-selected", active ? "true" : "false");
         });
         const active = rows[this.navPosition()] as HTMLElement | undefined;
+        const input = this.dialog?.element.querySelector<HTMLInputElement>(".xlc-search-input");
+        if (active?.id) input?.setAttribute("aria-activedescendant", active.id);
+        else input?.removeAttribute("aria-activedescendant");
         active?.scrollIntoView({block: "nearest"});
     }
 
@@ -1349,6 +1370,7 @@ export class CommonSearchDialog {
             document.removeEventListener("pointerdown", dismiss, true);
         };
         document.addEventListener("pointerdown", dismiss, true);
+        menu.querySelector<HTMLElement>(".xlc-menu-item")?.focus();
     }
 
     private async onKeydown(e: KeyboardEvent): Promise<void> {
@@ -1403,6 +1425,8 @@ export class CommonSearchDialog {
 
     destroy(): void {
         if (this.inputDebounce) clearTimeout(this.inputDebounce);
+        this.longPressCancel?.();
+        this.longPressCancel = null;
         if (this.menuDismiss) {
             this.menuDismiss();
             this.menuDismiss = null;
