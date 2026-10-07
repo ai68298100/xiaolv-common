@@ -62,13 +62,9 @@ jobs:
           cache: pnpm
       - run: pnpm install --ignore-scripts
       - run: pnpm run build
-      - name: 提取发布说明
+      - name: 提取发布说明（按 tag 对应的 CHANGELOG 段落）
         id: notes
-        run: |
-          BODY=$(sed -n '/^## \[0.2.0\]/,/^## /p' CHANGELOG.md | head -n -1)
-          echo "body<<EOF" >> $GITHUB_OUTPUT
-          echo "$BODY" >> $GITHUB_OUTPUT
-          echo "EOF" >> $GITHUB_OUTPUT
+        run: node scripts/extract-release-notes.cjs "${GITHUB_REF_NAME#v}"
       - name: 创建 Release
         uses: softprops/action-gh-release@v2
         with:
