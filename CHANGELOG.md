@@ -2,6 +2,19 @@
 
 本文件记录「小驴常用」的面向用户的变化。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
 
+## [0.2.2] — 2026-10-07
+
+### 修复
+
+- 修复索引摘要、导入冲突快照、Markdown 字段往返、来源健康和 URL 安全校验。
+- 修复 notebook 写入落点、服务回执语义、侧车保存失败回执和资源二进制探针。
+- 修复收藏排序、AI 整理误自动采纳、预览竞态、provider 导航和捕获重复保存。
+- 移动端星标与 AI 操作按钮扩大到可用触控尺寸。
+
+### 验证
+
+- 本地 `pnpm run check`、`pnpm test`（209/209）、`pnpm run build`、`pnpm run scan`、`pnpm run test:ui` 通过；真实宿主写入和 Android 真机验收仍由 B-001/B-002/B-003 跟进。
+
 ## [0.2.1] — 2026-10-07
 
 ### 修复

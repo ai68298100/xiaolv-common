@@ -162,10 +162,10 @@ common.protocolCommands["xiaolv.common.open"]();          // 稳定命令 ID
 ```bash
 pnpm i
 pnpm run check   # tsc --noEmit
-pnpm test        # esbuild 转译 + node --test（179 项）
+pnpm test        # esbuild 转译 + node --test（209 项）
 pnpm run build   # dist/ + package.zip
 node scripts/render-prototype.cjs    # 原型图截图（需 Playwright Chromium）
-pnpm run test:ui                # 生产 UI 冒烟门禁（13 项 DOM 断言 + 截图，需 Playwright Chromium）
+pnpm run test:ui                # 生产 UI 冒烟门禁（15 组断言 + 截图，需 Playwright Chromium）
 ```
 
 系列协议见 [AGENTS.md](AGENTS.md)；路线见 [ROADMAP.md](ROADMAP.md)；阻塞见 [BLOCKERS.md](BLOCKERS.md)；取舍见 [docs/adr/](docs/adr/)；宿主 API 能力矩阵见 [docs/host-contract.md](docs/host-contract.md)。
@@ -174,6 +174,6 @@ pnpm run test:ui                # 生产 UI 冒烟门禁（13 项 DOM 断言 + �
 
 - **桌面/Android 真机验收未完成**（内核令牌未授权 + 无真机会话，见 BLOCKERS B-001/B-002/B-003）：移动端插入自动降级为复制；图片位图复制降级为 Markdown 链接。
 - 拼音搜索：已接入 tiny-pinyin（本地注解，设置可关，ADR 0004/R5）；多音字按常用读音。
-- 库文档树模式只展开一层子文档；条目索引上限 2000（超出截断并明示，数据仍安全在库中）。
+- 库文档树模式从根文档最多展开 3 层子文档；条目索引上限 2000（超出截断并明示，数据仍安全在库中）。
 - 导入冲突按逻辑 ID 判定（无内容级 diff）。
-- 「选择现有文档」目前为手动输入文档 ID（高级路径），文档选择器待宿主公开 API 评估。
+- 「选择现有文档」支持通过宿主公开文档搜索 API 按关键词选择；真实宿主写入验收仍受 B-001 阻塞。

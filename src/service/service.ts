@@ -149,7 +149,7 @@ export class XiaolvCommonService {
         if (!got.ok || !got.data) return failureEnvelope("not-found", got.message);
         const receipt = await this.deps.executor.run(got.data, mode);
         if (!receipt.ok) {
-            return failureEnvelope("kernel-error", receipt.message);
+            return failureEnvelope(executionFailureReason(receipt.message), receipt.message);
         }
         return successEnvelope({mode: receipt.mode, downgraded: receipt.downgraded});
     }
@@ -158,7 +158,7 @@ export class XiaolvCommonService {
         const got = await this.get(itemId);
         if (!got.ok || !got.data) return failureEnvelope("not-found", got.message);
         const receipt = await this.deps.executor.run(got.data, "copy");
-        if (!receipt.ok) return failureEnvelope("kernel-error", receipt.message);
+        if (!receipt.ok) return failureEnvelope(executionFailureReason(receipt.message), receipt.message);
         return successEnvelope({kind: "clipboard", pendingVerification: receipt.pendingVerification.length ? receipt.pendingVerification : undefined});
     }
 
@@ -166,8 +166,8 @@ export class XiaolvCommonService {
         const got = await this.get(itemId);
         if (!got.ok || !got.data) return failureEnvelope("not-found", got.message);
         const receipt = await this.deps.executor.openSource(got.data);
-        if (!receipt.ok) return failureEnvelope(receipt.message === "source-missing" ? "source-missing" : "kernel-error", receipt.message);
-        return successEnvelope({opened: "doc"});
+        if (!receipt.ok) return failureEnvelope(executionFailureReason(receipt.message), receipt.message);
+        return successEnvelope({opened: receipt.opened ?? "doc"});
     }
 
     async reindex(): Promise<ActionResult<{count: number; truncated: boolean}>> {
@@ -278,4 +278,14 @@ function normalizeInsertMode(options: unknown): InsertMode {
     const raw = typeof options === "object" && options !== null ? (options as {mode?: unknown}).mode : options;
     const allowed: InsertMode[] = ["insert", "copy", "copy-content", "insert-ref", "insert-embed", "open"];
     return typeof raw === "string" && (allowed as string[]).includes(raw) ? raw as InsertMode : "insert";
+}
+
+/** 将执行器的稳定回执映射到跨插件协议原因，保留可恢复语义。 */
+function executionFailureReason(message: string): Extract<NonNullable<ActionResult<never>["reason"]>, string> {
+    if (message === "source-missing") return "source-missing";
+    if (message === "doc-missing") return "doc-missing";
+    if (message === "asset-missing" || message === "asset-path-unresolvable") return "asset-missing";
+    if (message === "unsupported" || message === "type-unsupported") return "unsupported";
+    if (message.includes("timeout")) return "timeout";
+    return "kernel-error";
 }

@@ -86,7 +86,11 @@ export default class XiaolvCommonPlugin extends Plugin {
         this.kernelClient = kernel;
         // 拼音适配器装配（ADR 0004/R5：tiny-pinyin 本地注解，设置可关；关闭即 noop 零开销）
         this.applyPinyinAdapter();
-        this.library = new LibraryService(kernel);
+        this.library = new LibraryService(kernel, {
+            // /api/file/getFile 返回二进制响应，不经过 fetchSyncPost 的 {code,msg,data} 信封。
+            // 通过同源 fetch 探测资源存在性，失败时由 LibraryService 标记 assetMissing。
+            probeAsset: async (path) => (await this.fetchAssetBytes(path)) !== null,
+        });
         if (this.config) this.library.setConfig(this.config);
         this.host = new HostBridge(this.app);
         this.registry = new ProviderRegistry();
@@ -294,8 +298,18 @@ export default class XiaolvCommonPlugin extends Plugin {
     private persistSoon(): void {
         if (this.saveTimer) clearTimeout(this.saveTimer);
         this.saveTimer = setTimeout(() => {
-            void this.saveData(STORAGE_KEYS.state, this.state);
+            this.persistSidecar(STORAGE_KEYS.state, this.state);
         }, 400);
+    }
+
+    /** 侧车写入必须消费 Promise；失败时给出可见回执，避免 unhandled rejection。 */
+    private persistSidecar(key: string, value: unknown, notifyFailure = true): void {
+        void this.saveData(key, value).catch((err) => {
+            if (notifyFailure) {
+                const detail = err instanceof Error ? err.message : String(err);
+                this.notify("error", this.i18nFn()("kernelError", detail || "sidecar save failed"));
+            }
+        });
     }
 
     // ---- 命令与入口 ----
@@ -1067,9 +1081,10 @@ export default class XiaolvCommonPlugin extends Plugin {
 
     /** 资源字节获取：/api/file/getFile 为二进制端点，fetchSyncPost 信封不适用，
      *  使用同源 fetch（思源前端鉴权走 cookie，随同源请求自动携带）。失败返回 null。
-     *  路径校验：assets/ 单段名（禁止 .. 与子目录穿越），文件名字符不限（编码后传输）。 */
+     *  路径校验：只接受 assets/ 相对路径，禁止 ..、反斜杠、空段与绝对路径。 */
     private async fetchAssetBytes(assetPath: string): Promise<Uint8Array | null> {
-        const safe = assetPath.startsWith("assets/") && !assetPath.includes("..") && !assetPath.slice("assets/".length).includes("/");
+        const rel = assetPath.startsWith("assets/") ? assetPath.slice("assets/".length) : "";
+        const safe = !!rel && !assetPath.includes("..") && !assetPath.includes("\\") && rel.split("/").every((part) => part.length > 0);
         if (!safe) return null;
         try {
             const res = await fetch(`/api/file/getFile?path=${encodeURIComponent(assetPath)}`);
@@ -1083,7 +1098,7 @@ export default class XiaolvCommonPlugin extends Plugin {
     private applyConfig(config: LibraryConfig): void {
         this.config = config;
         this.library.setConfig(config);
-        void this.saveData(STORAGE_KEYS.config, config);
+        this.persistSidecar(STORAGE_KEYS.config, config);
         void this.library.reindex().then((idx) => {
             this.notify("info", idx.truncated
                 ? this.i18nFn()("reindexTruncated", String(LIMITS.maxItems))
@@ -1161,7 +1176,7 @@ export default class XiaolvCommonPlugin extends Plugin {
         this.linkMenuHandler = null;
         this.searchDialog?.destroy();
         if (this.saveTimer) clearTimeout(this.saveTimer);
-        void this.saveData(STORAGE_KEYS.state, this.state);
+        this.persistSidecar(STORAGE_KEYS.state, this.state, false);
     }
 
     uninstall(): Promise<void> {

@@ -111,6 +111,9 @@ test("service：save 校验非法输入（协议红线：正文必带）", async
     assert.equal(bad.reason, "invalid-input");
     const notObject = await service.save("junk");
     assert.equal(notObject.ok, false);
+    const unsafeUrl = await service.save({itemType: "url", markdown: "javascript:alert(1)", url: "javascript:alert(1)"});
+    assert.equal(unsafeUrl.ok, false);
+    assert.equal(unsafeUrl.reason, "invalid-input");
 });
 
 test("service：registerProvider 带未知字段仍成功（协商层忽略未知）", () => {
@@ -120,4 +123,25 @@ test("service：registerProvider 带未知字段仍成功（协商层忽略未�
         pluginId: "xiaolv-checkin", displayName: "打卡", brandNewField: 1,
     });
     assert.equal(result.ok, true);
+});
+
+test("service：openSource 透传 opened kind；executor 失败保留 asset-missing", async () => {
+    const { XiaolvCommonService } = require("./.build/entry.cjs").service;
+    const { ProviderRegistry } = require("./.build/entry.cjs").providers;
+    const state = {schemaVersion: 2, favorites: [], recents: [], sort: "manual", uiPrefs: {lastTypeFilter: "", lastTagFilter: ""}, providers: [], ai: {enabled: false, shareContent: false}};
+    const item = {id: "xlc-open-kind01", itemType: "url", title: "URL"};
+    const make = (receipt) => new XiaolvCommonService({
+        library: {getItem: async () => ({ok: true, data: item})},
+        executor: {run: async () => receipt, openSource: async () => receipt},
+        registry: new ProviderRegistry(),
+        ai: {getSettings: () => state.ai},
+        state,
+        onStateChange: () => {},
+    });
+    const opened = await make({ok: true, mode: "open-source", message: "source-opened", opened: "url", downgraded: false, pendingVerification: []}).openSource(item.id);
+    assert.equal(opened.ok, true);
+    assert.equal(opened.data.opened, "url");
+    const failed = await make({ok: false, mode: "copy", message: "asset-missing", downgraded: true, pendingVerification: []}).copy(item.id);
+    assert.equal(failed.ok, false);
+    assert.equal(failed.reason, "asset-missing");
 });

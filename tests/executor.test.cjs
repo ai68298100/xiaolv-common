@@ -129,6 +129,30 @@ test("openSource：URL 条目走外链且仅允许 http/https", async () => {
     assert.equal(bad.ok, false);
 });
 
+test("openSource：外链宿主拒绝时保持失败回执（不伪造打开成功）", async () => {
+    const executor = makeExecutor(makeHost({openExternal: () => false}));
+    const receipt = await executor.openSource(makeItem({itemType: "url", url: "https://example.com"}));
+    assert.equal(receipt.ok, false);
+    assert.equal(receipt.message, "open-failed");
+});
+
+test("openSource：来源文档失效即失败，即使条目仍在库文档中", async () => {
+    const library = new LibraryService({
+        request(endpoint) {
+            if (endpoint === "getBlockKramdown") return Promise.resolve({id: BLOCK, kramdown: "x"});
+            if (endpoint === "checkBlocksExist") return Promise.resolve({[DOC]: false});
+            return Promise.resolve(null);
+        },
+    });
+    library.setConfig({mode: "doc", notebookIds: [], containerDocIds: [DOC], createdDocIds: [], configuredAt: 1});
+    const executor = new ActionExecutor(library, makeHost(), () => {});
+    const receipt = await executor.openSource(makeItem({
+        source: {sourceDocId: DOC, sourceBlockId: "", sourceType: "doc-fragment"},
+    }));
+    assert.equal(receipt.ok, false);
+    assert.equal(receipt.message, "source-missing");
+});
+
 test("内核内容获取失败 → 明确失败（不用缓存摘要冒充正文）", async () => {
     const library = new LibraryService({
         request: () => Promise.reject(new Error("kernel down")),

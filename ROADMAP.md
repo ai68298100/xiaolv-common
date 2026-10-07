@@ -2,7 +2,7 @@
 
 > 定位：**思源笔记的内容资产层**——高频内容是有元数据、有来源、可检索、可变通、可共享的真实块资产（v3，2026-10-07 调研后修订）。三大一级场景：客服/邮件模板、AI 提示词库、研发/写作常用件。
 > 精准定位与调研证据：[docs/positioning.md](docs/positioning.md)。UI 基准：[docs/design/prototype.html](docs/design/prototype.html)（v3）+ [docs/design/design-spec.md](docs/design/design-spec.md)。生产证据：docs/design/production-*.png。
-> 状态：v0.2.0 候选（P0+P1 功能全量落地，待 B-001/B-002 真机验收后发布）。当期账本：[docs/dev-plan-2026-10-06.md](docs/dev-plan-2026-10-06.md)。
+> 状态：v0.2.2 候选（本轮数据/UI 修复已落地，GitHub 待本轮门禁后同步；集市不推送）。当期账本：[docs/dev-plan-2026-10-06.md](docs/dev-plan-2026-10-06.md)。
 
 ## R2：AI 融入与原型质感（2026-10-06，用户指令立项）
 
@@ -30,7 +30,7 @@
 
 ## P1 宿主合同和架构（进行中）
 
-- [x] 阅读思源源码（app/src/plugin、kernel/api/router.go）与 siyuan@1.2.8 类型，确认 API 面
+- [x] 阅读思源源码（app/src/plugin、kernel/api/router.go）与 siyuan@1.2.9 类型，确认 API 面
 - [x] 验证 `getActiveEditor()` 官方导出、`protyle.insert(html, isBlock, useProtyleRange)`、`openTab({doc/asset})`（类型契约级；真实行为待 B-001）
 - [x] 确认端点清单（结构自上游 kernel/api/router.go）：getChildBlocks / getBlockKramdown / getBlockAttrs / setBlockAttrs / insertBlock / updateBlock / deleteBlock / checkBlocksExist / createDocWithMd / listDocsByPath / lsNotebooks / exportMdContent
 - [x] 真实内核只读探测（3.8.6 版本可达；完整读写 E2E 因实例令牌未授权记 B-001）

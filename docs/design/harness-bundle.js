@@ -7,7 +7,11 @@
   var __getProtoOf = Object.getPrototypeOf;
   var __hasOwnProp = Object.prototype.hasOwnProperty;
   var __commonJS = (cb, mod) => function __require() {
-    return mod || (0, cb[__getOwnPropNames(cb)[0]])((mod = { exports: {} }).exports, mod), mod.exports;
+    try {
+      return mod || (0, cb[__getOwnPropNames(cb)[0]])((mod = { exports: {} }).exports, mod), mod.exports;
+    } catch (e) {
+      throw mod = 0, e;
+    }
   };
   var __copyProps = (to, from, except, desc) => {
     if (from && typeof from === "object" || typeof from === "function") {
@@ -123,6 +127,24 @@
     "blockref",
     "structure"
   ];
+  function isItemType(v) {
+    return typeof v === "string" && ITEM_TYPES.includes(v);
+  }
+  function isSafeHttpUrl(v) {
+    if (typeof v !== "string") return false;
+    const value = v.trim();
+    if (!/^https?:\/\//i.test(value)) return false;
+    try {
+      const parsed = new URL(value);
+      return (parsed.protocol === "http:" || parsed.protocol === "https:") && Boolean(parsed.hostname);
+    } catch {
+      return false;
+    }
+  }
+  var LOGICAL_ID_RE = /^xlc-[0-9a-z]{10,40}$/;
+  function isLogicalId(v) {
+    return typeof v === "string" && LOGICAL_ID_RE.test(v);
+  }
 
   // src/model/variables.ts
   var ASK_PATTERN = /\{\{xlc:ask:([^|}]+)(?:\|([^}]*))?\}\}/g;
@@ -786,6 +808,7 @@
       let truncated = false;
       let loading = false;
       let loadError;
+      let directError = "";
       try {
         const text = query.text.trim();
         if (text.startsWith("?") && text.length > 1) {
@@ -798,7 +821,7 @@
           } else {
             this.results = [];
             this.aiResults = false;
-            if (status) status.textContent = aiResult.message;
+            directError = aiResult.message;
           }
           if (aiBanner) aiBanner.style.display = this.aiResults && this.results.length ? "" : "none";
           if (aiBanner && this.aiResults) aiBanner.textContent = `\u2726 ${this.deps.t("aiFound")} \xB7 ${this.results.length}`;
@@ -825,7 +848,9 @@
       this.activeProvider = -1;
       if (status) {
         this.emptyMessage = "";
-        if (this.results.length) {
+        if (directError) {
+          status.textContent = directError;
+        } else if (this.results.length) {
           status.textContent = "";
         } else if (loadError) {
           status.textContent = this.deps.t("kernelError", loadError);
@@ -898,7 +923,7 @@
         const favs = [];
         const rest = [];
         for (const e of this.results) {
-          if (e && this.deps.isFavorite(e.id)) favs.push(e);
+          if (isManual && e && this.deps.isFavorite(e.id)) favs.push(e);
           else rest.push(e);
         }
         const byCat = /* @__PURE__ */ new Map();
@@ -1020,6 +1045,8 @@
       if (this.providerRows.length > 0) {
         const header = document.createElement("div");
         header.className = "xlc-provider-header";
+        header.dataset.xlcHead = "1";
+        header.setAttribute("aria-hidden", "true");
         header.textContent = "\u2726 " + this.deps.t("providerSection") + " \xB7 " + this.providerRows.length;
         list.appendChild(header);
         for (const row of this.providerRows) {
@@ -1055,7 +1082,9 @@
       this.paintActive();
     }
     async showProviderMenu(row, anchor) {
-      var _a, _b, _c, _d;
+      var _a, _b, _c, _d, _e;
+      (_a = this.menuDismiss) == null ? void 0 : _a.call(this);
+      this.menuDismiss = null;
       const menu = document.createElement("div");
       menu.className = "xlc-menu";
       menu.setAttribute("role", "menu");
@@ -1076,14 +1105,20 @@
         await this.deps.copyProviderPayload(row.payload);
       }));
       menu.appendChild(sec);
-      const host = (_d = (_c = (_a = this.dialog) == null ? void 0 : _a.element.querySelector(".xlc-dialog")) != null ? _c : (_b = this.dialog) == null ? void 0 : _b.element) != null ? _d : anchor;
+      const host = (_e = (_d = (_b = this.dialog) == null ? void 0 : _b.element.querySelector(".xlc-dialog")) != null ? _d : (_c = this.dialog) == null ? void 0 : _c.element) != null ? _e : anchor;
       host.appendChild(menu);
       const dismiss = (e) => {
         if (!menu.contains(e.target)) {
           menu.remove();
+          if (this.menuDismiss === dismissMenu) this.menuDismiss = null;
           document.removeEventListener("pointerdown", dismiss, true);
         }
       };
+      const dismissMenu = () => {
+        menu.remove();
+        document.removeEventListener("pointerdown", dismiss, true);
+      };
+      this.menuDismiss = dismissMenu;
       document.addEventListener("pointerdown", dismiss, true);
     }
     async refreshPreservingPosition() {
@@ -1196,6 +1231,7 @@
       const id = (_f = forceId != null ? forceId : entry == null ? void 0 : entry.id) != null ? _f : null;
       if (!id || id === this.lastPreviewId) return;
       const seq = ++this.previewSeq;
+      this.lastPreviewId = id;
       if (paneTitle) paneTitle.textContent = (_g = entry == null ? void 0 : entry.title) != null ? _g : "";
       if (paneAi) paneAi.style.display = this.aiResults ? "" : "none";
       paintUsageBadge(entry);
@@ -1274,7 +1310,9 @@
       return btn;
     }
     async showActionMenu(entry) {
-      var _a, _b, _c, _d;
+      var _a, _b, _c, _d, _e;
+      (_a = this.menuDismiss) == null ? void 0 : _a.call(this);
+      this.menuDismiss = null;
       const menu = document.createElement("div");
       menu.className = "xlc-menu";
       menu.setAttribute("role", "menu");
@@ -1456,7 +1494,7 @@
         }
       };
       rebuild(buildDefault);
-      const host = (_d = (_c = (_a = this.dialog) == null ? void 0 : _a.element.querySelector(".xlc-dialog")) != null ? _c : (_b = this.dialog) == null ? void 0 : _b.element) != null ? _d : document.body;
+      const host = (_e = (_d = (_b = this.dialog) == null ? void 0 : _b.element.querySelector(".xlc-dialog")) != null ? _d : (_c = this.dialog) == null ? void 0 : _c.element) != null ? _e : document.body;
       host.appendChild(menu);
       const escHandler = (e) => {
         var _a2;
@@ -1594,12 +1632,18 @@
     const knownTop = ["protocol", "schemaVersion", "exportedAt", "items"];
     const unknownTopFields = Object.keys(record).filter((k) => !knownTop.includes(k));
     const items = [];
+    const seenIds = /* @__PURE__ */ new Set();
     record.items.forEach((raw, index) => {
       const item = normalizeExportedItem(raw);
       if (!item) {
         issues.push({ index, reason: "invalid-item" });
         return;
       }
+      if (seenIds.has(item.id)) {
+        issues.push({ index, reason: "duplicate-id" });
+        return;
+      }
+      seenIds.add(item.id);
       items.push(item);
     });
     return { ok: true, parsed: { schemaVersion: EXPORT_SCHEMA_VERSION, items, unknownTopFields }, issues };
@@ -1608,9 +1652,9 @@
     var _a;
     if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
     const obj = raw;
-    if (typeof obj.id !== "string" || !obj.id.startsWith("xlc-") || obj.id.length > 64) return null;
+    if (!isLogicalId(obj.id)) return null;
     if (typeof obj.kramdown !== "string" || obj.kramdown.length > LIMITS.contentChars) return null;
-    if (typeof obj.itemType !== "string" || obj.itemType.length > 24) return null;
+    if (!isItemType(obj.itemType)) return null;
     const sourceRaw = (_a = obj.source) != null ? _a : {};
     const known = ["id", "itemType", "title", "alias", "tags", "category", "kramdown", "source", "url", "targetBlockId", "createdAt", "updatedAt"];
     const extensions = {};
@@ -1619,6 +1663,8 @@
     }
     const str = (v, cap) => typeof v === "string" ? v.slice(0, cap) : "";
     const tags = Array.isArray(obj.tags) ? obj.tags.filter((t) => typeof t === "string").slice(0, LIMITS.tags) : [];
+    const url = str(obj.url, 2048);
+    if (url && !isSafeHttpUrl(url)) return null;
     return {
       id: obj.id,
       itemType: obj.itemType,
@@ -1632,7 +1678,7 @@
         sourceBlockId: str(sourceRaw.sourceBlockId, 32),
         sourceType: str(sourceRaw.sourceType, 24)
       },
-      url: str(obj.url, 2048),
+      url,
       targetBlockId: str(obj.targetBlockId, 32),
       createdAt: Number(obj.createdAt) || 0,
       updatedAt: Number(obj.updatedAt) || 0,
@@ -1753,6 +1799,7 @@
   // src/service/export-markdown.ts
   async function buildMarkdownExport(items, kramdownById, fetchAssetBytes, pack) {
     var _a, _b;
+    const oneLine = (value) => value.replace(/[\r\n]+/g, " ").trim();
     const entries = [];
     const skippedAssets = [];
     const assetEntries = /* @__PURE__ */ new Map();
@@ -1776,7 +1823,7 @@
     if (pack && pack.name.trim()) {
       const manifest = [
         `<!-- xlc-pack`,
-        `name: ${pack.name.trim().slice(0, LIMITS.title)}`,
+        `name: ${oneLine(pack.name).slice(0, LIMITS.title)}`,
         `items: ${items.length}`,
         varNames.length ? `vars: ${varNames.join(",")}` : "",
         `-->`
@@ -1789,14 +1836,17 @@
         `<!-- xlc-item`,
         `id: ${item.id}`,
         `type: ${item.itemType}`,
-        item.alias ? `alias: ${item.alias}` : "",
-        item.tags.length ? `tags: ${item.tags.join(",")}` : "",
-        item.category ? `category: ${item.category}` : "",
-        item.source.sourceDocId ? `source-doc: ${item.source.sourceDocId}` : "",
-        item.source.sourceBlockId ? `source-block: ${item.source.sourceBlockId}` : "",
+        item.alias ? `alias: ${oneLine(item.alias)}` : "",
+        item.tags.length ? `tags: ${item.tags.map(oneLine).join(",")}` : "",
+        item.category ? `category: ${oneLine(item.category)}` : "",
+        item.source.sourceDocId ? `source-doc: ${oneLine(item.source.sourceDocId)}` : "",
+        item.source.sourceBlockId ? `source-block: ${oneLine(item.source.sourceBlockId)}` : "",
+        item.source.sourceType ? `source-type: ${oneLine(item.source.sourceType)}` : "",
+        item.url ? `url: ${oneLine(item.url)}` : "",
+        item.targetBlockId ? `target: ${oneLine(item.targetBlockId)}` : "",
         `-->`
       ].filter(Boolean).join("\n");
-      mdParts.push(`## ${item.title || item.id}`, "", meta, "", kramdown, "");
+      mdParts.push(`## ${oneLine(item.title || item.id)}`, "", meta, "", kramdown, "");
       if (item.itemType === "image" || item.itemType === "asset") {
         const assetPath = extractAssetPath(kramdown);
         if (assetPath && !assetEntries.has(assetPath)) {
@@ -1854,6 +1904,7 @@
     var _a, _b;
     const items = [];
     const issues = [];
+    const seenIds = /* @__PURE__ */ new Set();
     if (!md || !md.includes(ITEM_COMMENT_START)) return { items, issues };
     const firstItemAt = md.indexOf(ITEM_COMMENT_START);
     const pack = parsePackManifest(md, firstItemAt);
@@ -1898,7 +1949,20 @@
         issues.push({ index, reason: "invalid-id" });
         return;
       }
+      if (seenIds.has(id)) {
+        issues.push({ index, reason: "duplicate-id" });
+        return;
+      }
       const itemType = (_b2 = fields.get("type")) != null ? _b2 : "text";
+      if (!isItemType(itemType)) {
+        issues.push({ index, reason: "invalid-item-type" });
+        return;
+      }
+      const url = (_c = fields.get("url")) != null ? _c : "";
+      if (url && !isSafeHttpUrl(url)) {
+        issues.push({ index, reason: "invalid-url" });
+        return;
+      }
       let title = "";
       const before = chunk.slice(0, chunk.indexOf(ITEM_COMMENT_START));
       for (const line of before.split("\n")) {
@@ -1906,22 +1970,23 @@
         const matched = m == null ? void 0 : m[1];
         if (matched) title = matched.trim();
       }
-      if (!title && fields.get("alias")) title = (_c = fields.get("alias")) != null ? _c : "";
+      if (!title && fields.get("alias")) title = (_d = fields.get("alias")) != null ? _d : "";
       const body = chunk.slice(endIdx + ITEM_COMMENT_END.length).replace(/^\s*\n/, "").replace(/\n\s*$/, "");
+      seenIds.add(id);
       items.push({
         id,
         itemType,
         title: title.slice(0, LIMITS.title),
-        alias: ((_d = fields.get("alias")) != null ? _d : "").slice(0, LIMITS.alias),
-        tags: ((_e = fields.get("tags")) != null ? _e : "").split(",").map((s) => s.trim()).filter(Boolean).slice(0, LIMITS.tags),
-        category: ((_f = fields.get("category")) != null ? _f : "").slice(0, LIMITS.category),
+        alias: ((_e = fields.get("alias")) != null ? _e : "").slice(0, LIMITS.alias),
+        tags: ((_f = fields.get("tags")) != null ? _f : "").split(",").map((s) => s.trim()).filter(Boolean).slice(0, LIMITS.tags),
+        category: ((_g = fields.get("category")) != null ? _g : "").slice(0, LIMITS.category),
         kramdown: body.slice(0, LIMITS.contentChars),
         source: {
-          sourceDocId: (_g = fields.get("source-doc")) != null ? _g : "",
-          sourceBlockId: (_h = fields.get("source-block")) != null ? _h : "",
-          sourceType: (_i = fields.get("source-type")) != null ? _i : "external"
+          sourceDocId: (_h = fields.get("source-doc")) != null ? _h : "",
+          sourceBlockId: (_i = fields.get("source-block")) != null ? _i : "",
+          sourceType: (_j = fields.get("source-type")) != null ? _j : "external"
         },
-        url: (_j = fields.get("url")) != null ? _j : "",
+        url,
         targetBlockId: (_k = fields.get("target")) != null ? _k : "",
         createdAt: 0,
         updatedAt: Date.now()
@@ -3091,7 +3156,7 @@
   }
   function classifyLinkTarget(href) {
     const h = (href != null ? href : "").trim();
-    if (/^https?:\/\//i.test(h)) return { kind: "url", value: h };
+    if (isSafeHttpUrl(h)) return { kind: "url", value: h };
     if (/^assets\/[^\s]+$/.test(h)) return { kind: "asset", value: h };
     return null;
   }
@@ -3147,6 +3212,7 @@
       }
     }
     async doQuickCapture() {
+      var _a;
       let text = "";
       try {
         text = (await this.deps.readClipboardText()).trim();
@@ -3163,7 +3229,12 @@
         this.deps.notify("info", this.deps.t("quickCaptureDuplicate", dup.title));
         return;
       }
-      const created = await this.deps.createItem({ itemType: inferTypeFromText(content), markdown: content });
+      const firstLine = (_a = content.split(/\r?\n/).map((line) => line.trim()).find(Boolean)) != null ? _a : content;
+      const created = await this.deps.createItem({
+        itemType: inferTypeFromText(content),
+        markdown: content,
+        title: firstLine.slice(0, 512)
+      });
       if (created.ok) {
         this.deps.notify("info", this.deps.t("saved", created.message));
       } else {
@@ -3245,11 +3316,18 @@
     openForm(defaultText, defaultType, sourceBlockId, overrides) {
       var _a;
       const t = this.deps.t;
+      let closed = false;
+      let saving = false;
+      let tidySeq = 0;
       const dialog = new import_siyuan4.Dialog({
         title: t("newItem"),
         content: "",
         width: "min(520px, 92vw)",
-        height: "auto"
+        height: "auto",
+        destroyCallback: () => {
+          closed = true;
+          ++tidySeq;
+        }
       });
       const body = dialog.element.querySelector(".b3-dialog__content");
       if (!body) return;
@@ -3318,6 +3396,7 @@
       let suggestions = {};
       const applySuggestions = () => {
         var _a2;
+        if (closed || Object.keys(suggestions).length === 0) return;
         if (suggestions.title) titleEl.value = suggestions.title;
         if (suggestions.alias) aliasEl.value = suggestions.alias;
         if ((_a2 = suggestions.tags) == null ? void 0 : _a2.length) tagsEl.value = suggestions.tags.join(", ");
@@ -3336,15 +3415,20 @@
           tidyBtn.type = "button";
           tidyBtn.textContent = "\u2726 " + t("aiTidy");
           tidyBtn.addEventListener("click", () => {
+            if (closed) return;
             const value = contentEl.value.trim();
             if (!value) {
               this.deps.notify("error", t("invalidItem"));
               return;
             }
+            const request = ++tidySeq;
+            tidyBtn.disabled = true;
             tidyBtn.textContent = t("aiWorking");
             void this.deps.aiTidy(value).then((result) => {
               var _a2, _b;
+              if (closed || request !== tidySeq) return;
               tidyBtn.textContent = "\u2726 " + t("aiTidy");
+              tidyBtn.disabled = false;
               if (!result.ok) {
                 this.deps.notify("error", result.message);
                 return;
@@ -3369,7 +3453,11 @@
                 sugText.appendChild(tail);
               }
               sugrow.style.display = "";
-              applySuggestions();
+            }).catch((err) => {
+              if (closed || request !== tidySeq) return;
+              tidyBtn.textContent = "\u2726 " + t("aiTidy");
+              tidyBtn.disabled = false;
+              this.deps.notify("error", err instanceof Error ? err.message : t("aiTransport"));
             });
           });
           contentLabel.appendChild(tidyBtn);
@@ -3390,16 +3478,22 @@
         draftInput.placeholder = t("aiDraftDesc");
         draftWrap.appendChild(draftInput);
         draftBtn.addEventListener("click", () => {
+          if (closed) return;
           const desc = draftInput.value.trim();
           if (!desc) return;
           draftBtn.textContent = t("aiWorking");
           void this.deps.aiDraft(desc).then((result) => {
+            if (closed) return;
             draftBtn.textContent = "\u2726 " + t("aiDraftDesc");
             if (!result.ok) {
               this.deps.notify("error", result.message);
               return;
             }
             contentEl.value = result.text;
+          }).catch((err) => {
+            if (closed) return;
+            draftBtn.textContent = "\u2726 " + t("aiDraftDesc");
+            this.deps.notify("error", err instanceof Error ? err.message : t("aiTransport"));
           });
         });
         form.insertBefore(draftWrap, form.firstChild);
@@ -3409,7 +3503,11 @@
       const cancelBtn = document.createElement("button");
       cancelBtn.className = "b3-button";
       cancelBtn.textContent = t("cancel");
-      cancelBtn.addEventListener("click", () => dialog.destroy());
+      cancelBtn.addEventListener("click", () => {
+        closed = true;
+        ++tidySeq;
+        dialog.destroy();
+      });
       const saveBtn = document.createElement("button");
       saveBtn.className = "b3-button xlc-btn-primary";
       saveBtn.textContent = t("save");
@@ -3423,6 +3521,7 @@
       };
       [titleEl, aliasEl, tagsEl, categoryEl].forEach((el) => submitOnEnter(el));
       saveBtn.addEventListener("click", () => {
+        if (closed || saving) return;
         const contentValue = contentEl.value;
         if (!contentValue.trim()) {
           this.deps.notify("error", t("invalidItem"));
@@ -3440,6 +3539,10 @@
           markdown = contentValue.trim();
         }
         const doSave = () => {
+          if (closed || saving) return;
+          saving = true;
+          saveBtn.disabled = true;
+          cancelBtn.disabled = true;
           const docId = this.deps.currentDocId();
           void this.deps.createItem({
             itemType: type,
@@ -3451,20 +3554,27 @@
             targetBlockId: overrides == null ? void 0 : overrides.targetBlockId,
             source: docId ? { sourceDocId: docId, sourceBlockId: sourceBlockId != null ? sourceBlockId : void 0, sourceType: (overrides == null ? void 0 : overrides.docId) ? "doc-fragment" : sourceBlockId ? "selection" : "manual" } : void 0
           }).then((result) => {
+            saving = false;
             if (result.ok) {
               this.deps.notify("info", t("saved", result.message));
+              closed = true;
               dialog.destroy();
             } else {
+              saveBtn.disabled = false;
+              cancelBtn.disabled = false;
               this.deps.notify("error", result.message);
             }
           });
         };
         void this.deps.findDuplicate(contentValue).then((dup) => {
+          if (closed || saving) return;
           if (!dup) {
             doSave();
             return;
           }
-          (0, import_siyuan4.confirm)("\u26A0\uFE0F " + t("duplicateTitle"), t("duplicateConfirm", dup.title), () => doSave());
+          (0, import_siyuan4.confirm)("\u26A0\uFE0F " + t("duplicateTitle"), t("duplicateConfirm", dup.title), () => {
+            if (!closed) doSave();
+          });
         });
       });
       actions.appendChild(cancelBtn);

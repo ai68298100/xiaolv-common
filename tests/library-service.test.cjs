@@ -58,6 +58,18 @@ test("索引构建：只收带 custom-xlc-id 的顶层块（普通内容混排�
     assert.equal(idx.truncated, false);
 });
 
+test("索引摘要：从真实块正文派生摘要供正文关键词搜索使用", async () => {
+    const {kernel, service} = makeService({
+        getChildBlocks: () => [{id: B1, type: "p"}],
+        batchGetBlockAttrs: () => ({[B1]: {"custom-xlc-id": "xlc-summary00001", "custom-xlc-title": "独立标题"}}),
+        getBlockKramdown: ({id}) => ({id, kramdown: "这段正文可搜索并生成摘要。"}),
+    });
+    const idx = await service.buildIndex();
+    assert.equal(idx.entries.length, 1);
+    assert.ok(idx.entries[0].summary.includes("正文可搜索"));
+    assert.ok(kernel.calls.some((c) => c.endpoint === "getBlockKramdown" && c.payload.id === B1));
+});
+
 test("门禁：条目超过上限截断并标记 truncated（不静默丢数据）", async () => {
     const many = Array.from({length: 50}, (_, i) => ({id: `2024010112${String(i).padStart(4, "0")}-xxxxxxx`, type: "p"}));
     const {service} = makeService({
@@ -79,6 +91,15 @@ test("createItem：appendBlock + setBlockAttrs，返回条目回执", async () =
     const setAttrs = kernel.calls.find((c) => c.endpoint === "setBlockAttrs");
     assert.equal(setAttrs.payload.id, "20240101120003-ccccccc");
     assert.equal(setAttrs.payload.attrs["custom-xlc-tags"], "a");
+});
+
+test("URL 写入：仅接受 http/https；清空 URL 仍允许", async () => {
+    const {service} = makeService();
+    const unsafe = await service.createItem({itemType: "url", markdown: "javascript:alert(1)", url: "javascript:alert(1)"});
+    assert.equal(unsafe.ok, false);
+    assert.equal(unsafe.reason, "invalid-input");
+    const safe = await service.createItem({itemType: "url", markdown: "https://example.com", url: "https://example.com"});
+    assert.equal(safe.ok, true);
 });
 
 test("门禁：属性写入失败时回滚已插入块（失败不落半条数据）", async () => {
@@ -109,10 +130,21 @@ test("来源失效检测：块/文档/资源三态", async () => {
     assert.equal(health.data.blockMissing, true);
 
     // 图片条目资源缺失（getFile 失败 → assetMissing）
-    const imgService = makeService({
+    const imgKernel = makeKernel({
         getBlockKramdown: () => ({id: B1, kramdown: "![](assets/missing.png)"}),
         getFile: () => { throw new Error("404"); },
-    }).service;
+    });
+    const imgService = new LibraryService(imgKernel, {
+        probeAsset: async (path) => {
+            try {
+                await imgKernel.request("getFile", {path});
+                return true;
+            } catch {
+                return false;
+            }
+        },
+    });
+    imgService.setConfig({mode: "doc", notebookIds: [], containerDocIds: [DOC], createdDocIds: [], configuredAt: 1});
     const imgHealth = await imgService.checkSourceHealth({...item, itemType: "image"});
     assert.equal(imgHealth.data.assetMissing, true);
 });
@@ -138,6 +170,23 @@ test("reindex 强制重建（缓存可丢弃）", async () => {
 test("无库配置时 CRUD 明确失败（不静默写错地方）", async () => {
     const kernel = makeKernel();
     const service = new LibraryService(kernel);
+    const result = await service.createItem({itemType: "text", markdown: "x"});
+    assert.equal(result.ok, false);
+    assert.equal(result.reason, "invalid-input");
+});
+
+test("notebook 模式：从笔记本根解析首个文档作为写入落点", async () => {
+    const {kernel, service} = makeService({
+        listDocsByPath: () => ({files: [{id: "20240101120009-nbdoc01", name: "库"}]}),
+    }, {mode: "notebook", notebookIds: ["20240101120008-nbook01"], containerDocIds: [], createdDocIds: [], configuredAt: 1});
+    const result = await service.createItem({itemType: "text", markdown: "x"});
+    assert.ok(result.ok, result.ok ? "" : result.message);
+    const append = kernel.calls.find((c) => c.endpoint === "appendBlock");
+    assert.equal(append.payload.parentID, "20240101120009-nbdoc01");
+});
+
+test("notebook 模式：笔记本没有文档时明确拒绝写入", async () => {
+    const {service} = makeService({listDocsByPath: () => ({files: []})}, {mode: "notebook", notebookIds: ["20240101120008-nbook01"], containerDocIds: [], createdDocIds: [], configuredAt: 1});
     const result = await service.createItem({itemType: "text", markdown: "x"});
     assert.equal(result.ok, false);
     assert.equal(result.reason, "invalid-input");

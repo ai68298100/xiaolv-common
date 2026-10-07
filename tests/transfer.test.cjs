@@ -18,8 +18,8 @@ function makeItem(id, kramdown = "内容") {
 }
 
 test("buildBundle：只含标量字段，不嵌函数回调（协议红线）", () => {
-    const it = makeItem("xlc-export001");
-    const bundle = transfer.buildBundle([it], new Map([["xlc-export001", "正文"]]), 12345);
+    const it = makeItem("xlc-export0001");
+    const bundle = transfer.buildBundle([it], new Map([["xlc-export0001", "正文"]]), 12345);
     assert.equal(bundle.protocol, "xiaolv-common");
     assert.equal(bundle.schemaVersion, 1);
     assert.equal(bundle.items[0].kramdown, "正文");
@@ -38,7 +38,7 @@ test("validateImport：非法条目计入 issues，不阻断其余条目", () =>
     const bundle = {
         protocol: "xiaolv-common", schemaVersion: 1, exportedAt: 1,
         items: [
-            {id: "xlc-good00001", itemType: "text", kramdown: "ok"},
+            {id: "xlc-good000001", itemType: "text", kramdown: "ok"},
             {id: "bad-id", itemType: "text", kramdown: "x"},
             null,
         ],
@@ -47,6 +47,22 @@ test("validateImport：非法条目计入 issues，不阻断其余条目", () =>
     assert.ok(result.ok);
     assert.equal(result.parsed.items.length, 1);
     assert.equal(result.issues.length, 2);
+});
+
+test("门禁：导入包拒绝未知类型、非法 URL 与包内重复逻辑 ID", () => {
+    const bundle = {
+        protocol: "xiaolv-common", schemaVersion: 1, exportedAt: 1,
+        items: [
+            {id: "xlc-valid00001", itemType: "text", kramdown: "ok"},
+            {id: "xlc-valid00002", itemType: "future-type", kramdown: "x"},
+            {id: "xlc-valid00003", itemType: "url", url: "javascript:alert(1)", kramdown: "x"},
+            {id: "xlc-valid00001", itemType: "text", kramdown: "duplicate"},
+        ],
+    };
+    const result = transfer.validateImport(JSON.stringify(bundle));
+    assert.equal(result.ok, true);
+    assert.deepEqual(result.parsed.items.map((i) => i.id), ["xlc-valid00001"]);
+    assert.deepEqual(result.issues.map((i) => i.reason), ["invalid-item", "invalid-item", "duplicate-id"]);
 });
 
 test("门禁：未知顶层字段保留透传不阻断（前向兼容）", () => {
@@ -68,14 +84,14 @@ test("classifyConflict：new/skip/overwrite/rename", () => {
 });
 
 test("导出→导入往返：校验通过且条目一致", () => {
-    const it = makeItem("xlc-roundtrip");
-    const bundle = transfer.buildBundle([it], new Map([["xlc-roundtrip", "往返正文"]]), 999);
+    const it = makeItem("xlc-roundtrip01");
+    const bundle = transfer.buildBundle([it], new Map([["xlc-roundtrip01", "往返正文"]]), 999);
     const json = JSON.stringify(bundle, null, 2);
     const validation = transfer.validateImport(json);
     assert.ok(validation.ok);
     assert.equal(validation.parsed.items.length, 1);
     assert.equal(validation.parsed.items[0].kramdown, "往返正文");
-    assert.equal(validation.parsed.items[0].id, "xlc-roundtrip");
+    assert.equal(validation.parsed.items[0].id, "xlc-roundtrip01");
     assert.deepEqual(validation.parsed.items[0].tags, ["工作"]);
 });
 

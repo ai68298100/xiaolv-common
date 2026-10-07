@@ -112,8 +112,8 @@ export class HostBridge implements IHostBridge {
         try {
             // 仅 http/https；其余协议拒绝（安全边界）
             if (!/^https?:\/\//i.test(url)) return false;
-            window.open(url, "_blank", "noopener");
-            return true;
+            // 浏览器/宿主可能拦截新窗口；window.open 返回 null 时必须报告失败。
+            return window.open(url, "_blank", "noopener") !== null;
         } catch {
             return false;
         }
@@ -136,6 +136,8 @@ export interface ExecutionReceipt {
     message: string;
     downgraded: boolean;
     pendingVerification: string[];
+    /** 实际打开的目标类型；仅 open-source 成功时存在。 */
+    opened?: OpenTarget["kind"];
 }
 
 export class ActionExecutor {
@@ -205,7 +207,9 @@ export class ActionExecutor {
         const h: SourceHealth = health.ok ? health.data : {blockMissing: false, docMissing: false, assetMissing: false};
         return {
             kramdown: kramdown.data,
-            sourceMissing: h.blockMissing || (h.docMissing && !item.libraryDocId),
+            // libraryDocId 是条目所在库文档，不能用它掩盖 sourceDocId 的失效。
+            // 来源文档/块任一失效都必须传入计划层，openSource 才能返回 source-missing。
+            sourceMissing: h.blockMissing || h.docMissing,
             assetMissing: h.assetMissing,
         };
     }
@@ -343,6 +347,7 @@ export class ActionExecutor {
             message: opened ? "source-opened" : "open-failed",
             downgraded: false,
             pendingVerification: [],
+            ...(opened ? {opened: target.kind} : {}),
         };
     }
 

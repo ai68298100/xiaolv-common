@@ -96,6 +96,46 @@ id: xlc-md0000000005`;
     assert.equal(result.issues.length, 2);
 });
 
+test("Markdown 包拒绝未知类型、非法 URL 与重复逻辑 ID", () => {
+    const md = [
+        "## 好条目",
+        "",
+        "<!-- xlc-item",
+        "id: xlc-md0000000010",
+        "type: text",
+        "-->",
+        "正文",
+        "",
+        "## 未知类型",
+        "",
+        "<!-- xlc-item",
+        "id: xlc-md0000000011",
+        "type: future-type",
+        "-->",
+        "正文",
+        "",
+        "## 非法 URL",
+        "",
+        "<!-- xlc-item",
+        "id: xlc-md0000000012",
+        "type: url",
+        "url: javascript:alert(1)",
+        "-->",
+        "正文",
+        "",
+        "## 重复",
+        "",
+        "<!-- xlc-item",
+        "id: xlc-md0000000010",
+        "type: text",
+        "-->",
+        "重复",
+    ].join("\n");
+    const result = importMarkdown.parseMarkdownPack(md);
+    assert.deepEqual(result.items.map((item) => item.id), ["xlc-md0000000010"]);
+    assert.deepEqual(result.issues.map((issue) => issue.reason), ["invalid-item-type", "invalid-url", "duplicate-id"]);
+});
+
 test("R61：md 包 overwrite 同类型更新走 updateBlock（不删旧建新）", async () => {
     const {importMarkdownBundle} = importMarkdown;
     const {LibraryService} = require("./.build/entry.cjs").library;
@@ -169,7 +209,7 @@ test("renderItemMetadata 与解析器互逆", () => {
         id: "xlc-roundtrip001", itemType: "markdown", title: "RT", alias: "别名",
         tags: ["a"], category: "c", kramdown: "正文",
         source: {sourceDocId: "20240101120001-hijklmn", sourceBlockId: "", sourceType: "external"},
-        url: "", targetBlockId: "", createdAt: 0, updatedAt: 0,
+        url: "https://example.com/a", targetBlockId: "20240101120000-aaaaaaa", createdAt: 0, updatedAt: 0,
     };
     const meta = importMarkdown.renderItemMetadata(item);
     const parsed = importMarkdown.parseMarkdownPack(`## RT\n\n${meta}\n\n正文`);
@@ -177,6 +217,9 @@ test("renderItemMetadata 与解析器互逆", () => {
     assert.equal(parsed.items[0].id, "xlc-roundtrip001");
     assert.deepEqual(parsed.items[0].tags, ["a"]);
     assert.equal(parsed.items[0].source.sourceDocId, "20240101120001-hijklmn");
+    assert.equal(parsed.items[0].source.sourceType, "external");
+    assert.equal(parsed.items[0].url, "https://example.com/a");
+    assert.equal(parsed.items[0].targetBlockId, "20240101120000-aaaaaaa");
 });
 
 test("R35：ZIP 条目名=完整相对路径（子目录资源不重名）+ 确定性输出", async () => {

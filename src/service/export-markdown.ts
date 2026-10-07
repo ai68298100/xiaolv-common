@@ -26,6 +26,7 @@ export async function buildMarkdownExport(
     fetchAssetBytes: (assetPath: string) => Promise<Uint8Array | null>,
     pack?: {name: string},
 ): Promise<MarkdownExportResult> {
+    const oneLine = (value: string): string => value.replace(/[\r\n]+/g, " ").trim();
     const entries: ZipEntry[] = [];
     const skippedAssets: string[] = [];
     const assetEntries = new Map<string, ZipEntry>();
@@ -50,7 +51,7 @@ export async function buildMarkdownExport(
     if (pack && pack.name.trim()) {
         const manifest = [
             `<!-- xlc-pack`,
-            `name: ${pack.name.trim().slice(0, LIMITS.title)}`,
+            `name: ${oneLine(pack.name).slice(0, LIMITS.title)}`,
             `items: ${items.length}`,
             varNames.length ? `vars: ${varNames.join(",")}` : "",
             `-->`,
@@ -63,14 +64,17 @@ export async function buildMarkdownExport(
             `<!-- xlc-item`,
             `id: ${item.id}`,
             `type: ${item.itemType}`,
-            item.alias ? `alias: ${item.alias}` : "",
-            item.tags.length ? `tags: ${item.tags.join(",")}` : "",
-            item.category ? `category: ${item.category}` : "",
-            item.source.sourceDocId ? `source-doc: ${item.source.sourceDocId}` : "",
-            item.source.sourceBlockId ? `source-block: ${item.source.sourceBlockId}` : "",
+            item.alias ? `alias: ${oneLine(item.alias)}` : "",
+            item.tags.length ? `tags: ${item.tags.map(oneLine).join(",")}` : "",
+            item.category ? `category: ${oneLine(item.category)}` : "",
+            item.source.sourceDocId ? `source-doc: ${oneLine(item.source.sourceDocId)}` : "",
+            item.source.sourceBlockId ? `source-block: ${oneLine(item.source.sourceBlockId)}` : "",
+            item.source.sourceType ? `source-type: ${oneLine(item.source.sourceType)}` : "",
+            item.url ? `url: ${oneLine(item.url)}` : "",
+            item.targetBlockId ? `target: ${oneLine(item.targetBlockId)}` : "",
             `-->`,
         ].filter(Boolean).join("\n");
-        mdParts.push(`## ${item.title || item.id}`, "", meta, "", kramdown, "");
+        mdParts.push(`## ${oneLine(item.title || item.id)}`, "", meta, "", kramdown, "");
         // 资源条目：取字节 → assets/<basename>
         if (item.itemType === "image" || item.itemType === "asset") {
             const assetPath = extractAssetPath(kramdown);

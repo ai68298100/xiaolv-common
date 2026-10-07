@@ -44,6 +44,16 @@ test("url：open=外链目标；复制=裸 URL；插入=标题链接", () => {
     assert.equal(actions.planAction(it, "insert", ctx()).markdown, "[示例](https://example.com)");
 });
 
+test("URL 动作：非法协议不生成打开/插入载荷", () => {
+    const it = makeItem({itemType: "url", url: "javascript:alert(1)", title: "恶意"});
+    const open = actions.planAction(it, "open", ctx());
+    assert.equal(open.downgraded, true);
+    assert.equal(open.open, undefined);
+    const insert = actions.planAction(it, "insert", ctx());
+    assert.equal(insert.downgraded, true);
+    assert.equal(insert.markdown, undefined);
+});
+
 test("image/asset：插入资源块；资源缺失时诚实降级", () => {
     const it = makeItem({itemType: "image"});
     const kd = `![](assets/pic-20240101.png)`;

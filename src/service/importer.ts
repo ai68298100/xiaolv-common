@@ -3,9 +3,10 @@
 // 绝不允许同逻辑 ID 双块（createItem 侧另有 conflict 防御）。
 import {ExportedItem, ImportReceipt, ImportReceiptLine, ConflictKind, classifyConflict, ParsedImport} from "../model/transfer";
 import {LibraryService, NewItemInput} from "./library";
+import {isItemType} from "../model/item";
 
 function isKnownType(v: string): v is NewItemInput["itemType"] {
-    return ["text", "markdown", "url", "code", "image", "asset", "blockref", "structure"].includes(v);
+    return isItemType(v);
 }
 
 export interface ImportSource {
@@ -61,16 +62,33 @@ export async function applyOverwriteImport(library: LibraryService, incoming: Ex
 /** 逐条应用导入计划（冲突分类已含）；全部完成后由调用方重建索引。 */
 export async function importBundle(library: LibraryService, parsed: ParsedImport, policy: "skip" | "overwrite" | "rename"): Promise<ImportReceipt> {
     const receipt: ImportReceipt = {total: 0, created: 0, skipped: 0, overwritten: 0, renamed: 0, failed: 0, lines: []};
+    // 建立一次快照：createItem 成功后会使缓存失效，不能用会变化的 getIndex() 判冲突。
+    const existingIds = new Set((await library.ensureIndex()).items.keys());
     for (const incoming of parsed.items) {
         receipt.total++;
-        const decision = classifyConflict(incoming.id, library.getIndex()?.items.has(incoming.id) ?? false, policy);
+        if (!isKnownType(incoming.itemType)) {
+            receipt.failed++;
+            receipt.lines.push({id: incoming.id, title: incoming.title, action: "new", ok: false, error: "unknown item type"});
+            continue;
+        }
+        const decision = classifyConflict(incoming.id, existingIds.has(incoming.id), policy);
         try {
             if (decision.kind === "skip") {
                 receipt.skipped++;
                 receipt.lines.push({id: incoming.id, title: incoming.title, action: "skip", ok: true});
                 continue;
             }
-            const targetId = decision.kind === "rename" && decision.newId ? decision.newId : incoming.id;
+            let targetId = decision.kind === "rename" && decision.newId ? decision.newId : incoming.id;
+            let renameAttempts = 0;
+            while (decision.kind === "rename" && existingIds.has(targetId) && renameAttempts < 8) {
+                targetId = classifyConflict(incoming.id, true, "rename").newId ?? targetId;
+                renameAttempts++;
+            }
+            if (decision.kind === "rename" && existingIds.has(targetId)) {
+                receipt.failed++;
+                receipt.lines.push({id: incoming.id, title: incoming.title, action: "rename", ok: false, error: "unable to allocate unique id"});
+                continue;
+            }
             const applied = decision.kind === "overwrite"
                 ? await applyOverwriteImport(library, incoming, targetId)
                 : await applyImportedItem(library, incoming, targetId);
@@ -82,6 +100,7 @@ export async function importBundle(library: LibraryService, parsed: ParsedImport
             if (decision.kind === "overwrite") receipt.overwritten++;
             else if (decision.kind === "rename") receipt.renamed++;
             else receipt.created++;
+            existingIds.add(targetId);
         } catch (err) {
             receipt.failed++;
             receipt.lines.push({id: incoming.id, title: incoming.title, action: "skip", ok: false, error: (err as Error).message});

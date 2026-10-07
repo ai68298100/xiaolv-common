@@ -560,6 +560,7 @@ export class CommonSearchDialog {
         let truncated = false;
         let loading = false;
         let loadError: string | undefined;
+        let directError = "";
         try {
             const text = query.text.trim();
             if (text.startsWith("?") && text.length > 1) {
@@ -573,7 +574,8 @@ export class CommonSearchDialog {
                 } else {
                     this.results = [];
                     this.aiResults = false;
-                    if (status) status.textContent = aiResult.message;
+                    // 保留服务层的诚实失败原因；后面的空态计算不应覆盖它。
+                    directError = aiResult.message;
                 }
                 if (aiBanner) aiBanner.style.display = this.aiResults && this.results.length ? "" : "none";
                 if (aiBanner && this.aiResults) aiBanner.textContent = `✦ ${this.deps.t("aiFound")} · ${this.results.length}`;
@@ -600,7 +602,9 @@ export class CommonSearchDialog {
         this.activeProvider = -1;
         if (status) {
             this.emptyMessage = "";
-            if (this.results.length) {
+            if (directError) {
+                status.textContent = directError;
+            } else if (this.results.length) {
                 status.textContent = "";
             } else if (loadError) {
                 status.textContent = this.deps.t("kernelError", loadError);
@@ -681,7 +685,8 @@ export class CommonSearchDialog {
             const favs: SearchEntry[] = [];
             const rest: SearchEntry[] = [];
             for (const e of this.results) {
-                if (e && this.deps.isFavorite(e.id)) favs.push(e);
+                // 只有手动排序才把收藏单独置顶；其他排序仍把收藏放回分类桶。
+                if (isManual && e && this.deps.isFavorite(e.id)) favs.push(e);
                 else rest.push(e);
             }
             const byCat = new Map<string, SearchEntry[]>();
@@ -815,6 +820,8 @@ export class CommonSearchDialog {
         if (this.providerRows.length > 0) {
             const header = document.createElement("div");
             header.className = "xlc-provider-header";
+            header.dataset.xlcHead = "1";
+            header.setAttribute("aria-hidden", "true");
             header.textContent = "✦ " + this.deps.t("providerSection") + " · " + this.providerRows.length;
             list.appendChild(header);
             for (const row of this.providerRows) {
@@ -851,6 +858,8 @@ export class CommonSearchDialog {
     }
 
     private async showProviderMenu(row: ProviderRow, anchor: HTMLElement): Promise<void> {
+        this.menuDismiss?.();
+        this.menuDismiss = null;
         const menu = document.createElement("div");
         menu.className = "xlc-menu";
         menu.setAttribute("role", "menu");
@@ -876,9 +885,15 @@ export class CommonSearchDialog {
         const dismiss = (e: Event) => {
             if (!menu.contains(e.target as Node)) {
                 menu.remove();
+                if (this.menuDismiss === dismissMenu) this.menuDismiss = null;
                 document.removeEventListener("pointerdown", dismiss, true);
             }
         };
+        const dismissMenu = (): void => {
+            menu.remove();
+            document.removeEventListener("pointerdown", dismiss, true);
+        };
+        this.menuDismiss = dismissMenu;
         document.addEventListener("pointerdown", dismiss, true);
     }
 
@@ -1004,6 +1019,7 @@ export class CommonSearchDialog {
         const id = forceId ?? entry?.id ?? null;
         if (!id || id === this.lastPreviewId) return;
         const seq = ++this.previewSeq;
+        this.lastPreviewId = id;
         if (paneTitle) paneTitle.textContent = entry?.title ?? "";
         if (paneAi) paneAi.style.display = this.aiResults ? "" : "none";
         paintUsageBadge(entry);
@@ -1091,6 +1107,8 @@ export class CommonSearchDialog {
     }
 
     private async showActionMenu(entry: SearchEntry): Promise<void> {
+        this.menuDismiss?.();
+        this.menuDismiss = null;
         const menu = document.createElement("div");
         menu.className = "xlc-menu";
         menu.setAttribute("role", "menu");

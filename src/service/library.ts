@@ -17,6 +17,8 @@ import {
     ISourceRef,
     ItemType,
     isBlockId,
+    isSafeHttpUrl,
+    isSourceType,
     newLogicalId,
     normalizeCommonItem,
 } from "../model/item";
@@ -96,11 +98,19 @@ export interface SourceHealth {
     assetMissing: boolean;
 }
 
+export interface LibraryServiceOptions {
+    /** 二进制资源探针。/api/file/getFile 不是 fetchSyncPost 信封端点，生产环境必须注入同源 fetch 探针。 */
+    probeAsset?: (path: string) => Promise<boolean>;
+}
+
 export class LibraryService {
     private config: LibraryConfig | null = null;
     private index: IndexBuildResult | null = null;
+    private readonly options: LibraryServiceOptions;
 
-    constructor(private readonly kernel: IKernelClient) {}
+    constructor(private readonly kernel: IKernelClient, options: LibraryServiceOptions = {}) {
+        this.options = options;
+    }
 
     getConfig(): LibraryConfig | null {
         return this.config ? {...this.config} : null;
@@ -333,13 +343,21 @@ export class LibraryService {
                     truncated = true;
                     break outer;
                 }
+                let kramdown = "";
+                try {
+                    const body = parseKramdown(await this.kernel.request("getBlockKramdown", {id: child.id}));
+                    kramdown = body?.kramdown ?? "";
+                } catch (err) {
+                    // 属性仍可用于展示；正文失败要进入诊断，而不是伪造完整摘要。
+                    errors.push(`block ${child.id}: ${(err as Error).message}`);
+                }
                 const item = normalizeCommonItem({
                     blockId: child.id,
                     libraryDocId: docIds[d],
                     attrs,
                     blockType: child.type,
                     subtype: child.subtype,
-                    kramdown: "",
+                    kramdown,
                 });
                 if (!item) continue;
                 // 拼音注解（仅当适配器具备首字母能力；noop 适配器零开销零字段）
@@ -456,14 +474,17 @@ export class LibraryService {
             if (item.itemType === "image" || item.itemType === "asset") {
                 const kramdown = await this.getItemKramdown(item);
                 const path = kramdown.ok ? (kramdown.data.match(/\]\((assets\/[^)\s]+)[^)]*\)/)?.[1] ?? "") : "";
-                if (path) {
+                if (!path) health.assetMissing = true;
+                else if (this.options.probeAsset) {
                     try {
-                        await this.kernel.request("getFile", {path});
+                        health.assetMissing = !(await this.options.probeAsset(path));
                     } catch {
                         health.assetMissing = true;
                     }
                 } else {
-                    health.assetMissing = true;
+                    // 没有注入二进制探针时不能把信封请求当作资源存在性证据。
+                    // 保留 unknown 为 false，调用方不会伪造“资源缺失”；生产装配应注入 probeAsset。
+                    health.assetMissing = false;
                 }
             }
             return ok(health);
@@ -475,7 +496,7 @@ export class LibraryService {
     // ---- CRUD ----
 
     async createItem(input: NewItemInput, libraryDocId?: string): Promise<Receipt<{item: CommonItem}>> {
-        const targetDoc = libraryDocId ?? this.config?.containerDocIds[0];
+        const targetDoc = libraryDocId ?? await this.resolveWriteDoc();
         if (!targetDoc || !isBlockId(targetDoc)) return fail("invalid-input", "no library doc");
         const now = Date.now();
         let logicalId = input.logicalId ?? newLogicalId(now);
@@ -494,10 +515,14 @@ export class LibraryService {
         if (input.alias) attrs[ATTR.alias] = input.alias.slice(0, LIMITS.alias);
         if (input.tags?.length) attrs[ATTR.tags] = input.tags.slice(0, LIMITS.tags).join(",");
         if (input.category) attrs[ATTR.category] = input.category.slice(0, LIMITS.category);
-        if (input.url) attrs[ATTR.url] = input.url.slice(0, 2048);
+        if (input.url) {
+            if (!isSafeHttpUrl(input.url)) return fail("invalid-input", "url must use http or https");
+            attrs[ATTR.url] = input.url.trim().slice(0, 2048);
+        }
         if (input.targetBlockId && isBlockId(input.targetBlockId)) attrs[ATTR.target] = input.targetBlockId;
         if (input.source?.sourceDocId && isBlockId(input.source.sourceDocId)) attrs[ATTR.srcDoc] = input.source.sourceDocId;
         if (input.source?.sourceBlockId && isBlockId(input.source.sourceBlockId)) attrs[ATTR.srcBlock] = input.source.sourceBlockId;
+        if (input.source?.sourceType && isSourceType(input.source.sourceType)) attrs[ATTR.srcType] = input.source.sourceType;
         // ask 变量数徽标（写入期快照；code 条目不处理变量，恒 0）
         const varCount = input.itemType === "code" ? 0 : countAskFields(input.markdown);
         if (varCount > 0) attrs[ATTR.vars] = String(Math.min(varCount, LIMITS.maxAskFields));
@@ -539,6 +564,24 @@ export class LibraryService {
         return ok({item});
     }
 
+    /** doc/tree 直接使用容器根；notebook 模式选择笔记本根下第一个文档作为写入父块。 */
+    private async resolveWriteDoc(): Promise<string | undefined> {
+        const config = this.config;
+        if (!config) return undefined;
+        if (config.mode !== "notebook") return config.containerDocIds[0];
+        for (const notebookId of config.notebookIds.slice(0, 16)) {
+            try {
+                const data = await this.kernel.request<{files?: unknown}>("listDocsByPath", {notebook: notebookId, path: "/"});
+                const files = Array.isArray(data?.files) ? data.files : [];
+                const first = files.find((f) => typeof (f as {id?: unknown})?.id === "string" && isBlockId((f as {id: string}).id));
+                if (first && typeof (first as {id?: unknown}).id === "string") return (first as {id: string}).id;
+            } catch {
+                // 尝试下一个配置的笔记本；最终返回明确 invalid-input 回执。
+            }
+        }
+        return undefined;
+    }
+
     async updateItem(itemId: string, patch: Partial<Pick<NewItemInput, "title" | "alias" | "tags" | "category" | "markdown" | "url" | "targetBlockId">>): Promise<Receipt<{item: CommonItem}>> {
         // 注：不含 itemType——类型变化需删旧建新（见 applyOverwriteImport），原地改类型会语义错位
         const got = await this.getItem(itemId);
@@ -551,14 +594,26 @@ export class LibraryService {
         if (patch.alias !== undefined) attrs[ATTR.alias] = patch.alias.slice(0, LIMITS.alias);
         if (patch.tags !== undefined) attrs[ATTR.tags] = patch.tags.slice(0, LIMITS.tags).join(",");
         if (patch.category !== undefined) attrs[ATTR.category] = patch.category.slice(0, LIMITS.category);
-        if (patch.url !== undefined) attrs[ATTR.url] = patch.url.slice(0, 2048);
-        if (patch.targetBlockId !== undefined && isBlockId(patch.targetBlockId)) attrs[ATTR.target] = patch.targetBlockId;
+        if (patch.url !== undefined) {
+            if (patch.url && !isSafeHttpUrl(patch.url)) return fail("invalid-input", "url must use http or https");
+            attrs[ATTR.url] = patch.url.trim().slice(0, 2048);
+        }
+        if (patch.targetBlockId !== undefined) {
+            if (patch.targetBlockId && !isBlockId(patch.targetBlockId)) return fail("invalid-input", "targetBlockId invalid");
+            attrs[ATTR.target] = patch.targetBlockId;
+        }
         // 内容变更时重算 ask 变量数徽标（code 恒 0；未改内容不写）
         if (typeof patch.markdown === "string" && patch.markdown) {
             const varCount = item.itemType === "code" ? 0 : countAskFields(patch.markdown);
-            if (varCount > 0) attrs[ATTR.vars] = String(Math.min(varCount, LIMITS.maxAskFields));
+            attrs[ATTR.vars] = varCount > 0 ? String(Math.min(varCount, LIMITS.maxAskFields)) : "";
         }
+        let oldAttrs: Record<string, string> | null = null;
+        let oldMarkdown: string | undefined;
         try {
+            oldAttrs = parseAttrs(await this.kernel.request("getBlockAttrs", {id: item.blockId}));
+            if (typeof patch.markdown === "string" && patch.markdown) {
+                oldMarkdown = parseKramdown(await this.kernel.request("getBlockKramdown", {id: item.blockId}))?.kramdown;
+            }
             await this.kernel.request("setBlockAttrs", {id: item.blockId, attrs});
             if (typeof patch.markdown === "string" && patch.markdown) {
                 await this.kernel.request("updateBlock", {
@@ -568,6 +623,15 @@ export class LibraryService {
                 });
             }
         } catch (err) {
+            // updateBlock 失败时恢复属性和正文，避免出现“新元数据 + 旧正文”的半更新状态。
+            if (oldAttrs) {
+                try { await this.kernel.request("setBlockAttrs", {id: item.blockId, attrs: oldAttrs}); } catch { /* best effort */ }
+            }
+            if (oldMarkdown !== undefined) {
+                try {
+                    await this.kernel.request("updateBlock", {data: oldMarkdown, dataType: "markdown", id: item.blockId});
+                } catch { /* best effort */ }
+            }
             return toFailureReceipt(err);
         }
         this.index = null;

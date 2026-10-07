@@ -76,3 +76,47 @@ test("修复回归：overwrite 导入经 importer 走 updateBlock 更新既有�
     const idx = await service.reindex();
     assert.equal(idx.entries.filter((e) => e.id === "xlc-dup0000001").length, 1);
 });
+
+test("导入冲突：同批两个新 ID 均按一次快照判定为 new", async () => {
+    const calls = [];
+    const blocks = new Map();
+    let sequence = 0;
+    const kernel = {
+        request(endpoint, payload = {}) {
+            calls.push({endpoint, payload});
+            if (endpoint === "getChildBlocks") {
+                return Promise.resolve(Array.from(blocks.keys()).map((id) => ({id, type: "p"})));
+            }
+            if (endpoint === "batchGetBlockAttrs") {
+                return Promise.resolve(Object.fromEntries((payload.ids ?? []).map((id) => [id, blocks.get(id) ?? {}])));
+            }
+            if (endpoint === "appendBlock") {
+                sequence++;
+                const blockId = `202401011200${String(sequence).padStart(2, "0")}-newbbbb`;
+                blocks.set(blockId, {});
+                return Promise.resolve([{doOperations: [{id: blockId}]}]);
+            }
+            if (endpoint === "setBlockAttrs") {
+                blocks.set(payload.id, {...(blocks.get(payload.id) ?? {}), ...payload.attrs});
+                return Promise.resolve(null);
+            }
+            if (endpoint === "getBlockAttrs") return Promise.resolve(blocks.get(payload.id) ?? {});
+            if (endpoint === "getBlockKramdown") return Promise.resolve({kramdown: "正文"});
+            return Promise.resolve(null);
+        },
+    };
+    const library = makeService(kernel);
+    const {importBundle} = require("./.build/entry.cjs").importer;
+    const parsed = {
+        schemaVersion: 1,
+        unknownTopFields: [],
+        items: [
+            {id: "xlc-batchnew001", itemType: "text", title: "一", alias: "", tags: [], category: "", kramdown: "一", source: {sourceDocId: "", sourceBlockId: "", sourceType: "manual"}, url: "", targetBlockId: "", createdAt: 0, updatedAt: 0},
+            {id: "xlc-batchnew002", itemType: "text", title: "二", alias: "", tags: [], category: "", kramdown: "二", source: {sourceDocId: "", sourceBlockId: "", sourceType: "manual"}, url: "", targetBlockId: "", createdAt: 0, updatedAt: 0},
+        ],
+    };
+    const receipt = await importBundle(library, parsed, "skip");
+    assert.equal(receipt.created, 2);
+    assert.equal(receipt.failed, 0);
+    assert.equal(calls.filter((call) => call.endpoint === "appendBlock").length, 2);
+});

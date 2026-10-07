@@ -5,6 +5,7 @@ import {ExportedItem, ImportReceipt, ParsedImport} from "../model/transfer";
 import {LIMITS} from "../constants";
 import {LibraryService} from "./library";
 import {importBundle as importJsonBundleCore} from "./importer";
+import {isItemType, isSafeHttpUrl} from "../model/item";
 const ITEM_COMMENT_START = "<!-- xlc-item";
 const ITEM_COMMENT_END = "-->";
 const PACK_COMMENT_START = "<!-- xlc-pack";
@@ -47,6 +48,7 @@ function parsePackManifest(md: string, firstItemAt: number): {name: string; vars
 export function parseMarkdownPack(md: string): MarkdownPackParseResult {
     const items: ExportedItem[] = [];
     const issues: Array<{index: number; reason: string}> = [];
+    const seenIds = new Set<string>();
     if (!md || !md.includes(ITEM_COMMENT_START)) return {items, issues};
     const firstItemAt = md.indexOf(ITEM_COMMENT_START);
     const pack = parsePackManifest(md, firstItemAt);
@@ -96,7 +98,20 @@ export function parseMarkdownPack(md: string): MarkdownPackParseResult {
             issues.push({index, reason: "invalid-id"});
             return;
         }
+        if (seenIds.has(id)) {
+            issues.push({index, reason: "duplicate-id"});
+            return;
+        }
         const itemType = fields.get("type") ?? "text";
+        if (!isItemType(itemType)) {
+            issues.push({index, reason: "invalid-item-type"});
+            return;
+        }
+        const url = fields.get("url") ?? "";
+        if (url && !isSafeHttpUrl(url)) {
+            issues.push({index, reason: "invalid-url"});
+            return;
+        }
         // 标题：元数据注释前的最后一个 ## 行（导出格式为 `## {title}` 紧邻注释前）
         let title = "";
         const before = chunk.slice(0, chunk.indexOf(ITEM_COMMENT_START));
@@ -108,6 +123,7 @@ export function parseMarkdownPack(md: string): MarkdownPackParseResult {
         if (!title && fields.get("alias")) title = fields.get("alias") ?? "";
         // 正文：注释结束后去掉紧跟的空行
         const body = chunk.slice(endIdx + ITEM_COMMENT_END.length).replace(/^\s*\n/, "").replace(/\n\s*$/, "");
+        seenIds.add(id);
         items.push({
             id,
             itemType,
@@ -121,7 +137,7 @@ export function parseMarkdownPack(md: string): MarkdownPackParseResult {
                 sourceBlockId: fields.get("source-block") ?? "",
                 sourceType: fields.get("source-type") ?? "external",
             },
-            url: fields.get("url") ?? "",
+            url,
             targetBlockId: fields.get("target") ?? "",
             createdAt: 0,
             updatedAt: Date.now(),
@@ -155,6 +171,9 @@ export function renderItemMetadata(item: ExportedItem): string {
     if (item.category) lines.push(`category: ${item.category}`);
     if (item.source.sourceDocId) lines.push(`source-doc: ${item.source.sourceDocId}`);
     if (item.source.sourceBlockId) lines.push(`source-block: ${item.source.sourceBlockId}`);
+    if (item.source.sourceType) lines.push(`source-type: ${item.source.sourceType}`);
+    if (item.url) lines.push(`url: ${item.url}`);
+    if (item.targetBlockId) lines.push(`target: ${item.targetBlockId}`);
     lines.push(ITEM_COMMENT_END);
     return lines.join("\n");
 }

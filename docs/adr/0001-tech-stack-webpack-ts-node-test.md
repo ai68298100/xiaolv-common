@@ -8,7 +8,7 @@
 
 ## 决策
 
-采用与「小驴雷切」「小驴打卡」一致的栈：TypeScript + webpack + SCSS + pnpm，`siyuan` 官方 npm 包 1.2.8，测试用 Node 内置 `node:test`（无第三方断言/运行时依赖）。
+采用与「小驴雷切」「小驴打卡」一致的栈：TypeScript + webpack + SCSS + pnpm，`siyuan` 官方 npm 包 1.2.9，测试用 Node 内置 `node:test`（无第三方断言/运行时依赖）。
 
 ## 理由
 

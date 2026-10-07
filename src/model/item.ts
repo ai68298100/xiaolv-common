@@ -16,8 +16,29 @@ export const ITEM_TYPES: readonly ItemType[] = [
     "text", "markdown", "url", "code", "image", "asset", "blockref", "structure",
 ];
 
+export const SOURCE_TYPES: readonly ISourceRef["sourceType"][] = [
+    "", "selection", "block", "doc-fragment", "clipboard", "manual", "resource", "external",
+];
+
 export function isItemType(v: unknown): v is ItemType {
     return typeof v === "string" && (ITEM_TYPES as readonly string[]).includes(v);
+}
+
+/** 外部链接只允许 http/https，所有写入、插入和打开路径共用此守卫。 */
+export function isSafeHttpUrl(v: unknown): v is string {
+    if (typeof v !== "string") return false;
+    const value = v.trim();
+    if (!/^https?:\/\//i.test(value)) return false;
+    try {
+        const parsed = new URL(value);
+        return (parsed.protocol === "http:" || parsed.protocol === "https:") && Boolean(parsed.hostname);
+    } catch {
+        return false;
+    }
+}
+
+export function isSourceType(v: unknown): v is ISourceRef["sourceType"] {
+    return typeof v === "string" && (SOURCE_TYPES as readonly string[]).includes(v);
 }
 
 // 来源引用（条目必须携带；可缺失 = 用户手工新建无来源）
@@ -143,10 +164,13 @@ export function normalizeCommonItem(input: {
     const srcBlock = typeof attrs[ATTR.srcBlock] === "string" ? (attrs[ATTR.srcBlock] as string) : "";
     const varCountRaw = Number(attrs[ATTR.vars]);
     const varCount = Number.isInteger(varCountRaw) && varCountRaw > 0 ? Math.min(varCountRaw, LIMITS.maxAskFields) : 0;
+    const declaredSourceType = isSourceType(attrs[ATTR.srcType])
+        ? (attrs[ATTR.srcType] as ISourceRef["sourceType"])
+        : "";
     const source: ISourceRef = {
         sourceDocId: isBlockId(srcDoc) ? srcDoc : "",
         sourceBlockId: isBlockId(srcBlock) ? srcBlock : "",
-        sourceType: srcDoc || srcBlock ? "block" : "manual",
+        sourceType: declaredSourceType || (srcDoc || srcBlock ? "block" : "manual"),
     };
     return {
         id: logicalIdRaw,
@@ -217,6 +241,7 @@ export function normalizeUnknownItem(raw: unknown): CommonItem | null {
             [ATTR.category]: obj.category,
             [ATTR.srcDoc]: (obj.source as {sourceDocId?: unknown})?.sourceDocId,
             [ATTR.srcBlock]: (obj.source as {sourceBlockId?: unknown})?.sourceBlockId,
+            [ATTR.srcType]: (obj.source as {sourceType?: unknown})?.sourceType,
             [ATTR.vars]: obj.varCount,
             [ATTR.url]: obj.url,
             [ATTR.target]: obj.targetBlockId,

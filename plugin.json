@@ -2,7 +2,7 @@
   "name": "xiaolv-common",
   "author": "ai68298100",
   "url": "https://github.com/ai68298100/xiaolv-common",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "minAppVersion": "3.8.0",
   "disabledInPublish": false,
   "backends": [

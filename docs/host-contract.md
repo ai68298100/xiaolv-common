@@ -1,6 +1,6 @@
 # 宿主合同与能力矩阵（小驴常用）
 
-> 证据基线：siyuan@1.2.8 类型（`node_modules/siyuan`）+ siyuan-note/siyuan 源码（本机 `D:\AI\tmp-siyuan-source`，kernel/api/router.go 等行号标注）+ 真实内核 3.8.6 只读探测（2026-10-06）。写路径 E2E 未执行（B-001），下表「验证」列如实区分。
+> 证据基线：siyuan@1.2.9 类型（`node_modules/siyuan`）+ siyuan-note/siyuan 源码（本机 `D:\AI\tmp-siyuan-source`，kernel/api/router.go 等行号标注）+ 真实内核 3.8.6 只读探测（2026-10-06）。写路径 E2E 未执行（B-001），下表「验证」列如实区分。
 
 ## 一、内核 HTTP 端点（全部走官方 fetchSyncPost 传输 + 白名单）
 
@@ -23,7 +23,7 @@
 
 写端点均带 `CheckAdminRole + CheckReadonly`（只读模式/访客下会失败→回执 kernel-error，UI 明示）。
 
-## 二、客户端 API（siyuan@1.2.8 官方导出）
+## 二、客户端 API（siyuan@1.2.9 官方导出）
 
 | API | 用途 | 证据 | 验证 |
 | --- | --- | --- | --- |
@@ -48,6 +48,6 @@
 ## 四、运行时口径
 
 - 传输：官方 `fetchSyncPost`（自动端口/鉴权）；插件侧白名单 + 8s 超时 + `{code,msg,data}` 信封校验；缺失 syncPost 时构造即失败（防裸 fetch 绕过）。
-- 遍历上限：条目 2000 / 文档 200 / 遍历深度一层子文档；超出 `truncated=true` 明示。
+- 遍历上限：条目 2000 / 文档 200 / tree 模式根文档下最多展开 3 层子文档；超出 `truncated=true` 明示。
 - 失败语义：一切写操作带回执；属性写入失败回滚已插块；超时/断网/只读模式均可见错误，不静默。
 - DOM 边界（ADR 0003）：仅插件自建 UI、官方编辑器实例 API、选区 + `data-node-id`；不碰布局栈/页签内部结构/坐标猜测。

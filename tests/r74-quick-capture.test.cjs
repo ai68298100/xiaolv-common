@@ -50,7 +50,15 @@ test("快速捕获：新内容 → 类型推断入库（URL 识别）+ 保存回
     await dialog.quickCaptureFromClipboard();
     assert.strictEqual(calls.created?.itemType, "url");
     assert.strictEqual(calls.created?.markdown, "https://example.com/page");
+    assert.strictEqual(calls.created?.title, "https://example.com/page", "首行应作为快速捕获标题");
     assert.ok(calls.notified.some((n) => n.kind === "info" && n.message.includes("已保存")));
+});
+
+test("快速捕获：多行文本使用第一个非空行作为标题", async () => {
+    const {dialog, calls} = makeCapture({readClipboardText: async () => "\n  第一行标题  \n正文"});
+    await dialog.quickCaptureFromClipboard();
+    assert.equal(calls.created?.title, "第一行标题");
+    assert.equal(calls.created?.markdown, "第一行标题  \n正文");
 });
 
 test("快速捕获：同文已存在 → 诚实提示不重复写入（不弹确认打断）", async () => {

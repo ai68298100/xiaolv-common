@@ -1,7 +1,7 @@
 // xiaolv-common/v1 协议模型：跨插件联动的稳定类型与能力协商。
 // 原则（需求六.8）：最小稳定接口；未知字段保留透传；未知能力忽略；版本不匹配明确拒绝。
 import {PROTOCOL_NAME, PROTOCOL_VERSION} from "../constants";
-import {CommonItem, CommonItemRef, ItemType, isItemType} from "./item";
+import {CommonItem, CommonItemRef, ItemType, isItemType, isSafeHttpUrl} from "./item";
 import {SearchQuery} from "./search";
 import {InsertPlan} from "./actions";
 import {ProviderRecord} from "./storage";
@@ -51,7 +51,7 @@ export interface ProtocolEnvelope {
 /** 跨插件调用结果：不抛异常，用 ok=false + reason 表达失败 */
 export interface ActionResult<T = void> extends ProtocolEnvelope {
     ok: boolean;
-    reason?: "not-found" | "invalid-input" | "kernel-error" | "timeout" | "source-missing" | "unsupported" | "protocol-mismatch";
+    reason?: "not-found" | "invalid-input" | "kernel-error" | "timeout" | "source-missing" | "doc-missing" | "asset-missing" | "unsupported" | "protocol-mismatch";
     message?: string;
     data?: T;
 }
@@ -156,6 +156,8 @@ export function normalizeSaveInput(raw: unknown): {ok: true; input: SaveInput} |
         return {ok: false, reason: "markdown required (<=100000 chars)"};
     }
     const str = (v: unknown, cap: number): string | undefined => (typeof v === "string" ? v.slice(0, cap) : undefined);
+    const url = str(obj.url, 2048);
+    if (url && !isSafeHttpUrl(url)) return {ok: false, reason: "url invalid"};
     const srcRaw = (obj.source ?? {}) as Record<string, unknown>;
     return {
         ok: true,
@@ -166,7 +168,7 @@ export function normalizeSaveInput(raw: unknown): {ok: true; input: SaveInput} |
             alias: str(obj.alias, 256),
             tags: Array.isArray(obj.tags) ? obj.tags.filter((t): t is string => typeof t === "string").slice(0, 32) : undefined,
             category: str(obj.category, 64),
-            url: str(obj.url, 2048),
+            url,
             targetBlockId: str(obj.targetBlockId, 32),
             source: {
                 sourceDocId: str(srcRaw.sourceDocId, 32),

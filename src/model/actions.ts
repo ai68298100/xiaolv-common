@@ -1,7 +1,7 @@
 // 动作计划：纯函数层。给定条目 + 已解析内容 + 动作意图 + 端侧上下文 → 输出InsertPlan。
 // 不触碰宿主，全部可单测；宿主执行在 service/commands.ts。
 import {LIMITS} from "../constants";
-import {BLOCK_ID_RE, CommonItem} from "./item";
+import {BLOCK_ID_RE, CommonItem, isSafeHttpUrl} from "./item";
 
 export type InsertMode =
     | "insert"          // 插入到当前文档光标处
@@ -124,7 +124,7 @@ export function planAction(item: CommonItem, mode: InsertMode, ctx: ActionContex
         }
         case "url": {
             const url = item.url || extractFirstUrl(ctx.content.kramdown);
-            if (!url) {
+            if (!url || !isSafeHttpUrl(url)) {
                 return {...base, downgraded: true, downgradeReason: "type-unsupported", warnings: ["url-empty"]};
             }
             if (mode === "open") return {...base, open: {kind: "url", url}};
@@ -214,7 +214,7 @@ export function planOpenSource(
 ): {target?: OpenTarget; failure?: "source-missing" | "doc-missing" | "asset-missing"} {
     if (item.itemType === "url") {
         const url = item.url || extractFirstUrl(resolved.kramdown);
-        return url && /^https?:\/\//i.test(url) ? {target: {kind: "url", url}} : {failure: "source-missing"};
+        return url && isSafeHttpUrl(url) ? {target: {kind: "url", url}} : {failure: "source-missing"};
     }
     if (item.itemType === "image" || item.itemType === "asset") {
         const assetPath = extractAssetPath(resolved.kramdown);
@@ -226,6 +226,7 @@ export function planOpenSource(
         return {target: {kind: "block", docId: item.source.sourceDocId, blockId: item.source.sourceBlockId}};
     }
     if (item.source.sourceDocId) {
+        if (resolved.sourceMissing) return {failure: "source-missing"};
         return {target: {kind: "doc", docId: item.source.sourceDocId}};
     }
     return {target: {kind: "doc", docId: item.libraryDocId}};

@@ -15,6 +15,7 @@ export const ATTR = {
     category: "custom-xlc-category",
     srcDoc: "custom-xlc-src-doc",
     srcBlock: "custom-xlc-src-block",
+    srcType: "custom-xlc-src-type",
     vars: "custom-xlc-vars",
     url: "custom-xlc-url",
     target: "custom-xlc-target",

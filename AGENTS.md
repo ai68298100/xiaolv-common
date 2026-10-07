@@ -17,6 +17,6 @@
 
 - 思源笔记常用内容复用插件「小驴常用」，本仓库为独立仓库。
 - 构建：`pnpm run build` → dist/；类型检查：`pnpm run check`；测试：`pnpm test`。
-- 技术栈：TypeScript + webpack + SCSS，`siyuan` 官方 npm 包 1.2.8，Node ≥ 18，node:test 测试。
+- 技术栈：TypeScript + webpack + SCSS，`siyuan` 官方 npm 包 1.2.9，Node ≥ 18，node:test 测试。
 - 数据真源：思源块。条目 = 库文档中的真实块；元数据走 `custom-xlc-*` 块属性；插件侧车（loadData）只存收藏/最近/UI 偏好/provider 注册。
 - 禁止：`/api/query/sql` 及任意 SQL 查询作为核心依赖；私有 DOM 依赖；伪造宿主行为；未经用户批准推送集市。

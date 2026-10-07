@@ -1,6 +1,6 @@
 // 导入导出 v1：JSON 捆绑包。导入前校验 → 冲突分类 → 逐项回执；失败不落库（不覆盖原始数据）。
 import {EXPORT_SCHEMA_VERSION, LIMITS, PROTOCOL_NAME} from "../constants";
-import {CommonItem, newLogicalId} from "./item";
+import {CommonItem, isItemType, isLogicalId, isSafeHttpUrl, newLogicalId} from "./item";
 
 export interface ExportBundle {
     protocol: typeof PROTOCOL_NAME;
@@ -102,12 +102,18 @@ export function validateImport(jsonText: string): ImportValidation {
     const knownTop = ["protocol", "schemaVersion", "exportedAt", "items"];
     const unknownTopFields = Object.keys(record).filter((k) => !knownTop.includes(k));
     const items: ExportedItem[] = [];
+    const seenIds = new Set<string>();
     record.items.forEach((raw, index) => {
         const item = normalizeExportedItem(raw);
         if (!item) {
             issues.push({index, reason: "invalid-item"});
             return;
         }
+        if (seenIds.has(item.id)) {
+            issues.push({index, reason: "duplicate-id"});
+            return;
+        }
+        seenIds.add(item.id);
         items.push(item);
     });
     return {ok: true, parsed: {schemaVersion: EXPORT_SCHEMA_VERSION, items, unknownTopFields}, issues};
@@ -116,9 +122,9 @@ export function validateImport(jsonText: string): ImportValidation {
 function normalizeExportedItem(raw: unknown): ExportedItem | null {
     if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
     const obj = raw as Record<string, unknown>;
-    if (typeof obj.id !== "string" || !obj.id.startsWith("xlc-") || obj.id.length > 64) return null;
+    if (!isLogicalId(obj.id)) return null;
     if (typeof obj.kramdown !== "string" || obj.kramdown.length > LIMITS.contentChars) return null;
-    if (typeof obj.itemType !== "string" || obj.itemType.length > 24) return null;
+    if (!isItemType(obj.itemType)) return null;
     const sourceRaw = (obj.source ?? {}) as Record<string, unknown>;
     const known = ["id", "itemType", "title", "alias", "tags", "category", "kramdown", "source", "url", "targetBlockId", "createdAt", "updatedAt"];
     const extensions: Record<string, unknown> = {};
@@ -127,6 +133,8 @@ function normalizeExportedItem(raw: unknown): ExportedItem | null {
     }
     const str = (v: unknown, cap: number): string => (typeof v === "string" ? v.slice(0, cap) : "");
     const tags = Array.isArray(obj.tags) ? obj.tags.filter((t): t is string => typeof t === "string").slice(0, LIMITS.tags) : [];
+    const url = str(obj.url, 2048);
+    if (url && !isSafeHttpUrl(url)) return null;
     return {
         id: obj.id,
         itemType: obj.itemType,
@@ -140,7 +148,7 @@ function normalizeExportedItem(raw: unknown): ExportedItem | null {
             sourceBlockId: str(sourceRaw.sourceBlockId, 32),
             sourceType: str(sourceRaw.sourceType, 24),
         },
-        url: str(obj.url, 2048),
+        url,
         targetBlockId: str(obj.targetBlockId, 32),
         createdAt: Number(obj.createdAt) || 0,
         updatedAt: Number(obj.updatedAt) || 0,

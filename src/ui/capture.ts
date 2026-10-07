@@ -1,7 +1,7 @@
 // 捕获流程：选区/当前块 → 新条目表单（类型推断 + 元数据一步完成）。
 // 剪贴板读取失败（权限/平台）诚实回执，保留手动输入。
 import {Dialog, confirm} from "siyuan";
-import {ItemType} from "../model/item";
+import {ItemType, isSafeHttpUrl} from "../model/item";
 import {NewItemInput} from "../service/library";
 import {buildVariableBar} from "./variable-form";
 
@@ -13,7 +13,7 @@ export function isBlockRefTarget(blockId: string): boolean {
 /** 链接目标分类：仅接受 http(s) 外链与 assets/ 资源；其余（siyuan:// 等）返回 null */
 export function classifyLinkTarget(href: string): {kind: "url" | "asset"; value: string} | null {
     const h = (href ?? "").trim();
-    if (/^https?:\/\//i.test(h)) return {kind: "url", value: h};
+    if (isSafeHttpUrl(h)) return {kind: "url", value: h};
     if (/^assets\/[^\s]+$/.test(h)) return {kind: "asset", value: h};
     return null;
 }
@@ -110,7 +110,12 @@ export class CaptureDialog {
             this.deps.notify("info", this.deps.t("quickCaptureDuplicate", dup.title));
             return;
         }
-        const created = await this.deps.createItem({itemType: inferTypeFromText(content), markdown: content});
+        const firstLine = content.split(/\r?\n/).map((line) => line.trim()).find(Boolean) ?? content;
+        const created = await this.deps.createItem({
+            itemType: inferTypeFromText(content),
+            markdown: content,
+            title: firstLine.slice(0, 512),
+        });
         if (created.ok) {
             this.deps.notify("info", this.deps.t("saved", created.message));
         } else {
@@ -194,11 +199,18 @@ export class CaptureDialog {
 
     openForm(defaultText: string, defaultType: ItemType, sourceBlockId: string | null, overrides?: {title?: string; docId?: string; targetBlockId?: string}): void {
         const t = this.deps.t;
+        let closed = false;
+        let saving = false;
+        let tidySeq = 0;
         const dialog = new Dialog({
             title: t("newItem"),
             content: "",
             width: "min(520px, 92vw)",
             height: "auto",
+            destroyCallback: () => {
+                closed = true;
+                ++tidySeq;
+            },
         });
         const body = dialog.element.querySelector(".b3-dialog__content");
         if (!body) return;
@@ -278,6 +290,7 @@ export class CaptureDialog {
         adoptBtn.className = "xlc-sugrow-adopt";
         let suggestions: {title?: string; alias?: string; tags?: string[]; category?: string} = {};
         const applySuggestions = (): void => {
+            if (closed || Object.keys(suggestions).length === 0) return;
             if (suggestions.title) (titleEl as HTMLInputElement).value = suggestions.title;
             if (suggestions.alias) (aliasEl as HTMLInputElement).value = suggestions.alias;
             if (suggestions.tags?.length) (tagsEl as HTMLInputElement).value = suggestions.tags.join(", ");
@@ -298,14 +311,19 @@ export class CaptureDialog {
                 tidyBtn.type = "button";
                 tidyBtn.textContent = "✦ " + t("aiTidy");
                 tidyBtn.addEventListener("click", () => {
+                    if (closed) return;
                     const value = (contentEl as HTMLTextAreaElement).value.trim();
                     if (!value) {
                         this.deps.notify("error", t("invalidItem"));
                         return;
                     }
+                    const request = ++tidySeq;
+                    tidyBtn.disabled = true;
                     tidyBtn.textContent = t("aiWorking");
                     void this.deps.aiTidy(value).then((result) => {
+                        if (closed || request !== tidySeq) return;
                         tidyBtn.textContent = "✦ " + t("aiTidy");
+                        tidyBtn.disabled = false;
                         if (!result.ok) {
                             this.deps.notify("error", result.message);
                             return;
@@ -331,7 +349,11 @@ export class CaptureDialog {
                             sugText.appendChild(tail);
                         }
                         sugrow.style.display = "";
-                        applySuggestions();
+                    }).catch((err: unknown) => {
+                        if (closed || request !== tidySeq) return;
+                        tidyBtn.textContent = "✦ " + t("aiTidy");
+                        tidyBtn.disabled = false;
+                        this.deps.notify("error", err instanceof Error ? err.message : t("aiTransport"));
                     });
                 });
                 contentLabel.appendChild(tidyBtn);
@@ -354,16 +376,22 @@ export class CaptureDialog {
             draftInput.placeholder = t("aiDraftDesc");
             draftWrap.appendChild(draftInput);
             draftBtn.addEventListener("click", () => {
+                if (closed) return;
                 const desc = draftInput.value.trim();
                 if (!desc) return;
                 draftBtn.textContent = t("aiWorking");
                 void this.deps.aiDraft(desc).then((result) => {
+                    if (closed) return;
                     draftBtn.textContent = "✦ " + t("aiDraftDesc");
                     if (!result.ok) {
                         this.deps.notify("error", result.message);
                         return;
                     }
                     (contentEl as HTMLTextAreaElement).value = result.text;
+                }).catch((err: unknown) => {
+                    if (closed) return;
+                    draftBtn.textContent = "✦ " + t("aiDraftDesc");
+                    this.deps.notify("error", err instanceof Error ? err.message : t("aiTransport"));
                 });
             });
             form.insertBefore(draftWrap, form.firstChild);
@@ -374,7 +402,11 @@ export class CaptureDialog {
         const cancelBtn = document.createElement("button");
         cancelBtn.className = "b3-button";
         cancelBtn.textContent = t("cancel");
-        cancelBtn.addEventListener("click", () => dialog.destroy());
+        cancelBtn.addEventListener("click", () => {
+            closed = true;
+            ++tidySeq;
+            dialog.destroy();
+        });
         const saveBtn = document.createElement("button");
         saveBtn.className = "b3-button xlc-btn-primary";
         saveBtn.textContent = t("save");
@@ -389,6 +421,7 @@ export class CaptureDialog {
         };
         [titleEl, aliasEl, tagsEl, categoryEl].forEach((el) => submitOnEnter(el as HTMLInputElement));
         saveBtn.addEventListener("click", () => {
+            if (closed || saving) return;
             const contentValue = (contentEl as HTMLTextAreaElement).value;
             if (!contentValue.trim()) {
                 this.deps.notify("error", t("invalidItem"));
@@ -407,6 +440,10 @@ export class CaptureDialog {
                 markdown = contentValue.trim();
             }
             const doSave = (): void => {
+                if (closed || saving) return;
+                saving = true;
+                saveBtn.disabled = true;
+                cancelBtn.disabled = true;
                 const docId = this.deps.currentDocId();
                 void this.deps.createItem({
                     itemType: type,
@@ -418,21 +455,28 @@ export class CaptureDialog {
                     targetBlockId: overrides?.targetBlockId,
                     source: docId ? {sourceDocId: docId, sourceBlockId: sourceBlockId ?? undefined, sourceType: overrides?.docId ? "doc-fragment" : sourceBlockId ? "selection" : "manual"} : undefined,
                 }).then((result) => {
+                    saving = false;
                     if (result.ok) {
                         this.deps.notify("info", t("saved", result.message));
+                        closed = true;
                         dialog.destroy();
                     } else {
+                        saveBtn.disabled = false;
+                        cancelBtn.disabled = false;
                         this.deps.notify("error", result.message);
                     }
                 });
             };
             // 去重防护：同文条目已存在 → 明确确认（不静默重复入库）
             void this.deps.findDuplicate(contentValue).then((dup) => {
+                if (closed || saving) return;
                 if (!dup) {
                     doSave();
                     return;
                 }
-                confirm("⚠️ " + t("duplicateTitle"), t("duplicateConfirm", dup.title), () => doSave());
+                confirm("⚠️ " + t("duplicateTitle"), t("duplicateConfirm", dup.title), () => {
+                    if (!closed) doSave();
+                });
             });
         });
         actions.appendChild(cancelBtn);
