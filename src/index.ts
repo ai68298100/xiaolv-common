@@ -624,7 +624,7 @@ export default class XiaolvCommonPlugin extends Plugin {
                 }
                 try {
                     const inserted = await this.library.appendToDoc(markdown, docId);
-                    if (inserted) this.notify("info", this.i18nFn()("insertToDocDone", hPath || docId));
+                    if (inserted) this.notify("info", this.i18nFn()("insertToDocDone", shortTitle(hPath || docId)));
                     return inserted;
                 } catch (err) {
                     this.notify("error", (err as Error).message);
@@ -725,7 +725,7 @@ export default class XiaolvCommonPlugin extends Plugin {
                 if (target?.docId) {
                     try {
                         const inserted = await this.library.appendToDoc(rendered, target.docId);
-                        if (inserted) this.notify("info", this.i18nFn()("insertToDocDone", target.hPath || target.docId));
+                        if (inserted) this.notify("info", this.i18nFn()("insertToDocDone", shortTitle(target.hPath || target.docId)));
                         return inserted;
                     } catch (err) {
                         this.notify("error", (err as Error).message);
