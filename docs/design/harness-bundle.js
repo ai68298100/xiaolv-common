@@ -3248,18 +3248,29 @@
       const btn = document.createElement("button");
       btn.className = "b3-button";
       btn.textContent = label;
-      btn.addEventListener("click", onClick);
+      if (onClick) btn.addEventListener("click", onClick);
       dataBtns.appendChild(btn);
       return btn;
     };
+    const withFlight = (btn, run) => {
+      btn.addEventListener("click", () => {
+        if (btn.disabled) return;
+        btn.disabled = true;
+        void Promise.resolve().then(run).catch(() => void 0).finally(() => {
+          btn.disabled = false;
+        });
+      });
+    };
     const reindexBtn = mkBtn(t("reindexBtn"), () => {
       reindexBtn.disabled = true;
+      reindexBtn.textContent = t("indexing");
       void ctx.library.reindex().then((idx) => {
         ctx.notify("info", idx.truncated ? t("reindexTruncated", String(LIMITS.maxItems)) : t("reindexDone", String(idx.entries.length)));
       }).catch((err) => {
         ctx.notify("error", t("kernelError", err.message));
       }).finally(() => {
         reindexBtn.disabled = false;
+        reindexBtn.textContent = t("reindexBtn");
       });
     });
     mkBtn(t("clearRecents"), () => {
@@ -3270,14 +3281,17 @@
       });
     });
     if (ctx.state.ai.enabled) {
-      mkBtn("\u2726 " + t("tagAuditBtn"), () => {
-        void runTagAudit(ctx).catch((err) => {
+      const auditBtn = mkBtn("\u2726 " + t("tagAuditBtn"));
+      withFlight(auditBtn, async () => {
+        await runTagAudit(ctx).catch((err) => {
           ctx.notify("error", t("kernelError", err instanceof Error ? err.message : String(err)));
         });
       });
     }
-    mkBtn(t("exportBtn"), () => {
-      void ctx.exportBundle().then((json) => {
+    const exportBtn = mkBtn(t("exportBtn"));
+    withFlight(exportBtn, async () => {
+      try {
+        const json = await ctx.exportBundle();
         const count = JSON.parse(json).items.length;
         const blob = new Blob([json], { type: "application/json" });
         const a = document.createElement("a");
@@ -3286,14 +3300,17 @@
         a.click();
         URL.revokeObjectURL(a.href);
         ctx.notify("info", t("exportDone", String(count)));
-      }).catch((err) => {
+      } catch (err) {
         ctx.notify("error", t("kernelError", err instanceof Error ? err.message : String(err)));
-      });
+      }
     });
-    mkBtn(t("packBtn"), () => {
-      void openPackExportDialog(ctx).catch((err) => {
+    const packBtn = mkBtn(t("packBtn"));
+    withFlight(packBtn, async () => {
+      try {
+        await openPackExportDialog(ctx);
+      } catch (err) {
         ctx.notify("error", t("kernelError", err instanceof Error ? err.message : String(err)));
-      });
+      }
     });
     const importBtn = mkBtn(t("importBtn"), () => {
       const fileInput = document.createElement("input");

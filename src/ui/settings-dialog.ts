@@ -893,16 +893,29 @@ function buildDataSection(ctx: SettingsUiContext, root: HTMLElement): void {
     dataBtns.style.display = "flex";
     dataBtns.style.gap = "8px";
     dataBtns.style.flexWrap = "wrap";
-    const mkBtn = (label: string, onClick: () => void): HTMLButtonElement => {
+    const mkBtn = (label: string, onClick?: () => void): HTMLButtonElement => {
         const btn = document.createElement("button");
         btn.className = "b3-button";
         btn.textContent = label;
-        btn.addEventListener("click", onClick);
+        if (onClick) btn.addEventListener("click", onClick);
         dataBtns.appendChild(btn);
         return btn;
     };
+    // 异步按钮飞行态（R121，与 R110 保存钮一致）：执行期间禁用防连击与无反馈等待；
+    // run 内部自带错误回执，外层仅兜底
+    const withFlight = (btn: HTMLButtonElement, run: () => Promise<unknown>): void => {
+        btn.addEventListener("click", () => {
+            if (btn.disabled) return;
+            btn.disabled = true;
+            void Promise.resolve()
+                .then(run)
+                .catch(() => undefined)
+                .finally(() => { btn.disabled = false; });
+        });
+    };
     const reindexBtn = mkBtn(t("reindexBtn"), () => {
         reindexBtn.disabled = true;
+        reindexBtn.textContent = t("indexing");
         void ctx.library.reindex().then((idx) => {
             ctx.notify("info", idx.truncated
                 ? t("reindexTruncated", String(LIMITS.maxItems))
@@ -911,6 +924,7 @@ function buildDataSection(ctx: SettingsUiContext, root: HTMLElement): void {
             ctx.notify("error", t("kernelError", (err as Error).message));
         }).finally(() => {
             reindexBtn.disabled = false;
+            reindexBtn.textContent = t("reindexBtn");
         });
     });
     mkBtn(t("clearRecents"), () => {
@@ -921,14 +935,17 @@ function buildDataSection(ctx: SettingsUiContext, root: HTMLElement): void {
         });
     });
     if (ctx.state.ai.enabled) {
-        mkBtn("✦ " + t("tagAuditBtn"), () => {
-            void runTagAudit(ctx).catch((err: unknown) => {
+        const auditBtn = mkBtn("✦ " + t("tagAuditBtn"));
+        withFlight(auditBtn, async () => {
+            await runTagAudit(ctx).catch((err: unknown) => {
                 ctx.notify("error", t("kernelError", err instanceof Error ? err.message : String(err)));
             });
         });
     }
-    mkBtn(t("exportBtn"), () => {
-        void ctx.exportBundle().then((json) => {
+    const exportBtn = mkBtn(t("exportBtn"));
+    withFlight(exportBtn, async () => {
+        try {
+            const json = await ctx.exportBundle();
             const count = (JSON.parse(json) as {items: unknown[]}).items.length;
             const blob = new Blob([json], {type: "application/json"});
             const a = document.createElement("a");
@@ -937,14 +954,17 @@ function buildDataSection(ctx: SettingsUiContext, root: HTMLElement): void {
             a.click();
             URL.revokeObjectURL(a.href);
             ctx.notify("info", t("exportDone", String(count)));
-        }).catch((err: unknown) => {
+        } catch (err) {
             ctx.notify("error", t("kernelError", err instanceof Error ? err.message : String(err)));
-        });
+        }
     });
-    mkBtn(t("packBtn"), () => {
-        void openPackExportDialog(ctx).catch((err: unknown) => {
+    const packBtn = mkBtn(t("packBtn"));
+    withFlight(packBtn, async () => {
+        try {
+            await openPackExportDialog(ctx);
+        } catch (err) {
             ctx.notify("error", t("kernelError", err instanceof Error ? err.message : String(err)));
-        });
+        }
     });
     const importBtn = mkBtn(t("importBtn"), () => {
         const fileInput = document.createElement("input");
