@@ -250,5 +250,6 @@
   "emptyLibrarySub": "从选区、剪贴板或右键菜单捕获常用内容；也可以直接新建一条",
   "updatedAtLabel": "更新于 %s",
   "duplicateTitle": "已存在同文条目",
-  "duplicateConfirm": "已存在「%s」，仍要保存吗？两条内容并存、互不影响。"
+  "duplicateConfirm": "已存在「%s」，仍要保存吗？两条内容并存、互不影响。",
+  "insertTargetBanner": "插入到：%s"
 }

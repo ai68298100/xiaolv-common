@@ -393,6 +393,14 @@ body.b3-theme-dark,
     background-color: var(--xlc-ai-tint);
   }
 
+  // 定向插入模式横幅（R116）：与 AI 横幅同族虚线，⤓ 图标区分；透明底弱化层级
+  .xlc-target-banner {
+    align-self: flex-start;
+    border-style: dashed;
+    color: var(--b3-theme-primary);
+    background-color: transparent;
+  }
+
   // ---- 状态行（aria-live；仅在有消息时占据空间）----
   .xlc-status {
     display: none;

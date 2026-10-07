@@ -547,6 +547,28 @@ fs.writeFileSync(path.join(OUT, "harness.html"), html);
     await page.evaluate(() => {
         document.querySelectorAll(".xlc-menu").forEach((el) => el.remove());
     });
+    // R116 证据：定向插入模式横幅（文档树入口 → 明示落点）
+    await page.evaluate(() => {
+        const stage = document.getElementById("stage");
+        stage.className = "b3-scope light";
+        document.querySelectorAll(".b3-dialog").forEach((el) => el.remove());
+        stage.innerHTML = "";
+        window.XlcHarness.openDialog({aiEnabled: true, missing: false, query: "延期", insertTarget: {docId: "20240101120001-hijklmn", hPath: "/工作手册/客服话术"}});
+        const dialogRoot = document.querySelector(".b3-dialog");
+        if (dialogRoot) stage.appendChild(dialogRoot);
+        const root = document.querySelector(".xlc-dialog");
+        if (root) {
+            root.style.height = "560px";
+            root.style.position = "relative";
+        }
+        const container = document.querySelector(".b3-dialog__container");
+        if (container) {
+            container.style.margin = "0 auto";
+            container.style.maxWidth = "760px";
+        }
+    });
+    await page.waitForTimeout(700);
+    await page.screenshot({path: path.join(OUT, "production-target-banner-light.png")});
     // R107 证据：空库态（无查询 + 总量 0 → 空库文案 + 就地新建按钮）
     await page.evaluate(() => {
         const stage = document.getElementById("stage");

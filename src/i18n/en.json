@@ -250,5 +250,6 @@
   "emptyLibrarySub": "Capture from a selection, the clipboard or context menus — or create an item right here",
   "updatedAtLabel": "Updated %s",
   "duplicateTitle": "Duplicate content exists",
-  "duplicateConfirm": "\"%s\" already exists. Save anyway? Both items will coexist."
+  "duplicateConfirm": "\"%s\" already exists. Save anyway? Both items will coexist.",
+  "insertTargetBanner": "Insert into: %s"
 }

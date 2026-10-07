@@ -597,6 +597,12 @@
       paintSort();
       sortChip.addEventListener("click", () => this.showSortMenu(paintSort));
       filters.appendChild(sortChip);
+      if (this.insertTarget) {
+        const targetBanner = document.createElement("span");
+        targetBanner.className = "xlc-chip xlc-target-banner";
+        targetBanner.textContent = "\u2913 " + this.deps.t("insertTargetBanner", this.insertTarget.hPath || this.insertTarget.docId);
+        filters.insertBefore(targetBanner, filters.firstChild);
+      }
       root.appendChild(filters);
       const status = document.createElement("div");
       status.className = "xlc-status";
@@ -4086,6 +4092,7 @@
       insertToDocPick: "\u9009\u62E9\u76EE\u6807\u6587\u6863\uFF08\u8F93\u5165\u5173\u952E\u8BCD\u641C\u7D22\uFF09",
       duplicateTitle: "\u5DF2\u5B58\u5728\u540C\u6587\u6761\u76EE",
       duplicateConfirm: "\u5DF2\u5B58\u5728\u300C%s\u300D\uFF0C\u4ECD\u8981\u4FDD\u5B58\u5417\uFF1F\u4E24\u6761\u5185\u5BB9\u5E76\u5B58\u3001\u4E92\u4E0D\u5F71\u54CD\u3002",
+      insertTargetBanner: "\u63D2\u5165\u5230\uFF1A%s",
       aiInsertTransformed: "\u63D2\u5165\u53D8\u6362\u7ED3\u679C",
       aiCopyTransformed: "\u590D\u5236\u53D8\u6362\u7ED3\u679C",
       aiInsertOriginal: "\u63D2\u5165\u539F\u6587",
@@ -4233,6 +4240,7 @@
     openDialog(overrides) {
       var _a;
       const dialog = new CommonSearchDialog(makeDeps(overrides));
+      if (overrides == null ? void 0 : overrides.insertTarget) dialog.insertTarget = overrides.insertTarget;
       dialog.open();
       const input = document.querySelector(".xlc-search-input");
       if (input) {

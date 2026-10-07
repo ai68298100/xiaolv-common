@@ -333,6 +333,13 @@ export class CommonSearchDialog {
         paintSort();
         sortChip.addEventListener("click", () => this.showSortMenu(paintSort));
         filters.appendChild(sortChip);
+        // 定向插入模式横幅（R116）：文档树入口进入时明示落点，防止误以为插入当前编辑器
+        if (this.insertTarget) {
+            const targetBanner = document.createElement("span");
+            targetBanner.className = "xlc-chip xlc-target-banner";
+            targetBanner.textContent = "⤓ " + this.deps.t("insertTargetBanner", this.insertTarget.hPath || this.insertTarget.docId);
+            filters.insertBefore(targetBanner, filters.firstChild);
+        }
         root.appendChild(filters);
 
         // 状态行（aria-live）

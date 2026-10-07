@@ -70,6 +70,7 @@ const T = (key: string, ...args: string[]): string => {
         totalItems: "共 %s 条",
         duplicateItem: "创建副本", insertToDoc: "插入到指定文档", insertToDocPick: "选择目标文档（输入关键词搜索）",
         duplicateTitle: "已存在同文条目", duplicateConfirm: "已存在「%s」，仍要保存吗？两条内容并存、互不影响。",
+        insertTargetBanner: "插入到：%s",
         aiInsertTransformed: "插入变换结果", aiCopyTransformed: "复制变换结果", aiInsertOriginal: "插入原文", saveTransformed: "存为新条目", deleteConfirm: "删除条目「%s」？",
         providerSection: "提供方内容", providerInsert: "插入（提供方）", providerCopy: "复制（提供方）",
         providerExecutable: "可执行", providerPendingReload: "待重载",
@@ -169,8 +170,9 @@ function makeDeps(overrides: {aiEnabled?: boolean; missing?: boolean; mobile?: b
 }
 
 (window as unknown as {XlcHarness: unknown}).XlcHarness = {
-    openDialog(overrides?: {aiEnabled?: boolean; missing?: boolean; scope?: "all" | "favorites"; query?: string; mobile?: boolean; empty?: boolean}): CommonSearchDialog {
+    openDialog(overrides?: {aiEnabled?: boolean; missing?: boolean; scope?: "all" | "favorites"; query?: string; mobile?: boolean; empty?: boolean; insertTarget?: {docId: string; hPath: string}}): CommonSearchDialog {
         const dialog = new CommonSearchDialog(makeDeps(overrides));
+        if (overrides?.insertTarget) dialog.insertTarget = overrides.insertTarget;
         dialog.open();
         // 预填搜索与选中态，让截图呈现工作状态
         const input = document.querySelector<HTMLInputElement>(".xlc-search-input");
