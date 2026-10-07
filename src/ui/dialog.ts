@@ -1477,15 +1477,25 @@ export class CommonSearchDialog {
                 const input = document.createElement("input");
                 input.className = "b3-text-field xlc-pickdoc-input";
                 input.placeholder = this.deps.t("insertToDocPick");
+                input.setAttribute("aria-label", this.deps.t("insertToDocPick"));
                 sec.appendChild(input);
                 let seq = 0;
                 input.addEventListener("input", () => {
                     const mySeq = ++seq;
                     const k = input.value.trim();
                     sec!.querySelectorAll(".xlc-pickdoc-hit").forEach((el) => el.remove());
+                    sec!.querySelectorAll(".xlc-pickdoc-empty").forEach((el) => el.remove());
                     if (!k) return;
                     void this.deps.searchDocs(k).then((hits) => {
                         if (mySeq !== seq) return;
+                        // 无匹配反馈（R120）：不再静默无反应
+                        if (hits.length === 0) {
+                            const empty = document.createElement("div");
+                            empty.className = "xlc-pickdoc-empty";
+                            empty.textContent = this.deps.t("docPickerEmpty");
+                            sec!.appendChild(empty);
+                            return;
+                        }
                         for (const hit of hits.slice(0, 5)) {
                             sec!.appendChild(this.menuButton("⤓", hit.hPath || hit.name || hit.id, "xlc-menu-item xlc-pickdoc-hit", async () => {
                                 this.menuDismiss?.();

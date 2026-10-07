@@ -812,6 +812,8 @@ function buildAiSection(ctx: SettingsUiContext, root: HTMLElement): void {
         ctx.state.ai.customTransforms = [...ctx.state.ai.customTransforms, {id, name: t("customTransformNewName"), prompt: ""}];
         persistCt();
         repaintCt();
+        // 新行名称输入直接聚焦（R120）：添加即可改名，不用再点一次
+        ctList.querySelector<HTMLInputElement>(".xlc-ct-row:last-child .xlc-ct-name")?.focus();
     });
     aiSec.appendChild(addCtBtn);
     const ctHint = document.createElement("span");
