@@ -1052,7 +1052,12 @@ export default class XiaolvCommonPlugin extends Plugin {
 
     /** 首次引导（仅库选择；完整设置见 openSettings） */
     openSetup(): void {
-        openSetupDialog(this.settingsContext());
+        openSetupDialog(this.settingsContext(), {
+            onConfigured: () => {
+                // 设置完成后自动打开搜索弹窗（空态引导用户开始捕获）
+                this.openSearch();
+            },
+        });
     }
 
     /** 完整设置：库管理（含更改库）+ AI + 搜索 + 数据 */

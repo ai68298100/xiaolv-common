@@ -57,8 +57,15 @@ export interface SettingsUiContext {
     applyPinyinAdapter(): void;
 }
 
+export interface SetupDialogOptions {
+    /** 配置落地后回调 */
+    onConfigured?: () => void;
+    /** 用户点击「稍后再说」 */
+    onDismiss?: () => void;
+}
+
 /** 首次引导（仅库选择，两步式；完整设置见 openSettingsDialog） */
-export function openSetupDialog(ctx: SettingsUiContext): void {
+export function openSetupDialog(ctx: SettingsUiContext, opts?: SetupDialogOptions): void {
     const t = ctx.t;
     const dialog = new Dialog({
         title: t("setupTitle"),
@@ -71,7 +78,10 @@ export function openSetupDialog(ctx: SettingsUiContext): void {
     body.innerHTML = "";
     const root = document.createElement("div");
     root.className = "xlc-form";
-    buildLibraryPickerSection(ctx, root, () => dialog.destroy(), {onDismiss: () => dialog.destroy()});
+    buildLibraryPickerSection(ctx, root, () => {
+        dialog.destroy();
+        opts?.onConfigured?.();
+    }, {onDismiss: () => dialog.destroy()});
     body.appendChild(root);
 }
 

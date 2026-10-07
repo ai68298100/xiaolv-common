@@ -2140,7 +2140,7 @@
     row.appendChild(box);
     return row;
   }
-  function openSetupDialog(ctx) {
+  function openSetupDialog(ctx, opts) {
     const t = ctx.t;
     const dialog = new import_siyuan3.Dialog({
       title: t("setupTitle"),
@@ -2153,7 +2153,11 @@
     body.innerHTML = "";
     const root = document.createElement("div");
     root.className = "xlc-form";
-    buildLibraryPickerSection(ctx, root, () => dialog.destroy(), { onDismiss: () => dialog.destroy() });
+    buildLibraryPickerSection(ctx, root, () => {
+      var _a;
+      dialog.destroy();
+      (_a = opts == null ? void 0 : opts.onConfigured) == null ? void 0 : _a.call(opts);
+    }, { onDismiss: () => dialog.destroy() });
     body.appendChild(root);
   }
   function openSettingsDialog(ctx) {
