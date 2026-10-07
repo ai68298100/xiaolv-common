@@ -940,7 +940,8 @@ export default class XiaolvCommonPlugin extends Plugin {
         const kd = await this.library.getItemKramdown(item);
         const initialKramdown = kd.ok ? kd.data : "";
         const dialog = new Dialog({
-            title: t("edit"),
+            // 标题带条目名（截断 24 字）：确认正在编辑哪一条
+            title: `${t("edit")} · ${(item.title || t("unknownType")).slice(0, 24)}${item.title.length > 24 ? "…" : ""}`,
             content: "",
             width: "min(520px, 92vw)",
             height: "auto",
@@ -1070,6 +1071,7 @@ export default class XiaolvCommonPlugin extends Plugin {
             }
             saving = true;
             save.disabled = true;
+            save.textContent = t("saving");
             cancel.disabled = true;
             void this.library.updateItem(item.id, {
                 title: titleEl.value,
@@ -1085,12 +1087,14 @@ export default class XiaolvCommonPlugin extends Plugin {
                 } else {
                     saving = false;
                     save.disabled = false;
+                    save.textContent = t("save");
                     cancel.disabled = false;
                     this.notify("error", result.message);
                 }
             }).catch((err) => {
                 saving = false;
                 save.disabled = false;
+                save.textContent = t("save");
                 cancel.disabled = false;
                 this.notify("error", t("kernelError", err instanceof Error ? err.message : String(err)));
             });

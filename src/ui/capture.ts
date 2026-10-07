@@ -477,6 +477,7 @@ export class CaptureDialog {
                 if (closed || saving) return;
                 saving = true;
                 saveBtn.disabled = true;
+                saveBtn.textContent = t("saving");
                 cancelBtn.disabled = true;
                 const docId = this.deps.currentDocId();
                 void this.deps.createItem({
@@ -496,6 +497,7 @@ export class CaptureDialog {
                         dialog.destroy();
                     } else {
                         saveBtn.disabled = false;
+                        saveBtn.textContent = t("save");
                         cancelBtn.disabled = false;
                         this.deps.notify("error", result.message);
                     }
@@ -503,6 +505,7 @@ export class CaptureDialog {
                     saving = false;
                     if (closed) return;
                     saveBtn.disabled = false;
+                    saveBtn.textContent = t("save");
                     cancelBtn.disabled = false;
                     this.deps.notify("error", t("kernelError", err instanceof Error ? err.message : String(err)));
                 });

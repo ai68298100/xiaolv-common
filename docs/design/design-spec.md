@@ -48,7 +48,7 @@
 ## 三、组件规范
 
 ### 3.1 按钮（`.btn` / `.xlc-dialog .b3-button`）
-高度 28（min-height），padding 4×12，圆角 8，字号 12.5。五类：默认（描边）/ primary（主色实底+L1 阴影，hover brightness 1.06）/ AI（主色淡彩底+primary-light 描边）/ ghost（无边框透明，hover 显底）/ 文字链（`.xlc-form-ai`，主色 12px）。态：hover 换底、active `scale(.97)`、focus-visible 2px 主色外描边（offset 1）、disabled `opacity .5 + not-allowed`。
+高度 28（min-height），padding 4×12，圆角 8，字号 12.5。五类：默认（描边）/ primary（主色实底+L1 阴影，hover brightness 1.06）/ AI（主色淡彩底+primary-light 描边）/ ghost（无边框透明，hover 显底）/ 文字链（`.xlc-form-ai`，主色 12px）。态：hover 换底、active `scale(.97)`、focus-visible 2px 主色外描边（offset 1）、disabled `opacity .5 + not-allowed`、**loading 文案态（R110：异步保存时按钮文案换「保存中…」，失败恢复）**、**行内校验红描边（R109：必填为空保存时 `xlc-input--error`，聚焦保持红，输入即清除）**。
 
 ### 3.2 chip / 筛选（`.chip`）
 胶囊 26 高、12px 字、padding 2×11。选中=primary-lighter 底+主色字+600。AI 横幅 chip 虚线描边。下拉筛选（类型/标签/分类）：`appearance:none` + 自绘 SVG 箭头（中性灰 `#7d8085`），与 chip 同高同字。搜索框有输入时右端出现 18px 圆形清空 ×（R84；hover 反色）。

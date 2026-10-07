@@ -3841,6 +3841,7 @@
           if (closed || saving) return;
           saving = true;
           saveBtn.disabled = true;
+          saveBtn.textContent = t("saving");
           cancelBtn.disabled = true;
           const docId = this.deps.currentDocId();
           void this.deps.createItem({
@@ -3860,6 +3861,7 @@
               dialog.destroy();
             } else {
               saveBtn.disabled = false;
+              saveBtn.textContent = t("save");
               cancelBtn.disabled = false;
               this.deps.notify("error", result.message);
             }
@@ -3867,6 +3869,7 @@
             saving = false;
             if (closed) return;
             saveBtn.disabled = false;
+            saveBtn.textContent = t("save");
             cancelBtn.disabled = false;
             this.deps.notify("error", t("kernelError", err instanceof Error ? err.message : String(err)));
           });
@@ -3958,6 +3961,7 @@
       more: "\u8FD4\u56DE\u52A8\u4F5C",
       newItem: "\u65B0\u5EFA\u6761\u76EE",
       save: "\u4FDD\u5B58",
+      saving: "\u4FDD\u5B58\u4E2D\u2026",
       cancel: "\u53D6\u6D88",
       confirm: "\u786E\u5B9A",
       invalidItem: "\u6761\u76EE\u6570\u636E\u65E0\u6548",
@@ -4034,6 +4038,7 @@
       "sort.recent": "\u6700\u8FD1\u4F7F\u7528",
       "sort.title": "\u6807\u9898",
       "sort.frequent": "\u5E38\u7528",
+      sort: "\u6392\u5E8F",
       totalItems: "\u5171 %s \u6761",
       duplicateItem: "\u521B\u5EFA\u526F\u672C",
       insertToDoc: "\u63D2\u5165\u5230\u6307\u5B9A\u6587\u6863",

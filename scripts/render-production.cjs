@@ -538,6 +538,15 @@ fs.writeFileSync(path.join(OUT, "harness.html"), html);
     });
     await page.waitForTimeout(700);
     await page.screenshot({path: path.join(OUT, "production-highlight-light.png")});
+    // R110 证据：排序直选菜单（chip 点击弹 4 档、当前档 ✓ 加粗）
+    await page.evaluate(() => {
+        document.querySelector(".xlc-sort-chip").click();
+    });
+    await page.waitForTimeout(400);
+    await page.screenshot({path: path.join(OUT, "production-sort-menu-light.png")});
+    await page.evaluate(() => {
+        document.querySelectorAll(".xlc-menu").forEach((el) => el.remove());
+    });
     // R107 证据：空库态（无查询 + 总量 0 → 空库文案 + 就地新建按钮）
     await page.evaluate(() => {
         const stage = document.getElementById("stage");
