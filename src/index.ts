@@ -685,11 +685,17 @@ export default class XiaolvCommonPlugin extends Plugin {
                 for (const provider of this.registry.listExecutable()) {
                     if (!provider.runtime?.search) continue;
                     try {
-                        // 3s 超时保护：挂起的提供方不得卡住弹窗
+                        // 3s 超时保护：挂起的提供方不得卡住弹窗；
+                        // 完成后清除定时器，避免输家 rejection 悬浮（R122，对齐 kernel/client 范式）
+                        let timeoutTimer: ReturnType<typeof setTimeout> | undefined;
                         const hits = await Promise.race([
                             provider.runtime.search(query),
-                            new Promise<never>((_, reject) => setTimeout(() => reject(new Error("provider timeout")), 3000)),
-                        ]);
+                            new Promise<never>((_, reject) => {
+                                timeoutTimer = setTimeout(() => reject(new Error("provider timeout")), 3000);
+                            }),
+                        ]).finally(() => {
+                            if (timeoutTimer) clearTimeout(timeoutTimer);
+                        });
                         // 成功一次即清除失败通知记忆（恢复后正常提示）
                         this.providerFailureSeen.delete(provider.record.pluginId);
                         for (const hit of hits ?? []) {
