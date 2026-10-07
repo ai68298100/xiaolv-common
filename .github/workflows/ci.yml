@@ -24,7 +24,7 @@ jobs:
           cache: pnpm
 
       - name: 安装依赖（含 playwright，浏览器在下一步装）
-        run: pnpm install --frozen-lockfile
+        run: pnpm install
 
       - name: 安装 Chromium（UI 冒烟用）
         run: pnpm exec playwright install --with-deps chromium
