@@ -449,6 +449,13 @@
       text-overflow: ellipsis;
       white-space: nowrap;
       color: var(--b3-theme-on-background);
+
+      // 搜索命中片段（R107）：主色加粗、无底色——回答「为什么出这条」
+      .xlc-hit {
+        background-color: transparent;
+        color: var(--b3-theme-primary);
+        font-weight: 600;
+      }
     }
 
     .xlc-row-favmark {
@@ -582,6 +589,11 @@
       font-size: 11.5px;
       line-height: 1.6;
       max-width: 240px;
+    }
+
+    // 空库就地新建（R107）：空态里的核心动作
+    .xlc-empty-action {
+      margin-top: 10px;
     }
   }
 

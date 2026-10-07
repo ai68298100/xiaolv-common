@@ -516,6 +516,50 @@ fs.writeFileSync(path.join(OUT, "harness.html"), html);
     }
     console.log("  smoke ✓ empty-state: 4 assertions");
     await page.screenshot({path: path.join(OUT, "production-empty-light.png")});
+    // R107 证据：搜索命中高亮（延期 命中前两行标题；纯截图，不新增断言）
+    await page.evaluate(() => {
+        const stage = document.getElementById("stage");
+        stage.className = "b3-scope light";
+        document.querySelectorAll(".b3-dialog").forEach((el) => el.remove());
+        stage.innerHTML = "";
+        window.XlcHarness.openDialog({aiEnabled: true, missing: false, query: "延期"});
+        const dialogRoot = document.querySelector(".b3-dialog");
+        if (dialogRoot) stage.appendChild(dialogRoot);
+        const root = document.querySelector(".xlc-dialog");
+        if (root) {
+            root.style.height = "560px";
+            root.style.position = "relative";
+        }
+        const container = document.querySelector(".b3-dialog__container");
+        if (container) {
+            container.style.margin = "0 auto";
+            container.style.maxWidth = "760px";
+        }
+    });
+    await page.waitForTimeout(700);
+    await page.screenshot({path: path.join(OUT, "production-highlight-light.png")});
+    // R107 证据：空库态（无查询 + 总量 0 → 空库文案 + 就地新建按钮）
+    await page.evaluate(() => {
+        const stage = document.getElementById("stage");
+        stage.className = "b3-scope light";
+        document.querySelectorAll(".b3-dialog").forEach((el) => el.remove());
+        stage.innerHTML = "";
+        window.XlcHarness.openDialog({empty: true, query: ""});
+        const dialogRoot = document.querySelector(".b3-dialog");
+        if (dialogRoot) stage.appendChild(dialogRoot);
+        const root = document.querySelector(".xlc-dialog");
+        if (root) {
+            root.style.height = "560px";
+            root.style.position = "relative";
+        }
+        const container = document.querySelector(".b3-dialog__container");
+        if (container) {
+            container.style.margin = "0 auto";
+            container.style.maxWidth = "760px";
+        }
+    });
+    await page.waitForTimeout(500);
+    await page.screenshot({path: path.join(OUT, "production-empty-library-light.png")});
     // 移动端 sheet（390×844 触控形态：圆角卡片行 + 点按提示）
     await page.setViewportSize({width: 390, height: 844});
     await page.evaluate(() => {

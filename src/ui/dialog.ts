@@ -93,6 +93,8 @@ export class CommonSearchDialog {
     private emptyMessage = "";
     /** 使用计数快照（refresh 时取自侧车；行 meta 与预览徽标展示用） */
     private usageCounts = new Map<string, number>();
+    /** 最近一次查询词（行标题命中高亮用；空串=不高亮） */
+    private lastQueryText = "";
     /** 动作菜单 document 监听兜底清理（destroy 时调用；防键盘关弹窗残留监听） */
     private menuDismiss: (() => void) | null = null;
     private inputDebounce: ReturnType<typeof setTimeout> | null = null;
@@ -561,6 +563,8 @@ export class CommonSearchDialog {
     private async refresh(): Promise<void> {
         const seq = ++this.searchSeq;
         const query = this.buildQuery();
+        // 命中高亮快照（renderList 用；AI 语义找结果不高亮——匹配依据是语义而非字面）
+        this.lastQueryText = query.text.trim();
         // 使用计数快照（F3 展示；侧车只读，不入索引）
         this.usageCounts = new Map(Object.entries(this.deps.getUsage()).map(([id, u]) => [id, u.count]));
         const list = this.dialog?.element.querySelector<HTMLElement>(".xlc-list");
@@ -652,6 +656,9 @@ export class CommonSearchDialog {
                     this.emptyMessage = this.deps.t("emptyRecent");
                 } else if (query.text.trim() && !query.text.trim().startsWith("?") && this.deps.aiEnabled()) {
                     this.emptyMessage = this.deps.t("semanticSuggestion");
+                } else if (total === 0 && !query.text.trim()) {
+                    // 空库（F4 总量与筛选无关）：给「去哪加内容」的下一步，而非误导性的「没有匹配」
+                    this.emptyMessage = this.deps.t("emptyLibrary");
                 } else {
                     this.emptyMessage = this.deps.t("empty");
                 }
@@ -687,6 +694,24 @@ export class CommonSearchDialog {
         list.removeAttribute("aria-busy");
     }
 
+    /** 命中高亮：按字面子串（大小写不敏感）切分并注入 mark span；文本一律 textContent，绝不 innerHTML。 */
+    private appendHighlighted(parent: HTMLElement, text: string, query: string): void {
+        const lowerText = text.toLowerCase();
+        const lowerQuery = query.toLowerCase();
+        let cursor = 0;
+        while (cursor <= text.length - lowerQuery.length) {
+            const at = lowerText.indexOf(lowerQuery, cursor);
+            if (at < 0) break;
+            if (at > cursor) parent.appendChild(document.createTextNode(text.slice(cursor, at)));
+            const mark = document.createElement("mark");
+            mark.className = "xlc-hit";
+            mark.textContent = text.slice(at, at + query.length);
+            parent.appendChild(mark);
+            cursor = at + query.length;
+        }
+        if (cursor < text.length) parent.appendChild(document.createTextNode(text.slice(cursor)));
+    }
+
     private renderList(list: HTMLElement): void {
         list.innerHTML = "";
         // 大空态（无结果且无提供方行；图标 + 主文案 + ? 语义找提示）
@@ -711,6 +736,18 @@ export class CommonSearchDialog {
                 hint.className = "xlc-empty-hint";
                 hint.textContent = this.deps.t("emptyFavoritesSub");
                 empty.appendChild(hint);
+            } else if (this.emptyMessage === this.deps.t("emptyLibrary")) {
+                // 空库：声明去哪捕获 + 就地新建（首跑引导完成后的第一个落点）
+                const hint = document.createElement("div");
+                hint.className = "xlc-empty-hint";
+                hint.textContent = this.deps.t("emptyLibrarySub");
+                empty.appendChild(hint);
+                const create = document.createElement("button");
+                create.type = "button";
+                create.className = "b3-button xlc-btn-primary xlc-empty-action";
+                create.textContent = "＋ " + this.deps.t("newItem");
+                create.addEventListener("click", () => this.deps.newItem());
+                empty.appendChild(create);
             }
             list.appendChild(empty);
         }
@@ -811,7 +848,15 @@ export class CommonSearchDialog {
             title.appendChild(badge);
             const titleText = document.createElement("span");
             titleText.className = "xlc-row-titletext";
-            titleText.textContent = entry.title || this.deps.t("unknownType");
+            const highlight = this.lastQueryText.length > 0
+                && !this.lastQueryText.startsWith("?")
+                && !this.aiResults;
+            if (highlight) {
+                // 命中高亮：让「为什么出这条」一眼可见（AI 语义找不高亮——匹配依据非字面）
+                this.appendHighlighted(titleText, entry.title || this.deps.t("unknownType"), this.lastQueryText);
+            } else {
+                titleText.textContent = entry.title || this.deps.t("unknownType");
+            }
             title.appendChild(titleText);
             // 变量徽标（F1；写入期快照，行为以插入时现场内容为准）
             if ((entry.varCount ?? 0) > 0) {
@@ -951,6 +996,7 @@ export class CommonSearchDialog {
     private async refreshPreservingPosition(): Promise<void> {
         const seq = ++this.searchSeq;
         const query = this.buildQuery();
+        this.lastQueryText = query.text.trim();
         try {
             const {entries} = await this.deps.search(query);
             if (seq !== this.searchSeq) return;
