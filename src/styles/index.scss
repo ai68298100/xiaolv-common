@@ -708,6 +708,15 @@ body.b3-theme-dark,
           color: var(--b3-theme-on-surface);
         }
       }
+
+      // 激活筛选态（R127）：与 doclist--on 同族，点选状态可见
+      &--on,
+      &--on:hover {
+        border-color: var(--b3-theme-primary-light);
+        background-color: var(--xlc-ai-tint);
+        color: var(--b3-theme-primary);
+        font-weight: 600;
+      }
     }
 
     .xlc-pane-meta-date {

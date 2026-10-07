@@ -437,6 +437,7 @@
       input.className = "b3-text-field xlc-search-input";
       input.placeholder = this.deps.t("searchPlaceholder");
       input.setAttribute("enterkeyhint", "search");
+      input.setAttribute("autocomplete", "off");
       input.setAttribute("autocapitalize", "off");
       input.setAttribute("autocorrect", "off");
       input.setAttribute("spellcheck", "false");
@@ -1411,12 +1412,14 @@
         void this.refresh();
       };
       const toggleChip = (value, active2) => active2 === value ? "" : value;
+      const currentFilters = this.deps.getFilters();
       if (entry.category) {
         const cat = document.createElement("button");
         cat.type = "button";
-        cat.className = "xlc-meta-chip";
+        cat.className = "xlc-meta-chip" + (currentFilters.category === entry.category ? " xlc-meta-chip--on" : "");
         cat.textContent = entry.category;
         cat.title = this.deps.t("category");
+        cat.setAttribute("aria-pressed", String(currentFilters.category === entry.category));
         cat.addEventListener("click", () => setFilter({ category: toggleChip(entry.category, this.deps.getFilters().category) }));
         meta.appendChild(cat);
       }
@@ -1425,9 +1428,10 @@
       for (const tag of shownTags) {
         const chip = document.createElement("button");
         chip.type = "button";
-        chip.className = "xlc-meta-chip";
+        chip.className = "xlc-meta-chip" + (currentFilters.tag === tag ? " xlc-meta-chip--on" : "");
         chip.textContent = tag;
         chip.title = this.deps.t("tags");
+        chip.setAttribute("aria-pressed", String(currentFilters.tag === tag));
         chip.addEventListener("click", () => setFilter({ tag: toggleChip(tag, this.deps.getFilters().tag) }));
         meta.appendChild(chip);
       }
@@ -1653,6 +1657,7 @@
           input.className = "b3-text-field xlc-pickdoc-input";
           input.placeholder = this.deps.t("insertToDocPick");
           input.setAttribute("aria-label", this.deps.t("insertToDocPick"));
+          input.setAttribute("autocomplete", "off");
           sec.appendChild(input);
           let seq = 0;
           input.addEventListener("input", () => {

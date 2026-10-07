@@ -156,8 +156,9 @@ export class CommonSearchDialog {
         const input = document.createElement("input");
         input.className = "b3-text-field xlc-search-input";
         input.placeholder = this.deps.t("searchPlaceholder");
-        // 移动端软键盘细节：回车=搜索、关拉丁自动更正（中文输入不受影响）
+        // 移动端软键盘细节：回车=搜索、关拉丁自动更正；关自动填充（自定义候选弹层之上不叠浏览器浮层）
         input.setAttribute("enterkeyhint", "search");
+        input.setAttribute("autocomplete", "off");
         input.setAttribute("autocapitalize", "off");
         input.setAttribute("autocorrect", "off");
         input.setAttribute("spellcheck", "false");
@@ -1211,24 +1212,27 @@ export class CommonSearchDialog {
             void this.refresh();
         };
         const toggleChip = (value: string, active: string | undefined): string => (active === value ? "" : value);
+        const currentFilters = this.deps.getFilters();
         if (entry.category) {
             const cat = document.createElement("button");
             cat.type = "button";
-            cat.className = "xlc-meta-chip";
+            cat.className = "xlc-meta-chip" + (currentFilters.category === entry.category ? " xlc-meta-chip--on" : "");
             cat.textContent = entry.category;
             cat.title = this.deps.t("category");
+            cat.setAttribute("aria-pressed", String(currentFilters.category === entry.category));
             cat.addEventListener("click", () => setFilter({category: toggleChip(entry.category, this.deps.getFilters().category)}));
             meta.appendChild(cat);
         }
-        // 空字符串标签防御（索引侧按分隔符切分可能产生空段，R118）
+        // 空字符串标签防御（索引切分可能产生空段，R118）
         const cleanTags = entry.tags.filter(Boolean);
         const shownTags = cleanTags.slice(0, 3);
         for (const tag of shownTags) {
             const chip = document.createElement("button");
             chip.type = "button";
-            chip.className = "xlc-meta-chip";
+            chip.className = "xlc-meta-chip" + (currentFilters.tag === tag ? " xlc-meta-chip--on" : "");
             chip.textContent = tag;
             chip.title = this.deps.t("tags");
+            chip.setAttribute("aria-pressed", String(currentFilters.tag === tag));
             chip.addEventListener("click", () => setFilter({tag: toggleChip(tag, this.deps.getFilters().tag)}));
             meta.appendChild(chip);
         }
@@ -1478,6 +1482,7 @@ export class CommonSearchDialog {
                 input.className = "b3-text-field xlc-pickdoc-input";
                 input.placeholder = this.deps.t("insertToDocPick");
                 input.setAttribute("aria-label", this.deps.t("insertToDocPick"));
+                input.setAttribute("autocomplete", "off");
                 sec.appendChild(input);
                 let seq = 0;
                 input.addEventListener("input", () => {
