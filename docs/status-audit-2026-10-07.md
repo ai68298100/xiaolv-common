@@ -4,10 +4,10 @@
 
 ## 当前结论
 
-- 产品定位已经稳定为“以思源真实块为真源的常用内容资产层”。当前发布候选为 v0.2.3，集市不推送。
+- 产品定位已经稳定为“以思源真实块为真源的常用内容资产层”。当前发布版本为 v0.2.3，集市不推送。
 - 本地门禁可重复通过：`pnpm run check`、`pnpm test`（209/209）、`pnpm run build`、`pnpm run scan`、`pnpm run test:ui`（15 组 smoke，逐组断言全部通过，脚本最终还会生成 15 张截图）。`pnpm audit --audit-level high` 报告无已知漏洞。
 - 真正的宿主验收尚未完成。`pnpm run e2e` 在没有 `SIYUAN_TOKEN` 时按设计退出；桌面内核读写、桌面人工 UI 走查、Android 真机行为仍分别受 B-001/B-002/B-003 阻塞。Chromium harness 和窄视口截图只能证明生产 DOM/CSS 结构，不能替代思源桌面或 Android 验收。
-- 当前工作树包含 v0.2.3 发布修复，待最终门禁后提交并同步 `origin/main`，不推送集市。
+- v0.2.3 发布修复已提交至 `origin/main` 并发布 tag/Release，不推送集市。
 
 ## 已开发范围
 

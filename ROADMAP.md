@@ -2,7 +2,7 @@
 
 > 定位：**思源笔记的内容资产层**——高频内容是有元数据、有来源、可检索、可变通、可共享的真实块资产（v3，2026-10-07 调研后修订）。三大一级场景：客服/邮件模板、AI 提示词库、研发/写作常用件。
 > 精准定位与调研证据：[docs/positioning.md](docs/positioning.md)。UI 基准：[docs/design/prototype.html](docs/design/prototype.html)（v3）+ [docs/design/design-spec.md](docs/design/design-spec.md)。生产证据：docs/design/production-*.png。
-> 状态：v0.2.3 候选（设置异步回执、无障碍和窄屏布局修复已落地，GitHub 待本轮门禁后同步；集市不推送）。当期账本：[docs/dev-plan-2026-10-06.md](docs/dev-plan-2026-10-06.md)。
+> 状态：v0.2.3 已发布（设置异步回执、无障碍和窄屏布局修复已落地，GitHub 已同步；集市不推送）。当期账本：[docs/dev-plan-2026-10-06.md](docs/dev-plan-2026-10-06.md)。
 
 ## R2：AI 融入与原型质感（2026-10-06，用户指令立项）
 
