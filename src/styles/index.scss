@@ -55,6 +55,21 @@
   --xlc-chevron: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%237d8085' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
 }
 
+// 暗色主题：变量紫文字提亮 #8a5ad0 → #b49ae0（原型 .t-dark 同款）。
+// #8a5ad0 在暗色底上对比度约 3.6:1，10-11px 小字（徽标/语法标签）不达 AA；
+// 背景淡彩保持固定（spec 2.1 两主题通用），仅提亮文字色。
+// 暗色标记三重约定对齐思源宿主 + harness 桩（.b3-scope.dark 仅供截图证据）。
+[data-theme-mode="dark"],
+body.body--dark,
+body.b3-theme-dark,
+.b3-scope.dark {
+  .xlc-dialog,
+  .xlc-form,
+  .xlc-varform {
+    --xlc-var: #b49ae0;
+  }
+}
+
 // ---------- 细滚动条（仅插件作用域） ----------
 .xlc-dialog ::-webkit-scrollbar,
 .xlc-form ::-webkit-scrollbar,
