@@ -19,3 +19,15 @@
 - `runtime.search` 每次刷新都会被调用（输入防抖 200ms 后）——保持轻量。
 - 单条 payload ≤ 100,000 字符；≤ 20 条/提供方；超限整条拒绝。
 - 卸载/停用：调用 `common.unregisterProvider(pluginId)`（不调用也安全——条目标记不可用，不删数据）。
+
+## payload 支持的动态占位符
+
+payload 中的以下变量在**插入/复制时**由小驴常用自动替换（可在 payload 里直接写）：
+
+| 变量 | 展开值 |
+| --- | --- |
+| `{{xlc:date}}` / `{{xlc:time}}` / `{{xlc:datetime}}` / `{{xlc:weekday}}` | 当前日期/时间/日期时间/星期 |
+| `{{xlc:title}}` / `{{xlc:doc}}` / `{{xlc:path}}` | 当前文档标题/文档名/完整路径 |
+| `{{xlc:clipboard}}` | 剪贴板文本 |
+
+**不支持的变量**（仅限库条目）：`{{xlc:ask:…}}`（需用户交互）、`{{xlc:cursor}}`、`{{xlc:snippet:…}}`（需库索引查找）。
