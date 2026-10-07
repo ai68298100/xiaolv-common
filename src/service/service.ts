@@ -20,7 +20,7 @@ export interface ServiceDeps {
     onStateChange: () => void;
 }
 
-function toRef(item: CommonItem): CommonItemRef {
+function toRef(item: Pick<CommonItem, "id" | "itemType" | "title">): CommonItemRef {
     return {id: item.id, itemType: item.itemType, title: item.title};
 }
 
@@ -88,7 +88,7 @@ export class XiaolvCommonService {
     async search(query: SearchQuery): Promise<ActionResult<CommonItemRef[]>> {
         return this.withIndex((idx) => {
             const results = searchEntries(idx.entries, normalizeQuery(query), this.searchCtx());
-            return results.map((r) => toRef(r.entry as unknown as CommonItem));
+            return results.map((r) => toRef(r.entry));
         });
     }
 
@@ -182,14 +182,14 @@ export class XiaolvCommonService {
     async getRecent(limit = 20): Promise<ActionResult<CommonItemRef[]>> {
         return this.withIndex((idx) => {
             const list = listByScope(idx.entries, "recent", this.searchCtx(), Math.max(1, Math.min(100, Math.floor(limit))));
-            return list.map((e) => toRef(e as unknown as CommonItem));
+            return list.map((e) => toRef(e));
         });
     }
 
     async getFavorites(): Promise<ActionResult<CommonItemRef[]>> {
         return this.withIndex((idx) => {
             const list = listByScope(idx.entries, "favorites", this.searchCtx());
-            return list.map((e) => toRef(e as unknown as CommonItem));
+            return list.map((e) => toRef(e));
         });
     }
 

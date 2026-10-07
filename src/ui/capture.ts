@@ -105,17 +105,29 @@ export class CaptureDialog {
             return;
         }
         const content = text.slice(0, 100_000);
-        const dup = await this.deps.findDuplicate(content);
+        let dup: {id: string; title: string} | null;
+        try {
+            dup = await this.deps.findDuplicate(content);
+        } catch (err) {
+            this.deps.notify("error", this.deps.t("kernelError", err instanceof Error ? err.message : String(err)));
+            return;
+        }
         if (dup) {
             this.deps.notify("info", this.deps.t("quickCaptureDuplicate", dup.title));
             return;
         }
         const firstLine = content.split(/\r?\n/).map((line) => line.trim()).find(Boolean) ?? content;
-        const created = await this.deps.createItem({
-            itemType: inferTypeFromText(content),
-            markdown: content,
-            title: firstLine.slice(0, 512),
-        });
+        let created: {ok: boolean; message: string; itemId?: string};
+        try {
+            created = await this.deps.createItem({
+                itemType: inferTypeFromText(content),
+                markdown: content,
+                title: firstLine.slice(0, 512),
+            });
+        } catch (err) {
+            this.deps.notify("error", this.deps.t("kernelError", err instanceof Error ? err.message : String(err)));
+            return;
+        }
         if (created.ok) {
             this.deps.notify("info", this.deps.t("saved", created.message));
         } else {
@@ -278,6 +290,12 @@ export class CaptureDialog {
         const categoryEl = field(t("category"), "", false, "xlc-form-category", tagRow);
         (categoryEl.parentElement as HTMLElement).classList.add("xlc-form-field--fixed");
         form.appendChild(tagRow);
+
+        // 底部提示行（原型屏 3）：真源声明，紧贴动作区
+        const hint = document.createElement("div");
+        hint.className = "xlc-form-hint";
+        hint.textContent = t("captureHint");
+        form.appendChild(hint);
 
         // AI 草稿行（启用 AI 时展示）：描述 → 生成草稿填入内容
         // AI 建议行（AI 整理后展示，全部采纳）
@@ -465,6 +483,12 @@ export class CaptureDialog {
                         cancelBtn.disabled = false;
                         this.deps.notify("error", result.message);
                     }
+                }).catch((err: unknown) => {
+                    saving = false;
+                    if (closed) return;
+                    saveBtn.disabled = false;
+                    cancelBtn.disabled = false;
+                    this.deps.notify("error", t("kernelError", err instanceof Error ? err.message : String(err)));
                 });
             };
             // 去重防护：同文条目已存在 → 明确确认（不静默重复入库）
@@ -477,6 +501,9 @@ export class CaptureDialog {
                 confirm("⚠️ " + t("duplicateTitle"), t("duplicateConfirm", dup.title), () => {
                     if (!closed) doSave();
                 });
+            }).catch((err: unknown) => {
+                if (closed) return;
+                this.deps.notify("error", t("kernelError", err instanceof Error ? err.message : String(err)));
             });
         });
         actions.appendChild(cancelBtn);

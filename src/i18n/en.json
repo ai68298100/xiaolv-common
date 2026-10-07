@@ -6,7 +6,7 @@
   "insertCmd": "Insert common item",
   "copyCmd": "Copy common item",
   "openSourceCmd": "Open item source",
-  "searchPlaceholder": "Search items (title / alias / tags / summary)",
+  "searchPlaceholder": "Search common content (? prefix = AI semantic search)",
   "empty": "No matching items",
   "noLibrary": "No library configured yet",
   "setupTitle": "Choose your common content library",
@@ -249,5 +249,7 @@
   "promptPackBtn": "Import prompt scene pack",
   "promptPackHint": "10 built-in templates: support replies / AI prompts / dev writing; import into current library",
   "clearSearch": "Clear search",
-  "groupUncategorized": "Uncategorized"
+  "groupUncategorized": "Uncategorized",
+  "captureHint": "Items are saved as real SiYuan blocks · variables are asked on insert",
+  "docCount": "%s doc(s)"
 }

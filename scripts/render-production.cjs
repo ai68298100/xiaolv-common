@@ -308,7 +308,6 @@ fs.writeFileSync(path.join(OUT, "harness.html"), html);
     });
     if (Object.values(captureAssertions).some((v) => !v)) {
         throw new Error("capture smoke failed: " + JSON.stringify(captureAssertions));
-// debug marker
     }
     console.log("  smoke ✓ capture: 7 assertions");
     await page.screenshot({path: path.join(OUT, "production-capture-light.png")});

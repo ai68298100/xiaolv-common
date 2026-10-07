@@ -27,9 +27,12 @@ export function openVariableFillCard(options: VariableFillOptions): void {
     const dialog = new Dialog({
         title: t("varFormTitle"),
         content: "",
-        width: "min(380px, 92vw)",
+        width: "min(360px, 92vw)",
         height: "auto",
     });
+    // 原型屏 4：紧凑卡形态，卡头（徽标+标题+Esc 取消）即标题，隐藏宿主标题栏
+    const container = dialog.element.querySelector(".b3-dialog__container");
+    if (container) container.classList.add("xlc-varform-host");
     const body = dialog.element.querySelector(".b3-dialog__content");
     if (!body) return;
     body.innerHTML = "";

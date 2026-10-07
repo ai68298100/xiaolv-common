@@ -606,7 +606,17 @@ export class CommonSearchDialog {
         } catch (err) {
             if (seq !== this.searchSeq) return;
             this.results = [];
+            this.providerRows = [];
+            this.activeIndex = 0;
+            this.activeProvider = -1;
+            this.aiResults = false;
+            this.emptyMessage = "";
+            if (aiBanner) aiBanner.style.display = "none";
             if (status) status.textContent = this.deps.t("kernelError", (err as Error).message);
+            if (footer) {
+                const count = footer.querySelector<HTMLElement>(".xlc-footer-count");
+                if (count && !this.deps.isMobile()) count.textContent = this.deps.t("totalItems", "0");
+            }
             this.renderList(list);
             return;
         }
@@ -1145,7 +1155,7 @@ export class CommonSearchDialog {
             lbl.className = "xlc-menu-lbl";
             lbl.textContent = (entry.title || this.deps.t("unknownType")) + " · " + this.deps.t("actionsNoun");
             menu.appendChild(lbl);
-            // 预览盒（原文摘要）
+            // 预览盒（原文摘要）：原型屏 2 置于动作分区之后（先见动作，预览兜底）
             const previewBox = document.createElement("pre");
             previewBox.className = "xlc-menu-preview";
             previewBox.textContent = this.deps.t("previewUnavailable");
@@ -1154,7 +1164,6 @@ export class CommonSearchDialog {
             }).catch(() => {
                 previewBox.textContent = this.deps.t("kernelError", "preview");
             });
-            menu.appendChild(previewBox);
 
             const sec1 = document.createElement("div");
             sec1.className = "xlc-menu-sec";
@@ -1248,6 +1257,8 @@ export class CommonSearchDialog {
             sec2.appendChild(toDocBtn);
             addSilent("🗑", this.deps.t("delete"), () => this.deps.deleteItem(entry.id));
             menu.appendChild(sec2);
+            // 预览盒挂在次级分区之后（原型屏 2 顺序：标题 → 动作 → AI → 次级 → 预览）
+            menu.appendChild(previewBox);
         };
 
         const buildTransformView = (viewLabel: string, transformLabel: string): void => {

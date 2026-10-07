@@ -148,6 +148,8 @@ button { font-family: var(--font); cursor: pointer; }
 .search:focus-within { border-color: var(--b3-theme-primary); background: var(--b3-theme-background); }
 .search .q { color: var(--b3-theme-primary); font-weight:600; }
 .search input { flex:1; border:none; outline:none; background:transparent; color:var(--b3-theme-on-background); font-size:13.5px; font-family:var(--font); }
+.search-clear { flex-shrink:0; width:18px; height:18px; display:inline-flex; align-items:center; justify-content:center; border-radius:50%; background:var(--b3-border-color); color:var(--b3-theme-on-surface); font-size:12px; line-height:1; cursor:pointer; }
+.search-clear:hover { background:var(--b3-theme-on-surface); color:var(--b3-theme-background); }
 .filters { display:flex; align-items:center; gap:6px; padding: 8px 14px; flex-wrap: wrap; }
 .dlg-body { flex:1; display:flex; min-height:0; border-top:1px solid var(--b3-border-color); }
 .list { width: 330px; overflow:auto; border-right:1px solid var(--b3-border-color); }
@@ -396,7 +398,7 @@ button { font-family: var(--font); cursor: pointer; }
       <span class="dlg-title">小驴常用</span>
       <span class="kbd">↑↓</span><span class="kbd">↩ 插入</span><span class="kbd">⌃↩ 复制</span><span class="kbd">⌥1-9 直达</span><span class="kbd">Esc</span>
     </div>
-    <div class="search"><span class="q">?</span><input value="客户延期" placeholder="搜索常用内容（? 前缀 = AI 语义找）"></div>
+    <div class="search"><span class="q">?</span><input value="客户延期" placeholder="搜索常用内容（? 前缀 = AI 语义找）"><span class="search-clear" title="清空搜索">×</span></div>
     <div class="filters">
       <button class="chip">类型 ▾</button><button class="chip">标签 ▾</button><button class="chip">分类 ▾</button>
       <button class="chip">★ 收藏</button><button class="chip">🕐 最近</button><button class="chip on">⇅ 常用</button>
@@ -411,18 +413,19 @@ button { font-family: var(--font); cursor: pointer; }
           </div>
           <span class="star fav">★</span>
         </div>
-        <div class="group-head">全部 · 4</div>
+        <div class="group-head">开发 · 1</div>
         <div class="row">
           <div style="flex:1;min-width:0">
-            <div class="tt"><span class="ordinal">2</span><span class="badge text">TXT</span><span class="t">延期简短版（IM 用）</span></div>
-            <div class="meta">您好，本次迭代因联调超期… · <span class="use">18 次</span></div>
+            <div class="tt"><span class="ordinal">2</span><span class="badge code">CODE</span><span class="t">SQL 分页模板</span><span class="badge var">1 变量</span></div>
+            <div class="meta">SELECT * FROM {{xlc:ask:表名}} LIMIT… · <span class="use">11 次</span></div>
           </div>
           <span class="star">☆</span>
         </div>
+        <div class="group-head">无分类 · 2</div>
         <div class="row">
           <div style="flex:1;min-width:0">
-            <div class="tt"><span class="ordinal">3</span><span class="badge code">CODE</span><span class="t">SQL 分页模板</span><span class="badge var">1 变量</span></div>
-            <div class="meta">SELECT * FROM {{xlc:ask:表名}} LIMIT… · <span class="use">11 次</span></div>
+            <div class="tt"><span class="ordinal">3</span><span class="badge text">TXT</span><span class="t">延期简短版（IM 用）</span></div>
+            <div class="meta">您好，本次迭代因联调超期… · <span class="use">18 次</span></div>
           </div>
           <span class="star">☆</span>
         </div>
@@ -539,6 +542,7 @@ button { font-family: var(--font); cursor: pointer; }
         <button class="mi ai"><span class="ic">✦</span>正式化</button>
         <button class="mi ai"><span class="ic">✦</span>译为英文</button>
         <button class="mi ai"><span class="ic">✦</span>列表化</button>
+        <button class="mi ai"><span class="ic">✦</span>客服话术（自定义）</button>
       </div>
       <div class="preview">Apologize sincerely for the delay of the "Membership System" delivery this phase. Root cause: third-party payment integration overrun. Integration is 92% complete; launch postponed by 2 business days…
 
@@ -581,7 +585,7 @@ button { font-family: var(--font); cursor: pointer; }
 
 再次感谢理解与支持。{{xlc:cursor}}</textarea>
     </div>
-    <div class="varbar"><span class="cap">点选插入：</span><button class="varbtn">{{xlc:ask:字段}}</button><button class="varbtn">{{xlc:ask:字段|A,B}}</button><button class="varbtn">{{xlc:cursor}}</button><button class="varbtn">{{xlc:date}}</button><button class="varbtn">{{xlc:doc}}</button></div>
+    <div class="varbar"><span class="cap">点选插入：</span><button class="varbtn">{{xlc:ask:字段}}</button><button class="varbtn">{{xlc:ask:字段|A,B}}</button><button class="varbtn">{{xlc:snippet:标题}}</button><button class="varbtn">{{xlc:cursor}}</button><button class="varbtn">{{xlc:date}}</button><button class="varbtn">{{xlc:doc}}</button><button class="varbtn">{{xlc:clipboard}}</button></div>
     <div class="sugrow">✦ AI 建议：<b>项目延期通知模板</b> · 标签 客户沟通/模板 · 分类 客服<button class="btn ai" style="margin-left:auto;padding:2px 10px">全部采纳</button></div>
     <div class="fld"><label>标题</label><input class="inp" value="项目延期通知模板"></div>
     <div style="display:flex;gap:10px">
@@ -699,6 +703,10 @@ button { font-family: var(--font); cursor: pointer; }
       <h4>AI 助手</h4>
       <div class="set-row"><span class="grow">启用 AI 助手<div class="sub">使用思源 设置→人工智能 的模型，插件不保存密钥</div></span><button class="switch on"></button></div>
       <div class="set-row"><span class="grow">允许 AI 读取条目完整正文<div class="sub">关闭时仅元数据出域</div></span><button class="switch on"></button></div>
+      <div class="set-row" style="margin-top:6px"><span class="grow" style="font-size:11px;font-weight:600;letter-spacing:.4px;color:var(--b3-theme-on-surface)">自定义变换</span></div>
+      <div class="set-row"><input class="inp" value="客服话术" style="flex:0 0 88px;padding:4px 8px;font-size:12px"><input class="inp" value="改写为客服话术：" style="flex:1;padding:4px 8px;font-size:12px"><button class="btn ghost">删除</button></div>
+      <div class="set-row"><button class="btn" style="font-size:12px">＋ 添加自定义变换</button></div>
+      <div class="set-row"><span class="grow">导入提示词场景包<div class="sub">内置 10 个模板：客服回复 / AI 提示词 / 研发写作</div></span><button class="btn">导入</button></div>
     </div>
     <div class="set-card">
       <h4>变量与插入</h4>

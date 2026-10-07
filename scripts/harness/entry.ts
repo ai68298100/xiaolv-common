@@ -90,6 +90,7 @@ const T = (key: string, ...args: string[]): string => {
         tagAuditBtn: "AI 标签体检",
         setupTitle: "选择常用内容库", setupHint: "条目将以真实块的形式保存在你选择的文档中（可在思源中正常编辑）。创建新文档前会明确提示，不会静默写入。", setupPickDoc: "选择现有文档", setupNotebook: "按笔记本",
         setupNewDoc: "创建新库文档", setupNewDocName: "常用内容库", docPicker: "选择库文档", docPickerEmpty: "没有匹配的文档",
+        captureHint: "条目将保存为真实思源块 · 变量在插入时询问", docCount: "%s 个文档",
     };
     let text = map[key] ?? key;
     for (const arg of args) text = text.replace("%s", arg);

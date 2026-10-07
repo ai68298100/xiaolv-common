@@ -7,8 +7,17 @@
 // 移动端：底部 sheet + safe-area + 44px+ 命中区；行改圆角卡片（原型屏4）。
 
 // ---------- Design Tokens ----------
+// 作用域 = 三类插件根：搜索弹窗 / 表单（捕获·编辑·设置·引导·导入）/ 变量填充卡。
+// 变量填充卡是独立 Dialog（不在 .xlc-dialog/.xlc-form 内），漏掉即 Token 失效
+// （v0.2.4 前变量紫/圆角/徽标在填充卡内全部回落系统灰——R105 修复）。
 .xlc-dialog,
-.xlc-form {
+.xlc-form,
+.xlc-varform {
+  // 插件作用域内统一 border-box：宿主全局规则不保证覆盖到独立 Dialog
+  *,
+  *::before,
+  *::after { box-sizing: border-box; }
+
   --xlc-radius-lg: 12px;
   --xlc-radius: 10px;
   --xlc-radius-sm: 8px;
@@ -48,13 +57,15 @@
 
 // ---------- 细滚动条（仅插件作用域） ----------
 .xlc-dialog ::-webkit-scrollbar,
-.xlc-form ::-webkit-scrollbar {
+.xlc-form ::-webkit-scrollbar,
+.xlc-varform ::-webkit-scrollbar {
   width: 8px;
   height: 8px;
 }
 
 .xlc-dialog ::-webkit-scrollbar-thumb,
-.xlc-form ::-webkit-scrollbar-thumb {
+.xlc-form ::-webkit-scrollbar-thumb,
+.xlc-varform ::-webkit-scrollbar-thumb {
   background-color: var(--b3-border-color);
   border-radius: 4px;
 
@@ -62,13 +73,31 @@
 }
 
 .xlc-dialog ::-webkit-scrollbar-track,
-.xlc-form ::-webkit-scrollbar-track {
+.xlc-form ::-webkit-scrollbar-track,
+.xlc-varform ::-webkit-scrollbar-track {
   background: transparent;
 }
 
 .xlc-dialog,
-.xlc-form {
+.xlc-form,
+.xlc-varform {
   font-family: inherit;
+}
+
+// ---------- kbd 键帽（桌面头部提示 + 变量填充卡「Esc 取消」共用） ----------
+.xlc-kbd {
+  display: inline-flex;
+  align-items: center;
+  font-size: 11px;
+  line-height: 18px;
+  color: var(--b3-theme-on-surface);
+  border: 1px solid var(--b3-border-color);
+  border-bottom-width: 2px;
+  border-radius: 4px;
+  padding: 0 6px;
+  white-space: nowrap;
+  user-select: none;
+  background-color: var(--b3-theme-surface);
 }
 
 // ---------- 统一按钮（插件作用域内收拢 b3-button 观感） ----------
@@ -174,19 +203,6 @@
     gap: 4px;
     flex-shrink: 0;
     margin-left: auto;
-  }
-
-  .xlc-kbd {
-    font-size: 11px;
-    line-height: 18px;
-    color: var(--b3-theme-on-surface);
-    border: 1px solid var(--b3-border-color);
-    border-bottom-width: 2px;
-    border-radius: 4px;
-    padding: 0 6px;
-    white-space: nowrap;
-    user-select: none;
-    background-color: var(--b3-theme-surface);
   }
 
   .xlc-search {
@@ -308,6 +324,10 @@
   }
 
   .xlc-chip {
+    // inline-flex 归一：✦/🕐 等符号字形的行盒在部分字体下撑高按钮（原型 26 高）
+    display: inline-flex;
+    align-items: center;
+    white-space: nowrap;
     border: 1px solid var(--b3-border-color);
     background: transparent;
     color: var(--b3-theme-on-surface);
@@ -374,7 +394,7 @@
   }
 
   .xlc-list {
-    width: 320px;
+    width: 330px;
     flex-shrink: 0;
     overflow: auto;
     border-right: 1px solid var(--b3-border-color);
@@ -384,7 +404,8 @@
 
   .xlc-row {
     display: flex;
-    align-items: center;
+    // 顶对齐（原型屏 1）：星标与标题行齐平，两行内容时右侧不悬空
+    align-items: flex-start;
     gap: 8px;
     padding: 10px 12px;
     min-height: 44px;
@@ -478,16 +499,18 @@
       display: inline-flex;
       align-items: center;
       justify-content: center;
-      width: 28px;
-      height: 28px;
-      min-width: 28px;
-      min-height: 28px;
+      // 24px 紧凑命中（原型星标 13px 字形的最小按钮化）：给标题行让出截断余量；
+      // 移动端由 --mobile 覆盖为 44px 触控尺寸
+      width: 24px;
+      height: 24px;
+      min-width: 24px;
+      min-height: 24px;
       flex-shrink: 0;
       border: none;
       border-radius: var(--xlc-radius-xs);
       background: transparent;
       color: var(--b3-theme-on-surface);
-      font-size: 14px;
+      font-size: 13px;
       cursor: pointer;
       opacity: .45;
       transition: opacity var(--xlc-dur-fast) var(--xlc-ease),
@@ -755,6 +778,31 @@
       word-break: break-all;
     }
 
+    // 内联文档搜索（插入到指定文档）：菜单内无 .xlc-form 作用域，这里补齐输入观感
+    .xlc-pickdoc-input {
+      margin: 4px 8px 6px;
+      width: calc(100% - 16px);
+      border: 1px solid var(--b3-border-color);
+      border-radius: var(--xlc-radius-sm);
+      background-color: var(--b3-theme-surface);
+      color: var(--b3-theme-on-background);
+      padding: 6px 10px;
+      font-size: 13px;
+      font-family: inherit;
+      box-shadow: none;
+      outline: none;
+
+      &::placeholder {
+        color: var(--b3-theme-on-surface);
+        opacity: .75;
+      }
+
+      &:focus {
+        border-color: var(--b3-theme-primary);
+        background-color: var(--b3-theme-background);
+      }
+    }
+
     .xlc-menu-sec {
       padding: 4px 8px 6px;
       border-bottom: 1px solid var(--b3-border-color);
@@ -812,7 +860,8 @@
 
 // ---- 类型徽标（原型同款淡彩；搜索弹窗与设置弹窗共用）----
 .xlc-dialog .xlc-badge,
-.xlc-form .xlc-badge {
+.xlc-form .xlc-badge,
+.xlc-varform .xlc-badge {
   display: inline-block;
   font-size: 11px;
   font-weight: 600;
@@ -854,7 +903,23 @@
   display: flex;
   flex-direction: column;
   gap: 12px;
+  // 基准字号 13：卡片内裸文本（说明、状态行）不再回落宿主 16px
+  font-size: 13px;
   color: var(--b3-theme-on-background);
+
+  // 标签/提示在任意层级生效（引导与模板包弹窗的提示行是 .xlc-form 直接子元素，
+  // 曾回落 16px 深色正文——R105 提升作用域）
+  .xlc-form-label {
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--b3-theme-on-surface);
+  }
+
+  .xlc-form-hint {
+    font-size: 11px;
+    line-height: 1.6;
+    color: var(--b3-theme-on-surface);
+  }
 
   // 输入控件统一观感（聚焦描边 + 背景提亮）
   .b3-text-field {
@@ -931,29 +996,17 @@
     gap: 4px;
     min-width: 0;
 
-    .xlc-form-label {
+    .xlc-form-label .xlc-form-ai {
+      display: inline;
+      color: var(--b3-theme-primary);
+      cursor: pointer;
+      border: none;
+      background: transparent;
       font-size: 12px;
-      font-weight: 500;
-      color: var(--b3-theme-on-surface);
+      font-family: inherit;
+      padding: 0 0 0 6px;
 
-      .xlc-form-ai {
-        display: inline;
-        color: var(--b3-theme-primary);
-        cursor: pointer;
-        border: none;
-        background: transparent;
-        font-size: 12px;
-        font-family: inherit;
-        padding: 0 0 0 6px;
-
-        &:hover { text-decoration: underline; }
-      }
-    }
-
-    .xlc-form-hint {
-      font-size: 11px;
-      line-height: 1.6;
-      color: var(--b3-theme-on-surface);
+      &:hover { text-decoration: underline; }
     }
 
     // 提示行内联按钮（编辑弹窗：恢复来源 / 清除来源）
@@ -1109,6 +1162,14 @@
     min-width: 0;
   }
 
+  // 开关行副文本（原型屏 5：主文案 12.5 + 副文本 11 on-surface 两级）
+  .xlc-setting-sub {
+    font-size: 11px;
+    line-height: 1.5;
+    color: var(--b3-theme-on-surface);
+    margin-top: 1px;
+  }
+
   .xlc-switch {
     appearance: none;
     -webkit-appearance: none;
@@ -1152,6 +1213,7 @@
   display: flex;
   flex-direction: column;
   gap: 10px;
+  font-size: 13px;
   color: var(--b3-theme-on-background);
 
   .xlc-varform-head {
@@ -1302,6 +1364,8 @@
 
     .xlc-policy-ic {
       flex-shrink: 0;
+      width: 16px;
+      text-align: center;
       color: var(--b3-theme-primary);
       font-size: 14px;
     }
@@ -1363,6 +1427,63 @@
     color: var(--b3-theme-on-surface);
     margin-left: 4px;
   }
+}
+
+// ---------- 变量填充卡宿主容器（原型屏 4：紧凑卡，无独立标题栏）----------
+// 卡头（徽标+标题+Esc 取消）即标题；取消/插入按钮与 Esc 均可达，隐藏宿主头不损失关闭路径
+.b3-dialog__container.xlc-varform-host {
+  .b3-dialog__header { display: none; }
+
+  .b3-dialog__content {
+    padding: 14px 16px 14px;
+  }
+}
+
+// ---------- 库文档选择列表（首跑引导/更改库共用；原型屏 6 policy 同族） ----------
+.xlc-doclist {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.xlc-doclist-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  text-align: left;
+  border: 1px solid var(--b3-border-color);
+  border-radius: var(--xlc-radius-sm);
+  background-color: var(--b3-theme-surface);
+  color: var(--b3-theme-on-background);
+  padding: 8px 10px;
+  font-size: 12.5px;
+  font-family: inherit;
+  cursor: pointer;
+  transition: border-color var(--xlc-dur-fast) var(--xlc-ease),
+              background-color var(--xlc-dur-fast) var(--xlc-ease);
+
+  &:hover { border-color: var(--b3-theme-primary-light); }
+
+  &:focus-visible {
+    outline: 2px solid var(--b3-theme-primary);
+    outline-offset: 1px;
+  }
+
+  &--on {
+    border-color: var(--b3-theme-primary-light);
+    background-color: var(--xlc-ai-tint);
+    color: var(--b3-theme-primary);
+    font-weight: 600;
+  }
+}
+
+.xlc-doclist-empty {
+  font-size: 11px;
+  line-height: 1.6;
+  color: var(--b3-theme-on-surface);
+  padding: 2px;
 }
 
 // ---------- 宿主容器适配（只作用于本插件弹窗）----------
@@ -1439,6 +1560,7 @@
   }
 
   .xlc-row {
+    align-items: center;
     border: 1px solid var(--b3-border-color);
     border-radius: var(--xlc-radius);
     margin-bottom: 8px;

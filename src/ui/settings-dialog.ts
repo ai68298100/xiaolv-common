@@ -111,7 +111,7 @@ export function openSettingsDialog(ctx: SettingsUiContext): void {
     libStatus.className = "xlc-form-hint";
     const cfg = ctx.getConfig();
     libStatus.textContent = cfg
-        ? (cfg.mode === "notebook" ? `notebook ${cfg.notebookIds.join(",")}` : `${cfg.mode} · ${cfg.containerDocIds.length} doc(s)`)
+        ? (cfg.mode === "notebook" ? `notebook ${cfg.notebookIds.join(",")}` : `${cfg.mode} · ${t("docCount", String(cfg.containerDocIds.length))}`)
         : t("libraryNone");
     const changeBtn = document.createElement("button");
     changeBtn.className = "b3-button";
@@ -265,7 +265,9 @@ async function openPackExportDialog(ctx: SettingsUiContext): Promise<void> {
             a.click();
             URL.revokeObjectURL(a.href);
             ctx.notify("info", t("exportMdDone", String(result.itemCount), String(result.assetCount), String(result.skippedAssets.length)));
-        })();
+        })().catch((err: unknown) => {
+            ctx.notify("error", t("kernelError", err instanceof Error ? err.message : String(err)));
+        });
     });
     actions.appendChild(exportBtn);
     wrap.appendChild(actions);
@@ -866,7 +868,7 @@ function buildDataSection(ctx: SettingsUiContext, root: HTMLElement): void {
     libRow.className = "xlc-form-hint";
     const cfg = ctx.getConfig();
     libRow.textContent = `${t("librarySection")}：${cfg
-        ? (cfg.mode === "notebook" ? `notebook ${cfg.notebookIds.join(",")}` : `${cfg.mode} · ${cfg.containerDocIds.length}`)
+        ? (cfg.mode === "notebook" ? `notebook ${cfg.notebookIds.join(",")}` : `${cfg.mode} · ${t("docCount", String(cfg.containerDocIds.length))}`)
         : t("libraryNone")}`;
     dataSec.appendChild(libRow);
     const dataBtns = document.createElement("div");
@@ -901,7 +903,11 @@ function buildDataSection(ctx: SettingsUiContext, root: HTMLElement): void {
         });
     });
     if (ctx.state.ai.enabled) {
-        mkBtn("✦ " + t("tagAuditBtn"), () => void runTagAudit(ctx));
+        mkBtn("✦ " + t("tagAuditBtn"), () => {
+            void runTagAudit(ctx).catch((err: unknown) => {
+                ctx.notify("error", t("kernelError", err instanceof Error ? err.message : String(err)));
+            });
+        });
     }
     mkBtn(t("exportBtn"), () => {
         void ctx.exportBundle().then((json) => {
@@ -913,10 +919,14 @@ function buildDataSection(ctx: SettingsUiContext, root: HTMLElement): void {
             a.click();
             URL.revokeObjectURL(a.href);
             ctx.notify("info", t("exportDone", String(count)));
+        }).catch((err: unknown) => {
+            ctx.notify("error", t("kernelError", err instanceof Error ? err.message : String(err)));
         });
     });
     mkBtn(t("packBtn"), () => {
-        void openPackExportDialog(ctx);
+        void openPackExportDialog(ctx).catch((err: unknown) => {
+            ctx.notify("error", t("kernelError", err instanceof Error ? err.message : String(err)));
+        });
     });
     const importBtn = mkBtn(t("importBtn"), () => {
         const fileInput = document.createElement("input");
@@ -947,6 +957,8 @@ function buildDataSection(ctx: SettingsUiContext, root: HTMLElement): void {
                     return;
                 }
                 openImportPolicyDialog(ctx, validation.parsed, validation.issues, {kind: "json", text});
+            }).catch((err: unknown) => {
+                ctx.notify("error", t("importFailed", err instanceof Error ? err.message : String(err)));
             });
         });
         fileInput.click();
@@ -959,7 +971,13 @@ function buildDataSection(ctx: SettingsUiContext, root: HTMLElement): void {
 /** AI 标签体检：仅标签清单出域；结果只展示，不自动修改任何条目 */
 async function runTagAudit(ctx: SettingsUiContext): Promise<void> {
     const t = ctx.t;
-    const idx = await ctx.library.ensureIndex();
+    let idx: Awaited<ReturnType<LibraryService["ensureIndex"]>>;
+    try {
+        idx = await ctx.library.ensureIndex();
+    } catch (err) {
+        ctx.notify("error", t("kernelError", err instanceof Error ? err.message : String(err)));
+        return;
+    }
     const tags = collectTags(idx.entries);
     if (tags.length < 2) {
         ctx.notify("info", t("tagAuditTooFew"));
@@ -1087,7 +1105,8 @@ export function openImportPolicyDialog(
         card.className = "xlc-policy" + (recommended ? " xlc-policy--recommended" : "");
         const icon = document.createElement("span");
         icon.className = "xlc-policy-ic";
-        icon.textContent = policy === "skip" ? "⃝" : policy === "overwrite" ? "⇄" : "＋";
+        // ○（U+25CB）：⃝ 组合字符在中文字体下渲染成错位小圈，换稳定字形
+        icon.textContent = policy === "skip" ? "○" : policy === "overwrite" ? "⇄" : "＋";
         card.appendChild(icon);
         const text = document.createElement("span");
         const titleEl = document.createElement("span");

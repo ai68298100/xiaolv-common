@@ -9,7 +9,7 @@ import type {IMenuItem} from "siyuan";
 import {fetchSyncPost} from "siyuan";
 import "@/styles/index.scss";
 import {LIMITS, STORAGE_KEYS} from "./constants";
-import {createKernelClient, parseExistingMap, type IKernelClient} from "./kernel/client";
+import {createKernelClient, parseExistingMap, type IKernelClient, type SyncPost} from "./kernel/client";
 import {CommonItem, isItemType} from "./model/item";
 import {ExportedItem, buildBundle, validateImport, ConflictPolicy, ImportReceipt} from "./model/transfer";
 import {importBundle as importBundleCore} from "./service/importer";
@@ -24,7 +24,7 @@ import {buildProviderRows} from "./model/provider-section";
 import {CapabilityDescriptor, ProviderDescriptor} from "./model/protocol";
 import {LibraryService} from "./service/library";
 import {ActionExecutor, HostBridge} from "./service/commands";
-import {AiAssistant, AiUnavailableError, SearchMetaEntry} from "./service/ai";
+import {AiAssistant, AiUnavailableError, SearchMetaEntry, type AiEndpointName} from "./service/ai";
 import {ProviderRegistry} from "./service/providers";
 import {XiaolvCommonService} from "./service/service";
 import {CommonSearchDialog} from "./ui/dialog";
@@ -35,6 +35,18 @@ import {buildVariableBar} from "./ui/variable-form";
 import type {TransformKind} from "./service/ai";
 
 type TFn = (key: string, ...args: string[]) => string;
+
+/** 将思源官方泛型传输函数收窄为内核客户端需要的统一信封。 */
+const hostSyncPost: SyncPost = async (url, data) => {
+    const raw = await fetchSyncPost(url, data);
+    if (!raw || typeof raw !== "object") return {data: raw};
+    const body = raw as unknown as Record<string, unknown>;
+    return {
+        code: typeof body.code === "number" ? body.code : undefined,
+        msg: typeof body.msg === "string" ? body.msg : undefined,
+        data: body.data,
+    };
+};
 
 export default class XiaolvCommonPlugin extends Plugin {
     private kernelClient!: IKernelClient;
@@ -82,7 +94,7 @@ export default class XiaolvCommonPlugin extends Plugin {
     }
 
     private bootServices(): void {
-        const kernel = createKernelClient({syncPost: fetchSyncPost as never});
+        const kernel = createKernelClient({syncPost: hostSyncPost});
         this.kernelClient = kernel;
         // 拼音适配器装配（ADR 0004/R5：tiny-pinyin 本地注解，设置可关；关闭即 noop 零开销）
         this.applyPinyinAdapter();
@@ -95,7 +107,11 @@ export default class XiaolvCommonPlugin extends Plugin {
         this.host = new HostBridge(this.app);
         this.registry = new ProviderRegistry();
         this.registry.restore(this.state.providers);
-        this.ai = new AiAssistant({request: (endpoint, payload) => kernel.request(endpoint as never, payload ?? {})}, this.state.ai);
+        const aiTransport = {
+            request: <T = unknown>(endpoint: AiEndpointName, payload?: Record<string, unknown>): Promise<T> =>
+                kernel.request<T>(endpoint, payload ?? {}),
+        };
+        this.ai = new AiAssistant(aiTransport, this.state.ai);
         this.executor = new ActionExecutor(this.library, this.host, this.notify, (item) => {
             this.service.touchRecent(item.id);
             this.recordUsage(item.id);
@@ -376,7 +392,8 @@ export default class XiaolvCommonPlugin extends Plugin {
         }
     }
 
-    private registerEntries(): void {        try {
+    private registerEntries(): void {
+        try {
             this.addTopBar({
                 icon: "iconXlcCommon",
                 title: this.i18nFn()("openSearch"),
@@ -388,12 +405,12 @@ export default class XiaolvCommonPlugin extends Plugin {
         }
         try {
             // 移动端编辑器工具栏入口（桌面端该调用无害；失败静默走命令）
-            this.addToolbarItem?.({
+            this.addToolbarItem({
                 name: "xiaolv-common-open",
                 icon: "iconXlcCommon",
-                title: this.i18nFn()("openSearch"),
-                callback: () => this.openSearch(),
-            } as never);
+                tip: this.i18nFn()("openSearch"),
+                click: () => this.openSearch(),
+            });
         } catch {
             // 移动端工具栏 API 缺失：降级为命令触发
         }
@@ -1158,19 +1175,29 @@ export default class XiaolvCommonPlugin extends Plugin {
             }
             this.menuHandler = null;
         }
-        for (const [evt, handler] of [
-            ["open-menu-blockref", this.blockRefMenuHandler],
-            ["open-menu-link", this.linkMenuHandler],
-            ["open-menu-image", this.imageMenuHandler],
-            ["open-menu-doctree", this.docTreeMenuHandler],
-        ] as const) {
-            if (handler) {
-                try {
-                    this.eventBus.off(evt, handler as never);
-                } catch {
-                    // 忽略
-                }
-            }
+        const removeBlockrefHandler = this.blockRefMenuHandler;
+        const removeLinkHandler = this.linkMenuHandler;
+        const removeImageHandler = this.imageMenuHandler;
+        const removeDoctreeHandler = this.docTreeMenuHandler;
+        try {
+            if (removeBlockrefHandler) this.eventBus.off("open-menu-blockref", removeBlockrefHandler);
+        } catch {
+            // 宿主事件总线已销毁：继续尝试解绑其余处理器
+        }
+        try {
+            if (removeLinkHandler) this.eventBus.off("open-menu-link", removeLinkHandler);
+        } catch {
+            // 宿主事件总线已销毁：继续尝试解绑其余处理器
+        }
+        try {
+            if (removeImageHandler) this.eventBus.off("open-menu-image", removeImageHandler);
+        } catch {
+            // 宿主事件总线已销毁：继续尝试解绑其余处理器
+        }
+        try {
+            if (removeDoctreeHandler) this.eventBus.off("open-menu-doctree", removeDoctreeHandler);
+        } catch {
+            // 宿主事件总线已销毁：忽略
         }
         this.blockRefMenuHandler = null;
         this.linkMenuHandler = null;

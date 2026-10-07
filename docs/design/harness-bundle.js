@@ -193,9 +193,11 @@
     const dialog = new import_siyuan.Dialog({
       title: t("varFormTitle"),
       content: "",
-      width: "min(380px, 92vw)",
+      width: "min(360px, 92vw)",
       height: "auto"
     });
+    const container = dialog.element.querySelector(".b3-dialog__container");
+    if (container) container.classList.add("xlc-varform-host");
     const body = dialog.element.querySelector(".b3-dialog__content");
     if (!body) return;
     body.innerHTML = "";
@@ -852,7 +854,17 @@
       } catch (err) {
         if (seq !== this.searchSeq) return;
         this.results = [];
+        this.providerRows = [];
+        this.activeIndex = 0;
+        this.activeProvider = -1;
+        this.aiResults = false;
+        this.emptyMessage = "";
+        if (aiBanner) aiBanner.style.display = "none";
         if (status) status.textContent = this.deps.t("kernelError", err.message);
+        if (footer) {
+          const count = footer.querySelector(".xlc-footer-count");
+          if (count && !this.deps.isMobile()) count.textContent = this.deps.t("totalItems", "0");
+        }
         this.renderList(list);
         return;
       }
@@ -1355,7 +1367,6 @@
         }).catch(() => {
           previewBox.textContent = this.deps.t("kernelError", "preview");
         });
-        menu.appendChild(previewBox);
         const sec1 = document.createElement("div");
         sec1.className = "xlc-menu-sec";
         const addAction = (icon, label, run, cls = "xlc-menu-item") => {
@@ -1442,6 +1453,7 @@
         sec2.appendChild(toDocBtn);
         addSilent("\u{1F5D1}", this.deps.t("delete"), () => this.deps.deleteItem(entry.id));
         menu.appendChild(sec2);
+        menu.appendChild(previewBox);
       };
       const buildTransformView = (viewLabel, transformLabel) => {
         const lbl = document.createElement("div");
@@ -2271,7 +2283,7 @@
     const libStatus = document.createElement("div");
     libStatus.className = "xlc-form-hint";
     const cfg = ctx.getConfig();
-    libStatus.textContent = cfg ? cfg.mode === "notebook" ? `notebook ${cfg.notebookIds.join(",")}` : `${cfg.mode} \xB7 ${cfg.containerDocIds.length} doc(s)` : t("libraryNone");
+    libStatus.textContent = cfg ? cfg.mode === "notebook" ? `notebook ${cfg.notebookIds.join(",")}` : `${cfg.mode} \xB7 ${t("docCount", String(cfg.containerDocIds.length))}` : t("libraryNone");
     const changeBtn = document.createElement("button");
     changeBtn.className = "b3-button";
     changeBtn.textContent = t("openSettingsChangeLib");
@@ -2405,7 +2417,9 @@
         a.click();
         URL.revokeObjectURL(a.href);
         ctx.notify("info", t("exportMdDone", String(result.itemCount), String(result.assetCount), String(result.skippedAssets.length)));
-      })();
+      })().catch((err) => {
+        ctx.notify("error", t("kernelError", err instanceof Error ? err.message : String(err)));
+      });
     });
     actions.appendChild(exportBtn);
     wrap.appendChild(actions);
@@ -2967,7 +2981,7 @@
     const libRow = document.createElement("div");
     libRow.className = "xlc-form-hint";
     const cfg = ctx.getConfig();
-    libRow.textContent = `${t("librarySection")}\uFF1A${cfg ? cfg.mode === "notebook" ? `notebook ${cfg.notebookIds.join(",")}` : `${cfg.mode} \xB7 ${cfg.containerDocIds.length}` : t("libraryNone")}`;
+    libRow.textContent = `${t("librarySection")}\uFF1A${cfg ? cfg.mode === "notebook" ? `notebook ${cfg.notebookIds.join(",")}` : `${cfg.mode} \xB7 ${t("docCount", String(cfg.containerDocIds.length))}` : t("libraryNone")}`;
     dataSec.appendChild(libRow);
     const dataBtns = document.createElement("div");
     dataBtns.style.display = "flex";
@@ -2999,7 +3013,11 @@
       });
     });
     if (ctx.state.ai.enabled) {
-      mkBtn("\u2726 " + t("tagAuditBtn"), () => void runTagAudit(ctx));
+      mkBtn("\u2726 " + t("tagAuditBtn"), () => {
+        void runTagAudit(ctx).catch((err) => {
+          ctx.notify("error", t("kernelError", err instanceof Error ? err.message : String(err)));
+        });
+      });
     }
     mkBtn(t("exportBtn"), () => {
       void ctx.exportBundle().then((json) => {
@@ -3011,10 +3029,14 @@
         a.click();
         URL.revokeObjectURL(a.href);
         ctx.notify("info", t("exportDone", String(count)));
+      }).catch((err) => {
+        ctx.notify("error", t("kernelError", err instanceof Error ? err.message : String(err)));
       });
     });
     mkBtn(t("packBtn"), () => {
-      void openPackExportDialog(ctx);
+      void openPackExportDialog(ctx).catch((err) => {
+        ctx.notify("error", t("kernelError", err instanceof Error ? err.message : String(err)));
+      });
     });
     const importBtn = mkBtn(t("importBtn"), () => {
       const fileInput = document.createElement("input");
@@ -3046,6 +3068,8 @@
             return;
           }
           openImportPolicyDialog(ctx, validation.parsed, validation.issues, { kind: "json", text });
+        }).catch((err) => {
+          ctx.notify("error", t("importFailed", err instanceof Error ? err.message : String(err)));
         });
       });
       fileInput.click();
@@ -3056,7 +3080,13 @@
   }
   async function runTagAudit(ctx) {
     const t = ctx.t;
-    const idx = await ctx.library.ensureIndex();
+    let idx;
+    try {
+      idx = await ctx.library.ensureIndex();
+    } catch (err) {
+      ctx.notify("error", t("kernelError", err instanceof Error ? err.message : String(err)));
+      return;
+    }
     const tags = collectTags(idx.entries);
     if (tags.length < 2) {
       ctx.notify("info", t("tagAuditTooFew"));
@@ -3173,7 +3203,7 @@
       card.className = "xlc-policy" + (recommended ? " xlc-policy--recommended" : "");
       const icon = document.createElement("span");
       icon.className = "xlc-policy-ic";
-      icon.textContent = policy === "skip" ? "\u20DD" : policy === "overwrite" ? "\u21C4" : "\uFF0B";
+      icon.textContent = policy === "skip" ? "\u25CB" : policy === "overwrite" ? "\u21C4" : "\uFF0B";
       card.appendChild(icon);
       const text = document.createElement("span");
       const titleEl = document.createElement("span");
@@ -3271,17 +3301,29 @@
         return;
       }
       const content = text.slice(0, 1e5);
-      const dup = await this.deps.findDuplicate(content);
+      let dup;
+      try {
+        dup = await this.deps.findDuplicate(content);
+      } catch (err) {
+        this.deps.notify("error", this.deps.t("kernelError", err instanceof Error ? err.message : String(err)));
+        return;
+      }
       if (dup) {
         this.deps.notify("info", this.deps.t("quickCaptureDuplicate", dup.title));
         return;
       }
       const firstLine = (_a = content.split(/\r?\n/).map((line) => line.trim()).find(Boolean)) != null ? _a : content;
-      const created = await this.deps.createItem({
-        itemType: inferTypeFromText(content),
-        markdown: content,
-        title: firstLine.slice(0, 512)
-      });
+      let created;
+      try {
+        created = await this.deps.createItem({
+          itemType: inferTypeFromText(content),
+          markdown: content,
+          title: firstLine.slice(0, 512)
+        });
+      } catch (err) {
+        this.deps.notify("error", this.deps.t("kernelError", err instanceof Error ? err.message : String(err)));
+        return;
+      }
       if (created.ok) {
         this.deps.notify("info", this.deps.t("saved", created.message));
       } else {
@@ -3433,6 +3475,10 @@
       const categoryEl = field(t("category"), "", false, "xlc-form-category", tagRow);
       categoryEl.parentElement.classList.add("xlc-form-field--fixed");
       form.appendChild(tagRow);
+      const hint = document.createElement("div");
+      hint.className = "xlc-form-hint";
+      hint.textContent = t("captureHint");
+      form.appendChild(hint);
       const sugrow = document.createElement("div");
       sugrow.className = "xlc-sugrow";
       sugrow.style.display = "none";
@@ -3611,6 +3657,12 @@
               cancelBtn.disabled = false;
               this.deps.notify("error", result.message);
             }
+          }).catch((err) => {
+            saving = false;
+            if (closed) return;
+            saveBtn.disabled = false;
+            cancelBtn.disabled = false;
+            this.deps.notify("error", t("kernelError", err instanceof Error ? err.message : String(err)));
           });
         };
         void this.deps.findDuplicate(contentValue).then((dup) => {
@@ -3622,6 +3674,9 @@
           (0, import_siyuan4.confirm)("\u26A0\uFE0F " + t("duplicateTitle"), t("duplicateConfirm", dup.title), () => {
             if (!closed) doSave();
           });
+        }).catch((err) => {
+          if (closed) return;
+          this.deps.notify("error", t("kernelError", err instanceof Error ? err.message : String(err)));
         });
       });
       actions.appendChild(cancelBtn);
@@ -3831,7 +3886,9 @@
       setupNewDoc: "\u521B\u5EFA\u65B0\u5E93\u6587\u6863",
       setupNewDocName: "\u5E38\u7528\u5185\u5BB9\u5E93",
       docPicker: "\u9009\u62E9\u5E93\u6587\u6863",
-      docPickerEmpty: "\u6CA1\u6709\u5339\u914D\u7684\u6587\u6863"
+      docPickerEmpty: "\u6CA1\u6709\u5339\u914D\u7684\u6587\u6863",
+      captureHint: "\u6761\u76EE\u5C06\u4FDD\u5B58\u4E3A\u771F\u5B9E\u601D\u6E90\u5757 \xB7 \u53D8\u91CF\u5728\u63D2\u5165\u65F6\u8BE2\u95EE",
+      docCount: "%s \u4E2A\u6587\u6863"
     };
     let text = (_a = map[key]) != null ? _a : key;
     for (const arg of args) text = text.replace("%s", arg);

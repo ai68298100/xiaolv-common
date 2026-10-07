@@ -114,7 +114,7 @@ export function failureEnvelope(
     reason: Extract<NonNullable<ActionResult<never>["reason"]>, string>,
     message?: string,
 ): ActionResult<never> {
-    return {...envelope(), ok: false, reason: reason as never, message};
+    return {...envelope(), ok: false, reason, message};
 }
 
 export function successEnvelope<T>(data?: T): ActionResult<T> {
