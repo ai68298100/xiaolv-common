@@ -1,6 +1,6 @@
 {
   "name": "xiaolv-common",
-  "version": "0.2.3",
+  "version": "0.2.4",
   "description": "SiYuan plugin: quick recall and reuse of common content anchored to real SiYuan blocks.",
   "main": "index.js",
   "scripts": {
@@ -36,7 +36,7 @@
     "sass-loader": "^17.0.0",
     "siyuan": "1.2.9",
     "tslib": "^2.8.1",
-    "typescript": "^5.5.4",
+    "typescript": "^7.0.2",
     "webpack": "^5.111.1",
     "webpack-cli": "^7.0.3",
     "zip-webpack-plugin": "^4.0.3"

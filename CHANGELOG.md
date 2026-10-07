@@ -2,6 +2,12 @@
 
 本文件记录「小驴常用」的面向用户的变化。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
 
+## [0.2.4] — 2026-10-07
+
+### 维护
+
+- 升级 TypeScript 至 7.0.2，移除已废弃的 `baseUrl` 配置并补充 SCSS 模块类型声明；类型检查、测试、构建和 UI smoke 全部通过。
+
 ## [0.2.3] — 2026-10-07
 
 ### 修复
