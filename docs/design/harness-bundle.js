@@ -482,9 +482,10 @@
       search.appendChild(clearBtn);
       top.appendChild(search);
       if (!isMobile) {
+        const isApple = /Mac|iPhone|iPad/i.test(navigator.platform || "");
         const kbdRow = document.createElement("div");
         kbdRow.className = "xlc-kbdrow";
-        for (const hint of ["\u2191\u2193", "\u21A9 \u63D2\u5165", "\u2303\u21A9 \u590D\u5236", "\u23251-9 \u76F4\u8FBE", "Esc"]) {
+        for (const hint of ["\u2191\u2193", "\u21A9 \u63D2\u5165", isApple ? "\u2318\u21A9 \u590D\u5236" : "\u2303\u21A9 \u590D\u5236", "\u23251-9 \u76F4\u8FBE", "Esc"]) {
           const kbd = document.createElement("span");
           kbd.className = "xlc-kbd";
           kbd.textContent = hint;
@@ -2573,6 +2574,7 @@
     const contents = document.createElement("div");
     contents.className = "xlc-form-hint";
     contents.style.lineHeight = "1.8";
+    contents.style.whiteSpace = "pre-line";
     contents.textContent = t("packContentsHint");
     wrap.appendChild(contents);
     const trustHint = document.createElement("div");
@@ -2703,7 +2705,7 @@
         const row = document.createElement("div");
         row.className = "xlc-setting-row";
         const status = document.createElement("span");
-        status.className = "xlc-badge " + (p.runtime ? "xlc-badge--text" : "xlc-badge--warn");
+        status.className = "xlc-badge " + (p.runtime ? "xlc-badge--ai" : "xlc-badge--warn");
         status.textContent = p.runtime ? t("providerExecutable") : t("providerPendingReload");
         const cap = document.createElement("span");
         cap.textContent = `${p.record.displayName}\uFF08v${p.record.protocolVersion}\uFF09`;
@@ -3425,6 +3427,8 @@
   function isBlockRefTarget(blockId) {
     return /^\d{14}-[0-9a-z]{7}$/.test(blockId);
   }
+  var TOAST_TITLE_MAX = 48;
+  var shortTitle = (title) => title.length > TOAST_TITLE_MAX ? `${title.slice(0, TOAST_TITLE_MAX)}\u2026` : title;
   function classifyLinkTarget(href) {
     const h = (href != null ? href : "").trim();
     if (isSafeHttpUrl(h)) return { kind: "url", value: h };
@@ -3503,7 +3507,7 @@
         return;
       }
       if (dup) {
-        this.deps.notify("info", this.deps.t("quickCaptureDuplicate", dup.title));
+        this.deps.notify("info", this.deps.t("quickCaptureDuplicate", shortTitle(dup.title)));
         return;
       }
       const firstLine = (_a = content.split(/\r?\n/).map((line) => line.trim()).find(Boolean)) != null ? _a : content;
@@ -3519,7 +3523,7 @@
         return;
       }
       if (created.ok) {
-        this.deps.notify("info", this.deps.t("saved", created.message));
+        this.deps.notify("info", this.deps.t("saved", shortTitle(created.message)));
       } else {
         this.deps.notify("error", created.message);
       }
@@ -3856,7 +3860,7 @@
           }).then((result) => {
             saving = false;
             if (result.ok) {
-              this.deps.notify("info", t("saved", result.message));
+              this.deps.notify("info", t("saved", shortTitle(result.message)));
               closed = true;
               dialog.destroy();
             } else {

@@ -208,11 +208,12 @@ export class CommonSearchDialog {
         search.appendChild(input);
         search.appendChild(clearBtn);
         top.appendChild(search);
-        // 头部快捷键提示（桌面；原型头部右侧 kbd chips）
+        // 头部快捷键提示（桌面；原型头部右侧 kbd chips；⌃/⌘ 随平台）
         if (!isMobile) {
+            const isApple = /Mac|iPhone|iPad/i.test(navigator.platform || "");
             const kbdRow = document.createElement("div");
             kbdRow.className = "xlc-kbdrow";
-            for (const hint of ["↑↓", "↩ 插入", "⌃↩ 复制", "⌥1-9 直达", "Esc"]) {
+            for (const hint of ["↑↓", "↩ 插入", isApple ? "⌘↩ 复制" : "⌃↩ 复制", "⌥1-9 直达", "Esc"]) {
                 const kbd = document.createElement("span");
                 kbd.className = "xlc-kbd";
                 kbd.textContent = hint;

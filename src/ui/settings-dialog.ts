@@ -225,6 +225,8 @@ async function openPackExportDialog(ctx: SettingsUiContext): Promise<void> {
     const contents = document.createElement("div");
     contents.className = "xlc-form-hint";
     contents.style.lineHeight = "1.8";
+    // 清单含 \n 三行结构：pre-line 才能换行（默认 div 会塌成一行，R111 修）
+    contents.style.whiteSpace = "pre-line";
     contents.textContent = t("packContentsHint");
     wrap.appendChild(contents);
     const trustHint = document.createElement("div");
@@ -365,7 +367,8 @@ function buildProviderSection(ctx: SettingsUiContext, root: HTMLElement): void {
             const row = document.createElement("div");
             row.className = "xlc-setting-row";
             const status = document.createElement("span");
-            status.className = "xlc-badge " + (p.runtime ? "xlc-badge--text" : "xlc-badge--warn");
+            // 可执行=AI 蓝（原型屏 5 同款）；待重载=warn 红保持
+            status.className = "xlc-badge " + (p.runtime ? "xlc-badge--ai" : "xlc-badge--warn");
             status.textContent = p.runtime ? t("providerExecutable") : t("providerPendingReload");
             const cap = document.createElement("span");
             cap.textContent = `${p.record.displayName}（v${p.record.protocolVersion}）`;

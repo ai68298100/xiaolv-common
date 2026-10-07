@@ -10,6 +10,10 @@ export function isBlockRefTarget(blockId: string): boolean {
     return /^\d{14}-[0-9a-z]{7}$/.test(blockId);
 }
 
+/** 回执 toast 的标题展示截断（标题最长 512 字；原文不受影响） */
+const TOAST_TITLE_MAX = 48;
+const shortTitle = (title: string): string => (title.length > TOAST_TITLE_MAX ? `${title.slice(0, TOAST_TITLE_MAX)}…` : title);
+
 /** 链接目标分类：仅接受 http(s) 外链与 assets/ 资源；其余（siyuan:// 等）返回 null */
 export function classifyLinkTarget(href: string): {kind: "url" | "asset"; value: string} | null {
     const h = (href ?? "").trim();
@@ -115,7 +119,7 @@ export class CaptureDialog {
             return;
         }
         if (dup) {
-            this.deps.notify("info", this.deps.t("quickCaptureDuplicate", dup.title));
+            this.deps.notify("info", this.deps.t("quickCaptureDuplicate", shortTitle(dup.title)));
             return;
         }
         const firstLine = content.split(/\r?\n/).map((line) => line.trim()).find(Boolean) ?? content;
@@ -131,7 +135,7 @@ export class CaptureDialog {
             return;
         }
         if (created.ok) {
-            this.deps.notify("info", this.deps.t("saved", created.message));
+            this.deps.notify("info", this.deps.t("saved", shortTitle(created.message)));
         } else {
             this.deps.notify("error", created.message);
         }
@@ -492,7 +496,7 @@ export class CaptureDialog {
                 }).then((result) => {
                     saving = false;
                     if (result.ok) {
-                        this.deps.notify("info", t("saved", result.message));
+                        this.deps.notify("info", t("saved", shortTitle(result.message)));
                         closed = true;
                         dialog.destroy();
                     } else {

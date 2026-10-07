@@ -36,6 +36,10 @@ import type {TransformKind} from "./service/ai";
 
 type TFn = (key: string, ...args: string[]) => string;
 
+/** 回执 toast 的标题展示截断：标题最长 512 字，原样进通知条会撑爆全屏（原文不受影响） */
+const TOAST_TITLE_MAX = 48;
+const shortTitle = (title: string): string => (title.length > TOAST_TITLE_MAX ? `${title.slice(0, TOAST_TITLE_MAX)}…` : title);
+
 /** 将思源官方泛型传输函数收窄为内核客户端需要的统一信封。 */
 const hostSyncPost: SyncPost = async (url, data) => {
     const raw = await fetchSyncPost(url, data);
@@ -648,7 +652,7 @@ export default class XiaolvCommonPlugin extends Plugin {
                     source: {...src.source},
                 });
                 if (created.ok) {
-                    this.notify("info", this.i18nFn()("duplicated", created.data.item.title));
+                    this.notify("info", this.i18nFn()("duplicated", shortTitle(created.data.item.title)));
                 } else {
                     this.notify("error", created.message);
                 }
@@ -927,8 +931,8 @@ export default class XiaolvCommonPlugin extends Plugin {
         const t = this.i18nFn();
         if (pending.includes("mobile-insert-unverified")) return t("insertPendingMobile");
         if (code === "no-editor-copied") return t("insertNoEditor");
-        if (code === "copied") return t("copied", title);
-        if (code === "inserted") return t("inserted", title);
+        if (code === "copied") return t("copied", shortTitle(title));
+        if (code === "inserted") return t("inserted", shortTitle(title));
         if (pending.includes("bitmap-clipboard-unverified")) return t("copiedRichPending");
         return code;
     }
@@ -1082,7 +1086,7 @@ export default class XiaolvCommonPlugin extends Plugin {
             }).then((result) => {
                 if (result.ok) {
                     this.previewCache.clear();
-                    this.notify("info", t("updated", result.data.item.title));
+                    this.notify("info", t("updated", shortTitle(result.data.item.title)));
                     dialog.destroy();
                 } else {
                     saving = false;
