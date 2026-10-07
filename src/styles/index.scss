@@ -393,9 +393,15 @@ body.b3-theme-dark,
     background-color: var(--xlc-ai-tint);
   }
 
-  // 定向插入模式横幅（R116）：与 AI 横幅同族虚线，⤓ 图标区分；透明底弱化层级
+  // 定向插入模式横幅（R116）：与 AI 横幅同族虚线，⤓ 图标区分；透明底弱化层级。
+  // 长路径防御（R117）：文档路径来自用户数据可任意长，单行省略不撑破筛选行
   .xlc-target-banner {
-    align-self: flex-start;
+    display: inline-block;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    line-height: 20px;
     border-style: dashed;
     color: var(--b3-theme-primary);
     background-color: transparent;
@@ -664,8 +670,12 @@ body.b3-theme-dark,
     font-size: 11px;
 
     .xlc-meta-chip {
-      display: inline-flex;
-      align-items: center;
+      // 长标签防御（R117）：用户标签可任意长，单行省略（内容纯文本，line-height 定高）
+      display: inline-block;
+      max-width: 220px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
       font-size: 11px;
       line-height: 18px;
       padding: 0 8px;
@@ -675,7 +685,6 @@ body.b3-theme-dark,
       color: var(--b3-theme-on-surface);
       font-family: inherit;
       cursor: pointer;
-      white-space: nowrap;
       transition: border-color var(--xlc-dur-fast) var(--xlc-ease),
                   color var(--xlc-dur-fast) var(--xlc-ease),
                   background-color var(--xlc-dur-fast) var(--xlc-ease);
