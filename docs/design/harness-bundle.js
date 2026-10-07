@@ -540,7 +540,7 @@
           tagSelect.value = savedFilters.tag;
           void this.refresh();
         }
-      });
+      }).catch(() => void 0);
       tagSelect.addEventListener("change", () => {
         var _a;
         this.deps.setFilters({
@@ -571,7 +571,7 @@
           categorySelect.value = savedFilters.category;
           void this.refresh();
         }
-      });
+      }).catch(() => void 0);
       categorySelect.addEventListener("change", () => {
         this.deps.setFilters({ type: typeSelect.value, tag: tagSelect.value, category: categorySelect.value });
         void this.refresh();
@@ -1678,7 +1678,7 @@
                   await this.insertEntryWithVars(entry, (fills) => this.deps.insertToDoc(entry.id, hit.id, hit.hPath, fills));
                 }));
               }
-            });
+            }).catch(() => void 0);
           });
           const actions2 = menu.querySelectorAll(".xlc-menu-sec");
           (_a2 = actions2[actions2.length - 1]) == null ? void 0 : _a2.before(sec);

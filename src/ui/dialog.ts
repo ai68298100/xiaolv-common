@@ -273,7 +273,7 @@ export class CommonSearchDialog {
                 tagSelect.value = savedFilters.tag;
                 void this.refresh();
             }
-        });
+        }).catch(() => undefined); // 辅助筛选数据失败静默降级（下拉保留默认项，R123）
         tagSelect.addEventListener("change", () => {
             this.deps.setFilters({
                 type: typeSelect.value,
@@ -306,7 +306,7 @@ export class CommonSearchDialog {
                 categorySelect.value = savedFilters.category;
                 void this.refresh();
             }
-        });
+        }).catch(() => undefined); // 辅助筛选数据失败静默降级（R123）
         categorySelect.addEventListener("change", () => {
             this.deps.setFilters({type: typeSelect.value, tag: tagSelect.value, category: categorySelect.value});
             void this.refresh();
@@ -1503,7 +1503,8 @@ export class CommonSearchDialog {
                                 await this.insertEntryWithVars(entry, (fills) => this.deps.insertToDoc(entry.id, hit.id, hit.hPath, fills));
                             }));
                         }
-                    });
+                        // 文档搜索失败静默降级（关键词保留可重试；Esc 由菜单层处理，R123）
+                    }).catch(() => undefined);
                 });
                 const actions2 = menu.querySelectorAll(".xlc-menu-sec");
                 actions2[actions2.length - 1]?.before(sec);
