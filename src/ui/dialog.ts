@@ -156,6 +156,11 @@ export class CommonSearchDialog {
         const input = document.createElement("input");
         input.className = "b3-text-field xlc-search-input";
         input.placeholder = this.deps.t("searchPlaceholder");
+        // 移动端软键盘细节：回车=搜索、关拉丁自动更正（中文输入不受影响）
+        input.setAttribute("enterkeyhint", "search");
+        input.setAttribute("autocapitalize", "off");
+        input.setAttribute("autocorrect", "off");
+        input.setAttribute("spellcheck", "false");
         input.setAttribute("role", "combobox");
         input.setAttribute("aria-expanded", "true");
         input.setAttribute("aria-label", this.deps.t("searchPlaceholder"));
@@ -696,6 +701,11 @@ export class CommonSearchDialog {
         list.removeAttribute("aria-busy");
     }
 
+    /** 菜单关闭后把焦点还给搜索框（键盘连续性；弹窗已销毁则静默忽略）。 */
+    private restoreFocusToSearch(): void {
+        this.dialog?.element.querySelector<HTMLElement>(".xlc-search-input")?.focus();
+    }
+
     /** 命中高亮：按字面子串（大小写不敏感）切分并注入 mark span；文本一律 textContent，绝不 innerHTML。 */
     private appendHighlighted(parent: HTMLElement, text: string, query: string): void {
         const lowerText = text.toLowerCase();
@@ -984,6 +994,7 @@ export class CommonSearchDialog {
                 menu.remove();
                 if (this.menuDismiss === dismissMenu) this.menuDismiss = null;
                 document.removeEventListener("pointerdown", dismiss, true);
+                this.restoreFocusToSearch();
             }
         };
         const dismissMenu = (): void => {
@@ -1109,6 +1120,7 @@ export class CommonSearchDialog {
                 this.menuDismiss = null;
                 this.deps.setSort(mode);
                 paintSort();
+                this.restoreFocusToSearch();
                 void this.refresh();
             }));
         }
@@ -1120,6 +1132,7 @@ export class CommonSearchDialog {
                 menu.remove();
                 if (this.menuDismiss === dismissMenu) this.menuDismiss = null;
                 document.removeEventListener("pointerdown", dismiss, true);
+                this.restoreFocusToSearch();
             }
         };
         const dismissMenu = (): void => {
@@ -1341,12 +1354,15 @@ export class CommonSearchDialog {
             lbl.className = "xlc-menu-lbl";
             lbl.textContent = (entry.title || this.deps.t("unknownType")) + " · " + this.deps.t("actionsNoun");
             menu.appendChild(lbl);
-            // 预览盒（原文摘要）：原型屏 2 置于动作分区之后（先见动作，预览兜底）
+            // 预览盒（原文摘要）：原型屏 2 置于动作分区之后（先见动作，预览兜底）；占位降调
             const previewBox = document.createElement("pre");
-            previewBox.className = "xlc-menu-preview";
+            previewBox.className = "xlc-menu-preview xlc-menu-preview--muted";
             previewBox.textContent = this.deps.t("previewUnavailable");
             void this.deps.preview(entry.id).then((text) => {
-                if (text) previewBox.textContent = text.slice(0, 500);
+                if (text) {
+                    previewBox.textContent = text.slice(0, 500);
+                    previewBox.classList.remove("xlc-menu-preview--muted");
+                }
             }).catch(() => {
                 previewBox.textContent = this.deps.t("kernelError", "preview");
             });
@@ -1456,7 +1472,7 @@ export class CommonSearchDialog {
             lbl.textContent = viewLabel;
             menu.appendChild(lbl);
             const box = document.createElement("pre");
-            box.className = "xlc-menu-preview";
+            box.className = "xlc-menu-preview xlc-menu-preview--muted";
             box.textContent = this.deps.t("aiWorking");
             menu.appendChild(box);
             const sec = document.createElement("div");
@@ -1507,6 +1523,7 @@ export class CommonSearchDialog {
             (menu as HTMLElement & {applyTransform?: (text: string) => void}).applyTransform = (text: string): void => {
                 box.dataset.transformed = text;
                 box.textContent = text.slice(0, 800);
+                box.classList.remove("xlc-menu-preview--muted");
                 (menu as HTMLElement & {syncTransformReady?: () => void}).syncTransformReady?.();
             };
         };
@@ -1532,6 +1549,7 @@ export class CommonSearchDialog {
                 e.preventDefault();
                 this.menuDismiss?.();
                 this.menuDismiss = null;
+                this.restoreFocusToSearch();
             }
         };
         menu.addEventListener("keydown", escHandler);
@@ -1561,6 +1579,7 @@ export class CommonSearchDialog {
                 menu.remove();
                 this.menuDismiss = null;
                 document.removeEventListener("pointerdown", dismiss, true);
+                this.restoreFocusToSearch();
             }
         };
         // destroy() 时兜底清理（弹窗经键盘关闭而菜单未点掉的场景）

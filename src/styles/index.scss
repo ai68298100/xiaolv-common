@@ -860,6 +860,9 @@
       border-radius: var(--xlc-radius-sm);
       white-space: pre-wrap;
       word-break: break-all;
+
+      // 占位（暂无预览 / AI 处理中）降调，真结果恢复主文字色（R109）
+      &--muted { color: var(--b3-theme-on-surface); }
     }
 
     // 内联文档搜索（插入到指定文档）：菜单内无 .xlc-form 作用域，这里补齐输入观感
@@ -1041,6 +1044,14 @@
     &::placeholder {
       color: var(--b3-theme-on-surface);
       opacity: .75;
+    }
+
+    // 行内必填反馈（R109）：内容为空保存 → 红描边，输入即清除；
+    // 写在 :hover/:focus 规则之后，聚焦态同样保持红色
+    &.xlc-input--error,
+    &.xlc-input--error:hover,
+    &.xlc-input--error:focus {
+      border-color: var(--xlc-badge-warn);
     }
 
     &:hover { border-color: var(--b3-theme-primary-light); }
@@ -1646,6 +1657,9 @@
   .xlc-kbdrow { display: none; }
 
   .xlc-search { height: 40px; }
+
+  // 移动端搜索输入 16px：低于该值 iOS 聚焦时整页缩放（R109）
+  .xlc-search-input { font-size: 16px; }
 
   // 触控命中：清空 × 与筛选下拉提至 24/32px（18/26px 低于指尖标准，R106）
   .xlc-search-clear {

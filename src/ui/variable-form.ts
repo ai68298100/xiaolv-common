@@ -78,6 +78,7 @@ export function openVariableFillCard(options: VariableFillOptions): void {
         wrap.appendChild(label);
         const input = document.createElement("input");
         input.className = "b3-text-field";
+        input.setAttribute("enterkeyhint", "done");
         if (field.kind === "date") input.type = "date";
         if (field.kind === "select") {
             input.setAttribute("list", `xlc-varform-list-${safeListId(field.name)}`);

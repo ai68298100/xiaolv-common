@@ -90,7 +90,7 @@ const T = (key: string, ...args: string[]): string => {
         tagAuditBtn: "AI 标签体检",
         setupTitle: "选择常用内容库", setupHint: "条目将以真实块的形式保存在你选择的文档中（可在思源中正常编辑）。创建新文档前会明确提示，不会静默写入。", setupPickDoc: "选择现有文档", setupNotebook: "按笔记本",
         setupNewDoc: "创建新库文档", setupNewDocName: "常用内容库", docPicker: "选择库文档", docPickerEmpty: "没有匹配的文档",
-        captureHint: "条目将保存为真实思源块 · 变量在插入时询问", docCount: "%s 个文档",
+        captureHint: "条目将保存为真实思源块 · 变量在插入时询问", captureHintLib: "库：%s", docCount: "%s 个文档",
         emptyLibrary: "内容库还是空的", emptyLibrarySub: "从选区、剪贴板或右键菜单捕获常用内容；也可以直接新建一条",
         updatedAtLabel: "更新于 %s",
     };
@@ -131,6 +131,7 @@ function makeDeps(overrides: {aiEnabled?: boolean; missing?: boolean; mobile?: b
         duplicateItem: async () => {},
         saveTransformed: async () => {},
         getFilters: () => ({type: "", tag: "", category: ""}),
+        getLibraryName: async () => "/常用内容库",
         setFilters: () => {},
         getLastQuery: () => "",
         setLastQuery: () => {},
@@ -265,6 +266,8 @@ function makeDeps(overrides: {aiEnabled?: boolean; missing?: boolean; mobile?: b
             aiEnabled: () => aiOn,
             aiTidy: async (content: string) => ({ok: true as const, title: "AI 建议 " + content.slice(0, 6), tags: ["AI"]}),
             aiDraft: async (desc: string) => ({ok: true as const, text: "草稿（" + desc + "）"}),
+            findDuplicate: async () => null,
+            getLibraryName: async () => "/常用内容库",
         });
         capture.newManual();
     },

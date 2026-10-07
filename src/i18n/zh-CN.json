@@ -251,6 +251,7 @@
   "clearSearch": "清空搜索",
   "groupUncategorized": "无分类",
   "captureHint": "条目将保存为真实思源块 · 变量在插入时询问",
+  "captureHintLib": "库：%s",
   "docCount": "%s 个文档",
   "emptyLibrary": "内容库还是空的",
   "emptyLibrarySub": "从选区、剪贴板或右键菜单捕获常用内容；也可以直接新建一条",

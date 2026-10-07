@@ -236,6 +236,7 @@
       wrap.appendChild(label);
       const input = document.createElement("input");
       input.className = "b3-text-field";
+      input.setAttribute("enterkeyhint", "done");
       if (field.kind === "date") input.type = "date";
       if (field.kind === "select") {
         input.setAttribute("list", `xlc-varform-list-${safeListId(field.name)}`);
@@ -435,6 +436,10 @@
       const input = document.createElement("input");
       input.className = "b3-text-field xlc-search-input";
       input.placeholder = this.deps.t("searchPlaceholder");
+      input.setAttribute("enterkeyhint", "search");
+      input.setAttribute("autocapitalize", "off");
+      input.setAttribute("autocorrect", "off");
+      input.setAttribute("spellcheck", "false");
       input.setAttribute("role", "combobox");
       input.setAttribute("aria-expanded", "true");
       input.setAttribute("aria-label", this.deps.t("searchPlaceholder"));
@@ -933,6 +938,11 @@
       list.classList.remove("xlc-list--loading");
       list.removeAttribute("aria-busy");
     }
+    /** 菜单关闭后把焦点还给搜索框（键盘连续性；弹窗已销毁则静默忽略）。 */
+    restoreFocusToSearch() {
+      var _a, _b;
+      (_b = (_a = this.dialog) == null ? void 0 : _a.element.querySelector(".xlc-search-input")) == null ? void 0 : _b.focus();
+    }
     /** 命中高亮：按字面子串（大小写不敏感）切分并注入 mark span；文本一律 textContent，绝不 innerHTML。 */
     appendHighlighted(parent, text, query) {
       const lowerText = text.toLowerCase();
@@ -1200,6 +1210,7 @@
           menu.remove();
           if (this.menuDismiss === dismissMenu) this.menuDismiss = null;
           document.removeEventListener("pointerdown", dismiss, true);
+          this.restoreFocusToSearch();
         }
       };
       const dismissMenu = () => {
@@ -1314,6 +1325,7 @@
           this.menuDismiss = null;
           this.deps.setSort(mode);
           paintSort();
+          this.restoreFocusToSearch();
           void this.refresh();
         }));
       }
@@ -1325,6 +1337,7 @@
           menu.remove();
           if (this.menuDismiss === dismissMenu) this.menuDismiss = null;
           document.removeEventListener("pointerdown", dismiss, true);
+          this.restoreFocusToSearch();
         }
       };
       const dismissMenu = () => {
@@ -1534,10 +1547,13 @@
         lbl.textContent = (entry.title || this.deps.t("unknownType")) + " \xB7 " + this.deps.t("actionsNoun");
         menu.appendChild(lbl);
         const previewBox = document.createElement("pre");
-        previewBox.className = "xlc-menu-preview";
+        previewBox.className = "xlc-menu-preview xlc-menu-preview--muted";
         previewBox.textContent = this.deps.t("previewUnavailable");
         void this.deps.preview(entry.id).then((text) => {
-          if (text) previewBox.textContent = text.slice(0, 500);
+          if (text) {
+            previewBox.textContent = text.slice(0, 500);
+            previewBox.classList.remove("xlc-menu-preview--muted");
+          }
         }).catch(() => {
           previewBox.textContent = this.deps.t("kernelError", "preview");
         });
@@ -1636,7 +1652,7 @@
         lbl.textContent = viewLabel;
         menu.appendChild(lbl);
         const box = document.createElement("pre");
-        box.className = "xlc-menu-preview";
+        box.className = "xlc-menu-preview xlc-menu-preview--muted";
         box.textContent = this.deps.t("aiWorking");
         menu.appendChild(box);
         const sec = document.createElement("div");
@@ -1688,6 +1704,7 @@
           var _a2;
           box.dataset.transformed = text;
           box.textContent = text.slice(0, 800);
+          box.classList.remove("xlc-menu-preview--muted");
           (_a2 = menu.syncTransformReady) == null ? void 0 : _a2.call(menu);
         };
       };
@@ -1710,6 +1727,7 @@
           e.preventDefault();
           (_a2 = this.menuDismiss) == null ? void 0 : _a2.call(this);
           this.menuDismiss = null;
+          this.restoreFocusToSearch();
         }
       };
       menu.addEventListener("keydown", escHandler);
@@ -1737,6 +1755,7 @@
           menu.remove();
           this.menuDismiss = null;
           document.removeEventListener("pointerdown", dismiss, true);
+          this.restoreFocusToSearch();
         }
       };
       this.menuDismiss = () => {
@@ -3654,6 +3673,17 @@
       hint.className = "xlc-form-hint";
       hint.textContent = t("captureHint");
       form.appendChild(hint);
+      if (this.deps.getLibraryName) {
+        void this.deps.getLibraryName().then((name) => {
+          if (closed || !name) return;
+          hint.textContent = `${t("captureHint")} \xB7 ${t("captureHintLib", name)}`;
+        }).catch(() => void 0);
+      }
+      const flagContentError = () => {
+        contentEl.classList.add("xlc-input--error");
+        contentEl.focus();
+      };
+      contentEl.addEventListener("input", () => contentEl.classList.remove("xlc-input--error"));
       const sugrow = document.createElement("div");
       sugrow.className = "xlc-sugrow";
       sugrow.style.display = "none";
@@ -3792,6 +3822,7 @@
         if (closed || saving) return;
         const contentValue = contentEl.value;
         if (!contentValue.trim()) {
+          flagContentError();
           this.deps.notify("error", t("invalidItem"));
           return;
         }
@@ -4063,6 +4094,7 @@
       docPicker: "\u9009\u62E9\u5E93\u6587\u6863",
       docPickerEmpty: "\u6CA1\u6709\u5339\u914D\u7684\u6587\u6863",
       captureHint: "\u6761\u76EE\u5C06\u4FDD\u5B58\u4E3A\u771F\u5B9E\u601D\u6E90\u5757 \xB7 \u53D8\u91CF\u5728\u63D2\u5165\u65F6\u8BE2\u95EE",
+      captureHintLib: "\u5E93\uFF1A%s",
       docCount: "%s \u4E2A\u6587\u6863",
       emptyLibrary: "\u5185\u5BB9\u5E93\u8FD8\u662F\u7A7A\u7684",
       emptyLibrarySub: "\u4ECE\u9009\u533A\u3001\u526A\u8D34\u677F\u6216\u53F3\u952E\u83DC\u5355\u6355\u83B7\u5E38\u7528\u5185\u5BB9\uFF1B\u4E5F\u53EF\u4EE5\u76F4\u63A5\u65B0\u5EFA\u4E00\u6761",
@@ -4111,6 +4143,7 @@
       saveTransformed: async () => {
       },
       getFilters: () => ({ type: "", tag: "", category: "" }),
+      getLibraryName: async () => "/\u5E38\u7528\u5185\u5BB9\u5E93",
       setFilters: () => {
       },
       getLastQuery: () => "",
@@ -4271,7 +4304,9 @@
         exportDocContent: async () => ({ hPath: "/\u5E38\u7528\u5185\u5BB9\u5E93", content: "# \u5185\u5BB9" }),
         aiEnabled: () => aiOn,
         aiTidy: async (content) => ({ ok: true, title: "AI \u5EFA\u8BAE " + content.slice(0, 6), tags: ["AI"] }),
-        aiDraft: async (desc) => ({ ok: true, text: "\u8349\u7A3F\uFF08" + desc + "\uFF09" })
+        aiDraft: async (desc) => ({ ok: true, text: "\u8349\u7A3F\uFF08" + desc + "\uFF09" }),
+        findDuplicate: async () => null,
+        getLibraryName: async () => "/\u5E38\u7528\u5185\u5BB9\u5E93"
       });
       capture.newManual();
     },

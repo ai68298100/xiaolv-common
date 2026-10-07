@@ -35,6 +35,8 @@ export interface CaptureDeps {
     aiDraft(description: string): Promise<{ok: true; text: string} | {ok: false; message: string}>;
     /** 捕获去重：与索引内容同文的既有条目（无则 null） */
     findDuplicate(content: string): Promise<{id: string; title: string} | null>;
+    /** 落点库名（异步可缺；null/失败则提示行保持缺省，不阻塞表单） */
+    getLibraryName?: () => Promise<string | null>;
 }
 
 /** 选区 → 条目类型推断 */
@@ -291,11 +293,24 @@ export class CaptureDialog {
         (categoryEl.parentElement as HTMLElement).classList.add("xlc-form-field--fixed");
         form.appendChild(tagRow);
 
-        // 底部提示行（原型屏 3）：真源声明，紧贴动作区
+        // 底部提示行（原型屏 3）：真源声明，紧贴动作区；库名异步补全（回答「存到哪了」）
         const hint = document.createElement("div");
         hint.className = "xlc-form-hint";
         hint.textContent = t("captureHint");
         form.appendChild(hint);
+        if (this.deps.getLibraryName) {
+            void this.deps.getLibraryName().then((name) => {
+                if (closed || !name) return;
+                hint.textContent = `${t("captureHint")} · ${t("captureHintLib", name)}`;
+            }).catch(() => undefined);
+        }
+
+        // 行内必填反馈：内容为空保存时红描边（R109），输入即清除
+        const flagContentError = (): void => {
+            contentEl.classList.add("xlc-input--error");
+            (contentEl as HTMLTextAreaElement).focus();
+        };
+        contentEl.addEventListener("input", () => contentEl.classList.remove("xlc-input--error"));
 
         // AI 草稿行（启用 AI 时展示）：描述 → 生成草稿填入内容
         // AI 建议行（AI 整理后展示，全部采纳）
@@ -442,6 +457,7 @@ export class CaptureDialog {
             if (closed || saving) return;
             const contentValue = (contentEl as HTMLTextAreaElement).value;
             if (!contentValue.trim()) {
+                flagContentError();
                 this.deps.notify("error", t("invalidItem"));
                 return;
             }

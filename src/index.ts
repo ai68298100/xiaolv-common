@@ -218,6 +218,19 @@ export default class XiaolvCommonPlugin extends Plugin {
                     return null; // 去重检查失败不阻断保存
                 }
             },
+            getLibraryName: async () => {
+                const cfg = this.config;
+                if (!cfg) return null;
+                if (cfg.mode === "notebook") {
+                    const first = cfg.notebookIds[0];
+                    if (!first) return null;
+                    const nbs = await this.library.listNotebooks();
+                    return nbs.ok ? nbs.data.find((nb) => nb.id === first)?.name ?? null : null;
+                }
+                const docId = cfg.containerDocIds[0];
+                if (!docId) return null;
+                return await this.library.getDocPath(docId);
+            },
         });
         // 协议命令面（稳定 ID；雷切等通过 app.plugins 获取本插件后调用）
         this.protocolCommands["xiaolv.common.open"] = async () => {
@@ -966,6 +979,8 @@ export default class XiaolvCommonPlugin extends Plugin {
         contentEl.className = "b3-text-field";
         contentEl.rows = 8;
         contentEl.value = initialKramdown;
+        // 行内必填反馈：内容为空保存时红描边（R109），输入即清除
+        contentEl.addEventListener("input", () => contentEl.classList.remove("xlc-input--error"));
         contentWrap.appendChild(contentEl);
         form.appendChild(contentWrap);
         // 变量快捷插入条（F1 编辑侧：与捕获表单同款，点选在光标处插入）
@@ -1047,6 +1062,12 @@ export default class XiaolvCommonPlugin extends Plugin {
         let saving = false;
         save.addEventListener("click", () => {
             if (saving) return;
+            if (!contentEl.value.trim()) {
+                contentEl.classList.add("xlc-input--error");
+                contentEl.focus();
+                this.notify("error", t("invalidItem"));
+                return;
+            }
             saving = true;
             save.disabled = true;
             cancel.disabled = true;
