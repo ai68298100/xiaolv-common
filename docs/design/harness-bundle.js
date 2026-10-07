@@ -3107,6 +3107,8 @@
   var CaptureDialog = class {
     constructor(deps) {
       this.deps = deps;
+      /** 快速捕获并发锁（⌥⇧V 连按防重入） */
+      this.quickCapturing = false;
     }
     /** 保存当前选区（命令/顶栏入口） */
     async saveSelection() {
@@ -3134,8 +3136,17 @@
       }
     }
     /** 快速捕获剪贴板（F8）：无表单一步入库——类型推断 + 首行作标题；
-     *  同文已存在则诚实提示不重复写入（不打断）。 */
+     *  同文已存在则诚实提示不重复写入（不打断）；⌥⇧V 连按防重入。 */
     async quickCaptureFromClipboard() {
+      if (this.quickCapturing) return;
+      this.quickCapturing = true;
+      try {
+        await this.doQuickCapture();
+      } finally {
+        this.quickCapturing = false;
+      }
+    }
+    async doQuickCapture() {
       let text = "";
       try {
         text = (await this.deps.readClipboardText()).trim();

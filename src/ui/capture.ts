@@ -49,6 +49,9 @@ export function inferTypeFromText(text: string): ItemType {
 }
 
 export class CaptureDialog {
+    /** 快速捕获并发锁（⌥⇧V 连按防重入） */
+    private quickCapturing = false;
+
     constructor(private readonly deps: CaptureDeps) {}
 
     /** 保存当前选区（命令/顶栏入口） */
@@ -79,8 +82,18 @@ export class CaptureDialog {
     }
 
     /** 快速捕获剪贴板（F8）：无表单一步入库——类型推断 + 首行作标题；
-     *  同文已存在则诚实提示不重复写入（不打断）。 */
+     *  同文已存在则诚实提示不重复写入（不打断）；⌥⇧V 连按防重入。 */
     async quickCaptureFromClipboard(): Promise<void> {
+        if (this.quickCapturing) return;
+        this.quickCapturing = true;
+        try {
+            await this.doQuickCapture();
+        } finally {
+            this.quickCapturing = false;
+        }
+    }
+
+    private async doQuickCapture(): Promise<void> {
         let text = "";
         try {
             text = (await this.deps.readClipboardText()).trim();
