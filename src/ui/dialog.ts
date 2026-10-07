@@ -1004,6 +1004,17 @@ export class CommonSearchDialog {
         };
         this.menuDismiss = dismissMenu;
         document.addEventListener("pointerdown", dismiss, true);
+        // Esc 关闭提供方菜单（隔离宿主全局 Esc，防整弹窗连带关闭；R112）
+        menu.addEventListener("keydown", (e) => {
+            if (e.key === "Escape") {
+                e.preventDefault();
+                e.stopPropagation();
+                menu.remove();
+                if (this.menuDismiss === dismissMenu) this.menuDismiss = null;
+                document.removeEventListener("pointerdown", dismiss, true);
+                this.restoreFocusToSearch();
+            }
+        });
         menu.querySelector<HTMLElement>(".xlc-menu-item")?.focus();
     }
 
@@ -1142,6 +1153,17 @@ export class CommonSearchDialog {
         };
         this.menuDismiss = dismissMenu;
         document.addEventListener("pointerdown", dismiss, true);
+        // Esc 关闭排序菜单（隔离宿主全局 Esc，防整弹窗连带关闭；R112）
+        menu.addEventListener("keydown", (e) => {
+            if (e.key === "Escape") {
+                e.preventDefault();
+                e.stopPropagation();
+                menu.remove();
+                if (this.menuDismiss === dismissMenu) this.menuDismiss = null;
+                document.removeEventListener("pointerdown", dismiss, true);
+                this.restoreFocusToSearch();
+            }
+        });
         menu.querySelector<HTMLElement>(".xlc-menu-item")?.focus();
     }
 
@@ -1544,10 +1566,12 @@ export class CommonSearchDialog {
         // 菜单挂在 .xlc-dialog 内（样式作用域 + 相对弹窗定位）
         const host = (this.dialog?.element.querySelector(".xlc-dialog")) ?? this.dialog?.element ?? document.body;
         host.appendChild(menu);
-        // Esc 关闭动作菜单（键盘可达性；焦点仍在菜单内按钮上时同样生效）
+        // Esc 关闭动作菜单（键盘可达性）；stopPropagation 隔离宿主 Dialog 的全局 Esc，
+        // 防止「只想关菜单」时整个弹窗被连带关闭（R112）
         const escHandler = (e: KeyboardEvent) => {
             if (e.key === "Escape") {
                 e.preventDefault();
+                e.stopPropagation();
                 this.menuDismiss?.();
                 this.menuDismiss = null;
                 this.restoreFocusToSearch();
@@ -1565,13 +1589,16 @@ export class CommonSearchDialog {
         menu.addEventListener("keydown", (e) => {
             if (e.key === "ArrowDown") {
                 e.preventDefault();
+                e.stopPropagation();
                 focusMenuItem(1);
             } else if (e.key === "ArrowUp") {
                 e.preventDefault();
+                e.stopPropagation();
                 focusMenuItem(-1);
             } else if (e.key === "Tab") {
                 // 菜单为模态浮层：Tab/Shift+Tab 在菜单项间循环（不逃逸到弹窗底层）
                 e.preventDefault();
+                e.stopPropagation();
                 focusMenuItem(e.shiftKey ? -1 : 1);
             }
         });

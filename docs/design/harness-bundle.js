@@ -1220,6 +1220,16 @@
       };
       this.menuDismiss = dismissMenu;
       document.addEventListener("pointerdown", dismiss, true);
+      menu.addEventListener("keydown", (e) => {
+        if (e.key === "Escape") {
+          e.preventDefault();
+          e.stopPropagation();
+          menu.remove();
+          if (this.menuDismiss === dismissMenu) this.menuDismiss = null;
+          document.removeEventListener("pointerdown", dismiss, true);
+          this.restoreFocusToSearch();
+        }
+      });
       (_f = menu.querySelector(".xlc-menu-item")) == null ? void 0 : _f.focus();
     }
     async refreshPreservingPosition() {
@@ -1347,6 +1357,16 @@
       };
       this.menuDismiss = dismissMenu;
       document.addEventListener("pointerdown", dismiss, true);
+      menu.addEventListener("keydown", (e) => {
+        if (e.key === "Escape") {
+          e.preventDefault();
+          e.stopPropagation();
+          menu.remove();
+          if (this.menuDismiss === dismissMenu) this.menuDismiss = null;
+          document.removeEventListener("pointerdown", dismiss, true);
+          this.restoreFocusToSearch();
+        }
+      });
       (_f = menu.querySelector(".xlc-menu-item")) == null ? void 0 : _f.focus();
     }
     /** 预览窗格元数据行（R108，Raycast Detail.Metadata 惯例）：类型徽标 + 分类/标签可点筛选 + 更新日期。 */
@@ -1726,6 +1746,7 @@
         var _a2;
         if (e.key === "Escape") {
           e.preventDefault();
+          e.stopPropagation();
           (_a2 = this.menuDismiss) == null ? void 0 : _a2.call(this);
           this.menuDismiss = null;
           this.restoreFocusToSearch();
@@ -1742,12 +1763,15 @@
       menu.addEventListener("keydown", (e) => {
         if (e.key === "ArrowDown") {
           e.preventDefault();
+          e.stopPropagation();
           focusMenuItem(1);
         } else if (e.key === "ArrowUp") {
           e.preventDefault();
+          e.stopPropagation();
           focusMenuItem(-1);
         } else if (e.key === "Tab") {
           e.preventDefault();
+          e.stopPropagation();
           focusMenuItem(e.shiftKey ? -1 : 1);
         }
       });
