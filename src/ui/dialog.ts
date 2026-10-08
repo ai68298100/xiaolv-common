@@ -1560,6 +1560,8 @@ export class CommonSearchDialog {
             syncReady();
             (menu as HTMLElement & {syncTransformReady?: () => void}).syncTransformReady = syncReady;
             sec.appendChild(this.menuButton("↩", this.deps.t("aiInsertOriginal"), "xlc-menu-item", async () => {
+                // 与「插入变换结果」「存为新条目」一致：执行即关弹窗，防菜单残留导致重复插入（R137）
+                this.destroy();
                 await this.deps.runAction(entry.id, entry.itemType === "blockref" ? "insert-ref" : "insert");
             }));
             const saveBtn = this.menuButton("🗎", this.deps.t("saveTransformed"), "xlc-menu-item", async () => {

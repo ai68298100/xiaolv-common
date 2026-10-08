@@ -439,7 +439,7 @@ fs.writeFileSync(path.join(OUT, "harness.html"), html);
         stage.className = "b3-scope light";
         document.querySelectorAll(".b3-dialog").forEach((el) => el.remove());
         stage.innerHTML = "";
-        window.XlcHarness.openDialog({aiEnabled: true, missing: false, query: "客户延期"});
+        window.XlcHarness.openDialog({aiEnabled: true, missing: false, query: "延期"}); // R137 起桩件按查询词真实过滤，须用可命中条目的查询
         const dialogRoot = document.querySelector(".b3-dialog");
         if (dialogRoot) stage.appendChild(dialogRoot);
         const root = document.querySelector(".xlc-dialog");

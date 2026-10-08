@@ -1732,6 +1732,7 @@
         syncReady();
         menu.syncTransformReady = syncReady;
         sec.appendChild(this.menuButton("\u21A9", this.deps.t("aiInsertOriginal"), "xlc-menu-item", async () => {
+          this.destroy();
           await this.deps.runAction(entry.id, entry.itemType === "blockref" ? "insert-ref" : "insert");
         }));
         const saveBtn = this.menuButton("\u{1F5CE}", this.deps.t("saveTransformed"), "xlc-menu-item", async () => {
@@ -2100,9 +2101,9 @@
       if (varNames.length >= LIMITS.maxAskFields) break;
     }
     const mdParts = [
-      "# \u5C0F\u9A74\u5E38\u7528 \xB7 \u6761\u76EE\u5BFC\u51FA",
+      "# \u5C0F\u9A74\u5E38\u7528\uFF08\u5185\u6D4B\u7248\uFF09 \xB7 \u6761\u76EE\u5BFC\u51FA",
       "",
-      `> \u5BFC\u51FA\u81EA\u601D\u6E90\u63D2\u4EF6\u300C\u5C0F\u9A74\u5E38\u7528\u300D\uFF0C\u5171 ${items.length} \u6761\u3002\u8D44\u6E90\u4F4D\u4E8E assets/\uFF0C\u6761\u76EE\u5185\u94FE\u63A5\u4E3A\u76F8\u5BF9\u8DEF\u5F84\u3002`,
+      `> \u5BFC\u51FA\u81EA\u601D\u6E90\u63D2\u4EF6\u300C\u5C0F\u9A74\u5E38\u7528\uFF08\u5185\u6D4B\u7248\uFF09\u300D\uFF0C\u5171 ${items.length} \u6761\u3002\u8D44\u6E90\u4F4D\u4E8E assets/\uFF0C\u6761\u76EE\u5185\u94FE\u63A5\u4E3A\u76F8\u5BF9\u8DEF\u5F84\u3002`,
       ""
     ];
     if (pack && pack.name.trim()) {
@@ -2313,7 +2314,7 @@
     "-->",
     "# \u63D0\u793A\u8BCD\u573A\u666F\u5305",
     "",
-    "> \u5C0F\u9A74\u5E38\u7528\u5185\u7F6E\u6A21\u677F\u96C6\uFF1A\u5BA2\u670D\u56DE\u590D / AI \u63D0\u793A\u8BCD / \u7814\u53D1\u5199\u4F5C\u3002\u5BFC\u5165\u540E\u5373\u4E3A\u771F\u5B9E\u601D\u6E90\u5757\uFF0C\u53EF\u81EA\u7531\u4FEE\u6539\u3002",
+    "> \u5C0F\u9A74\u5E38\u7528\uFF08\u5185\u6D4B\u7248\uFF09\u5185\u7F6E\u6A21\u677F\u96C6\uFF1A\u5BA2\u670D\u56DE\u590D / AI \u63D0\u793A\u8BCD / \u7814\u53D1\u5199\u4F5C\u3002\u5BFC\u5165\u540E\u5373\u4E3A\u771F\u5B9E\u601D\u6E90\u5757\uFF0C\u53EF\u81EA\u7531\u4FEE\u6539\u3002",
     // ---- 场景① 客服模板 ----
     "## \u5EF6\u671F\u81F4\u6B49\u56DE\u590D",
     "",
@@ -4006,7 +4007,7 @@
   var T = (key, ...args) => {
     var _a;
     const map = {
-      pluginName: "\u5C0F\u9A74\u5E38\u7528",
+      pluginName: "\u5C0F\u9A74\u5E38\u7528\uFF08\u5185\u6D4B\u7248\uFF09",
       searchPlaceholder: "\u641C\u7D22\u5E38\u7528\u5185\u5BB9\uFF08? \u524D\u7F00 = AI \u8BED\u4E49\u627E\uFF09",
       type: "\u7C7B\u578B",
       tags: "\u6807\u7B7E",
@@ -4118,7 +4119,7 @@
       packCategoryLabel: "\u5206\u7C7B",
       allCategories: "\u5168\u90E8\u5206\u7C7B",
       packNameLabel: "\u5305\u540D\u79F0",
-      packNameDefault: "\u5C0F\u9A74\u5E38\u7528\u6A21\u677F\u5305",
+      packNameDefault: "\u5C0F\u9A74\u5E38\u7528\uFF08\u5185\u6D4B\u7248\uFF09\u6A21\u677F\u5305",
       packExportBtn: "\u5BFC\u51FA .md \u5305",
       packVarsBadge: "%s \u6761\u542B\u53D8\u91CF",
       packContentsHint: "\xB7 \u6761\u76EE Markdown + \u5143\u6570\u636E\uFF08\u6807\u9898/\u6807\u7B7E/\u5206\u7C7B\uFF09\n\xB7 \u53D8\u91CF\u6E05\u5355\uFF08{{xlc:ask:\u2026}} \u5B57\u6BB5\u4E0E\u9009\u9879\uFF09\n\xB7 \u8D44\u6E90\u5F15\u7528\uFF08assets \u539F\u6837\u6253\u5305\uFF09",
@@ -4209,11 +4210,19 @@
     const aiOn = (_a = overrides.aiEnabled) != null ? _a : true;
     return {
       t: T,
-      search: async () => {
-        var _a2;
+      search: async (query) => {
+        var _a2, _b;
         const w = window;
         w.__xlcSearchCalls = ((_a2 = w.__xlcSearchCalls) != null ? _a2 : 0) + 1;
-        return overrides.empty ? { entries: [], truncated: false, total: 0 } : { entries: ENTRIES, truncated: false, total: 128 };
+        if (overrides.empty) return { entries: [], truncated: false, total: 0 };
+        const text = typeof query === "string" ? query : (_b = query == null ? void 0 : query.text) != null ? _b : "";
+        const q = text.trim();
+        const entries = !q || q.startsWith("?") ? ENTRIES : ENTRIES.filter((e) => {
+          var _a3;
+          const hay = [e.title, e.alias, e.summary, e.category, ...(_a3 = e.tags) != null ? _a3 : []].join(" ").toLowerCase();
+          return hay.includes(q.toLowerCase());
+        });
+        return { entries, truncated: false, total: 128 };
       },
       getTags: async () => ["\u5BA2\u6237\u6C9F\u901A", "\u6A21\u677F", "\u5F00\u53D1"],
       getCategories: async () => ["\u5BA2\u670D", "\u5F00\u53D1"],
@@ -4221,7 +4230,12 @@
         var _a2;
         return (_a2 = PREVIEWS[itemId]) != null ? _a2 : "";
       },
-      runAction: async () => ({ ok: true, message: "inserted" }),
+      runAction: async (itemId, mode) => {
+        var _a2;
+        const w = window;
+        ((_a2 = w.__xlcActions) != null ? _a2 : w.__xlcActions = []).push({ id: itemId, mode });
+        return { ok: true, message: "inserted" };
+      },
       runActionWithFills: async (_itemId, _mode, fills) => {
         window.__xlcLastFills = fills;
         return { ok: true, message: "inserted" };
@@ -4252,7 +4266,10 @@
         return (_a2 = overrides.filters) != null ? _a2 : { type: "", tag: "", category: "" };
       },
       getLibraryName: async () => "/\u5E38\u7528\u5185\u5BB9\u5E93",
-      setFilters: () => {
+      setFilters: (filters) => {
+        var _a2;
+        const w = window;
+        ((_a2 = w.__xlcSetFilters) != null ? _a2 : w.__xlcSetFilters = []).push({ ...filters });
       },
       getLastQuery: () => "",
       setLastQuery: () => {

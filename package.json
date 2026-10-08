@@ -9,6 +9,7 @@
     "check": "tsc --noEmit",
     "test": "node tests/run-tests.cjs",
     "test:ui": "node scripts/render-production.cjs",
+    "test:ix": "node scripts/ui-interaction-audit.cjs",
     "e2e": "node scripts/e2e-acceptance.cjs",
     "e2e:iso": "node scripts/e2e-isolated.cjs",
     "scan": "node scripts/secret-scan.cjs",

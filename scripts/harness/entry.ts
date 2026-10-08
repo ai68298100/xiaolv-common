@@ -105,18 +105,31 @@ function makeDeps(overrides: {aiEnabled?: boolean; missing?: boolean; mobile?: b
     const aiOn = overrides.aiEnabled ?? true;
     return {
         t: T,
-        search: async () => {
+        search: async (query: string | {text?: string}) => {
             // 查询计数（R118 筛选回填竞态探测用）
             const w = window as unknown as {__xlcSearchCalls?: number};
             w.__xlcSearchCalls = (w.__xlcSearchCalls ?? 0) + 1;
-            return overrides.empty
-                ? {entries: [], truncated: false, total: 0}
-                : {entries: ENTRIES, truncated: false, total: 128};
+            if (overrides.empty) return {entries: [], truncated: false, total: 0};
+            // R137 交互审计：本地结果按查询词过滤（与真实 service 语义一致；? 前缀走 AI 语义找，全量返回）。
+            // 真实契约：deps.search 收 {text,itemType,tag,…} 查询对象（dialog.ts refresh）。
+            const text = typeof query === "string" ? query : query?.text ?? "";
+            const q = text.trim();
+            const entries = !q || q.startsWith("?")
+                ? ENTRIES
+                : ENTRIES.filter((e) => {
+                    const hay = [e.title, e.alias, e.summary, e.category, ...(e.tags ?? [])].join(" ").toLowerCase();
+                    return hay.includes(q.toLowerCase());
+                });
+            return {entries, truncated: false, total: 128};
         },
         getTags: async () => ["客户沟通", "模板", "开发"],
         getCategories: async () => ["客服", "开发"],
         preview: async (itemId: string) => PREVIEWS[itemId] ?? "",
-        runAction: async () => ({ok: true, message: "inserted"}),
+        runAction: async (itemId: string, mode: string) => {
+            const w = window as unknown as {__xlcActions?: Array<{id: string; mode: string}>};
+            (w.__xlcActions ??= []).push({id: itemId, mode});
+            return {ok: true, message: "inserted"};
+        },
         runActionWithFills: async (_itemId: string, _mode: string, fills?: Record<string, string>) => {
             (window as unknown as {__xlcLastFills?: Record<string, string>}).__xlcLastFills = fills;
             return {ok: true, message: "inserted"};
@@ -139,7 +152,10 @@ function makeDeps(overrides: {aiEnabled?: boolean; missing?: boolean; mobile?: b
         saveTransformed: async () => {},
         getFilters: () => overrides.filters ?? {type: "", tag: "", category: ""},
         getLibraryName: async () => "/常用内容库",
-        setFilters: () => {},
+        setFilters: (filters: {type: string; tag: string; category: string}) => {
+            const w = window as unknown as {__xlcSetFilters?: Array<{type: string; tag: string; category: string}>};
+            (w.__xlcSetFilters ??= []).push({...filters});
+        },
         getLastQuery: () => "",
         setLastQuery: () => {},
         insertTarget: null,
