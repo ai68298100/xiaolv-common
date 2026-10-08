@@ -196,7 +196,7 @@ async function api(endpoint, payload = {}) {
     await page.waitForTimeout(600);
     await page.evaluate(() => {
         const area = document.querySelector(".xlc-form textarea");
-        if (area) { area.value = "真机验收条目甲：这是一条来自真实思源前端的集成测试内容。"; area.dispatchEvent(new Event("input", {bubbles: true})); }
+        if (area) { area.value = "真机验收条目：这是一条来自真实思源前端的集成测试内容。"; area.dispatchEvent(new Event("input", {bubbles: true})); }
         const titleInput = document.querySelector(".xlc-form input.b3-text-field");
         if (titleInput) { titleInput.value = "真机验收条目甲"; titleInput.dispatchEvent(new Event("input", {bubbles: true})); }
     });
