@@ -6,7 +6,9 @@ const CopyPlugin = require("copy-webpack-plugin");
 const ZipPlugin = require("zip-webpack-plugin");
 const pluginManifest = require("./plugin.json");
 
-// package.zip 需要的静态文件；缺文件时静默跳过，由发布检查脚本负责报错。
+// package.zip 需要的静态文件；缺文件时静默跳过，由 scripts/check-package.cjs 负责报错。
+// 结构约束（R133）：全部产物以 dist/ 为 output.path 根相对落点，package.zip 条目根相对——
+// SiYuan 安装按 zip 根找 index.js，dist/ 嵌套前缀会导致安装失败。
 const packageFilePatterns = [
     "plugin.json",
     "README.md",
@@ -14,19 +16,19 @@ const packageFilePatterns = [
     "preview.png",
 ].concat(Object.values(pluginManifest.readme || {})).map((name) => ({
     from: name,
-    to: "./dist/",
+    to: "./",
 })).filter((pattern) => fs.existsSync(path.resolve(__dirname, pattern.from)));
 
 module.exports = (env, argv) => {
     const production = argv.mode === "production";
     const plugins = [
         new MiniCssExtractPlugin({
-            filename: production ? "dist/index.css" : "index.css",
+            filename: "index.css",
         }),
         new CopyPlugin({
             patterns: [
                 ...packageFilePatterns,
-                {from: "src/i18n", to: "./dist/i18n"},
+                {from: "src/i18n", to: "./i18n"},
             ],
         }),
     ];
@@ -49,8 +51,8 @@ module.exports = (env, argv) => {
             index: "./src/index.ts",
         },
         output: {
-            path: path.resolve(__dirname),
-            filename: "dist/[name].js",
+            path: path.resolve(__dirname, "dist"),
+            filename: "[name].js",
             libraryTarget: "umd",
             library: "Plugin",
             libraryExport: "default",

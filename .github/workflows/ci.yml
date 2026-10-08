@@ -42,6 +42,9 @@ jobs:
       - name: 生产构建
         run: pnpm run build
 
+      - name: 发布包结构检查
+        run: pnpm run check:package
+
       - name: UI 生产渲染冒烟
         run: pnpm run test:ui
 
@@ -62,6 +65,8 @@ jobs:
           cache: pnpm
       - run: pnpm install --ignore-scripts
       - run: pnpm run build
+      - name: 发布包结构检查
+        run: pnpm run check:package
       - name: 提取发布说明（按 tag 对应的 CHANGELOG 段落）
         id: notes
         run: node scripts/extract-release-notes.cjs "${GITHUB_REF_NAME#v}"
@@ -71,4 +76,4 @@ jobs:
           tag_name: ${{ github.ref_name }}
           name: ${{ github.ref_name }}
           body: ${{ steps.notes.outputs.body }}
-          files: package.zip
+          files: dist/package.zip

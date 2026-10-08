@@ -10,7 +10,8 @@
     "test": "node tests/run-tests.cjs",
     "test:ui": "node scripts/render-production.cjs",
     "e2e": "node scripts/e2e-acceptance.cjs",
-    "scan": "node scripts/secret-scan.cjs"
+    "scan": "node scripts/secret-scan.cjs",
+    "check:package": "node scripts/check-package.cjs"
   },
   "keywords": [
     "siyuan",
