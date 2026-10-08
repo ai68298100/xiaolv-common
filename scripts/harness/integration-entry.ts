@@ -66,6 +66,11 @@ function check(name: string, ok: boolean, detail = ""): void {
     const idx2 = await lib.ensureIndex(0);
     const updatedEntry = idx2.items.get(r1.data.item.id);
     check("更新后索引可见新标题", Boolean(updatedEntry && updatedEntry.title === "条目甲·改"), updatedEntry?.title ?? "missing");
+    // R150 锁定：空 markdown 不写内容也不触发假更新（updated 属性变化但正文不变属预期）
+    const upEmpty = await lib.updateItem(r1.data.item.id, {title: "条目甲·改2", markdown: ""});
+    const kdAfterEmpty = await lib.getItemKramdown(r1.data.item);
+    check("updateItem 空 markdown 不清空正文", upEmpty.ok && (kdAfterEmpty.data ?? "").includes("集成测试条目甲") === true,
+        upEmpty.ok ? "" : upEmpty.message);
 
     // 8. 删除后索引收敛
     const rm = await lib.removeItem(r2.data.item.id);
