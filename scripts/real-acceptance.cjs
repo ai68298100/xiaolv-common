@@ -14,7 +14,7 @@ try {
     ({chromium} = require("playwright"));
 }
 
-const ORIGIN = "http://127.0.0.1:6808";
+const ORIGIN = process.env.IT_ORIGIN || "http://127.0.0.1:6808";
 const TOKEN = process.env.IT_TOKEN || require(path.join("D:/思源插件/xiaolv-real-ws2/conf/conf.json")).api.token;
 const DOC = process.env.IT_DOC || "";
 const results = [];
@@ -229,6 +229,11 @@ async function api(endpoint, payload = {}) {
     check('11b 思源核心 0 异常（压测触发计入信息）', coreErrors.length === 0, '核心异常 ' + coreErrors.length + ' 条（main.js，非插件代码）');
 
     await browser.close();
+    // 优雅退出：内核先落盘再退出（强杀会损伤 searchDocs 索引，R142 教训）
+    try {
+        await fetch(ORIGIN + '/api/system/exit', {method: 'POST', headers: {'Content-Type': 'application/json', Authorization: `Token ${TOKEN}`}, body: '{}'});
+        console.log('  [graceful] 内核退出指令已发');
+    } catch {}
 
     const pass = results.filter((r) => r.ok).length;
     const fail = results.length - pass;
