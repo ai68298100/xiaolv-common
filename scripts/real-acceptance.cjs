@@ -235,7 +235,7 @@ async function api(endpoint, payload = {}) {
     }
     check('7b 同文保存触发去重确认弹窗', dupDialog.confirm, JSON.stringify(dupDialog) + '（含重试）');
     const dupDiag = await page.evaluate(() => window.__dupDiag);
-    console.log('  [diag] findDuplicate 深度记录:', JSON.stringify(dupDiag, null, 1));
+    console.log('  [diag] DUPDIAG:' + JSON.stringify(dupDiag));
     // 取消：不落块
     await page.evaluate(() => {
         const dialogs = document.querySelectorAll(".b3-dialog");

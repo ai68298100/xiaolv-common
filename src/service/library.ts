@@ -146,9 +146,14 @@ export class LibraryService {
             });
         }
         const result = await this.buildingPromise;
-        // 重建期间发生写失效（gen 已变）：陈旧构建不得覆盖回缓存（R139）
-        if (gen === this.indexGen) this.index = result;
-        return result;
+        if (gen === this.indexGen) {
+            this.index = result;
+            return result;
+        }
+        // 重建期间发生写失效（gen 已变）：陈旧构建不得写入缓存，也**不得返回给调用者**——
+        // 否则失效后第一个调用者（如去重检查）拿到的是不含新条目的旧数据（R148 根因修复）。
+        // 按当前代数同步重建：期间若无再次失效，本次结果新鲜并写入缓存。
+        return this.ensureIndex(maxAgeMs);
     }
 
     /** 当前缓存索引（可能为 null；调用方据此展示 loading 态） */
