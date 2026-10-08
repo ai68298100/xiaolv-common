@@ -29,7 +29,8 @@
   --xlc-dur: 160ms;
   --xlc-dur-slow: 220ms;
   // 类型徽标淡彩（原型同款固定色；亮暗主题均以低透明叠底，不随主题翻转）
-  --xlc-badge-text: #4a8a4a;
+  --xlc-badge-text: #1b5e20; // R159 a11y: 深绿 ≥6:1（WCAG AA）
+  --xlc-hit-text: #1d4ed8; // R159 a11y: 深蓝 ≥5.5:1（WCAG AA）
   --xlc-badge-text-bg: rgba(94, 168, 94, .13);
   --xlc-badge-md: var(--b3-theme-primary);
   --xlc-badge-md-bg: rgba(53, 117, 240, .09);
@@ -76,6 +77,7 @@ body.b3-theme-dark,
     --xlc-badge-file: #b0b0bc;
     --xlc-badge-ref: #ec8fb8;
     --xlc-badge-warn: #ec9078;
+    --xlc-hit-text: #7ca8f5; // R159 a11y: 暗底提亮保对比
   }
 }
 
@@ -489,9 +491,10 @@ body.b3-theme-dark,
       color: var(--b3-theme-on-background);
 
       // 搜索命中片段（R107）：主色加粗、无底色——回答「为什么出这条」
+      // R159 a11y：改用 --xlc-hit-text（主色在浅底对比 4.23→加深至 ≥4.5）
       .xlc-hit {
         background-color: transparent;
-        color: var(--b3-theme-primary);
+        color: var(--xlc-hit-text, var(--b3-theme-primary));
         font-weight: 600;
       }
     }
