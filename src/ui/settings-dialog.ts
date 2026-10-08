@@ -73,7 +73,7 @@ export function openSetupDialog(ctx: SettingsUiContext, opts?: SetupDialogOption
         title: t("setupTitle"),
         content: "",
         width: "min(520px, 92vw)",
-        height: "auto",
+        height: "min(640px, 90vh)", // 固定高：步骤/内容增减不再顶跳弹窗（R146）
     });
     const body = getDialogBody(dialog.element);
     if (!body) return;
@@ -94,7 +94,7 @@ export function openSettingsDialog(ctx: SettingsUiContext): void {
         title: t("openSettings"),
         content: "",
         width: "min(560px, 92vw)",
-        height: "auto",
+        height: "min(720px, 90vh)", // 固定高：展开/收起/提示行显隐不再顶跳弹窗（R146）
     });
     const body = getDialogBody(dialog.element);
     if (!body) return;
@@ -173,7 +173,7 @@ async function openPackExportDialog(ctx: SettingsUiContext): Promise<void> {
         title: t("packExportTitle"),
         content: "",
         width: "min(460px, 92vw)",
-        height: "auto",
+        height: "min(600px, 90vh)", // 固定高：分类切换不顶跳（R146）
     });
     const body = getDialogBody(dialog.element);
     if (!body) return;
@@ -1081,7 +1081,7 @@ async function runTagAudit(ctx: SettingsUiContext): Promise<void> {
         title: t("tagAuditTitle"),
         content: "",
         width: "min(520px, 92vw)",
-        height: "auto",
+        height: "min(520px, 84vh)", // 固定高：建议清单增长不顶跳（R146）
     });
     const body = getDialogBody(dialog.element);
     if (!body) return;
@@ -1130,7 +1130,7 @@ export function openImportPolicyDialog(
         title: t("importPolicyTitle"),
         content: "",
         width: "min(440px, 92vw)",
-        height: "auto",
+        height: "min(560px, 86vh)", // 固定高：策略卡片高度稳定（R146）
     });
     const body = getDialogBody(dialog.element);
     if (!body) return;

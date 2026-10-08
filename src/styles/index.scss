@@ -1600,6 +1600,19 @@ body.b3-theme-dark,
   }
 }
 
+// ---------- 设置类弹窗固定高（R146：内容增减不再顶跳弹窗） ----------
+// 容器固定高 + 主体内部滚动；作用域：根节点为 .xlc-form 的弹窗（设置/首跑/标签体检等）
+.b3-dialog__container:has(> .b3-dialog__body > .xlc-form) {
+  display: flex;
+  flex-direction: column;
+
+  .b3-dialog__body {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+  }
+}
+
 // ---------- 变量填充卡宿主容器（原型屏 4：紧凑卡，无独立标题栏）----------
 // 卡头（徽标+标题+Esc 取消）即标题；取消/插入按钮与 Esc 均可达，隐藏宿主头不损失关闭路径
 .b3-dialog__container.xlc-varform-host {

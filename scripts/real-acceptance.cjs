@@ -160,6 +160,25 @@ async function api(endpoint, payload = {}) {
 
     // 7b. 第二次使用：同文捕获去重（保存同内容 → 确认弹窗 → 取消 → 不落块）
     await page.evaluate(() => {
+        const pl = window.siyuan.ws.app.plugins.find((x) => x.name === 'xiaolv-common');
+        window.__dupDiag = [];
+        const orig = pl.capture.deps.findDuplicate.bind(pl.capture.deps);
+        pl.capture.deps.findDuplicate = async (content) => {
+            let idxView = null;
+            try {
+                const idx = await pl.library.ensureIndex();
+                idxView = idx.entries
+                    .filter((e) => (e.title ?? '').includes('真机验收') || (e.summary ?? '').includes('集成测试'))
+                    .map((e) => ({id: e.id, title: (e.title ?? '').slice(0, 24), summary: (e.summary ?? '').slice(0, 60), summaryLen: (e.summary ?? '').length}));
+            } catch (e) {
+                idxView = 'ensureIndex err: ' + String(e).slice(0, 100);
+            }
+            const r = await orig(content);
+            window.__dupDiag.push({contentLen: (content ?? '').length, resultNull: r === null, idxView, normalizedEcho: (content ?? '').slice(0, 40)});
+            return r;
+        };
+    });
+    await page.evaluate(() => {
         const pl = window.siyuan.ws.app.plugins.find((x) => x.name === "xiaolv-common");
         window.__dupLog = [];
         const orig = pl.capture.deps.findDuplicate.bind(pl.capture.deps);
@@ -215,6 +234,8 @@ async function api(endpoint, payload = {}) {
         });
     }
     check('7b 同文保存触发去重确认弹窗', dupDialog.confirm, JSON.stringify(dupDialog) + '（含重试）');
+    const dupDiag = await page.evaluate(() => window.__dupDiag);
+    console.log('  [diag] findDuplicate 深度记录:', JSON.stringify(dupDiag, null, 1));
     // 取消：不落块
     await page.evaluate(() => {
         const dialogs = document.querySelectorAll(".b3-dialog");
