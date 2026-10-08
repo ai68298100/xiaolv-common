@@ -307,6 +307,21 @@ export default class XiaolvCommonPlugin extends Plugin {
         }
     }
 
+    /**
+     * R148 P0：覆盖 onDataChanged 向宿主声明「数据变更由本插件自行处理」。
+     * 未覆盖时，宿主加载器在每次插件数据写入（persistSoon 节流的侧车保存：搜索输入、
+     * 筛选变更、开关切换等都会触发）后重载整个插件——全部 UI 销毁重建，即用户看到的
+     * 「每次输入闪一下 / 设置页疯狂闪烁」。覆盖后宿主改为调用本方法。
+     * 处理策略：仅使索引缓存失效（可丢弃缓存，SWR 下次打开自动重建），绝不写盘以免循环。
+     */
+    onDataChanged(_reason?: string): void {
+        try {
+            this.library?.invalidateIndex();
+        } catch {
+            // 索引失效失败无副作用（SWR 会兜底重建）
+        }
+    }
+
     /** 拼音适配器装配：开关变化/启动时调用；切换后需 reindex 重建注解 */
     private applyPinyinAdapter(): void {
         setPinyinAdapter(this.state.search.pinyin ? createTinyPinyinAdapter() : createNoopPinyinAdapter());

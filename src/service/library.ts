@@ -128,7 +128,8 @@ export class LibraryService {
     /** 索引代数：任一失效（index=null）自增；重建完成时代数已变则丢弃陈旧结果（R139） */
     private indexGen = 0;
 
-    private invalidateIndex(): void {
+    /** 使索引缓存失效（公开供宿主 onDataChanged 使用：外部同步/数据变更后下次打开重建，R148） */
+    invalidateIndex(): void {
         this.indexGen++;
         this.index = null;
     }
