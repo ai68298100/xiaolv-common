@@ -1,6 +1,6 @@
 // 导入导出 v1：JSON 捆绑包。导入前校验 → 冲突分类 → 逐项回执；失败不落库（不覆盖原始数据）。
 import {EXPORT_SCHEMA_VERSION, LIMITS, PROTOCOL_NAME} from "../constants";
-import {CommonItem, isItemType, isLogicalId, isSafeHttpUrl, newLogicalId} from "./item";
+import {CommonItem, isItemType, isLogicalId, isSafeHttpUrl, isSourceType, newLogicalId} from "./item";
 
 export interface ExportBundle {
     protocol: typeof PROTOCOL_NAME;
@@ -73,6 +73,12 @@ export interface ImportValidation {
     issues: ImportIssue[];
 }
 
+/** 导入时间戳守卫：负数/Infinity/NaN 一律归 0，保证 JSON 往返保真（R144） */
+function toTimestamp(v: unknown): number {
+    const n = Number(v);
+    return Number.isFinite(n) && n > 0 ? n : 0;
+}
+
 export function validateImport(jsonText: string): ImportValidation {
     const issues: ImportIssue[] = [];
     // 聚合体积上限前移到模型层：UI 把关之外，协议路径同样受保护（R139）
@@ -131,7 +137,8 @@ function normalizeExportedItem(raw: unknown): ExportedItem | null {
     if (!isItemType(obj.itemType)) return null;
     const sourceRaw = (obj.source ?? {}) as Record<string, unknown>;
     const known = ["id", "itemType", "title", "alias", "tags", "category", "kramdown", "source", "url", "targetBlockId", "createdAt", "updatedAt"];
-    const extensions: Record<string, unknown> = {};
+    // null 原型：__proto__ 键进入扩展集合时成为自有属性而非原型操作（R144）
+    const extensions: Record<string, unknown> = Object.create(null);
     for (const [k, v] of Object.entries(obj)) {
         if (!known.includes(k)) extensions[k] = v;
     }
@@ -150,12 +157,12 @@ function normalizeExportedItem(raw: unknown): ExportedItem | null {
         source: {
             sourceDocId: str(sourceRaw.sourceDocId, 32),
             sourceBlockId: str(sourceRaw.sourceBlockId, 32),
-            sourceType: str(sourceRaw.sourceType, 24),
+            sourceType: isSourceType(sourceRaw.sourceType) ? sourceRaw.sourceType : "external",
         },
         url,
         targetBlockId: str(obj.targetBlockId, 32),
-        createdAt: Number(obj.createdAt) || 0,
-        updatedAt: Number(obj.updatedAt) || 0,
+        createdAt: toTimestamp(obj.createdAt),
+        updatedAt: toTimestamp(obj.updatedAt),
         extensions: Object.keys(extensions).length ? extensions : undefined,
     };
 }

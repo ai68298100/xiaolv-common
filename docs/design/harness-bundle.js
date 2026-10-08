@@ -133,6 +133,16 @@
     "blockref",
     "structure"
   ];
+  var SOURCE_TYPES = [
+    "",
+    "selection",
+    "block",
+    "doc-fragment",
+    "clipboard",
+    "manual",
+    "resource",
+    "external"
+  ];
   function isItemType(v) {
     return typeof v === "string" && ITEM_TYPES.includes(v);
   }
@@ -146,6 +156,9 @@
     } catch {
       return false;
     }
+  }
+  function isSourceType(v) {
+    return typeof v === "string" && SOURCE_TYPES.includes(v);
   }
   var LOGICAL_ID_RE = /^xlc-[0-9a-z]{10,40}$/;
   function isLogicalId(v) {
@@ -2011,6 +2024,10 @@
   var CONFIG_VERSION = 1;
 
   // src/model/transfer.ts
+  function toTimestamp(v) {
+    const n = Number(v);
+    return Number.isFinite(n) && n > 0 ? n : 0;
+  }
   function validateImport(jsonText) {
     const issues = [];
     if (jsonText.length > LIMITS.maxImportBytes) {
@@ -2067,7 +2084,7 @@
     if (!isItemType(obj.itemType)) return null;
     const sourceRaw = (_a = obj.source) != null ? _a : {};
     const known = ["id", "itemType", "title", "alias", "tags", "category", "kramdown", "source", "url", "targetBlockId", "createdAt", "updatedAt"];
-    const extensions = {};
+    const extensions = /* @__PURE__ */ Object.create(null);
     for (const [k, v] of Object.entries(obj)) {
       if (!known.includes(k)) extensions[k] = v;
     }
@@ -2086,12 +2103,12 @@
       source: {
         sourceDocId: str(sourceRaw.sourceDocId, 32),
         sourceBlockId: str(sourceRaw.sourceBlockId, 32),
-        sourceType: str(sourceRaw.sourceType, 24)
+        sourceType: isSourceType(sourceRaw.sourceType) ? sourceRaw.sourceType : "external"
       },
       url,
       targetBlockId: str(obj.targetBlockId, 32),
-      createdAt: Number(obj.createdAt) || 0,
-      updatedAt: Number(obj.updatedAt) || 0,
+      createdAt: toTimestamp(obj.createdAt),
+      updatedAt: toTimestamp(obj.updatedAt),
       extensions: Object.keys(extensions).length ? extensions : void 0
     };
   }

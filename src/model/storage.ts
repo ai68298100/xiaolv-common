@@ -149,7 +149,7 @@ export interface PluginState {
 export function normalizeState(raw: unknown): PluginState {
     const obj = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
     const favorites = Array.isArray(obj.favorites)
-        ? Array.from(new Set(obj.favorites.filter((x): x is string => typeof x === "string" && x.startsWith("xlc-"))))
+        ? Array.from(new Set(obj.favorites.filter((x): x is string => typeof x === "string" && x.startsWith("xlc-") && x.length <= 48)))
             .slice(0, LIMITS.maxFavorites)
         : [];
     const recentsRaw = Array.isArray(obj.recents) ? obj.recents : [];
@@ -159,7 +159,7 @@ export function normalizeState(raw: unknown): PluginState {
         if (!entry || typeof entry !== "object") continue;
         const id = (entry as RecentEntry).id;
         const usedAt = Number((entry as RecentEntry).usedAt);
-        if (typeof id !== "string" || !id.startsWith("xlc-") || seen.has(id)) continue;
+        if (typeof id !== "string" || !id.startsWith("xlc-") || id.length > 48 || seen.has(id)) continue;
         if (!Number.isFinite(usedAt) || usedAt <= 0) continue;
         seen.add(id);
         recents.push({id, usedAt});
@@ -174,7 +174,7 @@ export function normalizeState(raw: unknown): PluginState {
     const usageRaw = (obj.usage ?? {}) as Record<string, unknown>;
     const usageEntries: Array<{id: string; entry: UsageEntry}> = [];
     for (const [id, value] of Object.entries(usageRaw)) {
-        if (!id.startsWith("xlc-") || !value || typeof value !== "object") continue;
+        if (!id.startsWith("xlc-") || id.length > 48 || !value || typeof value !== "object") continue;
         const count = Number((value as UsageEntry).count);
         const lastAt = Number((value as UsageEntry).lastAt);
         if (!Number.isInteger(count) || count <= 0 || count > 1_000_000) continue;

@@ -99,7 +99,8 @@ export function negotiateProtocol(remote: {protocol?: unknown; protocolVersion?:
     const name = typeof remote.protocol === "string" ? remote.protocol : "";
     const version = typeof remote.protocolVersion === "number" ? Math.floor(remote.protocolVersion) : NaN;
     if (name && name !== PROTOCOL_NAME) return {compatible: false, reason: "name-mismatch", unknownFields: []};
-    if (!Number.isFinite(version) || version > PROTOCOL_VERSION) {
+    if (!Number.isFinite(version) || version < 1 || version > PROTOCOL_VERSION) {
+        // 负版本/0 非法：不得判为兼容（R144）
         return {compatible: false, reason: "major-version-mismatch", unknownFields: []};
     }
     const unknownFields = Object.keys(remote).filter((k) => !knownFields.includes(k));

@@ -99,7 +99,12 @@ export function newLogicalId(now = Date.now(), random = Math.random): string {
 }
 
 function cleanString(v: unknown, max: number): string {
-    return typeof v === "string" ? v.slice(0, max) : "";
+    if (typeof v !== "string") return "";
+    if (v.length <= max) return v;
+    // UTF-16 码元截断会拆散代理对：尾部孤立代理项一并去除（R144）
+    const sliced = v.slice(0, max);
+    const last = sliced.charCodeAt(sliced.length - 1);
+    return last >= 0xd800 && last <= 0xdfff ? sliced.slice(0, -1) : sliced;
 }
 
 export function cleanTagList(v: unknown): string[] {

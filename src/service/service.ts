@@ -150,12 +150,14 @@ export class XiaolvCommonService {
     }
 
     async remove(itemId: string): Promise<ActionResult<void>> {
-        const removed = await this.deps.library.removeItem(String(itemId ?? ""));
+        const id = String(itemId ?? "");
+        const removed = await this.deps.library.removeItem(id);
         if (!removed.ok) return failureEnvelope(removed.reason === "timeout" ? "timeout" : removed.reason === "not-found" ? "not-found" : "kernel-error", removed.message);
-        this.deps.state.favorites = this.deps.state.favorites.filter((id) => id !== itemId);
-        this.deps.state.recents = this.deps.state.recents.filter((r) => r.id !== itemId);
+        // 侧车清理用归一化后的 id（raw 非字符串时会残留幽灵收藏，R144）
+        this.deps.state.favorites = this.deps.state.favorites.filter((x) => x !== id);
+        this.deps.state.recents = this.deps.state.recents.filter((r) => r.id !== id);
         this.deps.onStateChange();
-        this.emitEvent(EVENTS.itemDeleted, String(itemId ?? ""));
+        this.emitEvent(EVENTS.itemDeleted, id);
         return successEnvelope(undefined);
     }
 
@@ -212,7 +214,9 @@ export class XiaolvCommonService {
 
     async getRecent(limit = 20): Promise<ActionResult<CommonItemRef[]>> {
         return this.withIndex((idx) => {
-            const list = listByScope(idx.entries, "recent", this.searchCtx(), Math.max(1, Math.min(100, Math.floor(limit))));
+            // NaN/非有限值兜底默认 20（Math.floor(NaN)=NaN 会 slice 成空表，R144）
+            const n = Number.isFinite(limit) ? Math.max(1, Math.min(100, Math.floor(limit))) : 20;
+            const list = listByScope(idx.entries, "recent", this.searchCtx(), n);
             return list.map((e) => toRef(e));
         });
     }
@@ -278,7 +282,13 @@ export class XiaolvCommonService {
      */
     async searchForAgent(rawQuery: unknown): Promise<{result: string; structuredContent: unknown}> {
         const query = typeof rawQuery === "string" ? rawQuery.slice(0, 200) : "";
-        const idx = await this.deps.library.ensureIndex();
+        // 头注承诺不抛异常：索引构建失败同样走空结果（R144）
+        let idx;
+        try {
+            idx = await this.deps.library.ensureIndex();
+        } catch {
+            return {result: "没有匹配的条目", structuredContent: {items: []}};
+        }
         const results = searchEntries(idx.entries, {text: query, scope: "all"}, this.searchCtx(), 10);
         const items = results.map((r) => ({
             id: r.entry.id,

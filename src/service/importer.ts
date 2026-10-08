@@ -138,7 +138,8 @@ export async function importBundle(library: LibraryService, parsed: ParsedImport
             existingIds.add(targetId);
         } catch (err) {
             receipt.failed++;
-            receipt.lines.push({id: incoming.id, title: incoming.title, action: "skip", ok: false, error: (err as Error).message});
+            // 失败行记录真实决策类型（原硬编码 skip 导致回执失真，R144）
+            receipt.lines.push({id: incoming.id, title: incoming.title, action: decision?.kind ?? "new", ok: false, error: (err as Error).message});
         }
     }
     await library.reindex();

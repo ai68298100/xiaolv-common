@@ -2,7 +2,7 @@
 // 每个动作返回诚实回执；降级路径明示；不伪造成功。
 import type {App} from "siyuan";
 import {getActiveEditor, openTab} from "siyuan";
-import {EVENTS} from "../constants";
+import {EVENTS, PROTOCOL_VERSION} from "../constants";
 import {ActionContext, InsertMode, InsertPlan, OpenTarget, planAction, planOpenSource} from "../model/actions";
 import {applyPlaceholders, listPlaceholders} from "../model/placeholders";
 import {applyAskDefaults, expandAsks, stripCursorToken} from "../model/variables";
@@ -217,7 +217,7 @@ export class ActionExecutor {
     private emitEvent(eventName: string, item: CommonItem, extra?: Record<string, unknown>): void {
         try {
             window.dispatchEvent(new CustomEvent(eventName, {
-                detail: {protocolVersion: 1, itemId: item.id, itemType: item.itemType, ...extra},
+                detail: {protocolVersion: PROTOCOL_VERSION, itemId: item.id, itemType: item.itemType, ...extra},
             }));
         } catch {
             // 事件失败不影响主流程
