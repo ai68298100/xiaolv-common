@@ -70,7 +70,10 @@ export function openVariableFillCard(options: VariableFillOptions): void {
     // 字段区：text→input / select→input+datalist（↑↓ 选择，保键盘一致） / date→input[type=date]
     // textarea→textarea（R160：Enter=换行，插入走按钮/Tab；其余 Enter=插入）
     // wrap 用 label 元素：点字段任意处聚焦输入框，读屏器可朗读字段名（R115）
+    // 字段独立成滚动区（R162）：字段多/textarea 高时只滚字段，插入/取消按钮常驻可见
     const inputs: Array<HTMLInputElement | HTMLTextAreaElement> = [];
+    const fieldsWrap = document.createElement("div");
+    fieldsWrap.className = "xlc-varform-fields";
     for (const [fieldIndex, field] of options.fields.entries()) {
         const wrap = document.createElement("label");
         wrap.className = "xlc-varform-field";
@@ -108,14 +111,16 @@ export function openVariableFillCard(options: VariableFillOptions): void {
         input.dataset.xlcVarField = field.name;
         wrap.appendChild(input);
         inputs.push(input);
-        root.appendChild(wrap);
+        fieldsWrap.appendChild(wrap);
     }
+    root.appendChild(fieldsWrap);
 
     const foot = document.createElement("div");
     foot.className = "xlc-varform-foot";
     const kbdHint = document.createElement("span");
     kbdHint.className = "xlc-varform-hint";
-    kbdHint.textContent = t("varFormHint");
+    // 含 textarea 字段时 Enter 语义变化（R160）：提示行如实告知，不沿用「Enter 插入」
+    kbdHint.textContent = options.fields.some((f) => f.kind === "textarea") ? t("varFormHintMultiline") : t("varFormHint");
     foot.appendChild(kbdHint);
     const cancelBtn = document.createElement("button");
     cancelBtn.className = "b3-button";

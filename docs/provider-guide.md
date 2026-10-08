@@ -87,8 +87,12 @@ common?.unregisterProvider("xiaolv-speed-switch");
 | 变量 | 展开值 |
 | --- | --- |
 | `{{xlc:date}}` / `{{xlc:time}}` / `{{xlc:datetime}}` / `{{xlc:weekday}}` | 当前日期/时间/日期时间/星期 |
+| `{{xlc:date\|+3d}}` / `{{xlc:date\|-1w}}` / `{{xlc:date\|+2m}}` / `{{xlc:date\|+1y}}` / `{{xlc:date\|next_monday}}` | 日期算术：N 日/周/月/年后（前），月年进位按日历钳制；`next_星期` 取严格未来最近一天（R160） |
+| `{{xlc:random\|选项A,选项B}}` | 随机取一项（R160） |
 | `{{xlc:title}}` / `{{xlc:doc}}` / `{{xlc:path}}` | 当前文档标题/文档名（doc 同 title）/完整路径 |
 | `{{xlc:clipboard}}` | 剪贴板文本（读取失败替换为空串） |
+
+> 带参语法分隔符必须用 `|`：`:date:` 形式会被思源 Lute 当 emoji 短代码损坏（落库成 📅），插件对冒号形式永不展开、保留原文（R161 真机实证）。
 
 **不适用于提供方 payload 的变量**（仅限库条目插入）：`{{xlc:ask:…}}`（需填充卡交互）、`{{xlc:cursor}}`（光标标记）、`{{xlc:snippet:…}}`（片段嵌套需库索引查找）。
 

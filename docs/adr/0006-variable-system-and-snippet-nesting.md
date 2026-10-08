@@ -26,3 +26,10 @@
 ## 门禁
 
 r67-variables/r72-snippet/r78-usage 共 23 项单测；UI 冒烟 previewBoxSized/varBadge/paneVars/transform-result-guard；各项均做负向验证。
+
+## 更新（R160/R161，2026-10-08）：带参占位符与多行字段
+
+- ask 字段第四形态 `{{xlc:ask:字段|textarea}}`（多行文本框；解析/回显/快捷条/预览 chip 同步）。字段语法回显收敛为单一 `askFieldTag()`——此前 variable-form 与 search 预览各写一份模板字符串，新增形态会出现回显口径漂移。
+- 动态占位符新增带参形态：日期算术 `{{xlc:date|+3d}}`/`next_monday`（月年按日历钳制）与随机 `{{xlc:random|A,B}}`。
+- **分隔符取舍（R161 真机实证）**：带参形态必须用 `|`。冒号形式 `{{xlc:date:+3d}}` 会被思源 Lute 当 emoji 短代码在 appendBlock 存储时损坏成 `{{xlc📅+3d}}`（桩件/单测不可见）；插件对冒号形式永不展开、保留原文。ask 的冒号保留（`:ask:` 非短代码，真机验证完好）。
+- 门禁：r160-dynamic-placeholders 10 项（含非法表达式保留原文、随机分布、回显↔解析恒等）；real-dynamic-acceptance 真机 11/11。

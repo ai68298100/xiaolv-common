@@ -60,8 +60,8 @@
 ### 3.4 变量元素（v3 新增）
 - 徽标（列表）：`{{}} N 变量`，紫罗兰淡彩+等宽 10.5px。
 - 预览提示行（`.pane-vars`）：「插入时将询问 N 个变量：」+ 语法 chip，10% 紫底。
-- 快捷插入条（捕获表单）：点选即插入文本光标处；字段含 `{{xlc:ask:字段}}`、`{{xlc:ask:字段|A,B}}`、`{{xlc:snippet:标题}}`（F5 片段嵌套）、`{{xlc:cursor}}`、`{{xlc:date}}`、`{{xlc:doc}}`、`{{xlc:clipboard}}`。
-- 填充卡片（屏 4）：360px 卡，头部=类型徽标+标题+`Esc 取消`；说明行声明「草稿值不回写库」；字段 label 附等宽语法 tag（下拉字段列出选项）；底部 `Tab 下一项 · Enter 插入` + 取消/插入。自动变量（`{{xlc:doc}}`）禁用态灰显。
+- 快捷插入条（捕获表单）：点选即插入文本光标处；字段含 `{{xlc:ask:字段}}`、`{{xlc:ask:字段|A,B}}`、`{{xlc:ask:字段|textarea}}`（R160 多行）、`{{xlc:snippet:标题}}`（F5 片段嵌套）、`{{xlc:cursor}}`、`{{xlc:date}}`、`{{xlc:date|+3d}}`（R160 日期算术）、`{{xlc:random|A,B}}`（R160 随机）、`{{xlc:doc}}`、`{{xlc:clipboard}}`。
+- 填充卡片（屏 4）：360px 卡，头部=类型徽标+标题+`Esc 取消`；说明行声明「草稿值不回写库」；字段 label 附等宽语法 tag（下拉字段列出选项）；底部 `Tab 下一项 · Enter 插入` + 取消/插入（含 textarea 字段时提示行改为「多行框内 Enter 换行」，R162）；卡体限高 `min(720px, 92vh)` 内部滚动（16 字段上限不撑出视口，R162）。自动变量（`{{xlc:doc}}`）禁用态灰显。
 
 ### 3.5 表单（`.xlc-form`）
 字段=12px 标签（500）+ 输入 13px + 11px 提示。输入框 surface 底、8 圆角、7×10 padding；hover 描边 primary-light，focus 描边主色+底提亮为 background。textarea 行高 1.7 可拖高。双栏行 `.xlc-form-row`（fixed 130px 档位给类型/分类/日期）。

@@ -765,6 +765,8 @@ body.b3-theme-dark,
       background-color: var(--xlc-var-tint-strong);
       border-radius: 4px;
       padding: 1px 5px;
+      // 多选项字段（上限 16 项）的语法 chip 是长 ASCII 串：无空格断点会撑破提示行（R162）
+      word-break: break-all;
     }
   }
 
@@ -1387,8 +1389,21 @@ body.b3-theme-dark,
   display: flex;
   flex-direction: column;
   gap: 10px;
+  min-height: 0;
+  flex: 1;
   font-size: 13px;
   color: var(--b3-theme-on-background);
+
+  // 字段滚动区（R162）：头/说明/按钮固定，仅字段滚动
+  .xlc-varform-fields {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 1px; // 防字段聚焦描边被 overflow 裁切
+  }
 
   .xlc-varform-head {
     display: flex;
@@ -1626,7 +1641,27 @@ body.b3-theme-dark,
 // ---------- 变量填充卡宿主容器（原型屏 4：紧凑卡，无独立标题栏）----------
 // 卡头（徽标+标题+Esc 取消）即标题；取消/插入按钮与 Esc 均可达，隐藏宿主头不损失关闭路径
 .b3-dialog__container.xlc-varform-host {
+  // 字段上限 16（textarea 字段更高）：卡限高，只滚字段区，插入/取消按钮常驻可见（R162）
+  max-height: min(720px, 92vh);
+  display: flex;
+  flex-direction: column;
+
   .b3-dialog__header { display: none; }
+
+  .b3-dialog__content {
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  .b3-dialog__body {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
 
   .b3-dialog__content, .b3-dialog__body {
     padding: 14px 16px 14px;
