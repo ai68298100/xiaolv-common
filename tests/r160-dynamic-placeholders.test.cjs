@@ -1,5 +1,6 @@
-// R160：日期算术 {{xlc:date:+3d}} / {{xlc:date:next_monday}}、随机选择 {{xlc:random:a,b,c}}、
+// R160/R161：日期算术 {{xlc:date|+3d}} / {{xlc:date|next_monday}}、随机选择 {{xlc:random|a,b,c}}、
 // 多行文本变量 {{xlc:ask:字段|textarea}}（解析/回显/展开口径）。
+// 带参分隔符必须是 |：: 形式（{{xlc:date:+3d}}）撞 Lute emoji 短代码（:date:→📅），真机落库即损坏，永不支持。
 // 负向锁定：非法表达式与裸 random 一律原样保留（不吞内容，与「未知占位符原样保留」同一条诚实性原则）。
 const test = require("node:test");
 const assert = require("node:assert");
@@ -13,8 +14,8 @@ const vars = variables;
 const NOW = new Date(2026, 9, 6, 14, 5); // 2026-10-06 14:05 周二
 
 test("日期算术：日/周偏移", () => {
-    assert.equal(ph.applyPlaceholders("截止 {{xlc:date:+3d}}", NOW, true), "截止 2026-10-09");
-    assert.equal(ph.applyPlaceholders("回顾 {{xlc:date:-1w}}", NOW, true), "回顾 2026-09-29");
+    assert.equal(ph.applyPlaceholders("截止 {{xlc:date|+3d}}", NOW, true), "截止 2026-10-09");
+    assert.equal(ph.applyPlaceholders("回顾 {{xlc:date|-1w}}", NOW, true), "回顾 2026-09-29");
     assert.equal(ph.resolveDateArg(NOW, "+30d"), "2026-11-05");
 });
 
@@ -42,31 +43,34 @@ test("日期算术：大小写与空白宽容（参数 trim + 小写化）", () 
 });
 
 test("负向：非法日期表达式原样保留，不吞内容", () => {
-    const raw = "{{xlc:date:bogus}} {{xlc:date:+3x}} {{xlc:date:monday}}";
+    const raw = "{{xlc:date:bogus}} {{xlc:date|+3x}} {{xlc:date|monday}}";
     assert.equal(ph.applyPlaceholders(raw, NOW, true), raw);
+    // : 分隔的带参形态永不展开（R161：真机落库即被 Lute emoji 短代码损坏，只能保留原文）
+    assert.equal(ph.applyPlaceholders("{{xlc:date:+3d}}", NOW, true), "{{xlc:date:+3d}}");
+    assert.equal(ph.applyPlaceholders("{{xlc:random:a,b}}", NOW, true), "{{xlc:random:a,b}}");
     // 合法边界：+0d 即当天
-    assert.equal(ph.applyPlaceholders("{{xlc:date:+0d}}", NOW, true), "2026-10-06");
+    assert.equal(ph.applyPlaceholders("{{xlc:date|+0d}}", NOW, true), "2026-10-06");
     // 基础 kind 不接受参数：静默忽略参数等于偷偷改语义，也保留
-    assert.equal(ph.applyPlaceholders("{{xlc:time:abc}}", NOW, true), "{{xlc:time:abc}}");
+    assert.equal(ph.applyPlaceholders("{{xlc:time|abc}}", NOW, true), "{{xlc:time|abc}}");
     // 裸 random（无选项）无意义，保留
     assert.equal(ph.applyPlaceholders("{{xlc:random}}", NOW, true), "{{xlc:random}}");
-    assert.equal(ph.applyPlaceholders("{{xlc:random: , ,}}", NOW, true), "{{xlc:random: , ,}}");
+    assert.equal(ph.applyPlaceholders("{{xlc:random| , ,}}", NOW, true), "{{xlc:random| , ,}}");
 });
 
 test("随机选择：结果必在选项集中；选项去空白；多次取值有覆盖", () => {
     const seen = new Set();
     for (let i = 0; i < 200; i++) {
-        const out = ph.applyPlaceholders("{{xlc:random: 甲 , 乙 , 丙 }}", NOW, true);
+        const out = ph.applyPlaceholders("{{xlc:random| 甲 , 乙 , 丙 }}", NOW, true);
         assert.match(out, /^甲$|^乙$|^丙$/);
         seen.add(out);
     }
     assert.ok(seen.size >= 2, `200 次只出现 ${seen.size} 种，随机性可疑`);
-    assert.equal(ph.applyPlaceholders("{{xlc:random:唯一}}", NOW, true), "唯一");
+    assert.equal(ph.applyPlaceholders("{{xlc:random|唯一}}", NOW, true), "唯一");
 });
 
 test("listPlaceholders 识别带参形态", () => {
-    assert.deepEqual(ph.listPlaceholders("{{xlc:date:+3d}}{{xlc:random:a,b}}"), ["date", "random"]);
-    assert.deepEqual(ph.listPlaceholders("{{xlc:date}} {{xlc:date:next_monday}}"), ["date"]);
+    assert.deepEqual(ph.listPlaceholders("{{xlc:date|+3d}}{{xlc:random|a,b}}"), ["date", "random"]);
+    assert.deepEqual(ph.listPlaceholders("{{xlc:date}} {{xlc:date|next_monday}}"), ["date"]);
 });
 
 test("textarea 变量：解析为 textarea 字段；大小写不敏感", () => {

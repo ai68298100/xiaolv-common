@@ -1,8 +1,10 @@
-// 动态占位符（参考 Quicker 常用语核心能力；R6/R11；R67 v2；R160 v3）：
+// 动态占位符（参考 Quicker 常用语核心能力；R6/R11；R67 v2；R160 v3；R161 参数分隔符改 |）：
 // 基础语法 {{xlc:date}} {{xlc:time}} {{xlc:datetime}} {{xlc:weekday}} {{xlc:title}} {{xlc:path}} {{xlc:doc}}
-// 日期算术（R160，对齐 Espanso/TextExpander 核心差距）：{{xlc:date:+3d}} {{xlc:date:-1w}} {{xlc:date:+2m}}
-//   {{xlc:date:+1y}} {{xlc:date:next_monday}} —— 月/年进位按日历钳制（1/31 +1m → 2/28），next_* 取严格未来最近一天。
-// 随机选择（R160）：{{xlc:random:a,b,c}} —— 每次替换随机取一项（每选项前后空白忽略）。
+// 日期算术（R160，对齐 Espanso/TextExpander 核心差距）：{{xlc:date|+3d}} {{xlc:date|-1w}} {{xlc:date|+2m}}
+//   {{xlc:date|+1y}} {{xlc:date|next_monday}} —— 月/年进位按日历钳制（1/31 +1m → 2/28），next_* 取严格未来最近一天。
+// 随机选择（R160）：{{xlc:random|a,b,c}} —— 每次替换随机取一项（每选项前后空白忽略）。
+// 带参语法分隔符必须是 | 而非 :（R161 真机验收发现）：Lute 把 :date: 当 emoji 短代码转换，
+// {{xlc:date:+3d}} 落库即损坏成 {{xlc📅+3d}}；ask 冒号语法无此问题（:ask: 非短代码，真机已验证）。
 // —— xlc: 命名空间避免与思源模板 {{...}} / 用户正文冲突；未知占位符与非法表达式一律原样保留（不吞内容）。
 // title/path 引用当前文档（R11）；doc 为 title 别名（原型 v3 命名，R67）；无活动文档时替换为空串（不把占位符残留在正文里）。
 // {{xlc:clipboard}} 剪贴板文本由执行层异步替换（applyOutput；读取失败替换为空串，语义与 title/path 一致）。
@@ -11,7 +13,8 @@
 
 export type PlaceholderKind = "date" | "time" | "datetime" | "weekday" | "title" | "path" | "doc" | "random";
 
-export const PLACEHOLDER_PATTERN = /\{\{xlc:(date|time|datetime|weekday|title|path|doc|random)(?::([^}]+))?\}\}/g;
+// 带参形态只接受 | 分隔：: 分隔会撞 Lute emoji 短代码（:date:→📅，R161 真机实证），永不支持。
+export const PLACEHOLDER_PATTERN = /\{\{xlc:(date|time|datetime|weekday|title|path|doc|random)(?:\|([^}]+))?\}\}/g;
 
 export type PlaceholderResolver = (kind: PlaceholderKind) => string;
 
