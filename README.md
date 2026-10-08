@@ -1,10 +1,14 @@
 # 小驴常用（LvCommon）
 
 [![CI](https://github.com/ai68298100/xiaolv-common/actions/workflows/ci.yml/badge.svg)](https://github.com/ai68298100/xiaolv-common/actions/workflows/ci.yml)
+[![Version](https://img.shields.io/github/v/tag/ai68298100/xiaolv-common?label=%E7%89%88%E6%9C%AC&sort=semver)](https://github.com/ai68298100/xiaolv-common/releases)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
 基于思源文档和块的**常用内容快速调用器**：常用语、客服回复、邮件模板、多行 Markdown、代码、网址、图片、附件、思源块结构与块引用——一条目锚定一个真实思源块，来源可回链、失效可见。
 
 > 独立运行，不依赖小驴雷切；同时提供 `xiaolv-common/v1` 协议供小驴系列插件联动。
+
+**核心能力一览**：插入时变量填充（文本/下拉/日期）· 片段嵌套 · AI 整理/草稿/变换/语义找 · 模板包分享 · 使用计数与「常用」排序 · 拼音直达 · 分类分组 · 移动端底部 sheet · 提供方协议联动。
 
 ## 界面速览（全部为生产 DOM+CSS 渲染截图，见 docs/design/）
 

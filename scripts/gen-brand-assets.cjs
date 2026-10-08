@@ -22,27 +22,53 @@ const ICON_HTML = `<!DOCTYPE html><html><head><meta charset="utf-8"><style>
   .stage { width: 260px; height: 260px; background: #fff; }
   .tile {
     width: 260px; height: 260px;
-    background: linear-gradient(135deg, #3575f0 0%, #5a8af2 100%);
+    background: linear-gradient(150deg, #2b62d9 0%, #3d78f2 48%, #6197fa 100%);
     display: flex; align-items: center; justify-content: center;
     position: relative; overflow: hidden;
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .14);
+  }
+  /* 左上光晕：提亮视觉起点 */
+  .tile::before {
+    content: ""; position: absolute; inset: 0;
+    background: radial-gradient(120% 90% at 18% 12%, rgba(255,255,255,.22) 0%, rgba(255,255,255,0) 55%);
   }
   .tile .glyph {
     color: #fff; font-family: "PingFang SC", "Microsoft YaHei", sans-serif;
-    font-size: 150px; font-weight: 700; line-height: 1;
-    text-shadow: 0 4px 16px rgba(31, 35, 41, .25);
+    font-size: 152px; font-weight: 700; line-height: 1;
+    background: linear-gradient(180deg, #ffffff 62%, #d7e5ff 100%);
+    -webkit-background-clip: text; background-clip: text;
+    -webkit-text-fill-color: transparent;
+    filter: drop-shadow(0 6px 18px rgba(17, 42, 96, .38));
+    position: relative; z-index: 2;
   }
   .tile .spark {
-    position: absolute; top: 22px; right: 30px; color: rgba(255, 255, 255, .85);
-    font-size: 34px;
+    position: absolute; top: 26px; right: 32px; color: rgba(255, 255, 255, .95);
+    font-size: 30px; text-shadow: 0 0 14px rgba(255, 255, 255, .75);
+    z-index: 2;
+  }
+  .tile .spark-sm {
+    position: absolute; top: 74px; right: 20px; color: rgba(255, 255, 255, .5);
+    font-size: 13px; z-index: 2;
   }
   .tile .dot {
-    position: absolute; left: -34px; bottom: -34px; width: 120px; height: 120px;
-    border-radius: 50%; background: rgba(255, 255, 255, .14);
+    position: absolute; left: -38px; bottom: -38px; width: 132px; height: 132px;
+    border-radius: 50%; background: rgba(255, 255, 255, .13);
+  }
+  .tile .dot-sm {
+    position: absolute; left: 66px; bottom: -14px; width: 44px; height: 44px;
+    border-radius: 50%; background: rgba(255, 255, 255, .10);
+  }
+  .tile .ring {
+    position: absolute; right: -30px; top: -46px; width: 150px; height: 150px;
+    border-radius: 50%; border: 1.5px solid rgba(255, 255, 255, .22);
   }
 </style></head><body><div class="stage"><div class="tile">
   <div class="dot"></div>
+  <div class="dot-sm"></div>
+  <div class="ring"></div>
   <div class="glyph">常</div>
   <div class="spark">✦</div>
+  <div class="spark-sm">✦</div>
 </div></div></body></html>`;
 
 const LIGHT_URI = "production-desktop-light.png";
