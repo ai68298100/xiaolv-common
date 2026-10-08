@@ -24,7 +24,7 @@ const PREVIEWS: Record<string, string> = {
 
 const T = (key: string, ...args: string[]): string => {
     const map: Record<string, string> = {
-        pluginName: "小驴常用",
+        pluginName: "小驴常用（内测版）",
         searchPlaceholder: "搜索常用内容（? 前缀 = AI 语义找）",
         type: "类型", tags: "标签", tagsHint: "逗号分隔", title: "标题", alias: "别名", category: "分类", contentLabel: "内容（Markdown）", filterAll: "全部类型",
         "type.text": "纯文本", "type.markdown": "Markdown", "type.url": "网址", "type.code": "代码", "type.image": "图片", "type.asset": "附件", "type.blockref": "块引用", "type.structure": "块结构", filterFavorites: "收藏", filterRecent: "最近",
@@ -62,7 +62,7 @@ const T = (key: string, ...args: string[]): string => {
         create: "创建",
         useCount: "%s 次", quickNew: "＋ 新建", quickInsertSelected: "插入选中",
         packBtn: "模板包", packExportTitle: "导出 · 模板包", packCategoryLabel: "分类", allCategories: "全部分类",
-        packNameLabel: "包名称", packNameDefault: "小驴常用模板包", packExportBtn: "导出 .md 包", packVarsBadge: "%s 条含变量",
+        packNameLabel: "包名称", packNameDefault: "小驴常用（内测版）模板包", packExportBtn: "导出 .md 包", packVarsBadge: "%s 条含变量",
         packContentsHint: "· 条目 Markdown + 元数据（标题/标签/分类）\n· 变量清单（{{xlc:ask:…}} 字段与选项）\n· 资源引用（assets 原样打包）",
         packTrustHint: "他人导入后即为真实思源块，可继续编辑与再分享——分享的是「活的块」，不是文本快照。",
         emptyFavorites: "还没有收藏的条目", emptyFavoritesSub: "点击条目右侧 ☆ 一键收藏，收藏会置顶显示", emptyRecent: "暂无最近使用的条目",

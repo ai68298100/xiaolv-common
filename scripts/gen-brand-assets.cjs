@@ -92,7 +92,7 @@ const PREVIEW_HTML = `<!DOCTYPE html><html><head><meta charset="utf-8"><style>
           border: 1px solid rgba(53,117,240,.25); border-radius: 999px; padding: 4px 14px; }
   .chip.neutral { color: #7d8085; background: #fff; border-color: #e5e7eb; }
 </style></head><body><div class="stage">
-  <h1><span class="spark">✦</span>小驴常用</h1>
+  <h1><span class="spark">✦</span>小驴常用（内测版）</h1>
   <p class="tag">思源笔记的内容资产层 —— 一次捕获，处处调用；块是真源，AI 是变通，变量是活的。</p>
   <div class="shots">
     <div class="shot"><img src="${LIGHT_URI}"><div class="cap">桌面双栏 · 变量填充 · AI 语义找</div></div>

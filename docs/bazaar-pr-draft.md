@@ -35,7 +35,7 @@
 
 ## 第二步：PR 描述（建议文案）
 
-**标题**：`[Plugin] 小驴常用 (xiaolv-common)`
+**标题**：`[Plugin] 小驴常用（内测版） (xiaolv-common)`
 
 **正文要点**：
 - 功能：八类捕获入口；双栏搜索弹窗（键盘全链路 + Alt+1~9 直达 + `?` AI 语义找）；插入时变量填充；片段嵌套；模板包分享；AI 整理/草稿/变换（含自定义指令）/语义找/标签体检；使用计数与常用排序；快速捕获；移动端 sheet。
@@ -47,4 +47,4 @@
 ## 第三步：PR 后
 
 - 回应 bazaar 维护者的审核意见（常见：icon/preview 尺寸、README 语言、minAppVersion）。
-- 合并后集市可搜「小驴常用」；后续版本 = 改 plugin.json `version` + 打 tag + bazaar 自动跟随。
+- 合并后集市可搜「小驴常用（内测版）」；后续版本 = 改 plugin.json `version` + 打 tag + bazaar 自动跟随。

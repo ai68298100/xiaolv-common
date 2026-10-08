@@ -230,7 +230,7 @@ fs.writeFileSync(path.join(OUT, "harness.html"), html);
         const packDialog = dialogs.find((c) => (c.querySelector(".b3-dialog__header")?.textContent ?? "").includes("模板包"));
         return {
             open: !!packDialog,
-            nameDefault: (packDialog?.querySelector(".b3-text-field")?.value ?? "") === "小驴常用模板包",
+            nameDefault: (packDialog?.querySelector(".b3-text-field")?.value ?? "") === "小驴常用（内测版）模板包",
             categoryOptions: packDialog ? packDialog.querySelectorAll("select option").length >= 3 : false,
             badges: (packDialog?.textContent ?? "").includes("条目") && (packDialog?.textContent ?? "").includes("含变量"),
             contentsHint: (packDialog?.textContent ?? "").includes("assets"),

@@ -43,9 +43,9 @@ export async function buildMarkdownExport(
         if (varNames.length >= LIMITS.maxAskFields) break;
     }
     const mdParts: string[] = [
-        "# 小驴常用 · 条目导出",
+        "# 小驴常用（内测版） · 条目导出",
         "",
-        `> 导出自思源插件「小驴常用」，共 ${items.length} 条。资源位于 assets/，条目内链接为相对路径。`,
+        `> 导出自思源插件「小驴常用（内测版）」，共 ${items.length} 条。资源位于 assets/，条目内链接为相对路径。`,
         "",
     ];
     if (pack && pack.name.trim()) {

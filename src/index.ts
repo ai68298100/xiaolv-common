@@ -180,7 +180,7 @@ export default class XiaolvCommonPlugin extends Plugin {
             // 思源智能体能力（3.8.x）：按关键词搜常用条目——只读 localRead，输出仅元数据
             this.addAgentCapability({
                 name: "xiaolv_common_search",
-                title: "搜索小驴常用条目",
+                title: "搜索小驴常用（内测版）条目",
                 description: "按关键词搜索用户的常用内容条目（标题/类型/标签）。只读；不含条目正文。",
                 inputSchema: {
                     type: "object",

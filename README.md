@@ -1,4 +1,6 @@
-# 小驴常用（LvCommon）
+# 小驴常用（内测版）
+
+> **内测说明**：当前版本仅实现基础功能，仍有较多功能处于开发与测试阶段。欢迎对本插件感兴趣的用户参与内测体验，并通过交流 QQ 群 **871707735** 反馈 Bug、提交功能需求。对功能完整性和运行稳定性有较高要求的用户，建议等待正式版发布后再行使用。项目将持续更新迭代，感谢您的理解与支持。
 
 [![CI](https://github.com/ai68298100/xiaolv-common/actions/workflows/ci.yml/badge.svg)](https://github.com/ai68298100/xiaolv-common/actions/workflows/ci.yml)
 [![Version](https://img.shields.io/github/v/tag/ai68298100/xiaolv-common?label=%E7%89%88%E6%9C%AC&sort=semver)](https://github.com/ai68298100/xiaolv-common/releases)
@@ -9,6 +11,19 @@
 > 独立运行，不依赖小驴雷切；同时提供 `xiaolv-common/v1` 协议供小驴系列插件联动。
 
 **核心能力一览**：插入时变量填充（文本/下拉/日期）· 片段嵌套 · AI 整理/草稿/变换/语义找 · 模板包分享 · 使用计数与「常用」排序 · 拼音直达 · 分类分组 · 移动端底部 sheet · 提供方协议联动。
+
+## 小驴系列插件
+
+| 插件 | 简介 | GitHub |
+|---|---|---|
+| [小驴雷切](https://github.com/ai68298100/siyuan-speed-switch) | 统一切换与工作上下文平台。 | [仓库](https://github.com/ai68298100/siyuan-speed-switch) |
+| [小驴打卡](https://github.com/ai68298100/siyuan-checkin) | 本地优先的习惯、打卡与复盘工作台。 | [仓库](https://github.com/ai68298100/siyuan-checkin) |
+| [小驴人脉](https://github.com/ai68298100/siyuan-contacts) | 在思源中管理联系人、人际关系及相关资料。 | [仓库](https://github.com/ai68298100/siyuan-contacts) |
+| [小驴拾遗](https://github.com/ai68298100/siyuan-glean) | 整理剪藏文章，支持阅读管理与日后回顾。 | [仓库](https://github.com/ai68298100/siyuan-glean) |
+| [小驴考试（内测版）](https://github.com/ai68298100/siyuan-exam) | 本地题库、刷题、模考、错题复盘与 AI 辅助。 | [仓库](https://github.com/ai68298100/siyuan-exam) |
+| [小驴管家（内测版）](https://github.com/ai68298100/siyuan-home) | 家庭与生活台账、到期提醒及事务跟进。 | [仓库](https://github.com/ai68298100/siyuan-home) |
+| [小驴闪卡（内测版）](https://github.com/ai68298100/siyuan-lv-cards) | 思源笔记中的本地优先全生命周期闪卡学习平台。 | [仓库](https://github.com/ai68298100/siyuan-lv-cards) |
+| [小驴常用（内测版）](https://github.com/ai68298100/xiaolv-common) | 基于思源块快速调用常用语、模板、代码等内容。 | [仓库](https://github.com/ai68298100/xiaolv-common) |
 
 ## 界面速览（全部为生产 DOM+CSS 渲染截图，见 docs/design/）
 
@@ -159,7 +174,7 @@ common.protocolCommands["xiaolv.common.open"]();          // 稳定命令 ID
 
 ## 安装 / 升级 / 备份
 
-- **安装**：集市（待上架）或手动——把 `package.zip` 解压到 `<工作空间>/data/plugins/xiaolv-common/`，重启思源并在「设置 → 集市 → 下载」中启用。
+- **安装**：集市（待上架）或手动——把 `package.zip` 解压到 `<工作空间>/data/plugins/xiaolv-common/`，重启思源并在「设置 → 集市 → 下载」中启用。启用后可在命令面板搜索「打开小驴常用（内测版）」或点击顶栏图标进入；若侧车设置读取失败，插件仍会保留这些入口并提示原因。
 - **首次使用**：点击顶栏图标 → 选择库（创建新文档会先确认；或指定现有文档/笔记本）。
 - **升级**：覆盖插件目录后重启；侧车 schema 自动迁移（v1→v2）；未来版本数据只读保留不降级改写。
 - **备份**：库内容 = 普通思源文档，随思源同步走；导出 JSON（含全部条目与来源引用）或 **Markdown 包 ZIP**（items.md + assets/ 资源，无依赖解压即读）；恢复 = 导入 JSON 或 **Markdown 包**（自动识别文件类型，同一套校验/冲突策略/回执）；Markdown 包可被任何文本工具阅读。
