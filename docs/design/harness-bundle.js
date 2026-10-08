@@ -2247,6 +2247,7 @@
       `> \u5BFC\u51FA\u81EA\u601D\u6E90\u63D2\u4EF6\u300C\u5C0F\u9A74\u5E38\u7528\uFF08\u5185\u6D4B\u7248\uFF09\u300D\uFF0C\u5171 ${items.length} \u6761\u3002\u8D44\u6E90\u4F4D\u4E8E assets/\uFF0C\u6761\u76EE\u5185\u94FE\u63A5\u4E3A\u76F8\u5BF9\u8DEF\u5F84\u3002`,
       ""
     ];
+    let totalLen = mdParts.reduce((n, p) => n + p.length, 0);
     if (pack && pack.name.trim()) {
       const manifest = [
         `<!-- xlc-pack`,
@@ -2288,7 +2289,8 @@
           }
         }
       }
-      if (mdParts.join("").length > LIMITS.contentChars) {
+      totalLen += 6 + (item.title || item.id).length + meta.length + kramdown.length;
+      if (totalLen > LIMITS.contentChars) {
         mdParts.push("", "> \uFF08\u5185\u5BB9\u8D85\u957F\uFF0C\u5BFC\u51FA\u5728\u6B64\u622A\u65AD\uFF09");
         break;
       }

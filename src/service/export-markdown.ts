@@ -48,6 +48,8 @@ export async function buildMarkdownExport(
         `> 导出自思源插件「小驴常用（内测版）」，共 ${items.length} 条。资源位于 assets/，条目内链接为相对路径。`,
         "",
     ];
+    // 超长判定用累计长度：循环内不再 join 全量字符串（O(n²) → O(n)，R144）
+    let totalLen = mdParts.reduce((n, p) => n + p.length, 0);
     if (pack && pack.name.trim()) {
         const manifest = [
             `<!-- xlc-pack`,
@@ -91,7 +93,9 @@ export async function buildMarkdownExport(
                 }
             }
         }
-        if (mdParts.join("").length > LIMITS.contentChars) {
+        // 超长截断用累计长度判定（原实现在循环内 join 全量字符串：O(n²)，R144）
+        totalLen += 6 + (item.title || item.id).length + meta.length + kramdown.length;
+        if (totalLen > LIMITS.contentChars) {
             mdParts.push("", "> （内容超长，导出在此截断）");
             break;
         }
