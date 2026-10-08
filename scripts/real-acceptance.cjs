@@ -158,6 +158,74 @@ async function api(endpoint, payload = {}) {
     check("7 真实搜索命中条目", rows.some((t) => t.includes("真机验收条目甲")), JSON.stringify(rows));
     await shot(page, "04-search-hit");
 
+    // 7b. 第二次使用：同文捕获去重（保存同内容 → 确认弹窗 → 取消 → 不落块）
+    const beforeDup = ((await api("/api/block/getChildBlocks", {id: DOC})).data ?? []).length;
+    await page.evaluate(() => {
+        const p = window.siyuan.ws.app.plugins.find((x) => x.name === "xiaolv-common");
+        p.capture.newManual();
+    });
+    await page.waitForTimeout(600);
+    await page.evaluate(() => {
+        const area = document.querySelector(".xlc-form textarea");
+        if (area) { area.value = "真机验收条目甲：这是一条来自真实思源前端的集成测试内容。"; area.dispatchEvent(new Event("input", {bubbles: true})); }
+        const titleInput = document.querySelector(".xlc-form input.b3-text-field");
+        if (titleInput) { titleInput.value = "真机验收条目甲"; titleInput.dispatchEvent(new Event("input", {bubbles: true})); }
+    });
+    await page.evaluate(() => {
+        const btn = Array.from(document.querySelectorAll(".xlc-form button")).find((b) => (b.textContent ?? "").includes("保存"));
+        btn?.click();
+    });
+    await page.waitForTimeout(1200);
+    const dupDialog = await page.evaluate(() => {
+        const dialogs = document.querySelectorAll(".b3-dialog");
+        const last = dialogs[dialogs.length - 1];
+        return {confirm: Boolean(last && (last.textContent ?? "").includes("已存在")), count: dialogs.length};
+    });
+    check("7b 同文保存触发去重确认弹窗", dupDialog.confirm, JSON.stringify(dupDialog));
+    // 取消：不落块
+    await page.evaluate(() => {
+        const dialogs = document.querySelectorAll(".b3-dialog");
+        const last = dialogs[dialogs.length - 1];
+        const btn = Array.from(last.querySelectorAll("button")).find((b) => (b.textContent ?? "").trim() === "取消");
+        btn?.click();
+    });
+    await page.waitForTimeout(800);
+    const afterDup = ((await api("/api/block/getChildBlocks", {id: DOC})).data ?? []).length;
+    check("7c 取消后不落块（块数不变）", afterDup === beforeDup, beforeDup + " → " + afterDup);
+    await page.evaluate(() => document.querySelectorAll(".xlc-form").forEach((el) => el.remove()));
+    await page.evaluate(() => document.querySelectorAll(".xlc-dialog, .b3-dialog").forEach((el) => el.remove()));
+    // 重开弹窗（搜索态恢复）
+    await page.evaluate(() => {
+        const p = window.siyuan.ws.app.plugins.find((x) => x.name === "xiaolv-common");
+        void p.protocolCommands["xiaolv.common.open"]();
+    });
+    await page.waitForTimeout(800);
+
+    // 7d. 收藏状态跨弹窗：点星收藏 → 关闭 → 重开 → ★收藏筛选可见该条目
+    await page.evaluate(() => {
+        const star = document.querySelector(".xlc-list .xlc-row .xlc-row-action");
+        star?.dispatchEvent(new MouseEvent("click", {bubbles: true}));
+    });
+    await page.waitForTimeout(600);
+    await page.evaluate(() => {
+        const input = document.querySelector(".xlc-search-input");
+        input.dispatchEvent(new KeyboardEvent("keydown", {key: "Escape", bubbles: true}));
+    });
+    await page.waitForTimeout(300);
+    await page.evaluate(() => {
+        const p = window.siyuan.ws.app.plugins.find((x) => x.name === "xiaolv-common");
+        void p.protocolCommands["xiaolv.common.open"]();
+    });
+    await page.waitForTimeout(800);
+    await page.evaluate(() => {
+        const chip = Array.from(document.querySelectorAll(".xlc-scope-chip")).find((c) => (c.textContent ?? "").includes("收藏"));
+        chip?.dispatchEvent(new MouseEvent("click", {bubbles: true}));
+    });
+    await page.waitForTimeout(800);
+    const favRows = await page.evaluate(() => Array.from(document.querySelectorAll(".xlc-row-titletext")).map((r) => r.textContent.trim()));
+    check("7d 收藏跨弹窗生效（收藏筛选含该条目）", favRows.some((t) => t.includes("真机验收条目甲")), JSON.stringify(favRows));
+    await shot(page, "04b-favorite");
+
     // 8. 真实插入：动作菜单 → 插入到指定文档 → 内联搜索 → 命中即写（全 UI 链路，真实内核落块）
     await page.evaluate(() => {
         const row = document.querySelector('.xlc-list .xlc-row');
