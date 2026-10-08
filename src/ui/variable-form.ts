@@ -4,7 +4,7 @@
 // 安全：字段名/选项一律 textContent 注入，绝不 innerHTML。
 import {Dialog} from "siyuan";
 import {getDialogBody} from "./dialog-dom";
-import {AskField} from "../model/variables";
+import {AskField, askFieldTag} from "../model/variables";
 import {ItemType} from "../model/item";
 
 const TYPE_BADGES: Partial<Record<ItemType, string>> = {
@@ -68,8 +68,9 @@ export function openVariableFillCard(options: VariableFillOptions): void {
     root.appendChild(sub);
 
     // 字段区：text→input / select→input+datalist（↑↓ 选择，保键盘一致） / date→input[type=date]
+    // textarea→textarea（R160：Enter=换行，插入走按钮/Tab；其余 Enter=插入）
     // wrap 用 label 元素：点字段任意处聚焦输入框，读屏器可朗读字段名（R115）
-    const inputs: HTMLInputElement[] = [];
+    const inputs: Array<HTMLInputElement | HTMLTextAreaElement> = [];
     for (const [fieldIndex, field] of options.fields.entries()) {
         const wrap = document.createElement("label");
         wrap.className = "xlc-varform-field";
@@ -78,15 +79,20 @@ export function openVariableFillCard(options: VariableFillOptions): void {
         label.textContent = field.name;
         const tag = document.createElement("span");
         tag.className = "xlc-varform-tag";
-        tag.textContent = field.kind === "text"
-            ? `{{xlc:ask:${field.name}}}`
-            : `{{xlc:ask:${field.name}${field.kind === "date" ? "|date" : "|" + field.options.join(",")}}}`;
+        tag.textContent = askFieldTag(field);
         label.appendChild(tag);
         wrap.appendChild(label);
-        const input = document.createElement("input");
+        const input = field.kind === "textarea"
+            ? document.createElement("textarea")
+            : document.createElement("input");
         input.className = "b3-text-field";
-        input.setAttribute("enterkeyhint", "done");
-        if (field.kind === "date") input.type = "date";
+        if (field.kind === "textarea") {
+            (input as HTMLTextAreaElement).rows = 3;
+            (input as HTMLTextAreaElement).setAttribute("spellcheck", "false");
+        } else {
+            input.setAttribute("enterkeyhint", "done");
+        }
+        if (field.kind === "date") (input as HTMLInputElement).type = "date";
         if (field.kind === "select") {
             // datalist id 按索引起：字段名安全化后可能碰撞（如「a,b」与「a：b」），错绑候选列表（R138）
             input.setAttribute("list", `xlc-varform-list-${fieldIndex}`);
@@ -153,6 +159,8 @@ export function openVariableFillCard(options: VariableFillOptions): void {
         if (ev.isComposing || (ev as KeyboardEvent).keyCode === 229) return;
         if (ev.key === "Enter" && !ev.altKey && !ev.ctrlKey && !ev.metaKey) {
             if ((ev.target as HTMLElement).tagName === "BUTTON") return;
+            // textarea 字段（R160）：Enter=换行，插入只走按钮或 Tab 到按钮后回车
+            if ((ev.target as HTMLElement).tagName === "TEXTAREA") return;
             const el = ev.target as HTMLInputElement;
             if (el instanceof HTMLInputElement && el.list) {
                 // datalist 高亮项：先让浏览器提交选中值，下一拍再收集（否则采到旧值，R138）
@@ -165,7 +173,7 @@ export function openVariableFillCard(options: VariableFillOptions): void {
         }
         if (ev.key === "Tab") {
             const focusables = Array.from(
-                root.querySelectorAll<HTMLElement>("input, button"),
+                root.querySelectorAll<HTMLElement>("input, textarea, button"),
             ).filter((el) => !el.hasAttribute("disabled"));
             if (focusables.length === 0) return;
             const index = focusables.indexOf(document.activeElement as HTMLElement);
@@ -190,9 +198,12 @@ export function buildVariableBar(t: (key: string, ...args: string[]) => string, 
     const snippets = [
         "{{xlc:ask:字段}}",
         "{{xlc:ask:字段|选项A,选项B}}",
+        "{{xlc:ask:字段|textarea}}",
         "{{xlc:snippet:标题}}",
         "{{xlc:cursor}}",
         "{{xlc:date}}",
+        "{{xlc:date:+3d}}",
+        "{{xlc:random:选项A,选项B}}",
         "{{xlc:doc}}",
         "{{xlc:clipboard}}",
     ];

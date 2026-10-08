@@ -1447,6 +1447,13 @@ body.b3-theme-dark,
         outline: none;
       }
     }
+
+    // 多行文本变量（R160）：可纵向拉伸，行高放宽便于长文编辑
+    textarea.b3-text-field {
+      resize: vertical;
+      min-height: 64px;
+      line-height: 1.55;
+    }
   }
 
   .xlc-varform-foot {

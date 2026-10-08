@@ -11,7 +11,7 @@ import {SearchEntry, SearchQuery} from "../model/search";
 import {InsertMode} from "../model/actions";
 import {TransformKind} from "../service/ai";
 import {ProviderRow} from "../model/provider-section";
-import {AskField, hasCursorToken, listAskFields} from "../model/variables";
+import {AskField, askFieldTag, hasCursorToken, listAskFields} from "../model/variables";
 import {openVariableFillCard} from "./variable-form";
 
 export interface DialogDeps {
@@ -1173,9 +1173,7 @@ export class CommonSearchDialog {
         }
         for (const field of fields) {
             const chip = document.createElement("code");
-            chip.textContent = field.kind === "text"
-                ? `{{xlc:ask:${field.name}}}`
-                : `{{xlc:ask:${field.name}${field.kind === "date" ? "|date" : "|" + field.options.join(",")}}}`;
+            chip.textContent = askFieldTag(field);
             paneVars.appendChild(chip);
         }
         // 光标落点提示（原型屏 1：内容含 {{xlc:cursor}} 时附带说明）
