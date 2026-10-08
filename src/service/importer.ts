@@ -43,9 +43,44 @@ export async function applyOverwriteImport(library: LibraryService, incoming: Ex
     const existing = got.data;
     const incomingType = isKnownType(incoming.itemType) ? incoming.itemType : "text";
     if (existing.itemType !== incomingType) {
+        // 类型变化 = 先删后建。删除前备份旧正文：建新失败时尽力原样恢复旧条目，
+        // 不允许「旧已删、新未建」成为终态（失败可恢复红线，R140）。
+        const backupKd = await library.getItemKramdown(existing);
+        const backup = backupKd.ok ? backupKd.data : "";
         const removed = await library.removeItem(logicalId);
         if (!removed.ok) return false;
-        return applyImportedItem(library, incoming, logicalId);
+        const created = await library.createItem({
+            itemType: incomingType,
+            markdown: incoming.kramdown,
+            logicalId,
+            title: incoming.title || undefined,
+            alias: incoming.alias || undefined,
+            tags: incoming.tags,
+            category: incoming.category || undefined,
+            url: incoming.url || undefined,
+            targetBlockId: incoming.targetBlockId || undefined,
+            source: {
+                sourceDocId: incoming.source.sourceDocId || "",
+                sourceBlockId: incoming.source.sourceBlockId || "",
+                sourceType: ((incoming.source.sourceType || "external") as NonNullable<NewItemInput["source"]>["sourceType"]) || "external",
+            },
+        });
+        if (created.ok) return true;
+        if (backup) {
+            await library.createItem({
+                itemType: existing.itemType,
+                markdown: backup,
+                logicalId,
+                title: existing.title || undefined,
+                alias: existing.alias || undefined,
+                tags: existing.tags,
+                category: existing.category || undefined,
+                url: existing.url || undefined,
+                targetBlockId: existing.targetBlockId || undefined,
+                source: {...existing.source},
+            });
+        }
+        return false;
     }
     const updated = await library.updateItem(logicalId, {
         title: incoming.title || undefined,

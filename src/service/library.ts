@@ -581,21 +581,27 @@ export class LibraryService {
     }
 
     /** doc/tree 直接使用容器根；notebook 模式选择笔记本根下第一个文档作为写入父块。 */
+    /** 写入文档解析缓存（按索引代数失效）：批量导入时不再每条一次 listDocsByPath 往返（R140） */
+    private writeDocCache: {gen: number; docId: string | undefined} | null = null;
+
     private async resolveWriteDoc(): Promise<string | undefined> {
         const config = this.config;
         if (!config) return undefined;
         if (config.mode !== "notebook") return config.containerDocIds[0];
+        if (this.writeDocCache && this.writeDocCache.gen === this.indexGen) return this.writeDocCache.docId;
+        let resolved: string | undefined;
         for (const notebookId of config.notebookIds.slice(0, 16)) {
             try {
                 const data = await this.kernel.request<{files?: unknown}>("listDocsByPath", {notebook: notebookId, path: "/"});
                 const files = Array.isArray(data?.files) ? data.files : [];
                 const first = files.find((f) => typeof (f as {id?: unknown})?.id === "string" && isBlockId((f as {id: string}).id));
-                if (first && typeof (first as {id?: unknown}).id === "string") return (first as {id: string}).id;
+                if (first && typeof (first as {id?: unknown}).id === "string") { resolved = (first as {id: string}).id; break; }
             } catch {
                 // 尝试下一个配置的笔记本；最终返回明确 invalid-input 回执。
             }
         }
-        return undefined;
+        this.writeDocCache = {gen: this.indexGen, docId: resolved};
+        return resolved;
     }
 
     async updateItem(itemId: string, patch: Partial<Pick<NewItemInput, "title" | "alias" | "tags" | "category" | "markdown" | "url" | "targetBlockId">>): Promise<Receipt<{item: CommonItem}>> {
