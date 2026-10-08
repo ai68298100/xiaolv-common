@@ -8,7 +8,7 @@ import {
 import type {IMenuItem} from "siyuan";
 import {fetchSyncPost} from "siyuan";
 import "@/styles/index.scss";
-import {LIMITS, STORAGE_KEYS} from "./constants";
+import {LIMITS, SIDECAR_LOAD_TIMEOUT_MS, STORAGE_KEYS} from "./constants";
 import {createKernelClient, parseExistingMap, type IKernelClient, type SyncPost} from "./kernel/client";
 import {CommonItem, isItemType} from "./model/item";
 import {ExportedItem, buildBundle, validateImport, ConflictPolicy, ImportReceipt} from "./model/transfer";
@@ -18,6 +18,7 @@ import {LibraryConfig, CONFIG_VERSION, migrateState, normalizeLibraryConfig, nor
 import {SearchContext, collectCategories, collectTags, searchEntries, applyBasicFilters} from "./model/search";
 import {findDuplicateByContent} from "./model/dedupe";
 import {LruCache, PREVIEW_CACHE_CAPACITY, PREVIEW_CACHE_TTL_MS} from "./model/lru";
+import {readWithTimeout} from "./model/startup";
 import {setPinyinAdapter, createNoopPinyinAdapter} from "./model/pinyin";
 import {createTinyPinyinAdapter} from "./model/pinyin-tiny";
 import {buildProviderRows} from "./model/provider-section";
@@ -65,6 +66,7 @@ export default class XiaolvCommonPlugin extends Plugin {
     private config!: LibraryConfig | null;
     private searchDialog: CommonSearchDialog | null = null;
     private saveTimer: ReturnType<typeof setTimeout> | null = null;
+    private sidecarReady = false;
     /** 右键菜单处理器引用（onunload 解绑） */
     private menuHandler: ((event: {detail: {menu: {addItem: (item: {icon: string; label: string; click: () => void}) => void}}}) => void) | null = null;
     private blockRefMenuHandler: ((event: {detail: {menu: {addItem: (item: {icon: string; label: string; click: () => void}) => void}; element?: Element}}) => void) | null = null;
@@ -77,24 +79,49 @@ export default class XiaolvCommonPlugin extends Plugin {
     public readonly protocolCommands: Record<string, (payload?: unknown) => Promise<unknown>> = {};
 
     async onload(): Promise<void> {
-        this.addIcons(ICONS);
-        // 数据加载与迁移
-        const [rawConfig, rawState] = await Promise.all([
-            this.loadData(STORAGE_KEYS.config).catch(() => null),
-            this.loadData(STORAGE_KEYS.state).catch(() => null),
+        try {
+            this.addIcons(ICONS);
+        } catch (err) {
+            const detail = err instanceof Error ? err.message : String(err);
+            showMessage(this.i18nFn()("startupFailed", detail || "icon registration failed"), 7000, "error");
+        }
+        // 先装配安全默认值并注册入口。宿主 loadData 在存储损坏/网络异常时可能悬挂，
+        // 入口不能依赖侧车读取成功才出现；读取完成后再原位更新共享状态对象。
+        this.config = null;
+        this.state = normalizeState(null);
+        this.registerEntries();
+        this.registerCommands();
+        try {
+            this.bootServices();
+        } catch (err) {
+            const detail = err instanceof Error ? err.message : String(err);
+            showMessage(this.i18nFn()("startupFailed", detail || "unknown error"), 7000, "error");
+            return;
+        }
+
+        const [configRead, stateRead] = await Promise.all([
+            readWithTimeout(() => this.loadData(STORAGE_KEYS.config), SIDECAR_LOAD_TIMEOUT_MS),
+            readWithTimeout(() => this.loadData(STORAGE_KEYS.state), SIDECAR_LOAD_TIMEOUT_MS),
         ]);
+        const rawConfig = configRead.ok ? configRead.value : null;
+        const rawState = stateRead.ok ? stateRead.value : null;
+        if (!configRead.ok || !stateRead.ok) {
+            showMessage(this.i18nFn()("sidecarLoadFailed"), 7000, "error");
+        }
         this.config = normalizeLibraryConfig(rawConfig);
         const migrated = migrateState(rawState);
         if ("rejected" in migrated) {
             // 未来版本数据：保留原样不降级改写，仅提示（诚实降级，不破坏）
             showMessage(this.i18nFn()("libInvalid"), 5000, "error");
-            this.state = normalizeState(null);
+            Object.assign(this.state, normalizeState(null));
         } else {
-            this.state = migrated.state;
+            Object.assign(this.state, migrated.state);
         }
-        this.bootServices();
-        this.registerCommands();
-        this.registerEntries();
+        if (this.config) this.library.setConfig(this.config);
+        this.registry.restore(this.state.providers);
+        this.ai.updateSettings(this.state.ai);
+        this.applyPinyinAdapter();
+        this.sidecarReady = true;
     }
 
     private bootServices(): void {
@@ -357,25 +384,25 @@ export default class XiaolvCommonPlugin extends Plugin {
         this.addCommand({
             langKey: "saveSelection",
             hotkey: "⌥⇧S",
-            callback: () => void this.capture.saveSelection(),
+            callback: () => void this.capture?.saveSelection(),
         });
         this.addCommand({
             langKey: "saveClipboard",
-            callback: () => void this.capture.captureFromClipboard(),
+            callback: () => void this.capture?.captureFromClipboard(),
         });
         this.addCommand({
             langKey: "quickCapture",
             hotkey: "⌥⇧V",
-            callback: () => void this.capture.quickCaptureFromClipboard(),
+            callback: () => void this.capture?.quickCaptureFromClipboard(),
         });
         this.addCommand({
             langKey: "captureBlock",
             hotkey: "⌥⇧B",
-            callback: () => void this.capture.captureCurrentBlock(),
+            callback: () => void this.capture?.captureCurrentBlock(),
         });
         this.addCommand({
             langKey: "captureDoc",
-            callback: () => void this.capture.captureCurrentDoc(),
+            callback: () => void this.capture?.captureCurrentDoc(),
         });
         this.addCommand({
             langKey: "insertCmd",
@@ -456,12 +483,12 @@ export default class XiaolvCommonPlugin extends Plugin {
                 menu.addItem({
                     icon: "iconXlcCommon",
                     label: this.i18nFn()("saveSelection"),
-                    click: () => void this.capture.saveSelection(),
+                    click: () => void this.capture?.saveSelection(),
                 });
                 menu.addItem({
                     icon: "iconXlcCommon",
                     label: this.i18nFn()("captureBlock"),
-                    click: () => void this.capture.captureCurrentBlock(),
+                    click: () => void this.capture?.captureCurrentBlock(),
                 });
             };
             this.eventBus.on("open-menu-content", this.menuHandler);
@@ -473,7 +500,7 @@ export default class XiaolvCommonPlugin extends Plugin {
                 menu.addItem({
                     icon: "iconXlcCommon",
                     label: this.i18nFn()("captureBlockRefMenu"),
-                    click: () => this.capture.captureBlockRef(blockId, element.textContent ?? ""),
+                    click: () => this.capture?.captureBlockRef(blockId, element.textContent ?? ""),
                 });
             };
             this.eventBus.on("open-menu-blockref", this.blockRefMenuHandler);
@@ -485,7 +512,7 @@ export default class XiaolvCommonPlugin extends Plugin {
                 menu.addItem({
                     icon: "iconXlcCommon",
                     label: this.i18nFn()("captureLinkMenu"),
-                    click: () => this.capture.captureLink(href, element.textContent ?? ""),
+                    click: () => this.capture?.captureLink(href, element.textContent ?? ""),
                 });
             };
             this.eventBus.on("open-menu-link", this.linkMenuHandler);
@@ -498,7 +525,7 @@ export default class XiaolvCommonPlugin extends Plugin {
                 menu.addItem({
                     icon: "iconXlcCommon",
                     label: this.i18nFn()("captureImageMenu"),
-                    click: () => this.capture.captureImage(target.value, element?.getAttribute?.("title") ?? ""),
+                    click: () => this.capture?.captureImage(target.value, element?.getAttribute?.("title") ?? ""),
                 });
             };
             this.eventBus.on("open-menu-image", this.imageMenuHandler);
@@ -580,6 +607,14 @@ export default class XiaolvCommonPlugin extends Plugin {
 
     /** 打开搜索弹窗；insertTarget 提供时进入定向插入模式（插入到指定文档） */
     openSearch(insertTarget?: {docId: string; hPath: string}): void {
+        if (!this.library || !this.capture || !this.service) {
+            showMessage(this.i18nFn()("startupFailed", "services unavailable"), 7000, "error");
+            return;
+        }
+        if (!this.sidecarReady) {
+            showMessage(this.i18nFn()("sidecarLoading"), 2000, "info");
+            return;
+        }
         if (!this.config) {
             this.openSetup();
             return;

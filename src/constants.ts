@@ -49,6 +49,9 @@ export const LIMITS = {
     customPromptChars: 500,
 } as const;
 
+// 宿主侧车读取异常时不能阻塞插件入口注册；超时后使用安全默认值并保留入口。
+export const SIDECAR_LOAD_TIMEOUT_MS = 3000;
+
 export const STORAGE_KEYS = {
     config: "config.json",
     state: "state.json",

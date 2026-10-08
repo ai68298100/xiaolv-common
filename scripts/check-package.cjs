@@ -5,10 +5,12 @@
 
 const path = require("node:path");
 const fs = require("node:fs");
-const {execSync} = require("node:child_process");
+const {listZipEntries} = require("./zip-entries.cjs");
 
 const ROOT = path.resolve(__dirname, "..");
-const zipPath = path.join(ROOT, "dist", "package.zip");
+const zipPath = process.argv[2]
+    ? path.resolve(process.argv[2])
+    : path.join(ROOT, "dist", "package.zip");
 const pluginManifest = JSON.parse(fs.readFileSync(path.join(ROOT, "plugin.json"), "utf8"));
 const packageJson = JSON.parse(fs.readFileSync(path.join(ROOT, "package.json"), "utf8"));
 
@@ -17,14 +19,13 @@ if (!fs.existsSync(zipPath)) {
     process.exit(1);
 }
 
-const entries = execSync(`unzip -l "${zipPath}"`, {encoding: "utf8"})
-    .split("\n")
-    .map((line) => {
-        // unzip -l 行格式：长度 日期 时间 名称
-        const match = line.match(/^\s*\d+\s+\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}\s+(.+)$/);
-        return match ? match[1] : null;
-    })
-    .filter((name) => name && name !== "Name" && !name.startsWith("-----") && !/^\d+ files?$/.test(name));
+let entries;
+try {
+    entries = listZipEntries(fs.readFileSync(zipPath));
+} catch (err) {
+    console.error(`check-package 失败：无法读取 ZIP 目录（${err.message}）`);
+    process.exit(1);
+}
 
 const failures = [];
 

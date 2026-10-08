@@ -26,6 +26,7 @@ import * as commands from "../src/service/commands";
 import * as providers from "../src/service/providers";
 import * as service from "../src/service/service";
 import * as ai from "../src/service/ai";
+import * as startup from "../src/model/startup";
 
 export {
     item,
@@ -53,4 +54,5 @@ export {
     providers,
     service,
     ai,
+    startup,
 };
