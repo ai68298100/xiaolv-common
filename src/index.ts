@@ -7,6 +7,7 @@ import {
 } from "siyuan";
 import type {IMenuItem} from "siyuan";
 import {fetchSyncPost} from "siyuan";
+import {getDialogBody} from "./ui/dialog-dom";
 import "@/styles/index.scss";
 import {LIMITS, SIDECAR_LOAD_TIMEOUT_MS, STORAGE_KEYS} from "./constants";
 import {createKernelClient, parseExistingMap, type IKernelClient, type SyncPost} from "./kernel/client";
@@ -1005,7 +1006,7 @@ export default class XiaolvCommonPlugin extends Plugin {
             width: "min(520px, 92vw)",
             height: "auto",
         });
-        const body = dialog.element.querySelector(".b3-dialog__content");
+        const body = getDialogBody(dialog.element);
         if (!body) return;
         body.innerHTML = "";
         const form = document.createElement("div");

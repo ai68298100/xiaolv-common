@@ -1605,7 +1605,7 @@ body.b3-theme-dark,
 .b3-dialog__container.xlc-varform-host {
   .b3-dialog__header { display: none; }
 
-  .b3-dialog__content {
+  .b3-dialog__content, .b3-dialog__body {
     padding: 14px 16px 14px;
   }
 }
@@ -1660,7 +1660,7 @@ body.b3-theme-dark,
 // ---------- 宿主容器适配（只作用于本插件弹窗）----------
 // 搜索弹窗：收紧 content 内边距，贴近原型 14px 边距与通体感
 .b3-dialog__container.xlc-dialog-host {
-  .b3-dialog__content {
+  .b3-dialog__content, .b3-dialog__body {
     padding: 10px 14px 12px;
     display: flex;
     flex-direction: column;
@@ -1679,7 +1679,7 @@ body.b3-theme-dark,
   transform: none !important;
   padding-bottom: env(safe-area-inset-bottom, 0);
 
-  .b3-dialog__content {
+  .b3-dialog__content, .b3-dialog__body {
     padding: 8px 14px 12px;
     display: flex;
     flex-direction: column;

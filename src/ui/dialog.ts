@@ -5,6 +5,7 @@
 // 触控：44px 命中区、长按 550ms（移动 <10px 判定）弹动作菜单；不依赖 hover、不做坐标猜测。
 // AI：? 前缀语义找条目（默认仅元数据出域）；动作菜单 AI 变换（预览后选插入，原文永不被改写）。
 import {Dialog} from "siyuan";
+import {getDialogBody} from "./dialog-dom";
 import {ITEM_TYPES, ItemType} from "../model/item";
 import {SearchEntry, SearchQuery} from "../model/search";
 import {InsertMode} from "../model/actions";
@@ -120,7 +121,7 @@ export class CommonSearchDialog {
                 this.deps.close();
             },
         });
-        const body = this.dialog.element.querySelector(".b3-dialog__content");
+        const body = getDialogBody(this.dialog.element);
         if (body) {
             body.innerHTML = "";
             body.appendChild(content);

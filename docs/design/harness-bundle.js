@@ -51,7 +51,7 @@
           title.className = "b3-dialog__header";
           title.textContent = this.options.title || "";
           const content = document.createElement("div");
-          content.className = "b3-dialog__content";
+          content.className = "b3-dialog__body";
           container.appendChild(title);
           container.appendChild(content);
           root.appendChild(container);
@@ -87,6 +87,12 @@
 
   // src/ui/dialog.ts
   var import_siyuan2 = __toESM(require_stub_dom());
+
+  // src/ui/dialog-dom.ts
+  function getDialogBody(root) {
+    var _a;
+    return (_a = root.querySelector(".b3-dialog__body")) != null ? _a : root.querySelector(".b3-dialog__content");
+  }
 
   // src/constants.ts
   var PROTOCOL_NAME = "xiaolv-common";
@@ -205,7 +211,7 @@
     });
     const container = dialog.element.querySelector(".b3-dialog__container");
     if (container) container.classList.add("xlc-varform-host");
-    const body = dialog.element.querySelector(".b3-dialog__content");
+    const body = getDialogBody(dialog.element);
     if (!body) return;
     body.innerHTML = "";
     const root = document.createElement("div");
@@ -424,7 +430,7 @@
           this.deps.close();
         }
       });
-      const body = this.dialog.element.querySelector(".b3-dialog__content");
+      const body = getDialogBody(this.dialog.element);
       if (body) {
         body.innerHTML = "";
         body.appendChild(content);
@@ -2617,7 +2623,7 @@
       width: "min(520px, 92vw)",
       height: "auto"
     });
-    const body = dialog.element.querySelector(".b3-dialog__content");
+    const body = getDialogBody(dialog.element);
     if (!body) return;
     body.innerHTML = "";
     const root = document.createElement("div");
@@ -2637,7 +2643,7 @@
       width: "min(560px, 92vw)",
       height: "auto"
     });
-    const body = dialog.element.querySelector(".b3-dialog__content");
+    const body = getDialogBody(dialog.element);
     if (!body) return;
     body.innerHTML = "";
     const root = document.createElement("div");
@@ -2701,7 +2707,7 @@
       width: "min(460px, 92vw)",
       height: "auto"
     });
-    const body = dialog.element.querySelector(".b3-dialog__content");
+    const body = getDialogBody(dialog.element);
     if (!body) return;
     body.innerHTML = "";
     const wrap = document.createElement("div");
@@ -3544,7 +3550,7 @@
       width: "min(520px, 92vw)",
       height: "auto"
     });
-    const body = dialog.element.querySelector(".b3-dialog__content");
+    const body = getDialogBody(dialog.element);
     if (!body) return;
     body.innerHTML = "";
     const wrap = document.createElement("div");
@@ -3586,7 +3592,7 @@
       width: "min(440px, 92vw)",
       height: "auto"
     });
-    const body = dialog.element.querySelector(".b3-dialog__content");
+    const body = getDialogBody(dialog.element);
     if (!body) return;
     body.innerHTML = "";
     const wrap = document.createElement("div");
@@ -3859,7 +3865,7 @@
           ++tidySeq;
         }
       });
-      const body = dialog.element.querySelector(".b3-dialog__content");
+      const body = getDialogBody(dialog.element);
       if (!body) return;
       body.innerHTML = "";
       const form = document.createElement("div");

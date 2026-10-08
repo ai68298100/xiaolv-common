@@ -1,6 +1,7 @@
 // 捕获流程：选区/当前块 → 新条目表单（类型推断 + 元数据一步完成）。
 // 剪贴板读取失败（权限/平台）诚实回执，保留手动输入。
 import {Dialog, confirm} from "siyuan";
+import {getDialogBody} from "./dialog-dom";
 import {ItemType, isSafeHttpUrl} from "../model/item";
 import {NewItemInput} from "../service/library";
 import {buildVariableBar} from "./variable-form";
@@ -232,7 +233,7 @@ export class CaptureDialog {
                 ++tidySeq;
             },
         });
-        const body = dialog.element.querySelector(".b3-dialog__content");
+        const body = getDialogBody(dialog.element);
         if (!body) return;
         body.innerHTML = "";
         const form = document.createElement("div");

@@ -1,6 +1,7 @@
 // 设置界面（自 index.ts 拆出，R19）：首次引导 / 完整设置 / 库选择器 / AI / 搜索 / 数据区 / 标签体检 / 导入策略。
 // 依赖经 SettingsUiContext 注入（不持有插件实例）；状态对象按引用共享，落盘由 persistSoon 节流。
 import {Dialog, confirm} from "siyuan";
+import {getDialogBody} from "./dialog-dom";
 import {CONFIG_VERSION, LibraryConfig, PluginState} from "../model/storage";
 import {LIMITS} from "../constants";
 import {validateImport, ConflictPolicy, ImportIssue, ImportReceipt, ExportedItem} from "../model/transfer";
@@ -74,7 +75,7 @@ export function openSetupDialog(ctx: SettingsUiContext, opts?: SetupDialogOption
         width: "min(520px, 92vw)",
         height: "auto",
     });
-    const body = dialog.element.querySelector(".b3-dialog__content");
+    const body = getDialogBody(dialog.element);
     if (!body) return;
     body.innerHTML = "";
     const root = document.createElement("div");
@@ -95,7 +96,7 @@ export function openSettingsDialog(ctx: SettingsUiContext): void {
         width: "min(560px, 92vw)",
         height: "auto",
     });
-    const body = dialog.element.querySelector(".b3-dialog__content");
+    const body = getDialogBody(dialog.element);
     if (!body) return;
     body.innerHTML = "";
     const root = document.createElement("div");
@@ -174,7 +175,7 @@ async function openPackExportDialog(ctx: SettingsUiContext): Promise<void> {
         width: "min(460px, 92vw)",
         height: "auto",
     });
-    const body = dialog.element.querySelector(".b3-dialog__content");
+    const body = getDialogBody(dialog.element);
     if (!body) return;
     body.innerHTML = "";
     const wrap = document.createElement("div");
@@ -1082,7 +1083,7 @@ async function runTagAudit(ctx: SettingsUiContext): Promise<void> {
         width: "min(520px, 92vw)",
         height: "auto",
     });
-    const body = dialog.element.querySelector(".b3-dialog__content");
+    const body = getDialogBody(dialog.element);
     if (!body) return;
     body.innerHTML = "";
     const wrap = document.createElement("div");
@@ -1131,7 +1132,7 @@ export function openImportPolicyDialog(
         width: "min(440px, 92vw)",
         height: "auto",
     });
-    const body = dialog.element.querySelector(".b3-dialog__content");
+    const body = getDialogBody(dialog.element);
     if (!body) return;
     body.innerHTML = "";
     const wrap = document.createElement("div");

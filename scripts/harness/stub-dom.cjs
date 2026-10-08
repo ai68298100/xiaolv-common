@@ -1,5 +1,5 @@
 // 渲染 harness 的 siyuan 桩件：Dialog 桩构建与宿主一致的类名结构
-// （.b3-dialog > .b3-dialog__container > .b3-dialog__content + .b3-dialog__title），
+// （.b3-dialog > .b3-dialog__container > .b3-dialog__body + .b3-dialog__header，对齐真实 v3.8.6），
 // 使生产 dialog.ts 的 DOM 装配代码原样执行。
 "use strict";
 
@@ -20,7 +20,7 @@ class StubDialog {
         title.className = "b3-dialog__header";
         title.textContent = this.options.title || "";
         const content = document.createElement("div");
-        content.className = "b3-dialog__content";
+        content.className = "b3-dialog__body"; // R142：对齐真实 v3.8.6 Dialog 结构（无 __content）
         container.appendChild(title);
         container.appendChild(content);
         root.appendChild(container);

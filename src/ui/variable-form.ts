@@ -3,6 +3,7 @@
 // 填充值仅作用于本次插入（草稿不回写库）；同名重复变量只询问一次（listAskFields 已去重）。
 // 安全：字段名/选项一律 textContent 注入，绝不 innerHTML。
 import {Dialog} from "siyuan";
+import {getDialogBody} from "./dialog-dom";
 import {AskField} from "../model/variables";
 import {ItemType} from "../model/item";
 
@@ -38,7 +39,7 @@ export function openVariableFillCard(options: VariableFillOptions): void {
     // 原型屏 4：紧凑卡形态，卡头（徽标+标题+Esc 取消）即标题，隐藏宿主标题栏
     const container = dialog.element.querySelector(".b3-dialog__container");
     if (container) container.classList.add("xlc-varform-host");
-    const body = dialog.element.querySelector(".b3-dialog__content");
+    const body = getDialogBody(dialog.element);
     if (!body) return;
     body.innerHTML = "";
     const root = document.createElement("div");
