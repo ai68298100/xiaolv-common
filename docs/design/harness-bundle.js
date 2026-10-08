@@ -195,10 +195,11 @@
       content: "",
       width: "min(360px, 92vw)",
       height: "auto",
-      // 所有关闭路径（Esc/scrim/取消）统一走 onCancel：上层搜索弹窗焦点回归（R128）
+      // 所有关闭路径（Esc/scrim）统一走 onCancel：上层搜索弹窗焦点回归（R128）；
+      // 按钮确认/取消已自行结算，不在此重复触发（R138 结算语义）
       destroyCallback: () => {
         var _a2;
-        return (_a2 = options.onCancel) == null ? void 0 : _a2.call(options);
+        if (!settled) (_a2 = options.onCancel) == null ? void 0 : _a2.call(options);
       }
     });
     const container = dialog.element.querySelector(".b3-dialog__container");
@@ -228,7 +229,7 @@
     sub.textContent = t("varFormSub", String(options.fields.length));
     root.appendChild(sub);
     const inputs = [];
-    for (const field of options.fields) {
+    for (const [fieldIndex, field] of options.fields.entries()) {
       const wrap = document.createElement("label");
       wrap.className = "xlc-varform-field";
       const label = document.createElement("span");
@@ -244,9 +245,9 @@
       input.setAttribute("enterkeyhint", "done");
       if (field.kind === "date") input.type = "date";
       if (field.kind === "select") {
-        input.setAttribute("list", `xlc-varform-list-${safeListId(field.name)}`);
+        input.setAttribute("list", `xlc-varform-list-${fieldIndex}`);
         const datalist = document.createElement("datalist");
-        datalist.id = `xlc-varform-list-${safeListId(field.name)}`;
+        datalist.id = `xlc-varform-list-${fieldIndex}`;
         for (const opt of field.options) {
           const option = document.createElement("option");
           option.value = opt;
@@ -284,20 +285,31 @@
       }
       return fills;
     };
+    let settled = false;
     const confirm3 = () => {
+      if (settled) return;
+      settled = true;
       dialog.destroy();
       options.onConfirm(collect());
     };
     insertBtn.addEventListener("click", confirm3);
     cancelBtn.addEventListener("click", () => {
       var _a2;
+      if (settled) return;
+      settled = true;
       dialog.destroy();
       (_a2 = options.onCancel) == null ? void 0 : _a2.call(options);
     });
     root.addEventListener("keydown", (ev) => {
       var _a2;
+      if (ev.isComposing || ev.keyCode === 229) return;
       if (ev.key === "Enter" && !ev.altKey && !ev.ctrlKey && !ev.metaKey) {
         if (ev.target.tagName === "BUTTON") return;
+        const el = ev.target;
+        if (el instanceof HTMLInputElement && el.list) {
+          setTimeout(() => confirm3(), 0);
+          return;
+        }
         ev.preventDefault();
         confirm3();
         return;
@@ -314,9 +326,6 @@
       }
     });
     (_b = inputs[0]) == null ? void 0 : _b.focus();
-  }
-  function safeListId(name) {
-    return name.replace(/[^0-9a-zA-Z\u4e00-\u9fa5_-]/g, "").slice(0, 24) || "f";
   }
   function buildVariableBar(t, getTarget) {
     const bar = document.createElement("div");
@@ -348,6 +357,7 @@
         const caret = start + snippet.length;
         el.focus();
         el.setSelectionRange(caret, caret);
+        el.dispatchEvent(new Event("input", { bubbles: true }));
       });
       bar.appendChild(btn);
     }
@@ -391,6 +401,14 @@
       this.longPressCancel = null;
       /** IME 组合输入中（中文输入法组词期间跳过刷新，compositionend 后统一刷新） */
       this.isComposing = false;
+      /** 普通点击 = 主动作（insert；blockref = 插入引用）。含变量时先弹填充卡片（F1）。
+       *  执行期防重入（R138）：双击行/按住 Enter 不得重复插入同一块。 */
+      this.primaryBusy = false;
+      this.varFormOpen = false;
+      /** AI 变换代次：连点两个变换时丢弃慢的旧结果（R138） */
+      this.transformSeq = 0;
+      /** 排序菜单关闭时刻：chip 的 click 在 pointerdown 关闭之后到达，不得立刻重开（R138 toggle） */
+      this.sortMenuClosedAt = 0;
     }
     open() {
       const isMobile = this.deps.isMobile();
@@ -463,6 +481,7 @@
       input.addEventListener("input", () => {
         syncQMark();
         this.currentScope = "all";
+        this.syncScopeChips();
         this.deps.setLastQuery(input.value.replace(/^\?+/, ""));
         if (this.isComposing) return;
         if (this.inputDebounce) clearTimeout(this.inputDebounce);
@@ -475,6 +494,7 @@
         this.isComposing = false;
         syncQMark();
         this.currentScope = "all";
+        this.syncScopeChips();
         if (this.inputDebounce) clearTimeout(this.inputDebounce);
         this.inputDebounce = setTimeout(() => void this.refresh(), 50);
       });
@@ -487,7 +507,13 @@
         const isApple = /Mac|iPhone|iPad/i.test(navigator.platform || "");
         const kbdRow = document.createElement("div");
         kbdRow.className = "xlc-kbdrow";
-        for (const hint of ["\u2191\u2193", "\u21A9 \u63D2\u5165", isApple ? "\u2318\u21A9 \u590D\u5236" : "\u2303\u21A9 \u590D\u5236", "\u23251-9 \u76F4\u8FBE", "Esc"]) {
+        for (const hint of [
+          "\u2191\u2193",
+          this.deps.t("kbdEnter"),
+          this.deps.t("kbdCopy", isApple ? "\u2318" : "\u2303"),
+          this.deps.t("kbdAltDirect"),
+          "Esc"
+        ]) {
           const kbd = document.createElement("span");
           kbd.className = "xlc-kbd";
           kbd.textContent = hint;
@@ -558,11 +584,11 @@
       categorySelect.setAttribute("aria-label", this.deps.t("category"));
       if (savedFilters.category) categorySelect.value = savedFilters.category;
       void this.deps.getCategories().then((categories) => {
-        if (categories.length === 0) return;
         const first = document.createElement("option");
         first.value = "";
         first.textContent = this.deps.t("category");
         categorySelect.appendChild(first);
+        if (categories.length === 0) return;
         for (const category of categories) {
           const opt = document.createElement("option");
           opt.value = category;
@@ -603,7 +629,10 @@
         sortChip.classList.toggle("xlc-chip--on", sort !== "manual");
       };
       paintSort();
-      sortChip.addEventListener("click", () => this.showSortMenu(paintSort));
+      sortChip.addEventListener("click", () => {
+        if (Date.now() - this.sortMenuClosedAt < 300) return;
+        this.showSortMenu(paintSort);
+      });
       filters.appendChild(sortChip);
       if (this.insertTarget) {
         const targetBanner = document.createElement("span");
@@ -640,6 +669,7 @@
         const entry = this.results[Number(row.dataset.xlcIndex)];
         if (entry && this.activeIndex !== Number(row.dataset.xlcIndex)) {
           this.activeIndex = Number(row.dataset.xlcIndex);
+          this.activeProvider = -1;
           this.paintActive();
           this.schedulePreview(entry);
         }
@@ -736,20 +766,34 @@
       const insert = document.createElement("button");
       insert.className = "b3-button xlc-btn-primary";
       insert.textContent = this.deps.t("insert");
+      insert.dataset.xlcPaneAct = "insert";
       insert.addEventListener("click", () => {
+        var _a;
+        if (this.activeProvider >= 0) {
+          const row = this.providerRows[this.activeProvider];
+          if (row) void this.deps.insertProviderPayload(row.payload, (_a = this.insertTarget) != null ? _a : void 0);
+          return;
+        }
         const entry = this.results[this.activeIndex];
         if (entry) void this.runPrimary(entry);
       });
       const copy = document.createElement("button");
       copy.className = "b3-button";
       copy.textContent = this.deps.t("copy");
+      copy.dataset.xlcPaneAct = "copy";
       copy.addEventListener("click", () => {
+        if (this.activeProvider >= 0) {
+          const row = this.providerRows[this.activeProvider];
+          if (row) void this.deps.copyProviderPayload(row.payload);
+          return;
+        }
         const entry = this.results[this.activeIndex];
         if (entry) void this.deps.runAction(entry.id, "copy");
       });
       const aiBtn = document.createElement("button");
       aiBtn.className = "b3-button xlc-btn-ai";
       aiBtn.textContent = "\u2726 " + this.deps.t("aiTransform");
+      aiBtn.dataset.xlcPaneAct = "ai";
       aiBtn.addEventListener("click", () => {
         const entry = this.results[this.activeIndex];
         if (entry) void this.showActionMenu(entry);
@@ -759,6 +803,7 @@
       const source = document.createElement("button");
       source.className = "b3-button b3-button--text xlc-btn-ghost";
       source.textContent = this.deps.t("openSource");
+      source.dataset.xlcPaneAct = "source";
       source.addEventListener("click", () => {
         const entry = this.results[this.activeIndex];
         if (entry) void this.deps.openSource(entry.id);
@@ -766,6 +811,7 @@
       const edit = document.createElement("button");
       edit.className = "b3-button b3-button--text xlc-btn-ghost";
       edit.textContent = this.deps.t("edit");
+      edit.dataset.xlcPaneAct = "edit";
       edit.addEventListener("click", () => {
         const entry = this.results[this.activeIndex];
         if (entry) void this.deps.editItem(entry.id);
@@ -787,6 +833,7 @@
         pressTimer = void 0;
       };
       this.longPressCancel = cancel;
+      list.addEventListener("contextmenu", cancel);
       list.addEventListener("touchstart", (e) => {
         var _a, _b, _c, _d;
         startY = (_b = (_a = e.touches[0]) == null ? void 0 : _a.clientY) != null ? _b : 0;
@@ -891,7 +938,7 @@
         }
         if (footer) {
           const count = footer.querySelector(".xlc-footer-count");
-          if (count && !this.deps.isMobile()) count.textContent = this.deps.t("totalItems", "0");
+          if (count && !this.deps.isMobile()) count.textContent = "";
         }
         this.finishSearchLoad(list);
         this.renderList(list);
@@ -932,6 +979,7 @@
         if (count && !this.deps.isMobile()) {
           const sortSuffix = this.deps.getSort() === "frequent" ? ` \xB7 ${this.deps.t("sort.frequent")}` : "";
           count.textContent = this.deps.t("totalItems", String(total)) + sortSuffix + (truncated ? " \u26A0" : "");
+          count.title = truncated ? this.deps.t("truncatedHint") : "";
         }
       }
       this.providerRows = [];
@@ -1140,7 +1188,7 @@
           e.stopPropagation();
           this.deps.toggleFavorite(entry.id);
           star.textContent = this.deps.isFavorite(entry.id) ? "\u2605" : "\u2606";
-          void this.refreshPreservingPosition();
+          void this.refreshPreservingPosition().then(() => this.restoreFocusToSearch());
         });
         row.appendChild(star);
         list.appendChild(row);
@@ -1189,7 +1237,13 @@
       const actionable = this.results.length > 0;
       const scope = (_h = (_g = this.dialog) == null ? void 0 : _g.element) != null ? _h : document;
       scope.querySelectorAll(".xlc-pane-foot .b3-button").forEach((btn) => {
-        btn.disabled = !actionable;
+        var _a2;
+        if (this.activeProvider >= 0) {
+          const act = (_a2 = btn.dataset.xlcPaneAct) != null ? _a2 : "";
+          btn.disabled = !(act === "insert" || act === "copy");
+        } else {
+          btn.disabled = !actionable;
+        }
       });
       const mobileInsert = scope.querySelector(".xlc-mobile-foot .xlc-btn-primary");
       if (mobileInsert) mobileInsert.disabled = !actionable;
@@ -1246,8 +1300,12 @@
       });
       (_f = menu.querySelector(".xlc-menu-item")) == null ? void 0 : _f.focus();
     }
+    /** 外部变更（动作菜单内删除/建副本等）后的列表同步入口（R138）。 */
+    refreshAfterExternalChange() {
+      void this.refreshPreservingPosition();
+    }
     async refreshPreservingPosition() {
-      var _a;
+      var _a, _b, _c;
       const seq = ++this.searchSeq;
       const query = this.buildQuery();
       this.lastQueryText = query.text.trim();
@@ -1255,10 +1313,15 @@
         const { entries } = await this.deps.search(query);
         if (seq !== this.searchSeq) return;
         this.results = entries;
-      } catch {
+      } catch (err) {
+        const status = (_a = this.dialog) == null ? void 0 : _a.element.querySelector(".xlc-status");
+        if (status) {
+          status.textContent = this.deps.t("kernelError", (_b = err == null ? void 0 : err.message) != null ? _b : "unknown");
+          status.classList.add("xlc-status--error");
+        }
         return;
       }
-      const list = (_a = this.dialog) == null ? void 0 : _a.element.querySelector(".xlc-list");
+      const list = (_c = this.dialog) == null ? void 0 : _c.element.querySelector(".xlc-list");
       if (list) this.renderList(list);
     }
     /** 统一导航位：0..results.length-1 为库条目，之后为提供方行 */
@@ -1346,6 +1409,7 @@
       for (const mode of modes) {
         sec.appendChild(this.menuButton(mode === current ? "\u2713" : " ", this.deps.t(`sort.${mode}`), "xlc-menu-item" + (mode === current ? " xlc-menu-item--on" : ""), async () => {
           var _a2;
+          this.sortMenuClosedAt = Date.now();
           (_a2 = this.menuDismiss) == null ? void 0 : _a2.call(this);
           this.menuDismiss = null;
           this.deps.setSort(mode);
@@ -1360,6 +1424,7 @@
       const dismiss = (e) => {
         if (!menu.contains(e.target)) {
           menu.remove();
+          this.sortMenuClosedAt = Date.now();
           if (this.menuDismiss === dismissMenu) this.menuDismiss = null;
           document.removeEventListener("pointerdown", dismiss, true);
           this.restoreFocusToSearch();
@@ -1376,6 +1441,7 @@
           e.preventDefault();
           e.stopPropagation();
           menu.remove();
+          this.sortMenuClosedAt = Date.now();
           if (this.menuDismiss === dismissMenu) this.menuDismiss = null;
           document.removeEventListener("pointerdown", dismiss, true);
           this.restoreFocusToSearch();
@@ -1498,7 +1564,7 @@
       }
       this.paintPaneVars(null, entry == null ? void 0 : entry.itemType);
       paneBody.classList.add("xlc-pane-body--muted");
-      paneBody.textContent = this.deps.t("aiWorking");
+      paneBody.textContent = this.deps.t("loading");
       void this.deps.preview(id).then((text) => {
         if (seq !== this.previewSeq) return;
         const finalText = text || this.deps.t("previewUnavailable");
@@ -1515,15 +1581,22 @@
         this.paintPaneVars(null, entry == null ? void 0 : entry.itemType);
       });
     }
-    /** 普通点击 = 主动作（insert；blockref = 插入引用）。含变量时先弹填充卡片（F1）。 */
     async runPrimary(entry) {
+      if (this.primaryBusy || this.varFormOpen) return;
+      this.primaryBusy = true;
+      try {
+        await this.insertEntryWithVars(entry, (fills) => this.runActionFor(entry, fills));
+      } finally {
+        this.primaryBusy = false;
+      }
+    }
+    runActionFor(entry, fills) {
       if (this.deps.insertTarget) {
         const target = this.deps.insertTarget;
-        await this.insertEntryWithVars(entry, (fills) => this.deps.insertToDoc(entry.id, target.docId, target.hPath, fills));
-        return;
+        return this.deps.insertToDoc(entry.id, target.docId, target.hPath, fills);
       }
       const mode = entry.itemType === "blockref" ? "insert-ref" : "insert";
-      await this.insertEntryWithVars(entry, (fills) => fills ? this.deps.runActionWithFills(entry.id, mode, fills) : this.deps.runAction(entry.id, mode));
+      return fills ? this.deps.runActionWithFills(entry.id, mode, fills) : this.deps.runAction(entry.id, mode);
     }
     /** F1：插入前询问变量（设置可关；无 ask 字段零打扰；code 条目不询问）。
      *  perform 收到 fills（undefined=未触发询问，走原路径）。 */
@@ -1543,17 +1616,23 @@
         await perform();
         return;
       }
+      if (this.varFormOpen) return;
+      this.varFormOpen = true;
       openVariableFillCard({
         t: this.deps.t,
         itemType: entry.itemType,
         title: entry.title,
         fields,
         onConfirm: (fills) => {
+          this.varFormOpen = false;
           this.destroy();
           void perform(fills);
         },
         // 取消/关闭（Esc/scrim/取消钮）后焦点回搜索框，与浮层菜单一致（R128）
-        onCancel: () => this.restoreFocusToSearch()
+        onCancel: () => {
+          this.varFormOpen = false;
+          this.restoreFocusToSearch();
+        }
       });
     }
     /** 菜单按钮统一构造：图标列 + 文本（createTextNode 注入，绝不 innerHTML） */
@@ -1619,8 +1698,9 @@
           const secAi = document.createElement("div");
           secAi.className = "xlc-menu-sec xlc-menu-sec--ai";
           const openTransform = (transformLabel, run) => {
+            const gen = ++this.transformSeq;
             rebuild(() => buildTransformView(entry.title + " \xB7 " + transformLabel, transformLabel));
-            void runTransformView(run);
+            void runTransformView(run, gen);
           };
           for (const kind of TRANSFORM_KINDS) {
             secAi.appendChild(this.menuButton("\u2726", this.deps.t(`tf.${kind}`), "xlc-menu-item xlc-menu-item--ai", () => {
@@ -1638,7 +1718,9 @@
         sec2.className = "xlc-menu-sec";
         const addSilent = (icon, label, run, cls = "xlc-menu-item") => {
           sec2.appendChild(this.menuButton(icon, label, cls, async () => {
-            menu.remove();
+            var _a2;
+            (_a2 = this.menuDismiss) == null ? void 0 : _a2.call(this);
+            this.menuDismiss = null;
             await run();
           }));
         };
@@ -1661,6 +1743,14 @@
           input.placeholder = this.deps.t("insertToDocPick");
           input.setAttribute("aria-label", this.deps.t("insertToDocPick"));
           input.setAttribute("autocomplete", "off");
+          input.addEventListener("keydown", (ev) => {
+            ev.stopPropagation();
+            if (ev.key === "Enter" && !ev.isComposing) {
+              ev.preventDefault();
+              const first = sec.querySelector(".xlc-pickdoc-hit");
+              first == null ? void 0 : first.click();
+            }
+          });
           sec.appendChild(input);
           let seq = 0;
           input.addEventListener("input", () => {
@@ -1693,7 +1783,6 @@
           input.focus();
         });
         sec2.appendChild(toDocBtn);
-        addSilent("\u{1F5D1}", this.deps.t("delete"), () => this.deps.deleteItem(entry.id));
         menu.appendChild(sec2);
         menu.appendChild(previewBox);
       };
@@ -1760,8 +1849,9 @@
           (_a2 = menu.syncTransformReady) == null ? void 0 : _a2.call(menu);
         };
       };
-      const runTransformView = async (run) => {
+      const runTransformView = async (run, gen) => {
         const result = await run();
+        if (gen !== this.transformSeq) return;
         const apply = menu.applyTransform;
         if (result.ok) {
           apply == null ? void 0 : apply(result.text);
@@ -1822,7 +1912,8 @@
       (_f = menu.querySelector(".xlc-menu-item")) == null ? void 0 : _f.focus();
     }
     async onKeydown(e) {
-      var _a, _b;
+      var _a, _b, _c, _d;
+      if (e.isComposing || e.keyCode === 229) return;
       const list = (_a = this.dialog) == null ? void 0 : _a.element.querySelector(".xlc-list");
       if (!list) return;
       if (e.key === "ArrowDown") {
@@ -1837,12 +1928,14 @@
         this.paintActive();
         this.updatePreview();
       } else if (e.key === "Enter" && !e.ctrlKey && !e.metaKey) {
+        if ((_c = (_b = e.target).closest) == null ? void 0 : _c.call(_b, ".xlc-row-action")) return;
+        if (e.repeat) return;
         e.preventDefault();
         if (this.activeProvider >= 0) {
           const row = this.providerRows[this.activeProvider];
           if (row) {
             this.destroy();
-            await this.deps.insertProviderPayload(row.payload, (_b = this.insertTarget) != null ? _b : void 0);
+            await this.deps.insertProviderPayload(row.payload, (_d = this.insertTarget) != null ? _d : void 0);
           }
           return;
         }
@@ -1861,6 +1954,7 @@
         e.preventDefault();
         this.destroy();
       } else if (e.altKey && !e.ctrlKey && !e.metaKey && /^[1-9]$/.test(e.key)) {
+        if (e.repeat) return;
         e.preventDefault();
         const idx = Number(e.key) - 1;
         const entry = this.results[idx];
@@ -2477,7 +2571,7 @@
     cap.className = "xlc-setting-text";
     cap.textContent = text;
     if (sub) {
-      const subEl = document.createElement("div");
+      const subEl = document.createElement("span");
       subEl.className = "xlc-setting-sub";
       subEl.textContent = sub;
       cap.appendChild(subEl);
@@ -2533,10 +2627,11 @@
     const libStatus = document.createElement("div");
     libStatus.className = "xlc-form-hint";
     const cfg = ctx.getConfig();
-    libStatus.textContent = cfg ? cfg.mode === "notebook" ? `notebook ${cfg.notebookIds.join(",")}` : `${cfg.mode} \xB7 ${t("docCount", String(cfg.containerDocIds.length))}` : t("libraryNone");
+    libStatus.textContent = cfg ? cfg.mode === "notebook" ? t("libModeNotebook", String(cfg.notebookIds.length)) : t("libModeDoc", String(cfg.containerDocIds.length)) : t("libraryNone");
     const changeBtn = document.createElement("button");
     changeBtn.className = "b3-button";
     changeBtn.textContent = t("openSettingsChangeLib");
+    changeBtn.setAttribute("aria-expanded", "false");
     const libRow = document.createElement("div");
     libRow.className = "xlc-setting-row";
     const statusText = document.createElement("span");
@@ -2548,13 +2643,19 @@
     const pickerHost = document.createElement("div");
     pickerHost.style.display = "none";
     changeBtn.addEventListener("click", () => {
-      var _a;
       const show = pickerHost.style.display === "none";
       pickerHost.style.display = show ? "" : "none";
+      changeBtn.setAttribute("aria-expanded", show ? "true" : "false");
       if (show && pickerHost.childElementCount === 0) {
         buildLibraryPickerSection(ctx, pickerHost, () => dialog.destroy());
       }
-      if (show) (_a = pickerHost.querySelector(".b3-text-field")) == null ? void 0 : _a.focus();
+      if (show) requestAnimationFrame(() => {
+        var _a;
+        try {
+          (_a = pickerHost.querySelector(".b3-text-field")) == null ? void 0 : _a.focus();
+        } catch {
+        }
+      });
     });
     libSec.appendChild(pickerHost);
     root.appendChild(libSec);
@@ -2658,10 +2759,12 @@
       const category = catSelect.value;
       const items = category ? all.filter((i) => i.category === category) : all;
       if (items.length === 0) {
-        ctx.notify("error", t("invalidItem"));
+        ctx.notify("error", t("exportEmpty"));
         return;
       }
-      dialog.destroy();
+      if (exportBtn.disabled) return;
+      exportBtn.disabled = true;
+      exportBtn.textContent = t("indexing");
       void (async () => {
         const kramdownById = await collectKramdown(ctx, items);
         const result = await buildMarkdownExport(items, kramdownById, (assetPath) => ctx.fetchAssetBytes(assetPath), { name: packName });
@@ -2669,12 +2772,15 @@
         const blob = new Blob([zipBytes], { type: "application/zip" });
         const a = document.createElement("a");
         a.href = URL.createObjectURL(blob);
-        const safeName = packName.replace(/[\\/:*?"<>|\s]+/g, "-").slice(0, 40) || "pack";
+        const safeName = packName.replace(/[\\/:*?"<>|\s]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40) || "pack";
         a.download = `${safeName}-${(/* @__PURE__ */ new Date()).toISOString().slice(0, 10)}.zip`;
         a.click();
-        URL.revokeObjectURL(a.href);
+        setTimeout(() => URL.revokeObjectURL(a.href), 4e3);
+        dialog.destroy();
         ctx.notify("info", t("exportMdDone", String(result.itemCount), String(result.assetCount), String(result.skippedAssets.length)));
       })().catch((err) => {
+        exportBtn.disabled = false;
+        exportBtn.textContent = t("packExportBtn");
         ctx.notify("error", t("kernelError", err instanceof Error ? err.message : String(err)));
       });
     });
@@ -2821,7 +2927,7 @@
     modeLabel.htmlFor = modeSelect.id;
     const modes = [
       { v: "doc", label: t("setupPickDoc") },
-      { v: "tree", label: t("setupPickDoc") + " (+\u5B50\u6587\u6863)" },
+      { v: "tree", label: t("setupPickDocTree") },
       { v: "notebook", label: t("setupNotebook") }
     ];
     for (const m of modes) {
@@ -2939,7 +3045,12 @@
         return;
       }
       (0, import_siyuan3.confirm)("\u26A0\uFE0F " + t("setupTitle"), t("setupConfirmCreate", title), () => {
+        if (createBtn.disabled) return;
+        createBtn.disabled = true;
+        createBtn.textContent = t("saving");
         void ctx.library.createLibraryDoc(notebookId, title).then((result) => {
+          createBtn.disabled = false;
+          createBtn.textContent = t("create");
           if (!result.ok) {
             ctx.notify("error", t("kernelError", result.message));
             return;
@@ -2955,6 +3066,8 @@
           ctx.notify("info", t("libDocCreated", title));
           onConfigured();
         }).catch((err) => {
+          createBtn.disabled = false;
+          createBtn.textContent = t("create");
           ctx.notify("error", t("kernelError", err.message));
         });
       });
@@ -3107,8 +3220,10 @@
         ctx.state.ai.shareContent = false;
       }
     };
+    const dirtyShare = !aiEnabledBox.checked && ctx.state.ai.shareContent;
     syncAiShare();
     aiEnabledBox.addEventListener("change", syncAiShare);
+    if (dirtyShare) ctx.persistSoon();
     const ctLabel = document.createElement("span");
     ctLabel.className = "xlc-form-label";
     ctLabel.style.marginTop = "6px";
@@ -3153,9 +3268,12 @@
         delBtn.className = "b3-button xlc-btn-ghost xlc-ct-del";
         delBtn.textContent = t("delete");
         delBtn.addEventListener("click", () => {
-          ctx.state.ai.customTransforms = ctx.state.ai.customTransforms.filter((c) => c.id !== ct.id);
-          persistCt();
-          repaintCt();
+          (0, import_siyuan3.confirm)(t("delete") + " \xB7 " + t("customTransformSection"), t("ctDeleteConfirm", ct.name), () => {
+            ctx.state.ai.customTransforms = ctx.state.ai.customTransforms.filter((c) => c.id !== ct.id);
+            persistCt();
+            repaintCt();
+            ctx.notify("info", t("ctDeleted", ct.name));
+          });
         });
         row.appendChild(delBtn);
         ctList.appendChild(row);
@@ -3203,7 +3321,7 @@
     packBtn.addEventListener("click", () => {
       const parsed = parseMarkdownPack(PROMPT_PACK_MD);
       if (parsed.items.length === 0) {
-        ctx.notify("error", t("importFailed", "builtin pack empty"));
+        ctx.notify("error", t("importFailed", t("importReasonPackEmpty")));
         return;
       }
       openImportPolicyDialog(ctx, { items: parsed.items, pack: parsed.pack }, parsed.issues, { kind: "markdown-pack", items: parsed.items });
@@ -3214,6 +3332,7 @@
   }
   function buildSearchSection(ctx, root) {
     const t = ctx.t;
+    let pinyinSeq = 0;
     const searchSec = document.createElement("div");
     searchSec.className = "xlc-form-field xlc-card";
     const searchLabel = document.createElement("span");
@@ -3221,12 +3340,15 @@
     searchLabel.textContent = t("searchSection");
     searchSec.appendChild(searchLabel);
     const pinyinRow = buildSwitchRow(t("pinyinToggle"), t("pinyinToggleSub"), ctx.state.search.pinyin, (value) => {
+      const mySeq = ++pinyinSeq;
       ctx.state.search.pinyin = value;
       ctx.applyPinyinAdapter();
       ctx.persistSoon();
       void ctx.library.reindex().then((idx) => {
+        if (mySeq !== pinyinSeq) return;
         ctx.notify("info", t("reindexDone", String(idx.entries.length)));
       }).catch((err) => {
+        if (mySeq !== pinyinSeq) return;
         ctx.notify("error", t("kernelError", err.message));
       });
     });
@@ -3249,7 +3371,7 @@
     const libRow = document.createElement("div");
     libRow.className = "xlc-form-hint";
     const cfg = ctx.getConfig();
-    libRow.textContent = `${t("librarySection")}\uFF1A${cfg ? cfg.mode === "notebook" ? `notebook ${cfg.notebookIds.join(",")}` : `${cfg.mode} \xB7 ${t("docCount", String(cfg.containerDocIds.length))}` : t("libraryNone")}`;
+    libRow.textContent = `${t("librarySection")}\uFF1A${cfg ? cfg.mode === "notebook" ? t("libModeNotebook", String(cfg.notebookIds.length)) : t("libModeDoc", String(cfg.containerDocIds.length)) : t("libraryNone")}`;
     dataSec.appendChild(libRow);
     const dataBtns = document.createElement("div");
     dataBtns.style.display = "flex";
@@ -3263,12 +3385,16 @@
       dataBtns.appendChild(btn);
       return btn;
     };
-    const withFlight = (btn, run) => {
+    const withFlight = (btn, run, flightLabel) => {
       btn.addEventListener("click", () => {
+        var _a;
         if (btn.disabled) return;
         btn.disabled = true;
+        const original = (_a = btn.textContent) != null ? _a : "";
+        if (flightLabel) btn.textContent = flightLabel;
         void Promise.resolve().then(run).catch(() => void 0).finally(() => {
           btn.disabled = false;
+          if (flightLabel) btn.textContent = original;
         });
       });
     };
@@ -3297,24 +3423,28 @@
         await runTagAudit(ctx).catch((err) => {
           ctx.notify("error", t("kernelError", err instanceof Error ? err.message : String(err)));
         });
-      });
+      }, "\u2726 " + t("aiWorking"));
     }
     const exportBtn = mkBtn(t("exportBtn"));
     withFlight(exportBtn, async () => {
       try {
         const json = await ctx.exportBundle();
         const count = JSON.parse(json).items.length;
+        if (count === 0) {
+          ctx.notify("error", t("emptyLibrary"));
+          return;
+        }
         const blob = new Blob([json], { type: "application/json" });
         const a = document.createElement("a");
         a.href = URL.createObjectURL(blob);
         a.download = `xiaolv-common-export-${(/* @__PURE__ */ new Date()).toISOString().slice(0, 10)}.json`;
         a.click();
-        URL.revokeObjectURL(a.href);
+        setTimeout(() => URL.revokeObjectURL(a.href), 4e3);
         ctx.notify("info", t("exportDone", String(count)));
       } catch (err) {
         ctx.notify("error", t("kernelError", err instanceof Error ? err.message : String(err)));
       }
-    });
+    }, t("indexing"));
     const packBtn = mkBtn(t("packBtn"));
     withFlight(packBtn, async () => {
       try {
@@ -3332,7 +3462,7 @@
         const file = (_a = fileInput.files) == null ? void 0 : _a[0];
         if (!file) return;
         if (file.size > LIMITS.maxImportBytes) {
-          ctx.notify("error", t("importFailed", "file too large"));
+          ctx.notify("error", t("importFailed", t("importReasonTooLarge")));
           return;
         }
         void file.text().then((text) => {
@@ -3341,7 +3471,7 @@
           if (isMd) {
             const parsed = parseMarkdownPack(text);
             if (parsed.items.length === 0) {
-              ctx.notify("error", t("importFailed", "no xlc-item metadata found"));
+              ctx.notify("error", t("importFailed", t("importReasonNoMeta")));
               return;
             }
             openImportPolicyDialog(ctx, { items: parsed.items, pack: parsed.pack }, parsed.issues, { kind: "markdown-pack", items: parsed.items });
@@ -3349,7 +3479,7 @@
           }
           const validation = validateImport(text);
           if (!validation.ok || !validation.parsed) {
-            ctx.notify("error", t("importFailed", (_a2 = validation.reason) != null ? _a2 : "unknown"));
+            ctx.notify("error", t("importFailed", (_a2 = validation.reason) != null ? _a2 : t("importReasonUnknown")));
             return;
           }
           openImportPolicyDialog(ctx, validation.parsed, validation.issues, { kind: "json", text });
@@ -3473,7 +3603,7 @@
           String(receipt.failed)
         ));
       }).catch((err) => {
-        ctx.notify("error", t("importFailed", err.message));
+        ctx.notify("error", t("importRunFailed", err.message));
       });
     };
     const policyList = document.createElement("div");
@@ -3547,7 +3677,7 @@
         void this.captureFromClipboard();
         return;
       }
-      this.openForm(text, inferTypeFromText(text), sel.blockId);
+      this.openForm(text.slice(0, 1e5), inferTypeFromText(text), sel.blockId);
     }
     /** 从剪贴板捕获（失败诚实回执） */
     async captureFromClipboard() {
@@ -3612,7 +3742,6 @@
         return;
       }
       if (created.ok) {
-        this.deps.notify("info", this.deps.t("saved", shortTitle(created.message)));
       } else {
         this.deps.notify("error", created.message);
       }
@@ -3631,7 +3760,8 @@
       this.openForm("", "blockref", null, {
         title: (refText || blockId).slice(0, 120),
         targetBlockId: blockId,
-        docId: (_a = this.deps.currentDocId()) != null ? _a : void 0
+        docId: (_a = this.deps.currentDocId()) != null ? _a : void 0,
+        sourceType: "block"
       });
     }
     /** 右键图片捕获：assets/ 图片存为图片条目（非 assets 图诚实拒绝） */
@@ -3643,7 +3773,7 @@
         return;
       }
       const title = (altText || target.value.split("/").pop() || target.value).slice(0, 120);
-      this.openForm(`![](${target.value})`, "image", null, { title, docId: (_a = this.deps.currentDocId()) != null ? _a : void 0 });
+      this.openForm(`![](${target.value})`, "image", null, { title, docId: (_a = this.deps.currentDocId()) != null ? _a : void 0, sourceType: "resource" });
     }
     /** 右键链接捕获：http(s) 外链 → url 条目；assets/ → asset 条目；其余诚实拒绝 */
     captureLink(href, text) {
@@ -3654,9 +3784,9 @@
         return;
       }
       if (target.kind === "url") {
-        this.openForm(target.value, "url", null, { title: (text || target.value).slice(0, 120), docId: (_a = this.deps.currentDocId()) != null ? _a : void 0 });
+        this.openForm(target.value, "url", null, { title: (text || target.value).slice(0, 120), docId: (_a = this.deps.currentDocId()) != null ? _a : void 0, sourceType: "resource" });
       } else {
-        this.openForm(`[${text || "\u8D44\u6E90"}](${target.value})`, "asset", null, { title: (text || target.value).slice(0, 120), docId: (_b = this.deps.currentDocId()) != null ? _b : void 0 });
+        this.openForm(`[${text || this.deps.t("resourceFallback")}](${target.value})`, "asset", null, { title: (text || target.value).slice(0, 120), docId: (_b = this.deps.currentDocId()) != null ? _b : void 0, sourceType: "resource" });
       }
     }
     /** 捕获当前块：光标所在块整体作为条目（选区文本优先级低于整块语义） */
@@ -3668,7 +3798,7 @@
       }
       const kramdown = await this.deps.getBlockKramdown(blockId);
       if (kramdown === null || !kramdown.trim()) {
-        this.deps.notify("error", this.deps.t("kernelError", "block"));
+        this.deps.notify("error", this.deps.t("captureBlockFailed"));
         return;
       }
       this.openForm(kramdown.slice(0, 1e5), inferTypeFromText(kramdown), blockId);
@@ -3683,11 +3813,11 @@
       }
       const doc = await this.deps.exportDocContent(docId);
       if (!doc) {
-        this.deps.notify("error", this.deps.t("kernelError", "doc"));
+        this.deps.notify("error", this.deps.t("captureDocFailed"));
         return;
       }
       const title = (_a = doc.hPath.split("/").filter(Boolean).pop()) != null ? _a : doc.hPath;
-      this.openForm(doc.content, "markdown", null, { title, docId });
+      this.openForm(doc.content.slice(0, 1e5), "markdown", null, { title, docId, sourceType: "doc-fragment" });
     }
     openForm(defaultText, defaultType, sourceBlockId, overrides) {
       var _a;
@@ -3872,18 +4002,32 @@
           if (closed) return;
           const desc = draftInput.value.trim();
           if (!desc) return;
+          if (draftBtn.disabled) return;
+          draftBtn.disabled = true;
+          const request = ++tidySeq;
           draftBtn.textContent = t("aiWorking");
           void this.deps.aiDraft(desc).then((result) => {
-            if (closed) return;
+            if (closed || request !== tidySeq) return;
             draftBtn.textContent = "\u2726 " + t("aiDraftDesc");
+            draftBtn.disabled = false;
             if (!result.ok) {
               this.deps.notify("error", result.message);
               return;
             }
-            contentEl.value = result.text;
+            const contentBox = contentEl;
+            if (contentBox.value.trim()) {
+              (0, import_siyuan4.confirm)(t("aiDraft"), t("aiDraftOverwrite"), () => {
+                contentBox.value = result.text;
+                contentBox.dispatchEvent(new Event("input", { bubbles: true }));
+              });
+              return;
+            }
+            contentBox.value = result.text;
+            contentBox.dispatchEvent(new Event("input", { bubbles: true }));
           }).catch((err) => {
-            if (closed) return;
+            if (closed || request !== tidySeq) return;
             draftBtn.textContent = "\u2726 " + t("aiDraftDesc");
+            draftBtn.disabled = false;
             this.deps.notify("error", err instanceof Error ? err.message : t("aiTransport"));
           });
         });
@@ -3904,6 +4048,7 @@
       saveBtn.textContent = t("save");
       const submitOnEnter = (el) => {
         el.addEventListener("keydown", (ev) => {
+          if (ev.isComposing || ev.keyCode === 229) return;
           if (ev.key === "Enter" && !ev.altKey && !ev.ctrlKey && !ev.metaKey) {
             ev.preventDefault();
             saveBtn.click();
@@ -3914,7 +4059,7 @@
       saveBtn.addEventListener("click", () => {
         if (closed || saving) return;
         const contentValue = contentEl.value;
-        if (!contentValue.trim()) {
+        if (!contentValue.trim() && !(typeSelect.value === "blockref" && (overrides == null ? void 0 : overrides.targetBlockId))) {
           flagContentError();
           this.deps.notify("error", t("invalidItem"));
           return;
@@ -3931,6 +4076,7 @@
           markdown = contentValue.trim();
         }
         const doSave = () => {
+          var _a2;
           if (closed || saving) return;
           saving = true;
           saveBtn.disabled = true;
@@ -3945,11 +4091,10 @@
             tags: tagsEl.value ? tagsEl.value.split(/[,,]/).map((s) => s.trim()).filter(Boolean) : void 0,
             category: categoryEl.value || void 0,
             targetBlockId: overrides == null ? void 0 : overrides.targetBlockId,
-            source: docId ? { sourceDocId: docId, sourceBlockId: sourceBlockId != null ? sourceBlockId : void 0, sourceType: (overrides == null ? void 0 : overrides.docId) ? "doc-fragment" : sourceBlockId ? "selection" : "manual" } : void 0
+            source: docId ? { sourceDocId: docId, sourceBlockId: sourceBlockId != null ? sourceBlockId : void 0, sourceType: (_a2 = overrides == null ? void 0 : overrides.sourceType) != null ? _a2 : sourceBlockId ? "selection" : "manual" } : void 0
           }).then((result) => {
             saving = false;
             if (result.ok) {
-              this.deps.notify("info", t("saved", shortTitle(result.message)));
               closed = true;
               dialog.destroy();
             } else {
@@ -4199,7 +4344,31 @@
       docCount: "%s \u4E2A\u6587\u6863",
       emptyLibrary: "\u5185\u5BB9\u5E93\u8FD8\u662F\u7A7A\u7684",
       emptyLibrarySub: "\u4ECE\u9009\u533A\u3001\u526A\u8D34\u677F\u6216\u53F3\u952E\u83DC\u5355\u6355\u83B7\u5E38\u7528\u5185\u5BB9\uFF1B\u4E5F\u53EF\u4EE5\u76F4\u63A5\u65B0\u5EFA\u4E00\u6761",
-      updatedAtLabel: "\u66F4\u65B0\u4E8E %s"
+      updatedAtLabel: "\u66F4\u65B0\u4E8E %s",
+      // R138 键集（缺失时 T 回落键名，截图/断言会看到裸键）
+      kbdEnter: "\u21A9 \u63D2\u5165",
+      kbdCopy: "%s\u21A9 \u590D\u5236",
+      kbdAltDirect: "\u23251-9 \u76F4\u8FBE",
+      loading: "\u52A0\u8F7D\u4E2D\u2026",
+      truncatedHint: "\u6761\u76EE\u8D85\u51FA\u7D22\u5F15\u4E0A\u9650\uFF0C\u5DF2\u622A\u65AD\u663E\u793A\uFF1B\u6570\u636E\u4ECD\u5B89\u5168\u5728\u5E93\u4E2D",
+      copyFailed: "\u590D\u5236\u5931\u8D25\uFF1A\u65E0\u6CD5\u5199\u5165\u526A\u8D34\u677F",
+      libModeNotebook: "\u7B14\u8BB0\u672C \xD7 %s",
+      libModeDoc: "\u6587\u6863\u5E93 \xB7 %s \u4E2A\u6587\u6863",
+      setupPickDocTree: "\u9009\u62E9\u73B0\u6709\u6587\u6863\uFF08\u542B\u5B50\u6587\u6863\uFF09",
+      ctDeleteConfirm: "\u5220\u9664\u81EA\u5B9A\u4E49\u53D8\u6362\u300C%s\u300D\uFF1F\u8BE5\u64CD\u4F5C\u4E0D\u53EF\u6062\u590D\u3002",
+      ctDeleted: "\u5DF2\u5220\u9664\u81EA\u5B9A\u4E49\u53D8\u6362\u300C%s\u300D",
+      importReasonPackEmpty: "\u5185\u7F6E\u5305\u4E3A\u7A7A",
+      importReasonTooLarge: "\u6587\u4EF6\u8D85\u51FA\u5927\u5C0F\u4E0A\u9650",
+      importReasonNoMeta: "Markdown \u5305\u7F3A\u5C11\u6761\u76EE\u5143\u6570\u636E",
+      importReasonUnknown: "\u672A\u77E5\u539F\u56E0",
+      importRunFailed: "\u5BFC\u5165\u5931\u8D25\uFF1A%s\uFF08\u5199\u5165\u53EF\u80FD\u5DF2\u90E8\u5206\u5B8C\u6210\uFF09",
+      exportEmpty: "\u5F53\u524D\u7B5B\u9009\u4E0B\u6CA1\u6709\u53EF\u5BFC\u51FA\u7684\u6761\u76EE",
+      resourceFallback: "\u8D44\u6E90",
+      captureBlockFailed: "\u8BFB\u53D6\u5F53\u524D\u5757\u5185\u5BB9\u5931\u8D25\uFF0C\u8BF7\u91CD\u8BD5",
+      captureDocFailed: "\u8BFB\u53D6\u6587\u6863\u5185\u5BB9\u5931\u8D25\uFF0C\u8BF7\u91CD\u8BD5",
+      aiDraftOverwrite: "\u5185\u5BB9\u6846\u5DF2\u6709\u5185\u5BB9\uFF0C\u7528 AI \u8349\u7A3F\u8986\u76D6\u5417\uFF1F",
+      aiParseFailed: "AI \u8FD4\u56DE\u5185\u5BB9\u65E0\u6CD5\u89E3\u6790\uFF0C\u8BF7\u91CD\u8BD5",
+      aiContentTooLong: "\u5185\u5BB9\u8D85\u8FC7 %s \u5B57\uFF0C\u8BF7\u7F29\u77ED\u540E\u91CD\u8BD5"
     };
     let text = (_a = map[key]) != null ? _a : key;
     for (const arg of args) text = text.replace("%s", arg);
@@ -4367,6 +4536,7 @@
         },
         exportBundle: async () => "{}",
         importBundleText: async () => ({ total: 0, created: 0, skipped: 0, overwritten: 0, renamed: 0, failed: 0, lines: [] }),
+        importMarkdownItems: async () => ({ total: 0, created: 0, skipped: 0, overwritten: 0, renamed: 0, failed: 0, lines: [] }),
         fetchAssetBytes: async () => null,
         aiErrorText: (err) => String(err),
         applyPinyinAdapter: () => {

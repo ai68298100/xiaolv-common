@@ -95,6 +95,15 @@ const T = (key: string, ...args: string[]): string => {
         captureHint: "条目将保存为真实思源块 · 变量在插入时询问", captureHintLib: "库：%s", docCount: "%s 个文档",
         emptyLibrary: "内容库还是空的", emptyLibrarySub: "从选区、剪贴板或右键菜单捕获常用内容；也可以直接新建一条",
         updatedAtLabel: "更新于 %s",
+        // R138 键集（缺失时 T 回落键名，截图/断言会看到裸键）
+        kbdEnter: "↩ 插入", kbdCopy: "%s↩ 复制", kbdAltDirect: "⌥1-9 直达", loading: "加载中…",
+        truncatedHint: "条目超出索引上限，已截断显示；数据仍安全在库中", copyFailed: "复制失败：无法写入剪贴板",
+        libModeNotebook: "笔记本 × %s", libModeDoc: "文档库 · %s 个文档", setupPickDocTree: "选择现有文档（含子文档）",
+        ctDeleteConfirm: "删除自定义变换「%s」？该操作不可恢复。", ctDeleted: "已删除自定义变换「%s」",
+        importReasonPackEmpty: "内置包为空", importReasonTooLarge: "文件超出大小上限", importReasonNoMeta: "Markdown 包缺少条目元数据",
+        importReasonUnknown: "未知原因", importRunFailed: "导入失败：%s（写入可能已部分完成）", exportEmpty: "当前筛选下没有可导出的条目",
+        resourceFallback: "资源", captureBlockFailed: "读取当前块内容失败，请重试", captureDocFailed: "读取文档内容失败，请重试",
+        aiDraftOverwrite: "内容框已有内容，用 AI 草稿覆盖吗？", aiParseFailed: "AI 返回内容无法解析，请重试", aiContentTooLong: "内容超过 %s 字，请缩短后重试",
     };
     let text = map[key] ?? key;
     for (const arg of args) text = text.replace("%s", arg);
@@ -241,6 +250,7 @@ function makeDeps(overrides: {aiEnabled?: boolean; missing?: boolean; mobile?: b
             persistSoon: () => {},
             exportBundle: async () => "{}",
             importBundleText: async () => ({total: 0, created: 0, skipped: 0, overwritten: 0, renamed: 0, failed: 0, lines: []}),
+            importMarkdownItems: async () => ({total: 0, created: 0, skipped: 0, overwritten: 0, renamed: 0, failed: 0, lines: []}),
             fetchAssetBytes: async () => null,
             aiErrorText: (err) => String(err),
             applyPinyinAdapter: () => {},

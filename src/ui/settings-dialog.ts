@@ -24,7 +24,8 @@ function buildSwitchRow(text: string, sub: string | null, checked: boolean, onCh
     cap.className = "xlc-setting-text";
     cap.textContent = text;
     if (sub) {
-        const subEl = document.createElement("div");
+        // span 内不嵌 div（内容模型）：副文案用 span + 块状样式（R138）
+        const subEl = document.createElement("span");
         subEl.className = "xlc-setting-sub";
         subEl.textContent = sub;
         cap.appendChild(subEl);
@@ -111,11 +112,12 @@ export function openSettingsDialog(ctx: SettingsUiContext): void {
     libStatus.className = "xlc-form-hint";
     const cfg = ctx.getConfig();
     libStatus.textContent = cfg
-        ? (cfg.mode === "notebook" ? `notebook ${cfg.notebookIds.join(",")}` : `${cfg.mode} · ${t("docCount", String(cfg.containerDocIds.length))}`)
+        ? (cfg.mode === "notebook" ? t("libModeNotebook", String(cfg.notebookIds.length)) : t("libModeDoc", String(cfg.containerDocIds.length)))
         : t("libraryNone");
     const changeBtn = document.createElement("button");
     changeBtn.className = "b3-button";
     changeBtn.textContent = t("openSettingsChangeLib");
+    changeBtn.setAttribute("aria-expanded", "false");
     // 原型屏 5：状态与按钮同行（状态左、按钮右贴）
     const libRow = document.createElement("div");
     libRow.className = "xlc-setting-row";
@@ -130,11 +132,19 @@ export function openSettingsDialog(ctx: SettingsUiContext): void {
     changeBtn.addEventListener("click", () => {
         const show = pickerHost.style.display === "none";
         pickerHost.style.display = show ? "" : "none";
+        changeBtn.setAttribute("aria-expanded", show ? "true" : "false");
         if (show && pickerHost.childElementCount === 0) {
             buildLibraryPickerSection(ctx, pickerHost, () => dialog.destroy());
         }
-        // 展开即聚焦文档搜索框（R129，对齐「添加即聚焦」惯例）
-        if (show) pickerHost.querySelector<HTMLInputElement>(".b3-text-field")?.focus();
+        // 展开即聚焦文档搜索框（R129，对齐「添加即聚焦」惯例）；
+        // 布局变更同帧强制聚焦是 Blink 敏感路径（B-004 嫌疑点），rAF 延一帧缓解（R138）
+        if (show) requestAnimationFrame(() => {
+            try {
+                pickerHost.querySelector<HTMLInputElement>(".b3-text-field")?.focus();
+            } catch {
+                // 聚焦失败不致命：选择器仍可点击
+            }
+        });
     });
     libSec.appendChild(pickerHost);
     root.appendChild(libSec);
@@ -256,10 +266,13 @@ async function openPackExportDialog(ctx: SettingsUiContext): Promise<void> {
         const category = catSelect.value;
         const items = category ? all.filter((i) => i.category === category) : all;
         if (items.length === 0) {
-            ctx.notify("error", t("invalidItem"));
+            ctx.notify("error", t("exportEmpty"));
             return;
         }
-        dialog.destroy();
+        // 导出执行期保留对话框：按钮飞行态防重入（此前 destroy 后可并发再次导出，R138）
+        if (exportBtn.disabled) return;
+        exportBtn.disabled = true;
+        exportBtn.textContent = t("indexing");
         void (async () => {
             // 导出时才按筛选取正文（打开对话框零预取）
             const kramdownById = await collectKramdown(ctx, items);
@@ -268,12 +281,16 @@ async function openPackExportDialog(ctx: SettingsUiContext): Promise<void> {
             const blob = new Blob([zipBytes as unknown as BlobPart], {type: "application/zip"});
             const a = document.createElement("a");
             a.href = URL.createObjectURL(blob);
-            const safeName = packName.replace(/[\\/:*?"<>|\s]+/g, "-").slice(0, 40) || "pack";
+            // 全部替换成特殊字符时保底名，避免产出「--.zip」（R138）
+            const safeName = packName.replace(/[\\/:*?"<>|\s]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40) || "pack";
             a.download = `${safeName}-${new Date().toISOString().slice(0, 10)}.zip`;
             a.click();
-            URL.revokeObjectURL(a.href);
+            setTimeout(() => URL.revokeObjectURL(a.href), 4000); // 下载启动后再回收（R138）
+            dialog.destroy();
             ctx.notify("info", t("exportMdDone", String(result.itemCount), String(result.assetCount), String(result.skippedAssets.length)));
         })().catch((err: unknown) => {
+            exportBtn.disabled = false;
+            exportBtn.textContent = t("packExportBtn");
             ctx.notify("error", t("kernelError", err instanceof Error ? err.message : String(err)));
         });
     });
@@ -440,7 +457,7 @@ function buildLibraryPickerSection(ctx: SettingsUiContext, root: HTMLElement, on
     modeLabel.htmlFor = modeSelect.id;
     const modes: Array<{v: "doc" | "tree" | "notebook"; label: string}> = [
         {v: "doc", label: t("setupPickDoc")},
-        {v: "tree", label: t("setupPickDoc") + " (+子文档)"},
+        {v: "tree", label: t("setupPickDocTree")},
         {v: "notebook", label: t("setupNotebook")},
     ];
     for (const m of modes) {
@@ -563,9 +580,14 @@ function buildLibraryPickerSection(ctx: SettingsUiContext, root: HTMLElement, on
             ctx.notify("error", t("invalidItem"));
             return;
         }
-        // 创建前明确确认（不静默写入）
+        // 创建前明确确认（不静默写入）；执行期飞行态防重入——并发创建会产生孤儿库文档（R138）
         confirm("⚠️ " + t("setupTitle"), t("setupConfirmCreate", title), () => {
+            if (createBtn.disabled) return;
+            createBtn.disabled = true;
+            createBtn.textContent = t("saving");
             void ctx.library.createLibraryDoc(notebookId, title).then((result) => {
+                createBtn.disabled = false;
+                createBtn.textContent = t("create");
                 if (!result.ok) {
                     ctx.notify("error", t("kernelError", result.message));
                     return;
@@ -581,6 +603,8 @@ function buildLibraryPickerSection(ctx: SettingsUiContext, root: HTMLElement, on
                 ctx.notify("info", t("libDocCreated", title));
                 onConfigured();
             }).catch((err) => {
+                createBtn.disabled = false;
+                createBtn.textContent = t("create");
                 ctx.notify("error", t("kernelError", (err as Error).message));
             });
         });
@@ -738,8 +762,10 @@ function buildAiSection(ctx: SettingsUiContext, root: HTMLElement): void {
             ctx.state.ai.shareContent = false;
         }
     };
+    const dirtyShare = !aiEnabledBox.checked && ctx.state.ai.shareContent; // 总开关关但正文开关仍开（R138）
     syncAiShare();
     aiEnabledBox.addEventListener("change", syncAiShare);
+    if (dirtyShare) ctx.persistSoon(); // 构建期修复的脏数据落盘，否则重载后回归
     // 自定义变换（F7）：与内置五种并列出现在条目动作菜单 ✦ 区
     const ctLabel = document.createElement("span");
     ctLabel.className = "xlc-form-label";
@@ -785,9 +811,13 @@ function buildAiSection(ctx: SettingsUiContext, root: HTMLElement): void {
             delBtn.className = "b3-button xlc-btn-ghost xlc-ct-del";
             delBtn.textContent = t("delete");
             delBtn.addEventListener("click", () => {
-                ctx.state.ai.customTransforms = ctx.state.ai.customTransforms.filter((c) => c.id !== ct.id);
-                persistCt();
-                repaintCt();
+                // 危险操作对齐惯例：确认 + 回执（名称+指令一键即失，且不可恢复，R138）
+                confirm(t("delete") + " · " + t("customTransformSection"), t("ctDeleteConfirm", ct.name), () => {
+                    ctx.state.ai.customTransforms = ctx.state.ai.customTransforms.filter((c) => c.id !== ct.id);
+                    persistCt();
+                    repaintCt();
+                    ctx.notify("info", t("ctDeleted", ct.name));
+                });
             });
             row.appendChild(delBtn);
             ctList.appendChild(row);
@@ -836,7 +866,7 @@ function buildAiSection(ctx: SettingsUiContext, root: HTMLElement): void {
     packBtn.addEventListener("click", () => {
         const parsed = parseMarkdownPack(PROMPT_PACK_MD);
         if (parsed.items.length === 0) {
-            ctx.notify("error", t("importFailed", "builtin pack empty"));
+            ctx.notify("error", t("importFailed", t("importReasonPackEmpty")));
             return;
         }
         openImportPolicyDialog(ctx, {items: parsed.items, pack: parsed.pack}, parsed.issues, {kind: "markdown-pack", items: parsed.items});
@@ -848,6 +878,7 @@ function buildAiSection(ctx: SettingsUiContext, root: HTMLElement): void {
 
 function buildSearchSection(ctx: SettingsUiContext, root: HTMLElement): void {
     const t = ctx.t;
+    let pinyinSeq = 0; // 重索引代次（R138）
     // 搜索设置区（拼音：本地注解，无出域）
     const searchSec = document.createElement("div");
     searchSec.className = "xlc-form-field xlc-card";
@@ -856,12 +887,16 @@ function buildSearchSection(ctx: SettingsUiContext, root: HTMLElement): void {
     searchLabel.textContent = t("searchSection");
     searchSec.appendChild(searchLabel);
     const pinyinRow = buildSwitchRow(t("pinyinToggle"), t("pinyinToggleSub"), ctx.state.search.pinyin, (value) => {
+        // 代次守卫：快速来回拨动时丢弃过期的重索引回执（R138，对齐 doc picker seq 范式）
+        const mySeq = ++pinyinSeq;
         ctx.state.search.pinyin = value;
         ctx.applyPinyinAdapter();
         ctx.persistSoon();
         void ctx.library.reindex().then((idx) => {
+            if (mySeq !== pinyinSeq) return;
             ctx.notify("info", t("reindexDone", String(idx.entries.length)));
         }).catch((err) => {
+            if (mySeq !== pinyinSeq) return;
             ctx.notify("error", t("kernelError", (err as Error).message));
         });
     });
@@ -888,7 +923,7 @@ function buildDataSection(ctx: SettingsUiContext, root: HTMLElement): void {
     libRow.className = "xlc-form-hint";
     const cfg = ctx.getConfig();
     libRow.textContent = `${t("librarySection")}：${cfg
-        ? (cfg.mode === "notebook" ? `notebook ${cfg.notebookIds.join(",")}` : `${cfg.mode} · ${t("docCount", String(cfg.containerDocIds.length))}`)
+        ? (cfg.mode === "notebook" ? t("libModeNotebook", String(cfg.notebookIds.length)) : t("libModeDoc", String(cfg.containerDocIds.length)))
         : t("libraryNone")}`;
     dataSec.appendChild(libRow);
     const dataBtns = document.createElement("div");
@@ -905,14 +940,20 @@ function buildDataSection(ctx: SettingsUiContext, root: HTMLElement): void {
     };
     // 异步按钮飞行态（R121，与 R110 保存钮一致）：执行期间禁用防连击与无反馈等待；
     // run 内部自带错误回执，外层仅兜底
-    const withFlight = (btn: HTMLButtonElement, run: () => Promise<unknown>): void => {
+    const withFlight = (btn: HTMLButtonElement, run: () => Promise<unknown>, flightLabel?: string): void => {
         btn.addEventListener("click", () => {
             if (btn.disabled) return;
             btn.disabled = true;
+            // 飞行态文案（R121 对齐 reindexBtn）：长操作期间不只禁用，还要「看得见在忙」（R138）
+            const original = btn.textContent ?? "";
+            if (flightLabel) btn.textContent = flightLabel;
             void Promise.resolve()
                 .then(run)
                 .catch(() => undefined)
-                .finally(() => { btn.disabled = false; });
+                .finally(() => {
+                    btn.disabled = false;
+                    if (flightLabel) btn.textContent = original;
+                });
         });
     };
     const reindexBtn = mkBtn(t("reindexBtn"), () => {
@@ -942,24 +983,29 @@ function buildDataSection(ctx: SettingsUiContext, root: HTMLElement): void {
             await runTagAudit(ctx).catch((err: unknown) => {
                 ctx.notify("error", t("kernelError", err instanceof Error ? err.message : String(err)));
             });
-        });
+        }, "✦ " + t("aiWorking"));
     }
     const exportBtn = mkBtn(t("exportBtn"));
     withFlight(exportBtn, async () => {
         try {
             const json = await ctx.exportBundle();
             const count = (JSON.parse(json) as {items: unknown[]}).items.length;
+            // 空库导出与模板包同语义：明确报错而非产出空文件（R138）
+            if (count === 0) {
+                ctx.notify("error", t("emptyLibrary"));
+                return;
+            }
             const blob = new Blob([json], {type: "application/json"});
             const a = document.createElement("a");
             a.href = URL.createObjectURL(blob);
             a.download = `xiaolv-common-export-${new Date().toISOString().slice(0, 10)}.json`;
             a.click();
-            URL.revokeObjectURL(a.href);
+            setTimeout(() => URL.revokeObjectURL(a.href), 4000); // 下载启动后再回收（R138）
             ctx.notify("info", t("exportDone", String(count)));
         } catch (err) {
             ctx.notify("error", t("kernelError", err instanceof Error ? err.message : String(err)));
         }
-    });
+    }, t("indexing"));
     const packBtn = mkBtn(t("packBtn"));
     withFlight(packBtn, async () => {
         try {
@@ -976,7 +1022,7 @@ function buildDataSection(ctx: SettingsUiContext, root: HTMLElement): void {
             const file = fileInput.files?.[0];
             if (!file) return;
             if (file.size > LIMITS.maxImportBytes) {
-                ctx.notify("error", t("importFailed", "file too large"));
+                ctx.notify("error", t("importFailed", t("importReasonTooLarge")));
                 return;
             }
             void file.text().then((text) => {
@@ -985,7 +1031,7 @@ function buildDataSection(ctx: SettingsUiContext, root: HTMLElement): void {
                     // Markdown 包：解析 → 同一策略对话框 → importBundle
                     const parsed = parseMarkdownPack(text);
                     if (parsed.items.length === 0) {
-                        ctx.notify("error", t("importFailed", "no xlc-item metadata found"));
+                        ctx.notify("error", t("importFailed", t("importReasonNoMeta")));
                         return;
                     }
                     openImportPolicyDialog(ctx, {items: parsed.items, pack: parsed.pack}, parsed.issues, {kind: "markdown-pack", items: parsed.items});
@@ -993,7 +1039,7 @@ function buildDataSection(ctx: SettingsUiContext, root: HTMLElement): void {
                 }
                 const validation = validateImport(text);
                 if (!validation.ok || !validation.parsed) {
-                    ctx.notify("error", t("importFailed", validation.reason ?? "unknown"));
+                    ctx.notify("error", t("importFailed", validation.reason ?? t("importReasonUnknown")));
                     return;
                 }
                 openImportPolicyDialog(ctx, validation.parsed, validation.issues, {kind: "json", text});
@@ -1129,7 +1175,8 @@ export function openImportPolicyDialog(
                 String(receipt.failed),
             ));
         }).catch((err) => {
-            ctx.notify("error", t("importFailed", (err as Error).message));
+            // 执行期失败≠校验失败：写入可能已部分完成，文案不得谎称「原始数据未改动」（R138）
+            ctx.notify("error", t("importRunFailed", (err as Error).message));
         });
     };
     // 策略卡（原型屏 8）：标题+说明+推荐档高亮；逐卡整行可点

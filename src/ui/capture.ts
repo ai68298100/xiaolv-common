@@ -68,7 +68,8 @@ export class CaptureDialog {
             void this.captureFromClipboard();
             return;
         }
-        this.openForm(text, inferTypeFromText(text), sel.blockId);
+        // 超大选区截断进表单（与剪贴板/当前块路径一致；落库另有 LIMITS.contentChars，R138）
+        this.openForm(text.slice(0, 100_000), inferTypeFromText(text), sel.blockId);
     }
 
     /** 从剪贴板捕获（失败诚实回执） */
@@ -135,7 +136,7 @@ export class CaptureDialog {
             return;
         }
         if (created.ok) {
-            this.deps.notify("info", this.deps.t("saved", shortTitle(created.message)));
+            // 回执由 index.ts 的 createItem 包装统一给出，不再重复弹「已保存」（R138）
         } else {
             this.deps.notify("error", created.message);
         }
@@ -156,6 +157,7 @@ export class CaptureDialog {
             title: (refText || blockId).slice(0, 120),
             targetBlockId: blockId,
             docId: this.deps.currentDocId() ?? undefined,
+            sourceType: "block",
         });
     }
 
@@ -167,7 +169,7 @@ export class CaptureDialog {
             return;
         }
         const title = (altText || target.value.split("/").pop() || target.value).slice(0, 120);
-        this.openForm(`![](${target.value})`, "image", null, {title, docId: this.deps.currentDocId() ?? undefined});
+        this.openForm(`![](${target.value})`, "image", null, {title, docId: this.deps.currentDocId() ?? undefined, sourceType: "resource"});
     }
 
     /** 右键链接捕获：http(s) 外链 → url 条目；assets/ → asset 条目；其余诚实拒绝 */
@@ -178,9 +180,9 @@ export class CaptureDialog {
             return;
         }
         if (target.kind === "url") {
-            this.openForm(target.value, "url", null, {title: (text || target.value).slice(0, 120), docId: this.deps.currentDocId() ?? undefined});
+            this.openForm(target.value, "url", null, {title: (text || target.value).slice(0, 120), docId: this.deps.currentDocId() ?? undefined, sourceType: "resource"});
         } else {
-            this.openForm(`[${text || "资源"}](${target.value})`, "asset", null, {title: (text || target.value).slice(0, 120), docId: this.deps.currentDocId() ?? undefined});
+            this.openForm(`[${text || this.deps.t("resourceFallback")}](${target.value})`, "asset", null, {title: (text || target.value).slice(0, 120), docId: this.deps.currentDocId() ?? undefined, sourceType: "resource"});
         }
     }
 
@@ -193,7 +195,7 @@ export class CaptureDialog {
         }
         const kramdown = await this.deps.getBlockKramdown(blockId);
         if (kramdown === null || !kramdown.trim()) {
-            this.deps.notify("error", this.deps.t("kernelError", "block"));
+            this.deps.notify("error", this.deps.t("captureBlockFailed"));
             return;
         }
         this.openForm(kramdown.slice(0, 100_000), inferTypeFromText(kramdown), blockId);
@@ -208,14 +210,14 @@ export class CaptureDialog {
         }
         const doc = await this.deps.exportDocContent(docId);
         if (!doc) {
-            this.deps.notify("error", this.deps.t("kernelError", "doc"));
+            this.deps.notify("error", this.deps.t("captureDocFailed"));
             return;
         }
         const title = doc.hPath.split("/").filter(Boolean).pop() ?? doc.hPath;
-        this.openForm(doc.content, "markdown", null, {title, docId});
+        this.openForm(doc.content.slice(0, 100_000), "markdown", null, {title, docId, sourceType: "doc-fragment"});
     }
 
-    openForm(defaultText: string, defaultType: ItemType, sourceBlockId: string | null, overrides?: {title?: string; docId?: string; targetBlockId?: string}): void {
+    openForm(defaultText: string, defaultType: ItemType, sourceBlockId: string | null, overrides?: {title?: string; docId?: string; targetBlockId?: string; sourceType?: "block" | "doc-fragment" | "resource"}): void {
         const t = this.deps.t;
         let closed = false;
         let saving = false;
@@ -416,18 +418,34 @@ export class CaptureDialog {
                 if (closed) return;
                 const desc = draftInput.value.trim();
                 if (!desc) return;
+                // 防重入 + 代次守卫：连点/慢响应不得并发覆盖（对齐 AI 整理按钮，R138）
+                if (draftBtn.disabled) return;
+                draftBtn.disabled = true;
+                const request = ++tidySeq;
                 draftBtn.textContent = t("aiWorking");
                 void this.deps.aiDraft(desc).then((result) => {
-                    if (closed) return;
+                    if (closed || request !== tidySeq) return;
                     draftBtn.textContent = "✦ " + t("aiDraftDesc");
+                    draftBtn.disabled = false;
                     if (!result.ok) {
                         this.deps.notify("error", result.message);
                         return;
                     }
-                    (contentEl as HTMLTextAreaElement).value = result.text;
+                    const contentBox = contentEl as HTMLTextAreaElement;
+                    // 已有内容不静默覆盖：确认后再替换（R138）
+                    if (contentBox.value.trim()) {
+                        confirm(t("aiDraft"), t("aiDraftOverwrite"), () => {
+                            contentBox.value = result.text;
+                            contentBox.dispatchEvent(new Event("input", {bubbles: true}));
+                        });
+                        return;
+                    }
+                    contentBox.value = result.text;
+                    contentBox.dispatchEvent(new Event("input", {bubbles: true}));
                 }).catch((err: unknown) => {
-                    if (closed) return;
+                    if (closed || request !== tidySeq) return;
                     draftBtn.textContent = "✦ " + t("aiDraftDesc");
+                    draftBtn.disabled = false;
                     this.deps.notify("error", err instanceof Error ? err.message : t("aiTransport"));
                 });
             });
@@ -450,6 +468,8 @@ export class CaptureDialog {
         // 单行输入 Enter 提交（内容 textarea 换行合法，不绑）
         const submitOnEnter = (el: HTMLInputElement): void => {
             el.addEventListener("keydown", (ev) => {
+                // IME 组合态：Enter 属选词确认，不得触发保存（对齐 dialog.ts 惯例，R138）
+                if (ev.isComposing || ev.keyCode === 229) return;
                 if (ev.key === "Enter" && !ev.altKey && !ev.ctrlKey && !ev.metaKey) {
                     ev.preventDefault();
                     saveBtn.click();
@@ -460,7 +480,8 @@ export class CaptureDialog {
         saveBtn.addEventListener("click", () => {
             if (closed || saving) return;
             const contentValue = (contentEl as HTMLTextAreaElement).value;
-            if (!contentValue.trim()) {
+            // blockref 条目锚定目标块，允许无正文保存（右键引用捕获的正文本就为空，R138）
+            if (!contentValue.trim() && !(typeSelect.value === "blockref" && overrides?.targetBlockId)) {
                 flagContentError();
                 this.deps.notify("error", t("invalidItem"));
                 return;
@@ -492,11 +513,11 @@ export class CaptureDialog {
                     tags: (tagsEl as HTMLInputElement).value ? (tagsEl as HTMLInputElement).value.split(/[,,]/).map((s) => s.trim()).filter(Boolean) : undefined,
                     category: (categoryEl as HTMLInputElement).value || undefined,
                     targetBlockId: overrides?.targetBlockId,
-                    source: docId ? {sourceDocId: docId, sourceBlockId: sourceBlockId ?? undefined, sourceType: overrides?.docId ? "doc-fragment" : sourceBlockId ? "selection" : "manual"} : undefined,
+                    source: docId ? {sourceDocId: docId, sourceBlockId: sourceBlockId ?? undefined, sourceType: overrides?.sourceType ?? (sourceBlockId ? "selection" : "manual")} : undefined,
                 }).then((result) => {
                     saving = false;
                     if (result.ok) {
-                        this.deps.notify("info", t("saved", shortTitle(result.message)));
+                        // 回执由 index.ts 的 createItem 包装统一给出（此前双 toast，R138）
                         closed = true;
                         dialog.destroy();
                     } else {

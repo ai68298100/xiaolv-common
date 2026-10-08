@@ -29,8 +29,11 @@ export function openVariableFillCard(options: VariableFillOptions): void {
         content: "",
         width: "min(360px, 92vw)",
         height: "auto",
-        // 所有关闭路径（Esc/scrim/取消）统一走 onCancel：上层搜索弹窗焦点回归（R128）
-        destroyCallback: () => options.onCancel?.(),
+        // 所有关闭路径（Esc/scrim）统一走 onCancel：上层搜索弹窗焦点回归（R128）；
+        // 按钮确认/取消已自行结算，不在此重复触发（R138 结算语义）
+        destroyCallback: () => {
+            if (!settled) options.onCancel?.();
+        },
     });
     // 原型屏 4：紧凑卡形态，卡头（徽标+标题+Esc 取消）即标题，隐藏宿主标题栏
     const container = dialog.element.querySelector(".b3-dialog__container");
@@ -66,7 +69,7 @@ export function openVariableFillCard(options: VariableFillOptions): void {
     // 字段区：text→input / select→input+datalist（↑↓ 选择，保键盘一致） / date→input[type=date]
     // wrap 用 label 元素：点字段任意处聚焦输入框，读屏器可朗读字段名（R115）
     const inputs: HTMLInputElement[] = [];
-    for (const field of options.fields) {
+    for (const [fieldIndex, field] of options.fields.entries()) {
         const wrap = document.createElement("label");
         wrap.className = "xlc-varform-field";
         const label = document.createElement("span");
@@ -84,9 +87,10 @@ export function openVariableFillCard(options: VariableFillOptions): void {
         input.setAttribute("enterkeyhint", "done");
         if (field.kind === "date") input.type = "date";
         if (field.kind === "select") {
-            input.setAttribute("list", `xlc-varform-list-${safeListId(field.name)}`);
+            // datalist id 按索引起：字段名安全化后可能碰撞（如「a,b」与「a：b」），错绑候选列表（R138）
+            input.setAttribute("list", `xlc-varform-list-${fieldIndex}`);
             const datalist = document.createElement("datalist");
-            datalist.id = `xlc-varform-list-${safeListId(field.name)}`;
+            datalist.id = `xlc-varform-list-${fieldIndex}`;
             for (const opt of field.options) {
                 const option = document.createElement("option");
                 option.value = opt;
@@ -126,19 +130,34 @@ export function openVariableFillCard(options: VariableFillOptions): void {
         }
         return fills;
     };
+    // 结算语义（R138）：按钮确认/取消即「已结算」；未结算时的销毁（Esc/点遮罩）才视为取消。
+    // 修复：此前确认路径也会先触发 onCancel、点取消会触发两次（destroyCallback + 显式调用）。
+    let settled = false;
     const confirm = (): void => {
+        if (settled) return;
+        settled = true;
         dialog.destroy();
         options.onConfirm(collect());
     };
     insertBtn.addEventListener("click", confirm);
     cancelBtn.addEventListener("click", () => {
+        if (settled) return;
+        settled = true;
         dialog.destroy();
         options.onCancel?.();
     });
     // Enter=插入（焦点在输入框时）；焦点在按钮上时由原生激活该按钮（取消=取消）
     root.addEventListener("keydown", (ev) => {
+        // IME 组合态（中文组词候选未上屏）：Enter 属选词，不得触发插入（对齐 dialog.ts 惯例，R138）
+        if (ev.isComposing || (ev as KeyboardEvent).keyCode === 229) return;
         if (ev.key === "Enter" && !ev.altKey && !ev.ctrlKey && !ev.metaKey) {
             if ((ev.target as HTMLElement).tagName === "BUTTON") return;
+            const el = ev.target as HTMLInputElement;
+            if (el instanceof HTMLInputElement && el.list) {
+                // datalist 高亮项：先让浏览器提交选中值，下一拍再收集（否则采到旧值，R138）
+                setTimeout(() => confirm(), 0);
+                return;
+            }
             ev.preventDefault();
             confirm();
             return;
@@ -157,11 +176,6 @@ export function openVariableFillCard(options: VariableFillOptions): void {
         }
     });
     inputs[0]?.focus();
-}
-
-/** datalist id 安全化（字段名来自内容文本；仅用作 DOM id） */
-function safeListId(name: string): string {
-    return name.replace(/[^0-9a-zA-Z\u4e00-\u9fa5_-]/g, "").slice(0, 24) || "f";
 }
 
 /** 变量快捷插入条（F1 创作侧，原型屏 3）：点选在目标 textarea 光标处插入变量语法。捕获与编辑弹窗共用。 */
@@ -194,6 +208,8 @@ export function buildVariableBar(t: (key: string, ...args: string[]) => string, 
             const caret = start + snippet.length;
             el.focus();
             el.setSelectionRange(caret, caret);
+            // 编程赋值不触发 input 事件：派发一次，清除表单的必填红描边等监听态（R138）
+            el.dispatchEvent(new Event("input", {bubbles: true}));
         });
         bar.appendChild(btn);
     }

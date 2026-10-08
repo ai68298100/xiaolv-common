@@ -315,7 +315,7 @@ export default class XiaolvCommonPlugin extends Plugin {
         showMessage(message, 4000, kind === "error" ? "error" : "info");
     };
 
-    /** AI 错误 → 诚实文案（区分未启用/未配置/权限/超时/解析失败） */
+    /** AI 错误 → 诚实文案（区分未启用/未配置/权限/超时/解析失败/内容超长） */
     private aiErrorText(err: unknown): string {
         const t = this.i18nFn();
         if (err instanceof AiUnavailableError) {
@@ -323,8 +323,10 @@ export default class XiaolvCommonPlugin extends Plugin {
                 case "disabled": return t("aiDisabled");
                 case "not-configured": return t("aiNotConfigured");
                 case "empty-response": return t("aiEmpty");
+                case "parse": return t("aiParseFailed");
                 case "timeout": return t("aiTimeout");
                 case "content-not-allowed": return t("aiContentNotAllowed");
+                case "content-too-long": return t("aiContentTooLong", "4000");
                 default: return t("aiTransport");
             }
         }
@@ -550,8 +552,7 @@ export default class XiaolvCommonPlugin extends Plugin {
                             this.openSearch({docId, hPath: path});
                         }).catch((err) => this.notify("error", this.i18nFn()("kernelError", (err as Error).message)));
                     },
-                });
-                menu.addItem({
+                });                menu.addItem({
                     icon: "iconXlcCommon",
                     label: this.i18nFn()("setAsLibraryMenu"),
                     click: () => {
@@ -564,7 +565,8 @@ export default class XiaolvCommonPlugin extends Plugin {
                                 createdDocIds: [],
                                 configuredAt: Date.now(),
                             });
-                            this.notify("info", this.i18nFn()("libDocCreated", `${ids.length} doc(s)`));
+                            // 不新建文档，是「设为常用库」——文案不得用「已创建」（R138）
+                            this.notify("info", this.i18nFn()("libDocSet", String(ids.length)));
                         });
                     },
                 });
@@ -688,6 +690,8 @@ export default class XiaolvCommonPlugin extends Plugin {
                 });
                 if (created.ok) {
                     this.notify("info", this.i18nFn()("duplicated", shortTitle(created.data.item.title)));
+                    // 副本即时出现在打开着的列表里（R138）
+                    this.searchDialog?.refreshAfterExternalChange();
                 } else {
                     this.notify("error", created.message);
                 }
@@ -769,7 +773,7 @@ export default class XiaolvCommonPlugin extends Plugin {
                 }
                 if (this.host.hasActiveEditor()) {
                     const inserted = this.host.insertMarkdown(rendered);
-                    if (inserted) this.notify("info", this.i18nFn()("inserted", "provider"));
+                    if (inserted) this.notify("info", this.i18nFn()("providerInserted"));
                     return inserted;
                 }
                 const copied = await this.host.writeClipboard(rendered);
@@ -777,7 +781,9 @@ export default class XiaolvCommonPlugin extends Plugin {
                 return copied;
             },
             copyProviderPayload: async (payload) => {
-                return this.host.writeClipboard((payload ?? "").trim());
+                const ok = await this.host.writeClipboard((payload ?? "").trim());
+                if (!ok) this.notify("error", this.i18nFn()("copyFailed"));
+                return ok;
             },
             getTags: async () => {
                 const idx = await this.library.ensureIndex();
@@ -879,7 +885,12 @@ export default class XiaolvCommonPlugin extends Plugin {
                 this.notify("info", this.i18nFn()("insertNoEditor"));
                 return copied;
             },
-            copyText: async (text) => this.host.writeClipboard(text),
+            copyText: async (text) => {
+                const ok = await this.host.writeClipboard(text);
+                // 剪贴板写入失败不得静默（系统拒绝/权限受限时用户必须知道，R138）
+                if (!ok) this.notify("error", this.i18nFn()("copyFailed"));
+                return ok;
+            },
             aiEnabled: () => this.state.ai.enabled,
             aiSemantic: async (desc, filters) => {
                 try {
@@ -948,9 +959,12 @@ export default class XiaolvCommonPlugin extends Plugin {
                         this.state.favorites = this.state.favorites.filter((id) => id !== itemId);
                         this.state.recents = this.state.recents.filter((r) => r.id !== itemId);
                         this.persistSoon();
-                        this.library.reindex().then((idx) => {
-                            this.notify("info", this.i18nFn()("deleted", got.data.title));
-                            void idx;
+                        // 删除回执即时给出；后台重建索引失败另行诚实提示（不吞 rejection，R138）
+                        this.notify("info", this.i18nFn()("deleted", got.data.title));
+                        // 搜索弹窗若开着，同步移除已删行（R138）
+                        this.searchDialog?.refreshAfterExternalChange();
+                        this.library.reindex().catch((err) => {
+                            this.notify("error", this.i18nFn()("kernelError", (err as Error).message));
                         });
                     } else {
                         this.notify("error", removed.message);
@@ -1036,13 +1050,13 @@ export default class XiaolvCommonPlugin extends Plugin {
         srcRow.className = "xlc-form-sourcerow";
         const srcText = document.createElement("span");
         srcText.textContent = item.source.sourceDocId
-            ? `来源：${item.source.sourceDocId}${item.source.sourceBlockId ? ` / ${item.source.sourceBlockId}` : ""}`
+            ? t("sourceWithId", item.source.sourceDocId + (item.source.sourceBlockId ? t("sourceBlockSuffix", item.source.sourceBlockId) : ""))
             : t("sourceMissing");
         srcRow.appendChild(srcText);
         // 异步补全为可读路径（内核权威 hPath；失败保持 ID 显示）
         if (item.source.sourceDocId) {
             void this.library.getDocPath(item.source.sourceDocId).then((path) => {
-                if (path) srcText.textContent = `来源：${path}${item.source.sourceBlockId ? ` / 块 ${item.source.sourceBlockId}` : ""}`;
+                if (path) srcText.textContent = t("sourceWithId", path + (item.source.sourceBlockId ? t("sourceBlockSuffix", item.source.sourceBlockId) : ""));
             }).catch(() => undefined);
         }
         const relinkBtn = document.createElement("button");
@@ -1059,7 +1073,7 @@ export default class XiaolvCommonPlugin extends Plugin {
                     this.previewCache.clear();
                     this.notify("info", t("relinkDone"));
                     void this.library.getDocPath(docId).then((path) => {
-                        srcText.textContent = path ? `来源：${path}` : `来源：${docId}`;
+                        srcText.textContent = path ? t("sourceWithId", path) : t("sourceWithId", docId);
                     }).catch(() => undefined);
                 } else {
                     this.notify("error", result.message);

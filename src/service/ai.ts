@@ -23,13 +23,12 @@ export interface AiSettings {
 export const DEFAULT_AI_SETTINGS: AiSettings = {enabled: false, shareContent: false};
 
 export class AiUnavailableError extends Error {
-    constructor(public readonly reason: "disabled" | "not-configured" | "empty-response" | "timeout" | "content-not-allowed" | "transport") {
+    constructor(public readonly reason: "disabled" | "not-configured" | "empty-response" | "parse" | "timeout" | "content-not-allowed" | "content-too-long" | "transport") {
         super(`ai unavailable: ${reason}`);
         this.name = "AiUnavailableError";
     }
 }
 
-export const AI_TIMEOUT_MS = 20_000;
 export const AI_MAX_CONTENT_CHARS = 4000;
 export const AI_MAX_META_ITEMS = 60;
 
@@ -163,7 +162,7 @@ export function parseTidyResult(raw: string): {title?: string; alias?: string; t
         return {
             title: typeof obj.title === "string" ? obj.title.slice(0, LIMITS.title) : undefined,
             alias: typeof obj.alias === "string" ? obj.alias.slice(0, LIMITS.alias) : undefined,
-            tags: Array.isArray(obj.tags) ? obj.tags.filter((t): t is string => typeof t === "string").slice(0, LIMITS.tags) : undefined,
+            tags: Array.isArray(obj.tags) ? obj.tags.filter((t): t is string => typeof t === "string" && t.length > 0).slice(0, LIMITS.tags) : undefined,
             category: typeof obj.category === "string" ? obj.category.slice(0, LIMITS.category) : undefined,
             summary: typeof obj.summary === "string" ? obj.summary.slice(0, LIMITS.summary) : undefined,
         };
@@ -178,9 +177,10 @@ export function parseSemanticPick(raw: string, max: number): number[] {
     try {
         const arr = JSON.parse(json) as unknown;
         if (!Array.isArray(arr)) return [];
-        return arr
+        // 模型可能输出重复行号（[2,2]）：去重，避免同一条目返回两次（R138）
+        return [...new Set(arr
             .map((v) => Math.floor(Number(v)))
-            .filter((n) => Number.isInteger(n) && n >= 1 && n <= max)
+            .filter((n) => Number.isInteger(n) && n >= 1 && n <= max))]
             .slice(0, 5);
     } catch {
         return [];
@@ -230,8 +230,9 @@ export class AiAssistant {
     private async complete(prompt: string, needContentPermission: boolean, content?: string): Promise<string> {
         if (!this.settings.enabled) throw new AiUnavailableError("disabled");
         if (needContentPermission && !this.settings.shareContent) throw new AiUnavailableError("content-not-allowed");
-        if (needContentPermission && content && content.length > AI_MAX_CONTENT_CHARS * 2) {
-            throw new AiUnavailableError("content-not-allowed"); // 超长内容拒绝出域
+        if (needContentPermission && content && content.length > AI_MAX_CONTENT_CHARS) {
+            // 与 prompt 截断阈值统一：不再存在「>4000 字静默截断出域」的诚实性盲区（R138）
+            throw new AiUnavailableError("content-too-long");
         }
         let raw: unknown;
         try {
@@ -251,7 +252,9 @@ export class AiAssistant {
     async tidy(content: string): Promise<ReturnType<typeof parseTidyResult>> {
         const raw = await this.complete(buildTidyPrompt(content), true, content);
         const parsed = parseTidyResult(raw);
-        if (!parsed || (!parsed.title && !parsed.tags?.length)) throw new AiUnavailableError("empty-response");
+        // 模型回非 JSON 散文≠空响应：分开报，用户才知道该重试而非检查配置（R138）
+        if (!parsed) throw new AiUnavailableError("parse");
+        if (!parsed.title && !parsed.tags?.length) throw new AiUnavailableError("empty-response");
         return parsed;
     }
 

@@ -65,7 +65,7 @@ test("tidy：解析围栏 JSON 并裁剪字段；空响应诚实报错", async (
     const empty = new ai.AiAssistant(makeTransport(() => ""), {enabled: true, shareContent: true});
     await assert.rejects(() => empty.tidy("正文"), (err) => err.reason === "empty-response");
     const junk = new ai.AiAssistant(makeTransport(() => "抱歉我无法处理"), {enabled: true, shareContent: true});
-    await assert.rejects(() => junk.tidy("正文"), (err) => err.reason === "empty-response");
+    await assert.rejects(() => junk.tidy("正文"), (err) => err.reason === "parse"); // R138：非 JSON 散文≠空响应，诚实分类
 });
 
 test("语义找条目：仅元数据出域（prompt 无来源块 ID）；解析行号并按序映射", async () => {
