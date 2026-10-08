@@ -281,6 +281,10 @@ export class CommonSearchDialog {
                 // 回填后重查一次，消除「筛选框已选、结果未筛」的状态错位（R118）
                 tagSelect.value = savedFilters.tag;
                 void this.refresh();
+            } else if (savedFilters.tag) {
+                // 持久化的标签已失效（改名/删除）：清理筛选而不是留着假选中态（R139）
+                this.deps.setFilters({type: typeSelect.value, tag: "", category: categorySelect?.value ?? ""});
+                void this.refresh();
             }
         }).catch(() => undefined); // 辅助筛选数据失败静默降级（下拉保留默认项，R123）
         tagSelect.addEventListener("change", () => {
@@ -314,6 +318,10 @@ export class CommonSearchDialog {
             if (savedFilters.category && categories.includes(savedFilters.category)) {
                 // 同标签筛选：异步回填后重查（R118）
                 categorySelect.value = savedFilters.category;
+                void this.refresh();
+            } else if (savedFilters.category) {
+                // 失效分类同标签：清理假选中态（R139）
+                this.deps.setFilters({type: typeSelect.value, tag: tagSelect?.value ?? "", category: ""});
                 void this.refresh();
             }
         }).catch(() => undefined); // 辅助筛选数据失败静默降级（R123）
@@ -936,9 +944,8 @@ export class CommonSearchDialog {
             meta.className = "xlc-row-meta";
             // 使用次数（F3 展示，原型屏 1：meta 尾部「· N 次」；先截断正文再拼计数，保证计数恒可见）
             const useCount = this.usageCounts.get(entry.id) ?? 0;
-            const metaBase = [entry.tags.join(" / "), entry.summary]
-                .filter(Boolean).join(" · ")
-                .slice(0, 140);
+            const joined = [entry.tags.join(" / "), entry.summary].filter(Boolean).join(" · ");
+            const metaBase = joined.length > 140 ? joined.slice(0, 140) + "…" : joined; // 截断留省略号（R139）
             meta.textContent = metaBase + (useCount > 0 ? ` · ${this.deps.t("useCount", String(useCount))}` : "");
             main.appendChild(meta);
             row.appendChild(main);
@@ -988,7 +995,9 @@ export class CommonSearchDialog {
                 title.className = "xlc-row-title";
                 const badge = document.createElement("span");
                 badge.className = "xlc-badge xlc-badge--ai";
-                badge.textContent = row.providerName.slice(0, 12);
+                // 长提供方名截断留省略号 + 悬停全名（R139）
+                badge.textContent = row.providerName.length > 12 ? row.providerName.slice(0, 12) + "…" : row.providerName;
+                badge.title = row.providerName;
                 title.appendChild(badge);
                 const titleText = document.createElement("span");
                 titleText.className = "xlc-row-titletext";
@@ -1417,13 +1426,23 @@ export class CommonSearchDialog {
             return;
         }
         let fields: AskField[] = [];
+        let previewFailed = false;
         try {
             const content = await this.deps.preview(entry.id);
             fields = entry.itemType === "code" || !content ? [] : listAskFields(content);
         } catch {
             fields = [];
+            previewFailed = true;
         }
         if (fields.length === 0) {
+            // 预览失败但条目声明含变量：按原样插入前给出可见提示，不静默（R139）
+            if (previewFailed && (entry.varCount ?? 0) > 0) {
+                const status = this.dialog?.element.querySelector<HTMLElement>(".xlc-status");
+                if (status) {
+                    status.textContent = this.deps.t("varParseFailed");
+                    status.classList.add("xlc-status--error");
+                }
+            }
             await perform();
             return;
         }

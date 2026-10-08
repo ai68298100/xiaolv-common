@@ -5,9 +5,10 @@ import {SearchQuery, SearchContext, searchEntries, listByScope} from "../model/s
 import {InsertMode} from "../model/actions";
 import {CommonItem, isItemType} from "../model/item";
 import {PluginState} from "../model/storage";
+import {EVENTS, PROTOCOL_VERSION} from "../constants";
 import {ActionExecutor} from "./commands";
 import {AiAssistant} from "./ai";
-import {LibraryService} from "./library";
+import {LibraryService, NewItemInput} from "./library";
 import {ProviderRegistry} from "./providers";
 
 export interface ServiceDeps {
@@ -26,6 +27,17 @@ function toRef(item: Pick<CommonItem, "id" | "itemType" | "title">): CommonItemR
 
 export class XiaolvCommonService {
     constructor(private readonly deps: ServiceDeps) {}
+
+    /** 协议生命周期事件（README 承诺 item-created/updated/deleted/inserted 四件；R139 补齐前三件） */
+    private emitEvent(eventName: string, itemId: string, itemType?: string): void {
+        try {
+            window.dispatchEvent(new CustomEvent(eventName, {
+                detail: {protocolVersion: PROTOCOL_VERSION, itemId, ...(itemType ? {itemType} : {})},
+            }));
+        } catch {
+            // 事件失败不影响主流程
+        }
+    }
 
     /** 侧车只读视图（测试/诊断用；写入必须走服务方法） */
     get state(): PluginState {
@@ -112,10 +124,12 @@ export class XiaolvCommonService {
             source: {
                 sourceDocId: parsed.input.source?.sourceDocId ?? "",
                 sourceBlockId: parsed.input.source?.sourceBlockId ?? "",
-                sourceType: "external",
-            },
+                // 调用方声明的来源类型透传（此前硬编码 external 静默篡改语义，R139）
+                sourceType: parsed.input.source?.sourceType ?? "external",
+            } as NewItemInput["source"],
         });
         if (!created.ok) return failureEnvelope(created.reason === "timeout" ? "timeout" : created.reason === "invalid-input" ? "invalid-input" : "kernel-error", created.message);
+        this.emitEvent(EVENTS.itemCreated, created.data.item.id, created.data.item.itemType);
         return successEnvelope(toRef(created.data.item));
     }
 
@@ -131,6 +145,7 @@ export class XiaolvCommonService {
             category: typeof obj.category === "string" ? obj.category : undefined,
         });
         if (!updated.ok) return failureEnvelope(updated.reason === "timeout" ? "timeout" : updated.reason === "not-found" ? "not-found" : "kernel-error", updated.message);
+        this.emitEvent(EVENTS.itemUpdated, updated.data.item.id, updated.data.item.itemType);
         return successEnvelope(toRef(updated.data.item));
     }
 
@@ -140,13 +155,25 @@ export class XiaolvCommonService {
         this.deps.state.favorites = this.deps.state.favorites.filter((id) => id !== itemId);
         this.deps.state.recents = this.deps.state.recents.filter((r) => r.id !== itemId);
         this.deps.onStateChange();
+        this.emitEvent(EVENTS.itemDeleted, String(itemId ?? ""));
         return successEnvelope(undefined);
     }
 
     async insert(itemId: string, options?: unknown): Promise<ActionResult<{mode: string; downgraded: boolean}>> {
+        // 未知 mode 显式拒绝而非静默降级为 insert（写文档的副作用不可猜，R139）
+        const rawMode = typeof options === "object" && options !== null ? (options as {mode?: unknown}).mode : options;
+        if (rawMode !== undefined && rawMode !== null) {
+            const allowed: InsertMode[] = ["insert", "copy", "copy-content", "insert-ref", "insert-embed", "open"];
+            if (typeof rawMode !== "string" || !(allowed as string[]).includes(rawMode)) {
+                return failureEnvelope("invalid-input", "unknown mode");
+            }
+        }
         const mode = normalizeInsertMode(options);
         const got = await this.get(itemId);
-        if (!got.ok || !got.data) return failureEnvelope("not-found", got.message);
+        // 超时/内核错误透传真实原因，不折叠成 not-found（协议方可能据此误删本地引用，R139）
+        if (!got.ok || !got.data) {
+            return failureEnvelope(got.reason === "timeout" ? "timeout" : got.reason === "kernel-error" ? "kernel-error" : "not-found", got.message);
+        }
         const receipt = await this.deps.executor.run(got.data, mode);
         if (!receipt.ok) {
             return failureEnvelope(executionFailureReason(receipt.message), receipt.message);
@@ -156,7 +183,9 @@ export class XiaolvCommonService {
 
     async copy(itemId: string): Promise<ActionResult<{kind: string; pendingVerification?: string[]}>> {
         const got = await this.get(itemId);
-        if (!got.ok || !got.data) return failureEnvelope("not-found", got.message);
+        if (!got.ok || !got.data) {
+            return failureEnvelope(got.reason === "timeout" ? "timeout" : got.reason === "kernel-error" ? "kernel-error" : "not-found", got.message);
+        }
         const receipt = await this.deps.executor.run(got.data, "copy");
         if (!receipt.ok) return failureEnvelope(executionFailureReason(receipt.message), receipt.message);
         return successEnvelope({kind: "clipboard", pendingVerification: receipt.pendingVerification.length ? receipt.pendingVerification : undefined});
@@ -164,7 +193,9 @@ export class XiaolvCommonService {
 
     async openSource(itemId: string): Promise<ActionResult<{opened: "doc" | "block" | "asset" | "url"}>> {
         const got = await this.get(itemId);
-        if (!got.ok || !got.data) return failureEnvelope("not-found", got.message);
+        if (!got.ok || !got.data) {
+            return failureEnvelope(got.reason === "timeout" ? "timeout" : got.reason === "kernel-error" ? "kernel-error" : "not-found", got.message);
+        }
         const receipt = await this.deps.executor.openSource(got.data);
         if (!receipt.ok) return failureEnvelope(executionFailureReason(receipt.message), receipt.message);
         return successEnvelope({opened: receipt.opened ?? "doc"});

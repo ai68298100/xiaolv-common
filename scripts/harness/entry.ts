@@ -25,7 +25,7 @@ const PREVIEWS: Record<string, string> = {
 const T = (key: string, ...args: string[]): string => {
     const map: Record<string, string> = {
         pluginName: "小驴常用（内测版）",
-        searchPlaceholder: "搜索常用内容（? 前缀 = AI 语义找）",
+        searchPlaceholder: "搜索常用内容（? 前缀 = AI 语义搜索）",
         type: "类型", tags: "标签", tagsHint: "逗号分隔", title: "标题", alias: "别名", category: "分类", contentLabel: "内容（Markdown）", filterAll: "全部类型",
         "type.text": "纯文本", "type.markdown": "Markdown", "type.url": "网址", "type.code": "代码", "type.image": "图片", "type.asset": "附件", "type.blockref": "块引用", "type.structure": "块结构", filterFavorites: "收藏", filterRecent: "最近",
         empty: "没有匹配的条目", usageHint: "↑↓ 选择 · Enter 插入 · Ctrl+Enter 复制 · Esc 关闭",
@@ -33,7 +33,7 @@ const T = (key: string, ...args: string[]): string => {
         insert: "插入", copy: "复制", openSource: "打开来源", edit: "编辑", delete: "删除",
         insertRef: "插入引用", insertEmbed: "插入嵌入", insertCopy: "复制内容",
         sourceMissing: "来源失效", sourceGone: "来源块已不存在（原文档被重组）· 打开来源可重新指定", previewUnavailable: "暂无预览",
-        aiFound: "AI 找到的", aiWorking: "AI 处理中…", aiOriginalPreserved: "原文未被修改",
+        aiFound: "AI 命中", aiWorking: "AI 处理中…", aiOriginalPreserved: "原文未被修改",
         insertNoEditor: "当前没有活动编辑器，已复制到剪贴板，可手动粘贴",
         kernelError: "思源接口调用失败",
         "tf.polish": "润色", "tf.shorten": "缩短", "tf.formal": "正式化", "tf.translate-en": "译为英文", "tf.bulletize": "列表化",
@@ -42,7 +42,7 @@ const T = (key: string, ...args: string[]): string => {
         aiTidy: "AI 整理", aiDraft: "AI 草稿", aiDraftDesc: "描述你想要的内容，AI 生成草稿", aiApplied: "已应用 AI 建议", aiTransform: "AI 变换",
         saved: "已保存：%s",
         dataTruth: "思源块真源 · 失效可见", adoptAll: "全部采纳", actionsNoun: "动作",
-        semanticSuggestion: "没有本地结果。试试 AI 语义找：在关键词前加 ?", aiSemanticHint: "输入 ? 加描述，如「?给客户的道歉回复」，AI 在元数据中找最相关条目",
+        semanticSuggestion: "没有本地结果。试试 AI 语义搜索：在关键词前加 ?", aiSemanticHint: "输入 ? 加描述，如「?给客户的道歉回复」，AI 在元数据中找最相关条目",
         varCountBadge: "%s 变量", paneVarsLabel: "插入时将询问 %s 个变量：", insertVariable: "插入变量：",
         varFormTitle: "填写变量", varFormSub: "本条目含 %s 个变量，填写后一次性插入；填写值仅用于本次，不回写库。", varFormHint: "Tab 下一项 · Enter 插入",
         groupPinned: "置顶", groupAll: "全部", groupUncategorized: "无分类", insertSection: "变量与插入",

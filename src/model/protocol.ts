@@ -1,6 +1,6 @@
 // xiaolv-common/v1 协议模型：跨插件联动的稳定类型与能力协商。
 // 原则（需求六.8）：最小稳定接口；未知字段保留透传；未知能力忽略；版本不匹配明确拒绝。
-import {PROTOCOL_NAME, PROTOCOL_VERSION} from "../constants";
+import {LIMITS, PROTOCOL_NAME, PROTOCOL_VERSION} from "../constants";
 import {CommonItem, CommonItemRef, ItemType, isItemType, isSafeHttpUrl} from "./item";
 import {SearchQuery} from "./search";
 import {InsertPlan} from "./actions";
@@ -166,7 +166,7 @@ export function normalizeSaveInput(raw: unknown): {ok: true; input: SaveInput} |
             markdown: obj.markdown,
             title: str(obj.title, 512),
             alias: str(obj.alias, 256),
-            tags: Array.isArray(obj.tags) ? obj.tags.filter((t): t is string => typeof t === "string").slice(0, 32) : undefined,
+            tags: Array.isArray(obj.tags) ? obj.tags.filter((t): t is string => typeof t === "string").map((tg) => tg.slice(0, LIMITS.tag)).slice(0, 32) : undefined,
             category: str(obj.category, 64),
             url,
             targetBlockId: str(obj.targetBlockId, 32),

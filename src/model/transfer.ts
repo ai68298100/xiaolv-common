@@ -75,6 +75,10 @@ export interface ImportValidation {
 
 export function validateImport(jsonText: string): ImportValidation {
     const issues: ImportIssue[] = [];
+    // 聚合体积上限前移到模型层：UI 把关之外，协议路径同样受保护（R139）
+    if (jsonText.length > LIMITS.maxImportBytes) {
+        return {ok: false, reason: "file-too-large", issues};
+    }
     let obj: unknown;
     try {
         obj = JSON.parse(jsonText);

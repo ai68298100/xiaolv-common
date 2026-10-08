@@ -149,10 +149,11 @@
   // src/model/variables.ts
   var ASK_PATTERN = /\{\{xlc:ask:([^|}]+)(?:\|([^}]*))?\}\}/g;
   function parseAskField(rawName, rawOptions) {
+    var _a;
     const name = rawName.trim().slice(0, LIMITS.tag);
     if (!name) return null;
     const options = (rawOptions != null ? rawOptions : "").split(",").map((s) => s.trim().slice(0, LIMITS.tag)).filter(Boolean).slice(0, 16);
-    if (options.length === 1 && options[0] === "date") return { name, kind: "date", options: [] };
+    if (options.length === 1 && ((_a = options[0]) == null ? void 0 : _a.toLowerCase()) === "date") return { name, kind: "date", options: [] };
     if (options.length >= 2) return { name, kind: "select", options };
     return { name, kind: "text", options: [] };
   }
@@ -554,6 +555,7 @@
       tagSelect.setAttribute("aria-label", this.deps.t("tags"));
       if (savedFilters.tag) tagSelect.value = savedFilters.tag;
       void this.deps.getTags().then((tags) => {
+        var _a;
         const first = document.createElement("option");
         first.value = "";
         first.textContent = this.deps.t("tags");
@@ -566,6 +568,9 @@
         }
         if (savedFilters.tag && tags.includes(savedFilters.tag)) {
           tagSelect.value = savedFilters.tag;
+          void this.refresh();
+        } else if (savedFilters.tag) {
+          this.deps.setFilters({ type: typeSelect.value, tag: "", category: (_a = categorySelect == null ? void 0 : categorySelect.value) != null ? _a : "" });
           void this.refresh();
         }
       }).catch(() => void 0);
@@ -584,6 +589,7 @@
       categorySelect.setAttribute("aria-label", this.deps.t("category"));
       if (savedFilters.category) categorySelect.value = savedFilters.category;
       void this.deps.getCategories().then((categories) => {
+        var _a;
         const first = document.createElement("option");
         first.value = "";
         first.textContent = this.deps.t("category");
@@ -597,6 +603,9 @@
         }
         if (savedFilters.category && categories.includes(savedFilters.category)) {
           categorySelect.value = savedFilters.category;
+          void this.refresh();
+        } else if (savedFilters.category) {
+          this.deps.setFilters({ type: typeSelect.value, tag: (_a = tagSelect == null ? void 0 : tagSelect.value) != null ? _a : "", category: "" });
           void this.refresh();
         }
       }).catch(() => void 0);
@@ -1168,7 +1177,8 @@
         const meta = document.createElement("div");
         meta.className = "xlc-row-meta";
         const useCount = (_f = this.usageCounts.get(entry.id)) != null ? _f : 0;
-        const metaBase = [entry.tags.join(" / "), entry.summary].filter(Boolean).join(" \xB7 ").slice(0, 140);
+        const joined = [entry.tags.join(" / "), entry.summary].filter(Boolean).join(" \xB7 ");
+        const metaBase = joined.length > 140 ? joined.slice(0, 140) + "\u2026" : joined;
         meta.textContent = metaBase + (useCount > 0 ? ` \xB7 ${this.deps.t("useCount", String(useCount))}` : "");
         main.appendChild(meta);
         row.appendChild(main);
@@ -1213,7 +1223,8 @@
           title.className = "xlc-row-title";
           const badge = document.createElement("span");
           badge.className = "xlc-badge xlc-badge--ai";
-          badge.textContent = row.providerName.slice(0, 12);
+          badge.textContent = row.providerName.length > 12 ? row.providerName.slice(0, 12) + "\u2026" : row.providerName;
+          badge.title = row.providerName;
           title.appendChild(badge);
           const titleText = document.createElement("span");
           titleText.className = "xlc-row-titletext";
@@ -1601,18 +1612,28 @@
     /** F1：插入前询问变量（设置可关；无 ask 字段零打扰；code 条目不询问）。
      *  perform 收到 fills（undefined=未触发询问，走原路径）。 */
     async insertEntryWithVars(entry, perform) {
+      var _a, _b;
       if (!this.deps.promptVariables()) {
         await perform();
         return;
       }
       let fields = [];
+      let previewFailed = false;
       try {
         const content = await this.deps.preview(entry.id);
         fields = entry.itemType === "code" || !content ? [] : listAskFields(content);
       } catch {
         fields = [];
+        previewFailed = true;
       }
       if (fields.length === 0) {
+        if (previewFailed && ((_a = entry.varCount) != null ? _a : 0) > 0) {
+          const status = (_b = this.dialog) == null ? void 0 : _b.element.querySelector(".xlc-status");
+          if (status) {
+            status.textContent = this.deps.t("varParseFailed");
+            status.classList.add("xlc-status--error");
+          }
+        }
         await perform();
         return;
       }
@@ -1986,6 +2007,9 @@
   // src/model/transfer.ts
   function validateImport(jsonText) {
     const issues = [];
+    if (jsonText.length > LIMITS.maxImportBytes) {
+      return { ok: false, reason: "file-too-large", issues };
+    }
     let obj;
     try {
       obj = JSON.parse(jsonText);
@@ -2404,7 +2428,7 @@
     "<!-- xlc-pack",
     `name: ${PROMPT_PACK_NAME}`,
     "items: 10",
-    "vars: \u5BA2\u6237\u540D\u79F0,\u8865\u507F\u6BD4\u4F8B,\u5DE5\u5355\u53F7,\u8DDF\u8FDB\u65E5\u671F,\u5BA2\u6237\u6635\u79F0,\u76EE\u6807\u8BFB\u8005,\u7F16\u7A0B\u8BED\u8A00,\u672C\u5468\u4E3B\u9898,\u4F1A\u8BAE\u4E3B\u9898",
+    "vars: \u5BA2\u6237\u540D\u79F0,\u8865\u507F\u6BD4\u4F8B,\u5DE5\u5355\u53F7,\u8DDF\u8FDB\u65E5\u671F,\u5BA2\u6237\u6635\u79F0,\u76EE\u6807\u8BFB\u8005,\u7F16\u7A0B\u8BED\u8A00,\u672C\u5468\u4E3B\u9898,\u4F1A\u8BAE\u4E3B\u9898,\u8868\u540D",
     "-->",
     "# \u63D0\u793A\u8BCD\u573A\u666F\u5305",
     "",
@@ -3093,11 +3117,11 @@
     nextBtn.addEventListener("click", () => {
       const mode = modeSelect.value;
       if (mode === "notebook" && !nbSelect.value) {
-        ctx.notify("error", t("invalidItem"));
+        ctx.notify("error", t("pickNotebookFirst"));
         return;
       }
       if (mode !== "notebook" && !pickedDoc) {
-        ctx.notify("error", t("docPickerEmpty"));
+        ctx.notify("error", t("pickDocFirst"));
         return;
       }
       gotoStep(2);
@@ -3145,7 +3169,7 @@
         return;
       }
       if (!pickedDoc) {
-        ctx.notify("error", t("docPickerEmpty"));
+        ctx.notify("error", t("pickDocFirst"));
         return;
       }
       ctx.applyConfig({
@@ -4153,7 +4177,7 @@
     var _a;
     const map = {
       pluginName: "\u5C0F\u9A74\u5E38\u7528\uFF08\u5185\u6D4B\u7248\uFF09",
-      searchPlaceholder: "\u641C\u7D22\u5E38\u7528\u5185\u5BB9\uFF08? \u524D\u7F00 = AI \u8BED\u4E49\u627E\uFF09",
+      searchPlaceholder: "\u641C\u7D22\u5E38\u7528\u5185\u5BB9\uFF08? \u524D\u7F00 = AI \u8BED\u4E49\u641C\u7D22\uFF09",
       type: "\u7C7B\u578B",
       tags: "\u6807\u7B7E",
       tagsHint: "\u9017\u53F7\u5206\u9694",
@@ -4186,7 +4210,7 @@
       sourceMissing: "\u6765\u6E90\u5931\u6548",
       sourceGone: "\u6765\u6E90\u5757\u5DF2\u4E0D\u5B58\u5728\uFF08\u539F\u6587\u6863\u88AB\u91CD\u7EC4\uFF09\xB7 \u6253\u5F00\u6765\u6E90\u53EF\u91CD\u65B0\u6307\u5B9A",
       previewUnavailable: "\u6682\u65E0\u9884\u89C8",
-      aiFound: "AI \u627E\u5230\u7684",
+      aiFound: "AI \u547D\u4E2D",
       aiWorking: "AI \u5904\u7406\u4E2D\u2026",
       aiOriginalPreserved: "\u539F\u6587\u672A\u88AB\u4FEE\u6539",
       insertNoEditor: "\u5F53\u524D\u6CA1\u6709\u6D3B\u52A8\u7F16\u8F91\u5668\uFF0C\u5DF2\u590D\u5236\u5230\u526A\u8D34\u677F\uFF0C\u53EF\u624B\u52A8\u7C98\u8D34",
@@ -4212,7 +4236,7 @@
       dataTruth: "\u601D\u6E90\u5757\u771F\u6E90 \xB7 \u5931\u6548\u53EF\u89C1",
       adoptAll: "\u5168\u90E8\u91C7\u7EB3",
       actionsNoun: "\u52A8\u4F5C",
-      semanticSuggestion: "\u6CA1\u6709\u672C\u5730\u7ED3\u679C\u3002\u8BD5\u8BD5 AI \u8BED\u4E49\u627E\uFF1A\u5728\u5173\u952E\u8BCD\u524D\u52A0 ?",
+      semanticSuggestion: "\u6CA1\u6709\u672C\u5730\u7ED3\u679C\u3002\u8BD5\u8BD5 AI \u8BED\u4E49\u641C\u7D22\uFF1A\u5728\u5173\u952E\u8BCD\u524D\u52A0 ?",
       aiSemanticHint: "\u8F93\u5165 ? \u52A0\u63CF\u8FF0\uFF0C\u5982\u300C?\u7ED9\u5BA2\u6237\u7684\u9053\u6B49\u56DE\u590D\u300D\uFF0CAI \u5728\u5143\u6570\u636E\u4E2D\u627E\u6700\u76F8\u5173\u6761\u76EE",
       varCountBadge: "%s \u53D8\u91CF",
       paneVarsLabel: "\u63D2\u5165\u65F6\u5C06\u8BE2\u95EE %s \u4E2A\u53D8\u91CF\uFF1A",

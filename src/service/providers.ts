@@ -32,6 +32,8 @@ export class ProviderRegistry {
         if (typeof descriptor.protocolVersion !== "number" || descriptor.protocolVersion > 1) {
             return {ok: false, reason: "protocol-version-unsupported"};
         }
+        // 重注册不带 runtime 时保留既有 runtime：此前会被静默清空，provider 分区无告警消失（R139）
+        const existing = this.providers.get(descriptor.pluginId);
         this.providers.set(descriptor.pluginId, {
             record: {
                 pluginId: descriptor.pluginId.slice(0, 128),
@@ -39,7 +41,7 @@ export class ProviderRegistry {
                 protocolVersion: Math.floor(descriptor.protocolVersion),
                 registeredAt: Date.now(),
             },
-            runtime,
+            runtime: runtime ?? existing?.runtime,
         });
         return {ok: true};
     }

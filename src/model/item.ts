@@ -93,7 +93,8 @@ export function isBlockId(v: unknown): v is string {
 
 export function newLogicalId(now = Date.now(), random = Math.random): string {
     const time = now.toString(36);
-    const rand = Math.floor(random() * 0xffffffffffffffff).toString(36).slice(0, 10);
+    // 随机源退化（注入 0/极小值）时左填充，保证后缀长度满足 LOGICAL_ID_RE（R139）
+    const rand = Math.floor(random() * 0xffffffffffffffff).toString(36).slice(0, 10).padStart(10, "0");
     return `xlc-${time}${rand}`.slice(0, 30);
 }
 

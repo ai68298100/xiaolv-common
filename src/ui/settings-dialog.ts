@@ -628,11 +628,11 @@ function buildLibraryPickerSection(ctx: SettingsUiContext, root: HTMLElement, on
     nextBtn.addEventListener("click", () => {
         const mode = modeSelect.value as LibraryConfig["mode"];
         if (mode === "notebook" && !nbSelect.value) {
-            ctx.notify("error", t("invalidItem"));
+            ctx.notify("error", t("pickNotebookFirst"));
             return;
         }
         if (mode !== "notebook" && !pickedDoc) {
-            ctx.notify("error", t("docPickerEmpty"));
+            ctx.notify("error", t("pickDocFirst"));
             return;
         }
         gotoStep(2);
@@ -682,7 +682,7 @@ function buildLibraryPickerSection(ctx: SettingsUiContext, root: HTMLElement, on
             return;
         }
         if (!pickedDoc) {
-            ctx.notify("error", t("docPickerEmpty"));
+            ctx.notify("error", t("pickDocFirst"));
             return;
         }
         ctx.applyConfig({

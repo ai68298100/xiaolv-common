@@ -38,7 +38,7 @@ export function buildProviderRows(hits: readonly ProviderHit[]): ProviderRow[] {
         if (hit.payload.length > MAX_PAYLOAD) continue; // 超限整条拒绝（不截尾）
         const n = (counters.get(hit.providerId) ?? 0) + 1;
         counters.set(hit.providerId, n);
-        if (n > MAX_PROVIDERS_ROWS) break;
+        if (n > MAX_PROVIDERS_ROWS) continue; // 溢出方跳过本条而非终止循环，不得吞掉后续提供方（R139）
         rows.push({
             virtualId: `pv:${hit.providerId.replace(/[^A-Za-z0-9_-]/g, "_")}:${n}`,
             providerId: hit.providerId,

@@ -29,7 +29,8 @@ export function parseAskField(rawName: string, rawOptions: string | undefined): 
         .map((s) => s.trim().slice(0, LIMITS.tag))
         .filter(Boolean)
         .slice(0, 16);
-    if (options.length === 1 && options[0] === "date") return {name, kind: "date", options: []};
+    // date 选项大小写不敏感：{{xlc:ask:x|DATE}} 语义不变（R139）
+    if (options.length === 1 && options[0]?.toLowerCase() === "date") return {name, kind: "date", options: []};
     if (options.length >= 2) return {name, kind: "select", options};
     return {name, kind: "text", options: []};
 }

@@ -32,6 +32,7 @@ fs.writeFileSync(path.join(OUT, "sweep.html"), html);
 
 const SURFACES = [
     {name: "search-default", open: "XlcHarness.openDialog({aiEnabled: true})"},
+    {name: "search-provider", open: "XlcHarness.openDialog({aiEnabled: true, query: '工作台'})"},
     {name: "search-noai", open: "XlcHarness.openDialog({aiEnabled: false})"},
     {name: "search-missing", open: "XlcHarness.openDialog({aiEnabled: true, missing: true})"},
     {name: "search-empty", open: "XlcHarness.openDialog({aiEnabled: true, empty: true})"},
@@ -103,6 +104,17 @@ const SURFACES = [
             if (round % 8 === 7) await drain(`${surface.name}:r${round}`);
         }
         await drain(`${surface.name}:clicks`);
+
+        // 第二遍双击：已点元素快速连点两次（暴露双击双触发/防重入缺失）
+        for (const key of [...clicked].slice(0, 12)) {
+            await page.evaluate((k) => {
+                const els = Array.from(document.querySelectorAll('button, [role=menuitem], [role=switch], select, .xlc-chip, .xlc-row, input[type=checkbox]'));
+                const el = els.find((e) => ((e.textContent ?? '').trim() + '|' + e.className + '|' + e.tagName) === k);
+                if (el && !el.disabled) { el.click(); el.click(); }
+            }, key);
+            await page.waitForTimeout(80);
+        }
+        await drain(`${surface.name}:dblclicks`);
 
         // 键盘走查：Tab×12、Enter、Escape×3、方向键
         for (const k of ["Tab", "Tab", "Tab", "Tab", "Tab", "Tab", "Tab", "Tab", "Tab", "Tab", "Tab", "Tab", "Enter", "Escape", "Escape", "Escape", "ArrowDown", "ArrowUp", "Escape"]) {

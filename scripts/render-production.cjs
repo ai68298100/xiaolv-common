@@ -505,7 +505,7 @@ fs.writeFileSync(path.join(OUT, "harness.html"), html);
         const empty = document.querySelector(".xlc-empty");
         const footer = document.querySelector(".xlc-footer");
         return {
-            emptyBlock: !!empty && empty.textContent.includes("AI 语义找"),
+            emptyBlock: !!empty && empty.textContent.includes("AI 语义搜索"),
             emptyHint: !!empty && empty.textContent.includes("?"),
             footerClaim: !!footer && footer.textContent.includes("思源块真源"),
             footerCount: !!footer && footer.textContent.includes("共 0 条"),

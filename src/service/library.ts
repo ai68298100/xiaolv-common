@@ -118,15 +118,23 @@ export class LibraryService {
 
     setConfig(config: LibraryConfig): void {
         this.config = {...config};
-        this.index = null; // 库配置变化必须重建索引
+        this.invalidateIndex(); // 库配置变化必须重建索引
     }
 
     /** 索引（可丢弃缓存）。为空或超过 maxAgeMs 时重建（SWR：陈旧索引透明刷新）。 */
     /** 索引（可丢弃缓存）。为空或超过 maxAgeMs 时重建（SWR）。
      *  并发去重：重建进行中时共用同一 Promise（双开弹窗/预热竞争只建一次）。 */
     private buildingPromise: Promise<IndexBuildResult> | null = null;
+    /** 索引代数：任一失效（index=null）自增；重建完成时代数已变则丢弃陈旧结果（R139） */
+    private indexGen = 0;
+
+    private invalidateIndex(): void {
+        this.indexGen++;
+        this.index = null;
+    }
 
     async ensureIndex(maxAgeMs?: number): Promise<IndexBuildResult> {
+        const gen = this.indexGen;
         if (this.index) {
             const fresh = typeof maxAgeMs !== "number" || Date.now() - this.index.builtAt <= maxAgeMs;
             if (fresh) return this.index;
@@ -137,7 +145,8 @@ export class LibraryService {
             });
         }
         const result = await this.buildingPromise;
-        this.index = result;
+        // 重建期间发生写失效（gen 已变）：陈旧构建不得覆盖回缓存（R139）
+        if (gen === this.indexGen) this.index = result;
         return result;
     }
 
@@ -250,7 +259,8 @@ export class LibraryService {
             return {docIds, errors};
         }
         if (config.mode === "doc") {
-            return {docIds: config.containerDocIds.slice(0, LIMITS.maxDocs), errors: []};
+            // 去重与 tree 模式口径一致：重复文档 ID 会产生重复条目与双份搜索结果（R139）
+            return {docIds: Array.from(new Set(config.containerDocIds)).slice(0, LIMITS.maxDocs), errors: []};
         }
         // tree 模式：容器文档 + BFS 展开至多 3 层子文档（有界：总文档数 ≤ maxDocs，超出如实报错）
         const docIds: string[] = [];
@@ -343,6 +353,8 @@ export class LibraryService {
                     truncated = true;
                     break outer;
                 }
+                // 无 custom-xlc-id 的块不是条目：混排内容不发起逐块 getBlockKramdown（N+1，R139）
+                if (!attrs[ATTR.id]) continue;
                 let kramdown = "";
                 try {
                     const body = parseKramdown(await this.kernel.request("getBlockKramdown", {id: child.id}));
@@ -473,18 +485,22 @@ export class LibraryService {
             }
             if (item.itemType === "image" || item.itemType === "asset") {
                 const kramdown = await this.getItemKramdown(item);
-                const path = kramdown.ok ? (kramdown.data.match(/\]\((assets\/[^)\s]+)[^)]*\)/)?.[1] ?? "") : "";
-                if (!path) health.assetMissing = true;
-                else if (this.options.probeAsset) {
-                    try {
-                        health.assetMissing = !(await this.options.probeAsset(path));
-                    } catch {
+                // 内核读取失败 ≠ 资源缺失：不伪造三态，保持全 false 由打开来源实时探测兜底（R139）
+                if (kramdown.ok) {
+                    const path = kramdown.data.match(/\]\((assets\/[^)\s]+)[^)]*\)/)?.[1] ?? "";
+                    if (!path) {
                         health.assetMissing = true;
+                    } else if (this.options.probeAsset) {
+                        try {
+                            health.assetMissing = !(await this.options.probeAsset(path));
+                        } catch {
+                            health.assetMissing = true;
+                        }
+                    } else {
+                        // 没有注入二进制探针时不能把信封请求当作资源存在性证据。
+                        // 保留 unknown 为 false，调用方不会伪造“资源缺失”；生产装配应注入 probeAsset。
+                        health.assetMissing = false;
                     }
-                } else {
-                    // 没有注入二进制探针时不能把信封请求当作资源存在性证据。
-                    // 保留 unknown 为 false，调用方不会伪造“资源缺失”；生产装配应注入 probeAsset。
-                    health.assetMissing = false;
                 }
             }
             return ok(health);
@@ -560,7 +576,7 @@ export class LibraryService {
             blockType: input.itemType === "code" ? "c" : input.itemType === "structure" ? "super" : "p",
         });
         if (!item) return fail("kernel-error", "created item failed normalization");
-        this.index = null;
+        this.invalidateIndex();
         return ok({item});
     }
 
@@ -634,7 +650,7 @@ export class LibraryService {
             }
             return toFailureReceipt(err);
         }
-        this.index = null;
+        this.invalidateIndex();
         const refreshed = await this.getItem(itemId);
         return refreshed.ok ? ok({item: refreshed.data}) : {ok: false, reason: refreshed.reason, message: refreshed.message};
     }
@@ -647,7 +663,7 @@ export class LibraryService {
         } catch (err) {
             return toFailureReceipt(err);
         }
-        this.index = null;
+        this.invalidateIndex();
         return ok({blockId: got.data.blockId});
     }
 
@@ -663,7 +679,7 @@ export class LibraryService {
         } catch (err) {
             return toFailureReceipt(err);
         }
-        this.index = null;
+        this.invalidateIndex();
         const refreshed = await this.getItem(itemId);
         return refreshed.ok ? ok({item: refreshed.data}) : {ok: false, reason: refreshed.reason, message: refreshed.message};
     }
@@ -685,7 +701,7 @@ export class LibraryService {
         } catch (err) {
             return toFailureReceipt(err);
         }
-        this.index = null;
+        this.invalidateIndex();
         const refreshed = await this.getItem(itemId);
         return refreshed.ok ? ok({item: refreshed.data}) : {ok: false, reason: refreshed.reason, message: refreshed.message};
     }

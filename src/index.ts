@@ -1111,6 +1111,8 @@ export default class XiaolvCommonPlugin extends Plugin {
         // 单行输入 Enter 提交（与捕获表单一致；textarea 换行合法，不绑）
         const submitOnEnter = (el: HTMLInputElement): void => {
             el.addEventListener("keydown", (ev) => {
+                // IME 组合态：Enter 属选词确认，不得触发保存（对齐 capture.ts 惯例，R139 补漏）
+                if (ev.isComposing || ev.keyCode === 229) return;
                 if (ev.key === "Enter" && !ev.altKey && !ev.ctrlKey && !ev.metaKey) {
                     ev.preventDefault();
                     save.click();

@@ -83,7 +83,8 @@ function asInlineText(text: string): string {
  */
 export function buildBlockRef(blockId: string, anchor: string): string {
     if (!BLOCK_ID_RE.test(blockId)) throw new Error("invalid block id");
-    return `((${blockId} '${anchor.replace(/'/g, "\\'")}'))`;
+    // 反斜杠先于引号转义：尾部「\」会吞掉闭合引号产出坏引用语法（R139）
+    return `((${blockId} '${anchor.replace(/\\/g, "\\\\").replace(/'/g, "\\'")}'))`;
 }
 
 /** 宿主原生嵌入块语法（ADR 0003：ID 严格校验，无用户文本拼接） */
@@ -113,13 +114,13 @@ export function planAction(item: CommonItem, mode: InsertMode, ctx: ActionContex
     switch (item.itemType) {
         case "text": {
             const text = asInlineText(ctx.content.kramdown);
-            if (mode === "copy") return {...base, clipboardText: text, clipboardKind: "text"};
+            if (mode === "copy" || mode === "copy-content") return {...base, clipboardText: text, clipboardKind: "text"};
             return {...base, markdown: text};
         }
         case "markdown":
         case "structure": {
             const md = ctx.content.kramdown.slice(0, LIMITS.contentChars);
-            if (mode === "copy") return {...base, clipboardText: md, clipboardKind: "markdown"};
+            if (mode === "copy" || mode === "copy-content") return {...base, clipboardText: md, clipboardKind: "markdown"};
             return {...base, markdown: md};
         }
         case "url": {
@@ -128,7 +129,7 @@ export function planAction(item: CommonItem, mode: InsertMode, ctx: ActionContex
                 return {...base, downgraded: true, downgradeReason: "type-unsupported", warnings: ["url-empty"]};
             }
             if (mode === "open") return {...base, open: {kind: "url", url}};
-            if (mode === "copy") return {...base, clipboardText: url, clipboardKind: "url"};
+            if (mode === "copy" || mode === "copy-content") return {...base, clipboardText: url, clipboardKind: "url"};
             const title = item.title && item.title !== url ? item.title : url;
             return {...base, markdown: `[${title.replace(/[[\]]/g, "")}](${url})`};
         }
@@ -136,7 +137,7 @@ export function planAction(item: CommonItem, mode: InsertMode, ctx: ActionContex
             const fence = extractCodeFence(ctx.content.kramdown);
             const code = fence ? fence.code : ctx.content.kramdown;
             const language = fence ? fence.language : "";
-            if (mode === "copy") return {...base, clipboardText: code, clipboardKind: "code"};
+            if (mode === "copy" || mode === "copy-content") return {...base, clipboardText: code, clipboardKind: "code"};
             return {...base, markdown: "```" + language + "\n" + code.slice(0, LIMITS.contentChars) + "\n```"};
         }
         case "image":
@@ -147,7 +148,7 @@ export function planAction(item: CommonItem, mode: InsertMode, ctx: ActionContex
             }
             if (ctx.content.assetMissing) {
                 // 资源缺失：插入/打开诚实失败，复制链接仍可用
-                if (mode === "copy") {
+                if (mode === "copy" || mode === "copy-content") {
                     return {
                         ...base,
                         clipboardText: `[${item.title}](${assetPath})`,
@@ -160,7 +161,7 @@ export function planAction(item: CommonItem, mode: InsertMode, ctx: ActionContex
             if (mode === "open") {
                 return {...base, open: {kind: "asset", assetPath}};
             }
-            if (mode === "copy") {
+            if (mode === "copy" || mode === "copy-content") {
                 return {
                     ...base,
                     clipboardText: `[${item.title}](${assetPath})`,
