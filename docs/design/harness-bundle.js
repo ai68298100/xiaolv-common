@@ -168,13 +168,19 @@
   // src/model/variables.ts
   var ASK_PATTERN = /\{\{xlc:ask:([^|}]+)(?:\|([^}]*))?\}\}/g;
   function parseAskField(rawName, rawOptions) {
-    var _a;
+    var _a, _b;
     const name = rawName.trim().slice(0, LIMITS.tag);
     if (!name) return null;
     const options = (rawOptions != null ? rawOptions : "").split(",").map((s) => s.trim().slice(0, LIMITS.tag)).filter(Boolean).slice(0, 16);
     if (options.length === 1 && ((_a = options[0]) == null ? void 0 : _a.toLowerCase()) === "date") return { name, kind: "date", options: [] };
+    if (options.length === 1 && ((_b = options[0]) == null ? void 0 : _b.toLowerCase()) === "textarea") return { name, kind: "textarea", options: [] };
     if (options.length >= 2) return { name, kind: "select", options };
     return { name, kind: "text", options: [] };
+  }
+  function askFieldTag(field) {
+    if (field.kind === "text") return `{{xlc:ask:${field.name}}}`;
+    if (field.kind === "select") return `{{xlc:ask:${field.name}|${field.options.join(",")}}}`;
+    return `{{xlc:ask:${field.name}|${field.kind}}}`;
   }
   function listAskFields(text) {
     var _a;
@@ -249,6 +255,8 @@
     sub.textContent = t("varFormSub", String(options.fields.length));
     root.appendChild(sub);
     const inputs = [];
+    const fieldsWrap = document.createElement("div");
+    fieldsWrap.className = "xlc-varform-fields";
     for (const [fieldIndex, field] of options.fields.entries()) {
       const wrap = document.createElement("label");
       wrap.className = "xlc-varform-field";
@@ -257,12 +265,17 @@
       label.textContent = field.name;
       const tag = document.createElement("span");
       tag.className = "xlc-varform-tag";
-      tag.textContent = field.kind === "text" ? `{{xlc:ask:${field.name}}}` : `{{xlc:ask:${field.name}${field.kind === "date" ? "|date" : "|" + field.options.join(",")}}}`;
+      tag.textContent = askFieldTag(field);
       label.appendChild(tag);
       wrap.appendChild(label);
-      const input = document.createElement("input");
+      const input = field.kind === "textarea" ? document.createElement("textarea") : document.createElement("input");
       input.className = "b3-text-field";
-      input.setAttribute("enterkeyhint", "done");
+      if (field.kind === "textarea") {
+        input.rows = 3;
+        input.setAttribute("spellcheck", "false");
+      } else {
+        input.setAttribute("enterkeyhint", "done");
+      }
       if (field.kind === "date") input.type = "date";
       if (field.kind === "select") {
         input.setAttribute("list", `xlc-varform-list-${fieldIndex}`);
@@ -278,13 +291,14 @@
       input.dataset.xlcVarField = field.name;
       wrap.appendChild(input);
       inputs.push(input);
-      root.appendChild(wrap);
+      fieldsWrap.appendChild(wrap);
     }
+    root.appendChild(fieldsWrap);
     const foot = document.createElement("div");
     foot.className = "xlc-varform-foot";
     const kbdHint = document.createElement("span");
     kbdHint.className = "xlc-varform-hint";
-    kbdHint.textContent = t("varFormHint");
+    kbdHint.textContent = options.fields.some((f) => f.kind === "textarea") ? t("varFormHintMultiline") : t("varFormHint");
     foot.appendChild(kbdHint);
     const cancelBtn = document.createElement("button");
     cancelBtn.className = "b3-button";
@@ -325,6 +339,7 @@
       if (ev.isComposing || ev.keyCode === 229) return;
       if (ev.key === "Enter" && !ev.altKey && !ev.ctrlKey && !ev.metaKey) {
         if (ev.target.tagName === "BUTTON") return;
+        if (ev.target.tagName === "TEXTAREA") return;
         const el = ev.target;
         if (el instanceof HTMLInputElement && el.list) {
           setTimeout(() => confirm3(), 0);
@@ -336,7 +351,7 @@
       }
       if (ev.key === "Tab") {
         const focusables = Array.from(
-          root.querySelectorAll("input, button")
+          root.querySelectorAll("input, textarea, button")
         ).filter((el) => !el.hasAttribute("disabled"));
         if (focusables.length === 0) return;
         const index = focusables.indexOf(document.activeElement);
@@ -357,9 +372,12 @@
     const snippets = [
       "{{xlc:ask:\u5B57\u6BB5}}",
       "{{xlc:ask:\u5B57\u6BB5|\u9009\u9879A,\u9009\u9879B}}",
+      "{{xlc:ask:\u5B57\u6BB5|textarea}}",
       "{{xlc:snippet:\u6807\u9898}}",
       "{{xlc:cursor}}",
       "{{xlc:date}}",
+      "{{xlc:date|+3d}}",
+      "{{xlc:random|\u9009\u9879A,\u9009\u9879B}}",
       "{{xlc:doc}}",
       "{{xlc:clipboard}}"
     ];
@@ -1406,7 +1424,7 @@
       }
       for (const field of fields) {
         const chip = document.createElement("code");
-        chip.textContent = field.kind === "text" ? `{{xlc:ask:${field.name}}}` : `{{xlc:ask:${field.name}${field.kind === "date" ? "|date" : "|" + field.options.join(",")}}}`;
+        chip.textContent = askFieldTag(field);
         paneVars.appendChild(chip);
       }
       if (hasCursor) {

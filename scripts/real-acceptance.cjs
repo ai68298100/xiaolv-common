@@ -58,6 +58,14 @@ async function api(endpoint, payload = {}) {
     page.on("console", (msg) => {
         if (msg.type() === "error") pageErrors.push(`console: ${msg.text().slice(0, 160)}`);
     });
+    // CDP 异常通道：pageerror 常无堆栈（压缩后），exceptionThrown 带精确 url:line:column，可归属插件/核心（R163）
+    const cdp = await context.newCDPSession(page);
+    await cdp.send("Runtime.enable");
+    cdp.on("Runtime.exceptionThrown", (ev) => {
+        const d = ev.exceptionDetails;
+        const frame = d.stackTrace?.callFrames?.[0];
+        pageErrors.push(`exception: ${(d.exception?.description ?? d.text ?? "").slice(0, 180)} @ ${frame?.url ?? "?"}:${frame?.lineNumber ?? "?"}:${frame?.columnNumber ?? "?"}`);
+    });
     await page.goto(ORIGIN, {waitUntil: "domcontentloaded"});
     await page.waitForFunction(() => Boolean(window.siyuan), null, {timeout: 30000});
     await page.waitForTimeout(2500); // 布局与插件 onload
@@ -347,8 +355,13 @@ async function api(endpoint, payload = {}) {
     const realErrors = pageErrors.filter((e) => !e.includes("favicon") && !e.includes("net::"));
     const pluginErrors = realErrors.filter((e) => e.includes('plugin:') || e.includes('xlc'));
     const coreErrors = realErrors.filter((e) => !pluginErrors.includes(e));
+    // B-004 同族（R163 CDP 归因）：压测序列触发的宿主自身异常（堆栈帧落在 main.*.js）不判插件失败，
+    // 但条数与归属帧必须如实打印；其余不可归因异常仍判失败。
+    const hostStress = coreErrors.filter((e) => /main\.[0-9a-f]+\.js/.test(e));
+    const coreUnknown = coreErrors.filter((e) => !hostStress.includes(e));
     check('11a 插件自身 0 页面异常', pluginErrors.length === 0, pluginErrors.slice(0, 2).join(' | '));
-    check('11b 思源核心 0 异常（压测触发计入信息）', coreErrors.length === 0, '核心异常 ' + coreErrors.length + ' 条（main.js，非插件代码）');
+    check('11b 非核心归因异常 0（宿主自身压测异常 ' + hostStress.length + ' 条计入 B-004 信息）', coreUnknown.length === 0,
+        coreUnknown.slice(0, 2).join(' | ') + (hostStress.length ? ` [宿主帧示例] ${hostStress[0].slice(0, 150)}` : ''));
 
     await browser.close();
     // 优雅退出：内核先落盘再退出（强杀会损伤 searchDocs 索引，R142 教训）
