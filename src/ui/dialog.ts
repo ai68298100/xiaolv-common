@@ -527,7 +527,8 @@ export class CommonSearchDialog {
         root.appendChild(intro);
         const steps = document.createElement("ol");
         steps.className = "xlc-guide-list";
-        for (const key of ["usageGuideAdd", "usageGuideSearch", "usageGuideInsert", "usageGuideOrganize"]) {
+        const guideKeys = ["usageGuideAdd", "usageGuideSearch", this.deps.isMobile() ? "usageGuideInsertMobile" : "usageGuideInsert", "usageGuideOrganize"];
+        for (const key of guideKeys) {
             const item = document.createElement("li");
             item.textContent = this.deps.t(key);
             steps.appendChild(item);
@@ -782,6 +783,9 @@ export class CommonSearchDialog {
                     this.emptyMessage = this.deps.t("emptyFavorites");
                 } else if (!query.text.trim() && this.currentScope === "recent") {
                     this.emptyMessage = this.deps.t("emptyRecent");
+                } else if (!query.text.trim() && this.currentScope === "all"
+                    && Boolean(query.itemType || query.tag || query.category)) {
+                    this.emptyMessage = this.deps.t("emptyFiltered");
                 } else if (query.text.trim() && !query.text.trim().startsWith("?") && this.deps.aiEnabled()) {
                     this.emptyMessage = this.deps.t("semanticSuggestion");
                 } else if (total === 0 && !query.text.trim()) {
@@ -878,13 +882,28 @@ export class CommonSearchDialog {
                 hint.textContent = this.deps.t("emptyLibrarySub");
                 empty.appendChild(hint);
             }
+            if (this.emptyMessage === this.deps.t("emptyFiltered")) {
+                const clear = document.createElement("button");
+                clear.type = "button";
+                clear.className = "b3-button xlc-btn-ghost xlc-empty-action";
+                clear.textContent = this.deps.t("clearFilters");
+                clear.addEventListener("click", () => {
+                    this.deps.setFilters({type: "", tag: "", category: ""});
+                    this.dialog?.element.querySelectorAll<HTMLSelectElement>(".xlc-type-select, .xlc-tag-select, .xlc-category-select")
+                        .forEach((select) => { select.value = ""; });
+                    void this.refresh();
+                });
+                empty.appendChild(clear);
+            }
             // 搜索无命中时同样提供下一步，避免用户只能返回其他入口再新建。
             // 空库分支沿用既有按钮；收藏/最近空态不显示，防止动作与当前范围语义冲突。
-            if (this.emptyMessage === this.deps.t("emptyLibrary") || this.lastQueryText.trim()) {
+            if (this.emptyMessage === this.deps.t("emptyLibrary")
+                || this.emptyMessage === this.deps.t("emptyFiltered")
+                || this.lastQueryText.trim()) {
                 const create = document.createElement("button");
                 create.type = "button";
                 create.className = "b3-button xlc-btn-primary xlc-empty-action";
-                create.textContent = "＋ " + this.deps.t("newItem");
+                create.textContent = this.deps.t("newItemAction");
                 create.addEventListener("click", () => {
                     const query = this.lastQueryText.trim();
                     const titleCandidate = query && !query.startsWith("?") ? query.slice(0, 120) : undefined;
@@ -1170,6 +1189,8 @@ export class CommonSearchDialog {
             const {entries} = await this.deps.search(query);
             if (seq !== this.searchSeq) return;
             this.results = entries;
+            this.activeProvider = -1;
+            this.activeIndex = Math.min(this.activeIndex, Math.max(0, this.results.length - 1));
         } catch (err) {
             // 静默失败会让「星标已翻转、列表却没变」无解释——状态行诚实报错（R138）
             const status = this.dialog?.element.querySelector<HTMLElement>(".xlc-status");
@@ -1181,6 +1202,7 @@ export class CommonSearchDialog {
         }
         const list = this.dialog?.element.querySelector<HTMLElement>(".xlc-list");
         if (list) this.renderList(list);
+        this.updatePreview();
     }
 
     /** 统一导航位：0..results.length-1 为库条目，之后为提供方行 */
@@ -1406,22 +1428,38 @@ export class CommonSearchDialog {
         // 提供方行：预览直接展示 payload（无内核取用、无来源语义、无变量询问）
         if (this.activeProvider >= 0) {
             const row = this.providerRows[this.activeProvider];
-            if (!row) return;
-            this.lastPreviewId = row.virtualId;
-            paneTitle.textContent = row.title || row.providerName;
-            paneAi.style.display = "none";
-            paneUsage.style.display = "none";
-            paneWarn.style.display = "none";
-            this.paintPaneMeta(undefined);
-            paneBody.classList.remove("xlc-pane-body--muted", "xlc-pane-body--code");
-            this.paintPaneVars(null, "provider");
-            paneBody.textContent = row.payload;
-            return;
+            if (row) {
+                this.lastPreviewId = row.virtualId;
+                paneTitle.textContent = row.title || row.providerName;
+                paneAi.style.display = "none";
+                paneUsage.style.display = "none";
+                paneWarn.style.display = "none";
+                this.paintPaneMeta(undefined);
+                paneBody.classList.remove("xlc-pane-body--muted", "xlc-pane-body--code");
+                this.paintPaneVars(null, "provider");
+                paneBody.textContent = row.payload;
+                return;
+            }
+            this.activeProvider = -1;
         }
         const entry = this.results[this.activeIndex];
         const id = forceId ?? entry?.id ?? null;
         // 元数据行跟活动条目走（含清空态隐藏），先于预览缓存的早退执行
         this.paintPaneMeta(entry);
+        if (!id) {
+            ++this.previewSeq;
+            this.lastPreviewId = "";
+            paneTitle.textContent = "";
+            paneAi.style.display = "none";
+            paneWarn.style.display = "none";
+            paneUsage.style.display = "none";
+            paneBody.classList.add("xlc-pane-body--muted");
+            paneBody.classList.remove("xlc-pane-body--code");
+            paneBody.textContent = this.deps.t("previewNoResult");
+            paneBody.scrollTop = 0;
+            this.paintPaneVars(null, undefined);
+            return;
+        }
         if (!id || id === this.lastPreviewId) return;
         const seq = ++this.previewSeq;
         this.lastPreviewId = id;
@@ -1691,7 +1729,13 @@ export class CommonSearchDialog {
                             }));
                         }
                         // 文档搜索失败静默降级（关键词保留可重试；Esc 由菜单层处理，R123）
-                    }).catch(() => undefined);
+                    }).catch((err) => {
+                        if (mySeq !== seq) return;
+                        const error = document.createElement("div");
+                        error.className = "xlc-pickdoc-empty xlc-status--error";
+                        error.textContent = this.deps.t("kernelError", err instanceof Error ? err.message : String(err));
+                        sec!.appendChild(error);
+                    });
                 });
                 const actions2 = menu.querySelectorAll(".xlc-menu-sec");
                 actions2[actions2.length - 1]?.before(sec);

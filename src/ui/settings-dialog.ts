@@ -74,7 +74,7 @@ export function openSetupDialog(ctx: SettingsUiContext, opts?: SetupDialogOption
         title: t("setupTitle"),
         content: "",
         width: "min(520px, 92vw)",
-        height: "min(640px, 90vh)", // 固定高：步骤/内容增减不再顶跳弹窗（R146）
+        height: "min(560px, 90vh)", // 固定高：步骤/内容增减不再顶跳弹窗（R146）
     });
     const body = getDialogBody(dialog.element);
     if (!body) return;
@@ -114,7 +114,9 @@ export function openSettingsDialog(ctx: SettingsUiContext): void {
     libStatus.className = "xlc-form-hint";
     const cfg = ctx.getConfig();
     libStatus.textContent = cfg
-        ? (cfg.mode === "notebook" ? t("libModeNotebook", String(cfg.notebookIds.length)) : t("libModeDoc", String(cfg.containerDocIds.length)))
+        ? cfg.mode === "notebook" ? t("libModeNotebook", String(cfg.notebookIds.length))
+            : cfg.mode === "tree" ? t("libModeTree", String(cfg.containerDocIds.length))
+                : t("libModeDoc", String(cfg.containerDocIds.length))
         : t("libraryNone");
     const changeBtn = document.createElement("button");
     changeBtn.className = "b3-button";
@@ -150,6 +152,21 @@ export function openSettingsDialog(ctx: SettingsUiContext): void {
     });
     libSec.appendChild(pickerHost);
     root.appendChild(libSec);
+
+    if (cfg) {
+        const modeLabel = libStatus.textContent ?? "";
+        const setLocation = (location: string): void => { statusText.textContent = `${modeLabel} · ${location}`; };
+        if (cfg.mode === "notebook") {
+            void ctx.library.listNotebooks().then((result) => {
+                if (!result.ok) return;
+                const names = cfg.notebookIds.map((id) => result.data.find((nb) => nb.id === id)?.name ?? id);
+                if (names.length) setLocation(names.join(", "));
+            });
+        } else {
+            const docId = cfg.containerDocIds[0];
+            if (docId) void ctx.library.getDocPath(docId).then((hPath) => { if (hPath) setLocation(hPath); });
+        }
+    }
 
     buildAiSection(ctx, root);
     buildInsertSection(ctx, root);
@@ -435,6 +452,7 @@ function buildStepsEl(current: 1 | 2, caption: string): HTMLElement {
 function buildLibraryPickerSection(ctx: SettingsUiContext, root: HTMLElement, onConfigured: () => void, opts?: {onDismiss?: () => void}): void {
     const t = ctx.t;
     let step: 1 | 2 = 1;
+    let setupRevision = 0;
     let pickedDoc: {id: string; hPath: string} | null = null;
 
     const stepsEl = buildStepsEl(1, t("setupStep1"));
@@ -451,6 +469,10 @@ function buildLibraryPickerSection(ctx: SettingsUiContext, root: HTMLElement, on
     usageGuide.style.whiteSpace = "pre-line";
     usageGuide.textContent = t("setupUsageGuide");
     root.appendChild(usageGuide);
+    const recommendation = document.createElement("p");
+    recommendation.className = "xlc-form-hint xlc-setup-recommendation";
+    recommendation.textContent = t("setupRecommendation");
+    root.appendChild(recommendation);
 
     // ---- 第 1 步：选库方式 ----
     const step1 = document.createElement("div");
@@ -464,7 +486,8 @@ function buildLibraryPickerSection(ctx: SettingsUiContext, root: HTMLElement, on
     modeSelect.className = "b3-select";
     modeSelect.id = "xlc-setup-mode";
     modeLabel.htmlFor = modeSelect.id;
-    const modes: Array<{v: "doc" | "tree" | "notebook"; label: string}> = [
+    const modes: Array<{v: "new-doc" | "doc" | "tree" | "notebook"; label: string}> = [
+        {v: "new-doc", label: t("setupCreateNewDoc")},
         {v: "doc", label: t("setupPickDoc")},
         {v: "tree", label: t("setupPickDocTree")},
         {v: "notebook", label: t("setupNotebook")},
@@ -475,6 +498,8 @@ function buildLibraryPickerSection(ctx: SettingsUiContext, root: HTMLElement, on
         opt.textContent = m.label;
         modeSelect.appendChild(opt);
     }
+    const existingConfig = ctx.getConfig();
+    if (existingConfig) modeSelect.value = existingConfig.mode;
     modeWrap.appendChild(modeSelect);
     step1.appendChild(modeWrap);
 
@@ -491,41 +516,71 @@ function buildLibraryPickerSection(ctx: SettingsUiContext, root: HTMLElement, on
     pickerWrap.appendChild(pickerList);
     step1.appendChild(pickerWrap);
     let pickerSeq = 0;
-    pickerInput.addEventListener("input", () => {
+    const currentDocId = existingConfig?.mode !== "notebook" ? existingConfig?.containerDocIds[0] : undefined;
+    const showDocPickerMessage = (message: string, retry?: () => void): void => {
+        pickerList.textContent = "";
+        const status = document.createElement("div");
+        status.className = "xlc-doclist-empty";
+        status.setAttribute("role", "status");
+        status.setAttribute("aria-live", "polite");
+        status.textContent = message;
+        pickerList.appendChild(status);
+        if (retry) {
+            const retryBtn = document.createElement("button");
+            retryBtn.type = "button";
+            retryBtn.className = "b3-button xlc-btn-ghost xlc-doclist-retry";
+            retryBtn.textContent = t("retry");
+            retryBtn.addEventListener("click", retry);
+            pickerList.appendChild(retryBtn);
+        }
+    };
+    const searchPickerDocs = (keyword: string): void => {
         const seq = ++pickerSeq;
-        const k = pickerInput.value.trim();
         pickerList.innerHTML = "";
+        pickerList.removeAttribute("aria-busy");
         pickedDoc = null;
-        if (!k) return;
-        void ctx.library.searchDocs(k).then((result) => {
+        syncNextState();
+        if (!keyword) return;
+        pickerList.setAttribute("aria-busy", "true");
+        showDocPickerMessage(t("loading"));
+        void ctx.library.searchDocs(keyword).then((result) => {
             if (seq !== pickerSeq) return;
+            pickerList.removeAttribute("aria-busy");
             if (!result.ok || result.data.length === 0) {
-                const empty = document.createElement("div");
-                empty.className = "xlc-doclist-empty";
-                empty.textContent = result.ok ? t("docPickerEmpty") : t("kernelError", result.message);
-                pickerList.appendChild(empty);
+                const message = result.ok ? t("docPickerEmpty") : t("kernelError", result.message);
+                showDocPickerMessage(message, result.ok ? undefined : () => {
+                    if (pickerInput.value.trim() === keyword) searchPickerDocs(keyword);
+                });
                 return;
             }
+            pickerList.textContent = "";
             for (const hit of result.data.slice(0, 8)) {
                 const item = document.createElement("button");
                 item.type = "button";
                 item.className = "xlc-doclist-item";
                 item.textContent = hit.hPath || hit.name || hit.id;
+                if (hit.id === currentDocId) {
+                    pickedDoc = {id: hit.id, hPath: hit.hPath};
+                    item.classList.add("xlc-doclist-item--on");
+                }
                 item.addEventListener("click", () => {
                     pickedDoc = {id: hit.id, hPath: hit.hPath};
                     pickerList.querySelectorAll(".xlc-doclist-item").forEach((el) => el.classList.remove("xlc-doclist-item--on"));
                     item.classList.add("xlc-doclist-item--on");
+                    syncNextState();
                 });
                 pickerList.appendChild(item);
             }
+            syncNextState();
         }).catch((err) => {
             if (seq !== pickerSeq) return;
-            const empty = document.createElement("div");
-            empty.className = "xlc-doclist-empty";
-            empty.textContent = t("kernelError", (err as Error).message);
-            pickerList.appendChild(empty);
+            pickerList.removeAttribute("aria-busy");
+            showDocPickerMessage(t("kernelError", err instanceof Error ? err.message : String(err)), () => {
+                if (pickerInput.value.trim() === keyword) searchPickerDocs(keyword);
+            });
         });
-    });
+    };
+    pickerInput.addEventListener("input", () => searchPickerDocs(pickerInput.value.trim()));
 
     // notebook：笔记本下拉
     const nbWrap = document.createElement("div");
@@ -538,30 +593,169 @@ function buildLibraryPickerSection(ctx: SettingsUiContext, root: HTMLElement, on
     const nbSelect = document.createElement("select");
     nbSelect.className = "b3-select";
     nbSelect.id = "xlc-setup-notebook";
+    nbSelect.disabled = true;
+    if (existingConfig?.mode === "notebook" && existingConfig.notebookIds[0]) {
+        nbSelect.dataset.currentNotebook = existingConfig.notebookIds[0];
+    }
     nbLabel.htmlFor = nbSelect.id;
     nbWrap.appendChild(nbSelect);
+    const nbStatus = document.createElement("p");
+    nbStatus.className = "xlc-form-hint xlc-setup-notebook-status";
+    nbStatus.textContent = t("setupNotebookLoading");
+    nbWrap.appendChild(nbStatus);
+    const retryNotebooksBtn = document.createElement("button");
+    retryNotebooksBtn.type = "button";
+    retryNotebooksBtn.className = "b3-button xlc-btn-ghost xlc-setup-notebook-retry";
+    retryNotebooksBtn.textContent = t("retry");
+    retryNotebooksBtn.style.display = "none";
+    nbWrap.appendChild(retryNotebooksBtn);
     step1.appendChild(nbWrap);
-    void ctx.library.listNotebooks().then((result) => {
-        if (!result.ok) {
-            ctx.notify("error", t("kernelError", result.message));
+    let notebooksLoaded = false;
+    let notebooksLoading = false;
+    let notebookDocsChecking = false;
+    let checkedNotebookId = "";
+    let notebookDocsState: "unchecked" | "ready" | "empty" | "error" = "unchecked";
+    const loadNotebooks = (force = false): void => {
+        if ((!force && notebooksLoaded) || notebooksLoading) return;
+        notebooksLoading = true;
+        notebooksLoaded = false;
+        nbSelect.disabled = true;
+        nbStatus.textContent = t("setupNotebookLoading");
+        retryNotebooksBtn.style.display = "none";
+        retryNotebookAction = () => { void loadNotebooks(true); };
+        void ctx.library.listNotebooks().then((result) => {
+            nbSelect.textContent = "";
+            if (!result.ok) {
+                return;
+            }
+            if (result.data.length === 0) {
+                notebooksLoaded = true;
+                return;
+            }
+            const choose = document.createElement("option");
+            choose.value = "";
+            choose.textContent = t("setupChooseNotebook");
+            choose.disabled = true;
+            nbSelect.appendChild(choose);
+            for (const nb of result.data) {
+                const opt = document.createElement("option");
+                opt.value = nb.id;
+                opt.textContent = nb.name;
+                nbSelect.appendChild(opt);
+            }
+            nbSelect.value = nbSelect.dataset.currentNotebook && result.data.some((nb) => nb.id === nbSelect.dataset.currentNotebook)
+                ? nbSelect.dataset.currentNotebook
+                : "";
+            notebooksLoaded = true;
+            nbSelect.disabled = false;
+        }).catch(() => {
+        }).finally(() => {
+            notebooksLoading = false;
+            renderNotebookStatus();
+            syncCreateState();
+            syncNextState();
+        });
+    };
+    let retryNotebookAction = (): void => { void loadNotebooks(true); };
+    retryNotebooksBtn.addEventListener("click", () => retryNotebookAction());
+    const renderNotebookStatus = (): void => {
+        const selectedId = nbSelect.value;
+        if (notebooksLoading) {
+            nbStatus.textContent = t("setupNotebookLoading");
+            retryNotebooksBtn.style.display = "none";
             return;
         }
-        for (const nb of result.data) {
-            const opt = document.createElement("option");
-            opt.value = nb.id;
-            opt.textContent = nb.name;
-            nbSelect.appendChild(opt);
+        if (!notebooksLoaded) {
+            nbStatus.textContent = t("setupNotebookLoadFailed");
+            retryNotebooksBtn.style.display = "";
+            retryNotebookAction = () => { void loadNotebooks(true); };
+            return;
         }
-    }).catch((err) => {
-        ctx.notify("error", t("kernelError", (err as Error).message));
-    });
-    const syncModeUi = (): void => {
-        const notebook = modeSelect.value === "notebook";
-        pickerWrap.style.display = notebook ? "none" : "";
-        nbWrap.style.display = notebook ? "" : "none";
+        if (nbSelect.options.length <= 1) {
+            nbStatus.textContent = t("setupNotebookEmpty");
+            retryNotebooksBtn.style.display = "";
+            retryNotebookAction = () => { void loadNotebooks(true); };
+            return;
+        }
+        if (modeSelect.value !== "notebook" || !selectedId) {
+            nbStatus.textContent = t("setupNotebookReady");
+            retryNotebooksBtn.style.display = "none";
+            return;
+        }
+        if (notebookDocsChecking) {
+            nbStatus.textContent = t("setupNotebookDocsChecking");
+            retryNotebooksBtn.style.display = "none";
+            return;
+        }
+        if (checkedNotebookId !== selectedId || notebookDocsState === "unchecked") {
+            nbStatus.textContent = t("setupNotebookNeedsDocsCheck");
+            retryNotebooksBtn.style.display = "none";
+            return;
+        }
+        if (notebookDocsState === "ready") {
+            nbStatus.textContent = t("setupNotebookDocsReady");
+            retryNotebooksBtn.style.display = "none";
+            return;
+        }
+        nbStatus.textContent = notebookDocsState === "empty" ? t("setupNotebookNoDocs") : t("setupNotebookDocsCheckFailed");
+        retryNotebooksBtn.style.display = "";
+        retryNotebookAction = () => {
+            const notebookId = nbSelect.value;
+            const revision = setupRevision;
+            void verifyNotebookHasDocs(notebookId).then((valid) => {
+                if (valid && setupRevision === revision && modeSelect.value === "notebook" && nbSelect.value === notebookId) gotoStep(2);
+            });
+        };
     };
-    modeSelect.addEventListener("change", syncModeUi);
-    syncModeUi();
+    async function verifyNotebookHasDocs(notebookId: string): Promise<boolean> {
+        if (notebookDocsChecking || !notebookId) return false;
+        notebookDocsChecking = true;
+        checkedNotebookId = notebookId;
+        notebookDocsState = "unchecked";
+        nbSelect.disabled = true;
+        renderNotebookStatus();
+        try {
+            const result = await ctx.library.listNotebookDocs(notebookId);
+            if (!result.ok) {
+                notebookDocsState = "error";
+                ctx.notify("error", t("kernelError", result.message));
+                return false;
+            }
+            if (result.data.length === 0) {
+                notebookDocsState = "empty";
+                ctx.notify("error", t("setupNotebookNoDocs"));
+                return false;
+            }
+            notebookDocsState = "ready";
+            return true;
+        } catch (err) {
+            notebookDocsState = "error";
+            ctx.notify("error", t("kernelError", err instanceof Error ? err.message : String(err)));
+            return false;
+        } finally {
+            notebookDocsChecking = false;
+            nbSelect.disabled = !notebooksLoaded || nbSelect.options.length <= 1;
+            renderNotebookStatus();
+            syncCreateState();
+            syncNextState();
+        }
+    }
+    const syncModeUi = (): void => {
+        const mode = modeSelect.value;
+        const needsNotebook = mode === "notebook" || mode === "new-doc";
+        pickerWrap.style.display = mode === "doc" || mode === "tree" ? "" : "none";
+        nbWrap.style.display = needsNotebook ? "" : "none";
+        nameWrap.style.display = mode === "new-doc" ? "" : "none";
+        nbLabel.textContent = mode === "new-doc" ? t("setupCreateNotebook") : t("setupNotebook");
+        if (needsNotebook) loadNotebooks();
+        renderNotebookStatus();
+        syncCreateState();
+        syncNextState();
+    };
+    modeSelect.addEventListener("change", () => {
+        setupRevision++;
+        syncModeUi();
+    });
 
     // 新建库文档（立即动作：confirm → 创建 → 配置落地）
     const nameWrap = document.createElement("div");
@@ -582,6 +776,8 @@ function buildLibraryPickerSection(ctx: SettingsUiContext, root: HTMLElement, on
     createBtn.className = "b3-button";
     createBtn.style.whiteSpace = "nowrap";
     createBtn.textContent = t("create");
+    createBtn.disabled = true;
+    let creatingLibrary = false;
     createBtn.addEventListener("click", () => {
         const notebookId = nbSelect.value;
         const title = nameInput.value.trim();
@@ -589,15 +785,25 @@ function buildLibraryPickerSection(ctx: SettingsUiContext, root: HTMLElement, on
             ctx.notify("error", t("invalidItem"));
             return;
         }
+        const revision = setupRevision;
         // 创建前明确确认（不静默写入）；执行期飞行态防重入——并发创建会产生孤儿库文档（R138）
         confirm("⚠️ " + t("setupTitle"), t("setupConfirmCreate", title), () => {
-            if (createBtn.disabled) return;
-            createBtn.disabled = true;
+            if (creatingLibrary || setupRevision !== revision || modeSelect.value !== "new-doc" || nbSelect.value !== notebookId || nameInput.value.trim() !== title) return;
+            creatingLibrary = true;
+            modeSelect.disabled = true;
+            nbSelect.disabled = true;
+            nameInput.disabled = true;
             createBtn.textContent = t("saving");
+            syncCreateState();
             void ctx.library.createLibraryDoc(notebookId, title).then((result) => {
-                createBtn.disabled = false;
+                creatingLibrary = false;
+                modeSelect.disabled = false;
+                nbSelect.disabled = !notebooksLoaded || nbSelect.options.length <= 1;
+                nameInput.disabled = false;
                 createBtn.textContent = t("create");
+                syncCreateState();
                 if (!result.ok) {
+                    nbStatus.textContent = t("kernelError", result.message);
                     ctx.notify("error", t("kernelError", result.message));
                     return;
                 }
@@ -612,8 +818,12 @@ function buildLibraryPickerSection(ctx: SettingsUiContext, root: HTMLElement, on
                 ctx.notify("info", t("libDocCreated", title));
                 onConfigured();
             }).catch((err) => {
-                createBtn.disabled = false;
+                creatingLibrary = false;
+                modeSelect.disabled = false;
+                nbSelect.disabled = !notebooksLoaded || nbSelect.options.length <= 1;
+                nameInput.disabled = false;
                 createBtn.textContent = t("create");
+                syncCreateState();
                 ctx.notify("error", t("kernelError", (err as Error).message));
             });
         });
@@ -621,6 +831,19 @@ function buildLibraryPickerSection(ctx: SettingsUiContext, root: HTMLElement, on
     nameRow.appendChild(createBtn);
     nameWrap.appendChild(nameRow);
     step1.appendChild(nameWrap);
+
+    function syncCreateState(): void {
+        createBtn.disabled = creatingLibrary || modeSelect.value !== "new-doc" || !notebooksLoaded || !nbSelect.value || !nameInput.value.trim();
+    }
+    nbSelect.addEventListener("change", () => {
+        setupRevision++;
+        checkedNotebookId = "";
+        notebookDocsState = "unchecked";
+        renderNotebookStatus();
+        syncCreateState();
+        syncNextState();
+    });
+    nameInput.addEventListener("input", syncCreateState);
 
     const step1Actions = document.createElement("div");
     step1Actions.className = "xlc-form-actions";
@@ -634,20 +857,40 @@ function buildLibraryPickerSection(ctx: SettingsUiContext, root: HTMLElement, on
     const nextBtn = document.createElement("button");
     nextBtn.className = "b3-button xlc-btn-primary";
     nextBtn.textContent = t("setupNext");
+    nextBtn.disabled = true;
     nextBtn.addEventListener("click", () => {
         const mode = modeSelect.value as LibraryConfig["mode"];
         if (mode === "notebook" && !nbSelect.value) {
-            ctx.notify("error", t("pickNotebookFirst"));
+            ctx.notify("error", nbSelect.disabled ? t("setupNotebookNotReady") : t("pickNotebookFirst"));
             return;
         }
         if (mode !== "notebook" && !pickedDoc) {
             ctx.notify("error", t("pickDocFirst"));
             return;
         }
+        if (mode === "notebook") {
+            const notebookId = nbSelect.value;
+            const revision = setupRevision;
+            nextBtn.disabled = true;
+            void verifyNotebookHasDocs(notebookId).then((valid) => {
+                if (valid && setupRevision === revision && modeSelect.value === "notebook" && nbSelect.value === notebookId) gotoStep(2);
+            }).finally(() => syncNextState());
+            return;
+        }
         gotoStep(2);
     });
     step1Actions.appendChild(nextBtn);
     step1.appendChild(step1Actions);
+    function syncNextState(): void {
+        const mode = modeSelect.value;
+        const rootCheckFailed = checkedNotebookId === nbSelect.value
+            && (notebookDocsState === "empty" || notebookDocsState === "error");
+        nextBtn.style.display = mode === "new-doc" ? "none" : "";
+        nextBtn.disabled = mode === "notebook"
+            ? !notebooksLoaded || !nbSelect.value || notebookDocsChecking || rootCheckFailed
+            : mode === "new-doc" || !pickedDoc;
+    }
+    syncModeUi();
     root.appendChild(step1);
 
     // ---- 第 2 步：确认落点 ----
@@ -679,15 +922,27 @@ function buildLibraryPickerSection(ctx: SettingsUiContext, root: HTMLElement, on
                 ctx.notify("error", t("invalidItem"));
                 return;
             }
-            ctx.applyConfig({
-                configVersion: CONFIG_VERSION,
-                mode: "notebook",
-                notebookIds: [notebookId],
-                containerDocIds: [],
-                createdDocIds: [],
-                configuredAt: Date.now(),
+            const revision = setupRevision;
+            finishBtn.disabled = true;
+            void verifyNotebookHasDocs(notebookId).then((valid) => {
+                if (setupRevision !== revision || step !== 2 || modeSelect.value !== "notebook" || nbSelect.value !== notebookId) return;
+                if (!valid) {
+                    gotoStep(1);
+                    return;
+                }
+                ctx.applyConfig({
+                    configVersion: CONFIG_VERSION,
+                    mode: "notebook",
+                    notebookIds: [notebookId],
+                    containerDocIds: [],
+                    createdDocIds: [],
+                    configuredAt: Date.now(),
+                });
+                onConfigured();
+            }).finally(() => {
+                finishBtn.disabled = false;
+                syncNextState();
             });
-            onConfigured();
             return;
         }
         if (!pickedDoc) {
@@ -726,13 +981,16 @@ function buildLibraryPickerSection(ctx: SettingsUiContext, root: HTMLElement, on
         text.appendChild(titleEl);
         const desc = document.createElement("span");
         desc.className = "xlc-policy-desc";
-        desc.textContent = mode === "notebook" ? t("setupSummaryNotebook") : t("setupSummaryDoc");
+        desc.textContent = mode === "notebook"
+            ? t("setupSummaryNotebook")
+            : mode === "tree" ? t("setupSummaryTree") : t("setupSummaryDoc");
         text.appendChild(desc);
         card.appendChild(text);
         summaryWrap.appendChild(card);
     }
 
     function gotoStep(next: 1 | 2): void {
+        setupRevision++;
         step = next;
         stepsEl.remove();
         root.insertBefore(buildStepsEl(step, step === 1 ? t("setupStep1") : t("setupStep2")), root.firstChild);
@@ -740,6 +998,18 @@ function buildLibraryPickerSection(ctx: SettingsUiContext, root: HTMLElement, on
         hint.style.display = step === 1 ? "" : "none";
         step2.style.display = step === 2 ? "" : "none";
         if (step === 2) paintSummary();
+    }
+
+    if (existingConfig && existingConfig.mode !== "notebook") {
+        const currentDoc = existingConfig.containerDocIds[0];
+        if (currentDoc) {
+            void ctx.library.getDocPath(currentDoc).then((hPath) => {
+                if (!hPath || pickerInput.value) return;
+                const pathParts = hPath.split("/").filter(Boolean);
+                pickerInput.value = pathParts[pathParts.length - 1] ?? hPath;
+                pickerInput.dispatchEvent(new Event("input"));
+            });
+        }
     }
 }
 
@@ -861,27 +1131,6 @@ function buildAiSection(ctx: SettingsUiContext, root: HTMLElement): void {
     ctHint.className = "xlc-form-hint";
     ctHint.textContent = t("customTransformHint");
     aiSec.appendChild(ctHint);
-    // 提示词场景包（F7 收尾）：内置模板集一键导入当前库（真实块，可改可再分享）
-    const packRow = document.createElement("div");
-    packRow.className = "xlc-setting-row";
-    const packText = document.createElement("span");
-    packText.className = "xlc-setting-text";
-    packText.textContent = t("promptPackHint");
-    packRow.appendChild(packText);
-    const packBtn = document.createElement("button");
-    packBtn.type = "button";
-    packBtn.className = "b3-button";
-    packBtn.textContent = t("promptPackBtn");
-    packBtn.addEventListener("click", () => {
-        const parsed = parseMarkdownPack(PROMPT_PACK_MD);
-        if (parsed.items.length === 0) {
-            ctx.notify("error", t("importFailed", t("importReasonPackEmpty")));
-            return;
-        }
-        openImportPolicyDialog(ctx, {items: parsed.items, pack: parsed.pack}, parsed.issues, {kind: "markdown-pack", items: parsed.items});
-    });
-    packRow.appendChild(packBtn);
-    aiSec.appendChild(packRow);
     root.appendChild(aiSec);
 }
 
@@ -932,7 +1181,9 @@ function buildDataSection(ctx: SettingsUiContext, root: HTMLElement): void {
     libRow.className = "xlc-form-hint";
     const cfg = ctx.getConfig();
     libRow.textContent = `${t("librarySection")}：${cfg
-        ? (cfg.mode === "notebook" ? t("libModeNotebook", String(cfg.notebookIds.length)) : t("libModeDoc", String(cfg.containerDocIds.length)))
+        ? (cfg.mode === "notebook" ? t("libModeNotebook", String(cfg.notebookIds.length))
+            : cfg.mode === "tree" ? t("libModeTree", String(cfg.containerDocIds.length))
+                : t("libModeDoc", String(cfg.containerDocIds.length)))
         : t("libraryNone")}`;
     dataSec.appendChild(libRow);
     const dataBtns = document.createElement("div");
@@ -979,13 +1230,17 @@ function buildDataSection(ctx: SettingsUiContext, root: HTMLElement): void {
             reindexBtn.textContent = t("reindexBtn");
         });
     });
-    mkBtn(t("clearRecents"), () => {
+    const clearRecentsBtn = mkBtn(ctx.state.recents.length ? t("clearRecents") : t("clearRecentsEmpty"), () => {
+        if (ctx.state.recents.length === 0) return;
         confirm("⚠️ " + t("clearRecents"), t("clearRecentsConfirm"), () => {
             ctx.state.recents = [];
             ctx.persistSoon();
+            clearRecentsBtn.textContent = t("clearRecentsEmpty");
+            clearRecentsBtn.disabled = true;
             ctx.notify("info", t("clearRecentsDone"));
         });
     });
+    clearRecentsBtn.disabled = ctx.state.recents.length === 0;
     if (ctx.state.ai.enabled) {
         const auditBtn = mkBtn("✦ " + t("tagAuditBtn"));
         withFlight(auditBtn, async () => {
@@ -1061,6 +1316,26 @@ function buildDataSection(ctx: SettingsUiContext, root: HTMLElement): void {
     void importBtn;
     void mkBtn(t("espansoImportBtn"), () => openEspansoImportDialog(ctx));
     dataSec.appendChild(dataBtns);
+    const templateRow = document.createElement("div");
+    templateRow.className = "xlc-setting-row xlc-template-import-row";
+    const templateText = document.createElement("span");
+    templateText.className = "xlc-setting-text";
+    templateText.textContent = t("promptPackHint");
+    templateRow.appendChild(templateText);
+    const templateBtn = document.createElement("button");
+    templateBtn.type = "button";
+    templateBtn.className = "b3-button";
+    templateBtn.textContent = t("promptPackBtn");
+    templateBtn.addEventListener("click", () => {
+        const parsed = parseMarkdownPack(PROMPT_PACK_MD);
+        if (parsed.items.length === 0) {
+            ctx.notify("error", t("importFailed", t("importReasonPackEmpty")));
+            return;
+        }
+        openImportPolicyDialog(ctx, {items: parsed.items, pack: parsed.pack}, parsed.issues, {kind: "markdown-pack", items: parsed.items});
+    });
+    templateRow.appendChild(templateBtn);
+    dataSec.appendChild(templateRow);
     root.appendChild(dataSec);
 }
 

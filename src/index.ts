@@ -688,6 +688,7 @@ export default class XiaolvCommonPlugin extends Plugin {
                 try {
                     const inserted = await this.library.appendToDoc(markdown, docId);
                     if (inserted) this.notify("info", this.i18nFn()("insertToDocDone", shortTitle(hPath || docId)));
+                    else this.notify("error", this.i18nFn()("insertToDocFailed"));
                     return inserted;
                 } catch (err) {
                     this.notify("error", (err as Error).message);
@@ -791,6 +792,7 @@ export default class XiaolvCommonPlugin extends Plugin {
                     try {
                         const inserted = await this.library.appendToDoc(rendered, target.docId);
                         if (inserted) this.notify("info", this.i18nFn()("insertToDocDone", shortTitle(target.hPath || target.docId)));
+                        else this.notify("error", this.i18nFn()("insertToDocFailed"));
                         return inserted;
                     } catch (err) {
                         this.notify("error", (err as Error).message);
@@ -800,10 +802,11 @@ export default class XiaolvCommonPlugin extends Plugin {
                 if (this.host.hasActiveEditor()) {
                     const inserted = this.host.insertMarkdown(rendered);
                     if (inserted) this.notify("info", this.i18nFn()("providerInserted"));
+                    else this.notify("error", this.i18nFn()("insertFailed"));
                     return inserted;
                 }
                 const copied = await this.host.writeClipboard(rendered);
-                this.notify("info", this.i18nFn()("insertNoEditor"));
+                this.notify(copied ? "info" : "error", copied ? this.i18nFn()("insertNoEditor") : this.i18nFn()("copyFailed"));
                 return copied;
             },
             copyProviderPayload: async (payload) => {
@@ -904,11 +907,11 @@ export default class XiaolvCommonPlugin extends Plugin {
                 if (!trimmed) return false;
                 if (this.host.hasActiveEditor()) {
                     const inserted = this.host.insertMarkdown(trimmed);
-                    this.notify("info", this.i18nFn()("aiOriginalPreserved"));
+                    this.notify(inserted ? "info" : "error", inserted ? this.i18nFn()("aiOriginalPreserved") : this.i18nFn()("insertFailed"));
                     return inserted;
                 }
                 const copied = await this.host.writeClipboard(trimmed);
-                this.notify("info", this.i18nFn()("insertNoEditor"));
+                this.notify(copied ? "info" : "error", copied ? this.i18nFn()("insertNoEditor") : this.i18nFn()("copyFailed"));
                 return copied;
             },
             copyText: async (text) => {
@@ -972,12 +975,18 @@ export default class XiaolvCommonPlugin extends Plugin {
             },
             editItem: async (itemId) => {
                 const got = await this.library.getItem(itemId);
-                if (!got.ok) return;
+                if (!got.ok) {
+                    this.notify("error", got.message);
+                    return;
+                }
                 this.openEditDialog(got.data);
             },
             deleteItem: async (itemId) => {
                 const got = await this.library.getItem(itemId);
-                if (!got.ok) return;
+                if (!got.ok) {
+                    this.notify("error", got.message);
+                    return;
+                }
                 confirmDelete(this.i18nFn(), got.data.title, async () => {
                     const removed = await this.library.removeItem(itemId);
                     if (removed.ok) {

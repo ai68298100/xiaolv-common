@@ -191,3 +191,23 @@ test("notebook 模式：笔记本没有文档时明确拒绝写入", async () =>
     assert.equal(result.ok, false);
     assert.equal(result.reason, "invalid-input");
 });
+
+test("notebook 首跑：列出可用一级文档供空库前置检查", async () => {
+    const {service, kernel} = makeService({
+        listDocsByPath: ({path}) => path === "/" ? {files: [
+            {id: B1, name: "常用内容库"},
+            {id: "bad-id", name: "忽略非法 ID"},
+        ]} : {files: []},
+    });
+    const result = await service.listNotebookDocs("20240101120008-nbook01");
+    assert.equal(result.ok, true);
+    assert.deepEqual(result.data, [{id: B1, name: "常用内容库"}]);
+    assert.ok(kernel.calls.some((call) => call.endpoint === "listDocsByPath" && call.payload.path === "/"));
+});
+
+test("notebook 首跑：无效笔记本 ID 被拒且不请求内核", async () => {
+    const {service, kernel} = makeService();
+    const result = await service.listNotebookDocs("");
+    assert.equal(result.ok, false);
+    assert.equal(kernel.calls.length, 0);
+});

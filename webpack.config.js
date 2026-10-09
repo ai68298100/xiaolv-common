@@ -12,6 +12,7 @@ const pluginManifest = require("./plugin.json");
 const packageFilePatterns = [
     "plugin.json",
     "README.md",
+    "LICENSE",
     "icon.png",
     "preview.png",
 ].concat(Object.values(pluginManifest.readme || {})).map((name) => ({
@@ -38,7 +39,7 @@ module.exports = (env, argv) => {
     if (production) {
         plugins.push(new ZipPlugin({
             filename: "package.zip",
-            include: [/\.js$/, /\.css$/, /\.json$/, /\.md$/, /\.png$/, /\.html$/],
+            include: [/\.js$/, /\.css$/, /\.json$/, /\.md$/, /\.png$/, /\.html$/, /^LICENSE$/],
         }));
     }
     return {

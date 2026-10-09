@@ -223,6 +223,7 @@ export class CaptureDialog {
         let closed = false;
         let saving = false;
         let tidySeq = 0;
+        let draftSeq = 0;
         const dialog = new Dialog({
             title: t("newItem"),
             content: "",
@@ -231,6 +232,7 @@ export class CaptureDialog {
             destroyCallback: () => {
                 closed = true;
                 ++tidySeq;
+                ++draftSeq;
             },
         });
         const body = getDialogBody(dialog.element);
@@ -350,20 +352,26 @@ export class CaptureDialog {
                 tidyBtn.className = "xlc-form-ai";
                 tidyBtn.type = "button";
                 tidyBtn.textContent = "✦ " + t("aiTidy");
+                let tidyBusy = false;
+                const syncTidyButton = (): void => { tidyBtn.disabled = tidyBusy || !(contentEl as HTMLTextAreaElement).value.trim(); };
+                contentEl.addEventListener("input", syncTidyButton);
+                syncTidyButton();
                 tidyBtn.addEventListener("click", () => {
-                    if (closed) return;
+                    if (closed || tidyBusy) return;
                     const value = (contentEl as HTMLTextAreaElement).value.trim();
                     if (!value) {
                         this.deps.notify("error", t("invalidItem"));
                         return;
                     }
                     const request = ++tidySeq;
-                    tidyBtn.disabled = true;
+                    tidyBusy = true;
+                    syncTidyButton();
                     tidyBtn.textContent = t("aiWorking");
                     void this.deps.aiTidy(value).then((result) => {
                         if (closed || request !== tidySeq) return;
                         tidyBtn.textContent = "✦ " + t("aiTidy");
-                        tidyBtn.disabled = false;
+                        tidyBusy = false;
+                        syncTidyButton();
                         if (!result.ok) {
                             this.deps.notify("error", result.message);
                             return;
@@ -392,7 +400,8 @@ export class CaptureDialog {
                     }).catch((err: unknown) => {
                         if (closed || request !== tidySeq) return;
                         tidyBtn.textContent = "✦ " + t("aiTidy");
-                        tidyBtn.disabled = false;
+                        tidyBusy = false;
+                        syncTidyButton();
                         this.deps.notify("error", err instanceof Error ? err.message : t("aiTransport"));
                     });
                 });
@@ -415,19 +424,29 @@ export class CaptureDialog {
             draftInput.className = "b3-text-field";
             draftInput.placeholder = t("aiDraftDesc");
             draftWrap.appendChild(draftInput);
+            let draftBusy = false;
+            draftBtn.disabled = true;
+            const syncDraftButton = (): void => { draftBtn.disabled = draftBusy || !draftInput.value.trim(); };
+            draftInput.addEventListener("input", syncDraftButton);
             draftBtn.addEventListener("click", () => {
-                if (closed) return;
+                if (closed || draftBusy) return;
                 const desc = draftInput.value.trim();
-                if (!desc) return;
+                if (!desc) {
+                    this.deps.notify("error", t("aiDraftNeedDescription"));
+                    draftInput.focus();
+                    return;
+                }
                 // 防重入 + 代次守卫：连点/慢响应不得并发覆盖（对齐 AI 整理按钮，R138）
                 if (draftBtn.disabled) return;
-                draftBtn.disabled = true;
-                const request = ++tidySeq;
+                draftBusy = true;
+                syncDraftButton();
+                const request = ++draftSeq;
                 draftBtn.textContent = t("aiWorking");
                 void this.deps.aiDraft(desc).then((result) => {
-                    if (closed || request !== tidySeq) return;
+                    if (closed || request !== draftSeq) return;
                     draftBtn.textContent = "✦ " + t("aiDraftDesc");
-                    draftBtn.disabled = false;
+                    draftBusy = false;
+                    syncDraftButton();
                     if (!result.ok) {
                         this.deps.notify("error", result.message);
                         return;
@@ -444,9 +463,10 @@ export class CaptureDialog {
                     contentBox.value = result.text;
                     contentBox.dispatchEvent(new Event("input", {bubbles: true}));
                 }).catch((err: unknown) => {
-                    if (closed || request !== tidySeq) return;
+                    if (closed || request !== draftSeq) return;
                     draftBtn.textContent = "✦ " + t("aiDraftDesc");
-                    draftBtn.disabled = false;
+                    draftBusy = false;
+                    syncDraftButton();
                     this.deps.notify("error", err instanceof Error ? err.message : t("aiTransport"));
                 });
             });
@@ -461,6 +481,7 @@ export class CaptureDialog {
         cancelBtn.addEventListener("click", () => {
             closed = true;
             ++tidySeq;
+            ++draftSeq;
             dialog.destroy();
         });
         const saveBtn = document.createElement("button");

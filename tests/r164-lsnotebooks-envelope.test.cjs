@@ -19,6 +19,7 @@ test("lsNotebooks：data.notebooks 对象信封（真实内核形状）", async 
         notebooks: [
             {id: "20260101000000-aaaaaaa", name: "XLC验收"},
             {id: "20260101000000-bbbbbbb", name: "&nbsp;（已关闭笔记本名污染）"},
+            {id: "20260101000000-ccccccc", name: "已关闭笔记本", closed: true},
         ],
     }));
     const r = await svc.listNotebooks();

@@ -35,18 +35,20 @@ const T = (key: string, ...args: string[]): string => {
         usageGuideAdd: "增加：点「＋新建」，或从选区、当前块、剪贴板和右键菜单捕获。",
         usageGuideSearch: "找到：搜索标题、正文、标签和分类；也可以用拼音、收藏、最近和常用排序。",
         usageGuideInsert: "使用：Enter 插入，Ctrl/⌘+Enter 复制，Alt+1~9 直达前九条；长按条目可打开更多动作。",
-        usageGuideOrganize: "整理：给条目补上清楚的标题、标签和分类；设置中的模板包提供地址、邮箱、联系方式等示例。",
+        usageGuideInsertMobile: "使用：点按条目插入；长按条目打开更多动作。移动端插入行为尚未在真实思源客户端验证。",
+        emptyFiltered: "当前筛选下没有匹配条目", clearFilters: "清除筛选",
+        usageGuideOrganize: "整理：给条目补上清楚的标题、标签和分类；设置 → 数据与模板可导入邮箱、地址和联系方式示例。",
         usageGuideVariables: "模板规则：{{xlc:ask:字段}} 会在插入前询问；{{xlc:date}}、{{xlc:clipboard}} 等占位符只在调用时展开，原文仍保留。正文保存在思源真实块中，AI 默认关闭。",
         insert: "插入", copy: "复制", openSource: "打开来源", edit: "编辑", delete: "删除",
         insertRef: "插入引用", insertEmbed: "插入嵌入", insertCopy: "复制内容",
-        sourceMissing: "来源失效", sourceGone: "来源块已不存在（原文档被重组）· 打开来源可重新指定", previewUnavailable: "暂无预览",
+        sourceMissing: "来源失效", sourceGone: "来源块已不存在（原文档被重组）· 打开来源可重新指定", previewUnavailable: "暂无预览", previewNoResult: "当前没有可预览的条目",
         aiFound: "AI 命中", aiWorking: "AI 处理中…", aiOriginalPreserved: "原文未被修改",
-        insertNoEditor: "当前没有活动编辑器，已复制到剪贴板，可手动粘贴",
-        kernelError: "思源接口调用失败",
+        insertNoEditor: "当前没有活动编辑器，已复制到剪贴板，可手动粘贴", insertFailed: "插入失败", insertToDocFailed: "目标文档插入失败",
+        kernelError: "思源接口调用失败：%s",
         "tf.polish": "润色", "tf.shorten": "缩短", "tf.formal": "正式化", "tf.translate-en": "译为英文", "tf.bulletize": "列表化",
         more: "返回动作",
-        newItem: "新建条目", save: "保存", saving: "保存中…", cancel: "取消", confirm: "确定", invalidItem: "条目数据无效",
-        aiTidy: "AI 整理", aiDraft: "AI 草稿", aiDraftDesc: "描述你想要的内容，AI 生成草稿", aiApplied: "已应用 AI 建议", aiTransform: "AI 变换",
+        newItem: "新建条目", newItemAction: "＋ 新建条目", save: "保存", saving: "保存中…", cancel: "取消", confirm: "确定", invalidItem: "条目数据无效",
+        aiTidy: "AI 整理", aiDraft: "AI 草稿", aiDraftDesc: "描述你想要的内容，AI 生成草稿", aiDraftNeedDescription: "请先描述想生成的内容", aiApplied: "已应用 AI 建议", aiTransform: "AI 变换",
         saved: "已保存：%s",
         dataTruth: "思源块真源 · 失效可见", adoptAll: "全部采纳", actionsNoun: "动作",
         semanticSuggestion: "没有本地结果。试试 AI 语义搜索：在关键词前加 ?", aiSemanticHint: "输入 ? 加描述，如「?给客户的道歉回复」，AI 在元数据中找最相关条目",
@@ -65,10 +67,10 @@ const T = (key: string, ...args: string[]): string => {
         setupModeLabel: "库方式", setupStep1: "第 1 步 · 选择库方式", setupStep2: "第 2 步 · 确认落点",
         setupNext: "下一步：确认", setupBack: "上一步", setupFinish: "完成设置", setupLater: "稍后再说",
         setupConfirmHint: "创建动作有明确 confirm 提示 · 不动你已有的任何文档；之后可在 设置 → 当前内容库 更改。",
-        setupSummaryDoc: "条目将以真实块保存于此文档", setupSummaryNotebook: "整个笔记本作为内容库",
-        create: "创建",
+        setupSummaryDoc: "条目将以真实块保存于此文档", setupSummaryNotebook: "索引笔记本根目录下一级文档，并写入第一个文档", setupSummaryTree: "索引所选文档及最多 3 层子文档，新增条目写入所选根文档",
+        create: "创建", retry: "重试",
         useCount: "%s 次", quickNew: "＋ 新建", quickInsertSelected: "插入选中",
-        packBtn: "模板包", packExportTitle: "导出 · 模板包", packCategoryLabel: "分类", allCategories: "全部分类",
+        packBtn: "导出模板包", packExportTitle: "导出 · 模板包", packCategoryLabel: "分类", allCategories: "全部分类",
         packNameLabel: "包名称", packNameDefault: "小驴常用（内测版）模板包", packExportBtn: "导出 .md 包", packVarsBadge: "%s 条含变量",
         packContentsHint: "· 条目 Markdown + 元数据（标题/标签/分类）\n· 变量清单（{{xlc:ask:…}} 字段与选项）\n· 资源引用（assets 原样打包）",
         packTrustHint: "他人导入后即为真实思源块，可继续编辑与再分享——分享的是「活的块」，不是文本快照。",
@@ -92,12 +94,13 @@ const T = (key: string, ...args: string[]): string => {
         customTransformCap: "最多 10 个自定义变换", customTransformNewName: "我的变换",
         customTransformHint: "与内置变换并列出现在条目动作菜单 ✦ 区；读取正文遵循「允许 AI 读取完整正文」开关",
         quickCapture: "快速捕获剪贴板为条目", quickCaptureDuplicate: "已存在同文条目「%s」，未重复保存",
-        promptPackBtn: "导入提示词场景包", promptPackHint: "内置 10 个模板：客服回复 / AI 提示词 / 研发写作；导入当前库后可自由修改",
-        dataSection: "数据（导出 / 导入）", librarySection: "当前内容库", libraryNone: "未配置",
-        reindexBtn: "重建索引", clearRecents: "清空最近使用", clearRecentsConfirm: "清空最近使用记录？",
+        promptPackBtn: "导入内置分类模板", promptPackHint: "内置模板会以分类属性保存在当前库文档中",
+        dataSection: "数据与模板（导出 / 导入）", librarySection: "当前内容库", libraryNone: "未配置",
+        reindexBtn: "重建索引", clearRecents: "清空最近使用", clearRecentsEmpty: "暂无最近使用", clearRecentsConfirm: "清空最近使用记录？",
         exportBtn: "导出全部条目 (JSON)", importBtn: "导入 JSON", exportMdBtn: "导出 Markdown 包（含资源）",
         tagAuditBtn: "AI 标签体检",
-        setupTitle: "选择常用内容库", setupHint: "条目将以真实块的形式保存在你选择的文档中（可在思源中正常编辑）。创建新文档前会明确提示，不会静默写入。", setupPickDoc: "选择现有文档", setupNotebook: "按笔记本",
+        setupTitle: "选择常用内容库", setupHint: "条目保存为思源真实块，可在思源中继续编辑。创建新文档前会明确确认。", setupUsageGuide: "开始使用：从面板新建，或从剪贴板捕获；搜索后选择条目，再用操作区插入或复制。模板变量 {{xlc:ask:字段}} 会在使用前询问。", setupRecommendation: "推荐新建一个库文档；分类是条目属性，模板由你确认后导入并保存在该文档。", setupCreateNewDoc: "新建专用库文档（推荐）", setupPickDoc: "选择现有文档", setupNotebook: "按笔记本", setupCreateNotebook: "新建文档所在笔记本",
+        setupChooseNotebook: "请选择笔记本", setupNotebookLoading: "正在读取可用笔记本…", setupNotebookReady: "可用笔记本已加载", setupNotebookNeedsDocsCheck: "选择笔记本后，下一步会检查根目录文档", setupNotebookDocsReady: "根目录文档已检查，可以继续设置内容库", setupNotebookEmpty: "没有可用笔记本", setupNotebookLoadFailed: "笔记本读取失败", setupNotebookNotReady: "笔记本尚未加载完成", setupNotebookNoDocs: "该笔记本根目录没有文档", setupNotebookDocsChecking: "正在检查笔记本根目录文档…", setupNotebookDocsCheckFailed: "检查笔记本根目录失败，可重试",
         setupNewDoc: "创建新库文档", setupNewDocName: "常用内容库", docPicker: "选择库文档", docPickerEmpty: "没有匹配的文档",
         captureHint: "条目将保存为真实思源块 · 变量在插入时询问", captureHintLib: "库：%s", docCount: "%s 个文档",
         emptyLibrary: "内容库还是空的", emptyLibrarySub: "从选区、剪贴板或右键菜单捕获常用内容；也可以直接新建一条",
@@ -105,7 +108,7 @@ const T = (key: string, ...args: string[]): string => {
         // R138 键集（缺失时 T 回落键名，截图/断言会看到裸键）
         kbdEnter: "↩ 插入", kbdCopy: "%s↩ 复制", kbdAltDirect: "⌥1-9 直达", loading: "加载中…",
         truncatedHint: "条目超出索引上限，已截断显示；数据仍安全在库中", copyFailed: "复制失败：无法写入剪贴板",
-        libModeNotebook: "笔记本 × %s", libModeDoc: "文档库 · %s 个文档", setupPickDocTree: "选择现有文档（含子文档）",
+        libModeNotebook: "笔记本 × %s", libModeDoc: "文档库 · %s 个文档", libModeTree: "文档树 · %s 个根文档", setupPickDocTree: "选择现有文档（含子文档）",
         ctDeleteConfirm: "删除自定义变换「%s」？该操作不可恢复。", ctDeleted: "已删除自定义变换「%s」",
         importReasonPackEmpty: "内置包为空", importReasonTooLarge: "文件超出大小上限", importReasonNoMeta: "Markdown 包缺少条目元数据",
         importReasonUnknown: "未知原因", importRunFailed: "导入失败：%s（写入可能已部分完成）", exportEmpty: "当前筛选下没有可导出的条目",
@@ -117,11 +120,14 @@ const T = (key: string, ...args: string[]): string => {
     return text;
 };
 
-function makeDeps(overrides: {aiEnabled?: boolean; missing?: boolean; mobile?: boolean; empty?: boolean; filters?: {type: string; tag: string; category: string}} = {}) {
+function makeDeps(overrides: {aiEnabled?: boolean; missing?: boolean; mobile?: boolean; empty?: boolean; filters?: {type: string; tag: string; category: string}; newItemAction?: string} = {}) {
     const aiOn = overrides.aiEnabled ?? true;
+    let activeFilters = {...(overrides.filters ?? {type: "", tag: "", category: ""})};
     return {
-        t: T,
-        search: async (query: string | {text?: string}) => {
+        t: (key: string, ...args: string[]) => key === "newItemAction" && overrides.newItemAction
+            ? overrides.newItemAction
+            : T(key, ...args),
+        search: async (query: string | {text?: string; itemType?: string; tag?: string; category?: string}) => {
             // 查询计数（R118 筛选回填竞态探测用）
             const w = window as unknown as {__xlcSearchCalls?: number};
             w.__xlcSearchCalls = (w.__xlcSearchCalls ?? 0) + 1;
@@ -130,12 +136,17 @@ function makeDeps(overrides: {aiEnabled?: boolean; missing?: boolean; mobile?: b
             // 真实契约：deps.search 收 {text,itemType,tag,…} 查询对象（dialog.ts refresh）。
             const text = typeof query === "string" ? query : query?.text ?? "";
             const q = text.trim();
-            const entries = !q || q.startsWith("?")
+            let entries = !q || q.startsWith("?")
                 ? ENTRIES
                 : ENTRIES.filter((e) => {
                     const hay = [e.title, e.alias, e.summary, e.category, ...(e.tags ?? [])].join(" ").toLowerCase();
                     return hay.includes(q.toLowerCase());
                 });
+            if (typeof query !== "string") {
+                if (query.itemType) entries = entries.filter((entry) => entry.itemType === query.itemType);
+                if (query.tag) entries = entries.filter((entry) => entry.tags?.includes(query.tag ?? ""));
+                if (query.category) entries = entries.filter((entry) => entry.category === query.category);
+            }
             return {entries, truncated: false, total: 128};
         },
         getTags: async () => ["客户沟通", "模板", "开发"],
@@ -166,9 +177,10 @@ function makeDeps(overrides: {aiEnabled?: boolean; missing?: boolean; mobile?: b
         insertToDoc: async () => true,
         duplicateItem: async () => {},
         saveTransformed: async () => {},
-        getFilters: () => overrides.filters ?? {type: "", tag: "", category: ""},
+        getFilters: () => ({...activeFilters}),
         getLibraryName: async () => "/常用内容库",
         setFilters: (filters: {type: string; tag: string; category: string}) => {
+            activeFilters = {...filters};
             const w = window as unknown as {__xlcSetFilters?: Array<{type: string; tag: string; category: string}>};
             (w.__xlcSetFilters ??= []).push({...filters});
         },
@@ -209,7 +221,7 @@ function makeDeps(overrides: {aiEnabled?: boolean; missing?: boolean; mobile?: b
 }
 
 (window as unknown as {XlcHarness: unknown}).XlcHarness = {
-    openDialog(overrides?: {aiEnabled?: boolean; missing?: boolean; scope?: "all" | "favorites"; query?: string; mobile?: boolean; empty?: boolean; insertTarget?: {docId: string; hPath: string}; filters?: {type: string; tag: string; category: string}}): CommonSearchDialog {
+    openDialog(overrides?: {aiEnabled?: boolean; missing?: boolean; scope?: "all" | "favorites"; query?: string; mobile?: boolean; empty?: boolean; insertTarget?: {docId: string; hPath: string}; filters?: {type: string; tag: string; category: string}; newItemAction?: string}): CommonSearchDialog {
         const dialog = new CommonSearchDialog(makeDeps(overrides));
         if (overrides?.insertTarget) dialog.insertTarget = overrides.insertTarget;
         dialog.open();
@@ -221,7 +233,7 @@ function makeDeps(overrides: {aiEnabled?: boolean; missing?: boolean; mobile?: b
         }
         return dialog;
     },
-        openSettings(): void {
+        openSettings(mode: "doc" | "tree" | "notebook" = "doc"): void {
             const ctx: SettingsUiContext = {
             t: T,
             state: {
@@ -233,10 +245,15 @@ function makeDeps(overrides: {aiEnabled?: boolean; missing?: boolean; mobile?: b
                 search: {pinyin: true, placeholders: true},
                 insert: {promptVariables: true, recordUsage: true},
             },
-            getConfig: () => ({configVersion: 1, mode: "doc", notebookIds: [], containerDocIds: ["20240101120001-hijklmn"], createdDocIds: [], configuredAt: 1}),
+            getConfig: () => ({configVersion: 1, mode, notebookIds: mode === "notebook" ? ["20240101"] : [], containerDocIds: mode === "notebook" ? [] : ["20240101120001-hijklmn"], createdDocIds: [], configuredAt: 1}),
             library: {
                 listNotebooks: async () => ({ok: true, data: [{id: "20240101", name: "笔记"}]}),
-                searchDocs: async (k: string) => k ? [{id: "20240101120001-hijklmn", hPath: "/常用内容库", box: "nb", name: "常用内容库"}] : [],
+                listNotebookDocs: async () => ({ok: true, data: [{id: "20240101120001-hijklmn", name: "常用内容库"}]}),
+                createLibraryDoc: async () => ({ok: true, data: {docId: "20240101120001-hijklmn"}}),
+                searchDocs: async (k: string) => k
+                    ? ({ok: true, data: [{id: "20240101120001-hijklmn", hPath: "/常用内容库", box: "nb", name: "常用内容库"}]})
+                    : ({ok: true, data: []}),
+                getDocPath: async () => "/常用内容库",
                 reindex: async () => ({entries: [], items: new Map(), truncated: false, docsScanned: 1, errors: [], builtAt: 1}),
                 ensureIndex: async () => ({
                     entries: ENTRIES.map((e) => ({...e})) as never[],
@@ -266,7 +283,10 @@ function makeDeps(overrides: {aiEnabled?: boolean; missing?: boolean; mobile?: b
         } as unknown as SettingsUiContext;
         openSettingsDialog(ctx);
     },
-    openSetup(): void {
+    openSetup(options?: {emptyNotebook?: boolean; notebookLoadError?: boolean; notebookDocsCheckError?: boolean; notebookDocsDelayMs?: number; docSearchErrorOnce?: boolean; docSearchDelayMs?: number; existingMode?: "doc" | "tree" | "notebook"}): void {
+        let notebookRequests = 0;
+        let notebookDocRequests = 0;
+        let docSearchRequests = 0;
         const ctx: SettingsUiContext = {
             t: T,
             state: {
@@ -276,16 +296,40 @@ function makeDeps(overrides: {aiEnabled?: boolean; missing?: boolean; mobile?: b
                 providers: [], ai: {enabled: false, shareContent: false}, search: {pinyin: true, placeholders: true},
                 insert: {promptVariables: true, recordUsage: true},
             },
-            getConfig: () => null,
+            getConfig: () => options?.existingMode === "notebook"
+                ? ({configVersion: 1, mode: "notebook", notebookIds: ["20240101"], containerDocIds: [], createdDocIds: [], configuredAt: 1})
+                : options?.existingMode
+                    ? ({configVersion: 1, mode: options.existingMode, notebookIds: [], containerDocIds: ["20240101120001-hijklmn"], createdDocIds: [], configuredAt: 1})
+                    : null,
             library: {
-                listNotebooks: async () => ({ok: true, data: [{id: "20240101", name: "笔记"}]}),
-                searchDocs: async () => [],
+                listNotebooks: async () => {
+                    notebookRequests++;
+                    return options?.notebookLoadError && notebookRequests === 1
+                        ? ({ok: false, reason: "kernel-error", message: "offline"} as const)
+                        : ({ok: true, data: [{id: "20240101", name: "笔记"}]} as const);
+                },
+                listNotebookDocs: async () => {
+                    notebookDocRequests++;
+                    if (options?.notebookDocsDelayMs) await new Promise((resolve) => setTimeout(resolve, options.notebookDocsDelayMs));
+                    if (options?.notebookDocsCheckError && notebookDocRequests === 1) return {ok: false, reason: "kernel-error", message: "offline"} as const;
+                    return {ok: true, data: options?.emptyNotebook ? [] : [{id: "20240101120001-hijklmn", name: "常用内容库"}]} as const;
+                },
+                createLibraryDoc: async () => ({ok: true, data: {docId: "20240101120001-hijklmn"}}),
+                searchDocs: async (k: string) => {
+                    docSearchRequests++;
+                    if (options?.docSearchDelayMs) await new Promise((resolve) => setTimeout(resolve, options.docSearchDelayMs));
+                    if (options?.docSearchErrorOnce && docSearchRequests === 1) return {ok: false, reason: "kernel-error", message: "offline"} as const;
+                    return k
+                        ? ({ok: true, data: [{id: "20240101120001-hijklmn", hPath: "/常用内容库", box: "nb", name: "常用内容库"}]} as const)
+                        : ({ok: true, data: []} as const);
+                },
+                getDocPath: async () => "/常用内容库",
                 reindex: async () => ({entries: [], items: new Map(), truncated: false, docsScanned: 0, errors: [], builtAt: 1}),
             },
             ai: {updateSettings: () => {}, getSettings: () => ({enabled: false, shareContent: false})},
             registry: {list: () => [], listExecutable: () => []},
-            notify: () => {},
-            applyConfig: () => {},
+            notify: (_kind, message) => { document.body.dataset.xlcSetupNotice = message; },
+            applyConfig: (config) => { document.body.dataset.xlcSetupConfig = JSON.stringify(config); },
             persistSoon: () => {},
             exportBundle: async () => "{}",
             importBundleText: async () => ({total: 0, created: 0, skipped: 0, overwritten: 0, renamed: 0, failed: 0, lines: []}),
@@ -296,7 +340,7 @@ function makeDeps(overrides: {aiEnabled?: boolean; missing?: boolean; mobile?: b
         } as unknown as SettingsUiContext;
         openSetupDialog(ctx);
     },
-    openCapture(aiOn = true): void {
+    openCapture(aiOn = true, aiDelayMs = 0): void {
         const capture = new CaptureDialog({
             t: T,
             getSelectionText: () => ({text: "", blockId: null}),
@@ -307,8 +351,14 @@ function makeDeps(overrides: {aiEnabled?: boolean; missing?: boolean; mobile?: b
             getBlockKramdown: async () => "块内容",
             exportDocContent: async () => ({hPath: "/常用内容库", content: "# 内容"}),
             aiEnabled: () => aiOn,
-            aiTidy: async (content: string) => ({ok: true as const, title: "AI 建议 " + content.slice(0, 6), tags: ["AI"]}),
-            aiDraft: async (desc: string) => ({ok: true as const, text: "草稿（" + desc + "）"}),
+            aiTidy: async (content: string) => {
+                if (aiDelayMs) await new Promise((resolve) => setTimeout(resolve, aiDelayMs));
+                return {ok: true as const, title: "AI 建议 " + content.slice(0, 6), tags: ["AI"]};
+            },
+            aiDraft: async (desc: string) => {
+                if (aiDelayMs) await new Promise((resolve) => setTimeout(resolve, aiDelayMs));
+                return {ok: true as const, text: "草稿（" + desc + "）"};
+            },
             findDuplicate: async () => null,
             getLibraryName: async () => "/常用内容库",
         });

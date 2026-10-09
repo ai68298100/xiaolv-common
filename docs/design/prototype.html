@@ -171,6 +171,11 @@ button { font-family: var(--font); cursor: pointer; }
 .row .star { margin-left:auto; color:var(--b3-theme-on-surface); font-size:13px; opacity:.5; }
 .row:hover .star, .row .star.fav { opacity: 1; }
 .row .star.fav { color:#e8a020; }
+.empty-state { min-height:100%; padding:22px; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:10px; text-align:center; color:var(--b3-theme-on-surface); }
+.empty-icon { width:38px; height:38px; display:grid; place-items:center; border:1px solid var(--b3-border-color); border-radius:8px; color:var(--b3-theme-primary); font-size:20px; }
+.empty-state strong { color:var(--b3-theme-on-background); font-size:13px; }
+.empty-state p { margin:0; max-width:250px; font-size:11.5px; line-height:1.65; }
+.empty-actions { display:flex; flex-wrap:wrap; justify-content:center; gap:6px; margin-top:4px; }
 .pane { flex:1; display:flex; flex-direction:column; min-width:0; }
 .pane-head { padding:10px 14px 6px; display:flex; align-items:center; gap:8px; }
 .pane-title { font-weight:600; font-size:13.5px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
@@ -178,6 +183,7 @@ button { font-family: var(--font); cursor: pointer; }
 .t-dark .pane-vars { color:#b49ae0; }
 .pane-vars code { font-family: var(--mono); font-size: 10.5px; background: rgba(150,105,224,.12); border-radius: 4px; padding: 1px 5px; }
 .pane-body { flex:1; overflow:auto; padding: 4px 14px; font-size:12.5px; line-height:1.75; color:var(--b3-theme-on-background); white-space:pre-wrap; }
+.pane-body.empty-preview { display:flex; align-items:center; justify-content:center; color:var(--b3-theme-on-surface); }
 .pane-foot { padding:8px 14px 12px; display:flex; gap:6px; flex-wrap:wrap; }
 .pane-foot .spacer { flex:1; }
 .srcwarn { margin: 4px 14px 8px; padding:6px 10px; border-radius:6px; background:rgba(226,106,80,.08); color:#c2503a; font-size:12px; }
@@ -396,7 +402,7 @@ button { font-family: var(--font); cursor: pointer; }
   <div class="dlg">
     <div class="dlg-head">
       <span class="dlg-title">小驴常用</span>
-      <span class="kbd">↑↓</span><span class="kbd">↩ 插入</span><span class="kbd">⌃↩ 复制</span><span class="kbd">⌥1-9 直达</span><span class="kbd">Esc</span>
+      <span class="kbd">↑↓</span><span class="kbd">↩ 插入</span><span class="kbd">⌃↩ 复制</span><span class="kbd">⌥1-9 直达</span><span class="kbd">Esc</span><button class="btn primary" style="margin-left:auto">＋ 新建</button>
     </div>
     <div class="search"><span class="q">?</span><input value="客户延期" placeholder="搜索常用内容（? 前缀 = AI 语义找）"><span class="search-clear" title="清空搜索">×</span></div>
     <div class="filters">
@@ -464,7 +470,7 @@ button { font-family: var(--font); cursor: pointer; }
 </div>
 <div class="frame t-dark">
   <div class="dlg">
-    <div class="dlg-head"><span class="dlg-title">小驴常用</span><span class="kbd">↑↓</span><span class="kbd">↩ 插入</span><span class="kbd">⌥1-9</span><span class="kbd">Esc</span></div>
+    <div class="dlg-head"><span class="dlg-title">小驴常用</span><span class="kbd">↑↓</span><span class="kbd">↩ 插入</span><span class="kbd">⌥1-9</span><span class="kbd">Esc</span><button class="btn primary" style="margin-left:auto">＋ 新建</button></div>
     <div class="search"><span class="q" style="opacity:.55">?</span><input value="" placeholder="搜索常用内容（? 前缀 = AI 语义找）"></div>
     <div class="filters">
       <button class="chip ai-chip" style="color:var(--b3-theme-primary)">✦ AI 找到的 · 5 条</button>
@@ -501,6 +507,59 @@ button { font-family: var(--font); cursor: pointer; }
       </div>
     </div>
     <div class="dlg-foot"><span class="count">共 128 条</span><span class="claim">AI 由思源 设置→人工智能 提供</span></div>
+  </div>
+</div>
+</div>
+</section>
+
+<!-- ======== 屏 1 空态：未命中与筛选恢复 ======== -->
+<section>
+<h2>屏 1 空态 · 未命中与筛选恢复（顶栏新建入口保持可见）</h2>
+<div class="pair">
+<div class="frame t-light">
+  <div class="dlg">
+    <div class="dlg-head"><span class="dlg-title">小驴常用</span><span class="kbd">↑↓</span><span class="kbd">↩ 插入</span><span class="kbd">⌃↩ 复制</span><span class="kbd">Esc</span><button class="btn primary" style="margin-left:auto">＋ 新建</button></div>
+    <div class="search"><span class="q">?</span><input value="走新材料" placeholder="搜索常用内容（? 前缀 = AI 语义找）"><span class="search-clear">×</span></div>
+    <div class="filters"><button class="chip on">全部类型</button><button class="chip">标签 ▾</button><button class="chip">分类 ▾</button><button class="chip">★ 收藏</button><button class="chip">最近</button></div>
+    <div class="dlg-body">
+      <div class="list">
+        <div class="empty-state">
+          <span class="empty-icon">✦</span>
+          <strong>没有本地结果</strong>
+          <p>可在关键词前加 ? 使用 AI 语义搜索，也可以直接把搜索词作为新条目的标题候选。</p>
+          <div class="empty-actions"><button class="btn primary">＋ 新建“走新材料”</button></div>
+        </div>
+      </div>
+      <div class="pane">
+        <div class="pane-head"><span class="pane-title"></span></div>
+        <div class="pane-body empty-preview">当前没有可预览的条目</div>
+        <div class="pane-foot"><button class="btn primary" disabled style="opacity:.5;cursor:not-allowed">插入</button><button class="btn" disabled style="opacity:.5;cursor:not-allowed">复制</button><span class="spacer"></span><button class="btn ghost" disabled style="opacity:.5;cursor:not-allowed">编辑</button></div>
+      </div>
+    </div>
+    <div class="dlg-foot"><span class="count">共 1 条</span><span class="claim">思源块真源 · 失效可见</span><span class="gear">⚙ 设置</span></div>
+  </div>
+</div>
+<div class="frame t-dark">
+  <div class="dlg">
+    <div class="dlg-head"><span class="dlg-title">小驴常用</span><span class="kbd">↑↓</span><span class="kbd">↩ 插入</span><span class="kbd">Esc</span><button class="btn primary" style="margin-left:auto">＋ 新建</button></div>
+    <div class="search"><span class="q" style="opacity:.55">?</span><input value="" placeholder="搜索常用内容（? 前缀 = AI 语义找）"></div>
+    <div class="filters"><button class="chip on">类型：块引用 ×</button><button class="chip">标签 ▾</button><button class="chip">分类 ▾</button><button class="chip">★ 收藏</button></div>
+    <div class="dlg-body">
+      <div class="list">
+        <div class="empty-state">
+          <span class="empty-icon">✦</span>
+          <strong>当前筛选下没有匹配条目</strong>
+          <p>清除筛选后查看其他条目，或直接新增一条常用内容。</p>
+          <div class="empty-actions"><button class="btn ghost">清除筛选</button><button class="btn primary">＋ 新建条目</button></div>
+        </div>
+      </div>
+      <div class="pane">
+        <div class="pane-head"><span class="pane-title"></span></div>
+        <div class="pane-body empty-preview">当前没有可预览的条目</div>
+        <div class="pane-foot"><button class="btn primary" disabled style="opacity:.5;cursor:not-allowed">插入</button><button class="btn" disabled style="opacity:.5;cursor:not-allowed">复制</button><span class="spacer"></span><button class="btn ghost" disabled style="opacity:.5;cursor:not-allowed">编辑</button></div>
+      </div>
+    </div>
+    <div class="dlg-foot"><span class="count">共 128 条</span><span class="claim">思源块真源 · 失效可见</span><span class="gear">⚙ 设置</span></div>
   </div>
 </div>
 </div>
@@ -697,7 +756,7 @@ button { font-family: var(--font); cursor: pointer; }
     <h3>设置 · 小驴常用</h3>
     <div class="set-card">
       <h4>当前内容库</h4>
-      <div class="set-row"><span class="grow">doc · 1 个文档<div class="sub">条目以真实块保存在库文档中</div></span><button class="btn">更改内容库</button></div>
+      <div class="set-row"><span class="grow">文档库 · 1 个文档<div class="sub">/常用内容库 · 条目以真实块保存在该文档中</div></span><button class="btn">更改内容库</button></div>
     </div>
     <div class="set-card">
       <h4>AI 助手</h4>
@@ -706,7 +765,6 @@ button { font-family: var(--font); cursor: pointer; }
       <div class="set-row" style="margin-top:6px"><span class="grow" style="font-size:11px;font-weight:600;letter-spacing:.4px;color:var(--b3-theme-on-surface)">自定义变换</span></div>
       <div class="set-row"><input class="inp" value="客服话术" style="flex:0 0 88px;padding:4px 8px;font-size:12px"><input class="inp" value="改写为客服话术：" style="flex:1;padding:4px 8px;font-size:12px"><button class="btn ghost">删除</button></div>
       <div class="set-row"><button class="btn" style="font-size:12px">＋ 添加自定义变换</button></div>
-      <div class="set-row"><span class="grow">导入提示词场景包<div class="sub">内置 10 个模板：客服回复 / AI 提示词 / 研发写作</div></span><button class="btn">导入</button></div>
     </div>
     <div class="set-card">
       <h4>变量与插入</h4>
@@ -728,13 +786,14 @@ button { font-family: var(--font); cursor: pointer; }
       <div class="set-row"><span class="badge warn">待重载</span>小驴打卡（v1）</div>
     </div>
     <div class="set-card">
-      <h4>数据（导出 / 导入）</h4>
+      <h4>数据与模板（导出 / 导入）</h4>
       <div class="set-foot">
-        <span class="hint">当前内容库：doc · 1</span>
+        <span class="hint">当前内容库：文档库 · 1</span>
         <button class="btn">重建索引</button><button class="btn">清空最近使用</button>
         <button class="btn ai">✦ AI 标签体检</button>
-        <button class="btn">导出 JSON</button><button class="btn">模板包</button><button class="btn">导入 JSON</button>
+        <button class="btn">导出 JSON</button><button class="btn">导出模板包</button><button class="btn">导入 JSON / Markdown 包</button>
       </div>
+      <div class="set-row"><span class="grow">导入内置分类模板<div class="sub">16 条使用说明、地址、邮箱、联系方式、客服、AI 提示词和研发写作模板；显式导入到当前库文档</div></span><button class="btn">导入</button></div>
     </div>
   </div>
 </div>
@@ -743,12 +802,14 @@ button { font-family: var(--font); cursor: pointer; }
     <h3>设置 · 小驴常用</h3>
     <div class="set-card">
       <h4>当前内容库</h4>
-      <div class="set-row"><span class="grow">doc · 1 个文档</span><button class="btn">更改内容库</button></div>
+      <div class="set-row"><span class="grow">文档库 · 1 个文档<div class="sub">/常用内容库</div></span><button class="btn">更改内容库</button></div>
     </div>
     <div class="set-card">
       <h4>AI 助手</h4>
       <div class="set-row"><span class="grow">启用 AI 助手</span><button class="switch on"></button></div>
       <div class="set-row"><span class="grow">允许 AI 读取条目完整正文</span><button class="switch"></button></div>
+      <div class="set-row" style="margin-top:6px"><span class="grow" style="font-size:11px;font-weight:600;color:var(--b3-theme-on-surface)">自定义变换</span></div>
+      <div class="set-row"><button class="btn" style="font-size:12px">＋ 添加自定义变换</button></div>
     </div>
     <div class="set-card">
       <h4>变量与插入</h4>
@@ -760,11 +821,12 @@ button { font-family: var(--font); cursor: pointer; }
       <div class="set-row"><span class="grow">拼音搜索</span><button class="switch on"></button></div>
     </div>
     <div class="set-card">
-      <h4>数据（导出 / 导入）</h4>
+      <h4>数据与模板（导出 / 导入）</h4>
       <div class="set-foot">
-        <span class="hint">当前内容库：doc · 1</span>
-        <button class="btn">重建索引</button><button class="btn">模板包</button>
+        <span class="hint">当前内容库：文档库 · 1</span>
+        <button class="btn">重建索引</button>
       </div>
+      <div class="set-row"><span class="grow">导入内置分类模板<div class="sub">16 条使用说明、地址、邮箱、联系方式、客服、AI 提示词和研发写作模板；导入前可选择重复处理方式</div></span><button class="btn">导入</button></div>
     </div>
   </div>
 </div>
@@ -781,17 +843,19 @@ button { font-family: var(--font); cursor: pointer; }
       <span class="step-dot on">1</span><span class="step-line"></span><span class="step-dot">2</span>
       <span class="step-cap">第 1 步 · 选择库方式</span>
     </div>
-    <p class="hintline" style="font-size:12px;margin-bottom:14px;line-height:1.7">条目将以真实块的形式保存在你选择的文档中（可在思源中正常编辑、随思源同步）。创建新文档前会明确提示，不会静默写入。</p>
-    <div class="fld"><label>库方式</label><input class="inp" value="选择现有文档" readonly style="background:var(--b3-theme-surface)"></div>
-    <div class="fld"><label>搜索文档</label><input class="inp" value="常用"></div>
-    <div class="policy-list" style="margin-bottom:4px">
-      <button class="policy" style="border-color:var(--b3-theme-primary-light);background:var(--badge-text-bg)"><span style="color:var(--b3-theme-primary)">✓</span><span><span class="p-t">/常用内容库</span><span class="p-d">　根文档 · 0 条目</span></span></button>
-      <button class="policy"><span style="color:var(--b3-theme-on-surface)">○</span><span><span class="p-t">/工作手册/客服话术</span><span class="p-d">　子文档 · 12 条目</span></span></button>
+    <p class="hintline" style="font-size:12px;margin-bottom:6px;line-height:1.6">条目保存为思源真实块，可继续编辑。创建新文档前会明确确认。</p>
+    <p class="hintline" style="font-size:12px;margin-bottom:6px;line-height:1.6">开始使用：从面板新建，或从剪贴板捕获；搜索后选择条目，再用操作区插入或复制。<code>{{xlc:ask:字段}}</code> 会在使用前询问。</p>
+    <p class="hintline" style="font-size:12px;margin-bottom:10px;line-height:1.6;padding:7px 9px;border-left:3px solid var(--b3-theme-primary);background:var(--badge-text-bg);border-radius:4px;color:var(--b3-theme-on-background)">推荐新建一个库文档；分类是条目属性，模板由你确认后导入并保存在该文档。</p>
+    <p class="hintline" style="font-size:12px;margin-bottom:12px;line-height:1.6">创建文档并设为当前内容库前会明确确认；按笔记本索引时，根目录需至少有一个文档。</p>
+    <div class="fld"><label>库方式</label><select class="inp"><option selected>新建专用库文档（推荐）</option><option>选择现有文档</option><option>选择文档树</option><option>按笔记本索引</option></select></div>
+    <div class="fld" style="margin-top:12px"><label>新建文档所在笔记本</label>
+      <select class="inp"><option>请选择笔记本</option><option selected>笔记</option></select>
+      <div class="hintline">笔记本加载失败或列表为空时可重试；创建前需填写标题并确认。</div>
     </div>
-    <div class="fld" style="margin-top:12px"><label>或新建库文档</label>
+    <div class="fld"><label>创建新库文档</label>
       <div style="display:flex;gap:8px"><input class="inp" value="常用内容库"><button class="btn" style="white-space:nowrap">创建</button></div>
     </div>
-    <div class="form-foot"><button class="btn ghost">稍后再说</button><button class="btn primary">下一步：确认</button></div>
+    <div class="form-foot"><button class="btn ghost">稍后再说</button></div>
   </div>
 </div>
 <div class="frame t-dark">
@@ -800,9 +864,9 @@ button { font-family: var(--font); cursor: pointer; }
       <span class="step-dot" style="color:var(--b3-theme-primary)">✓</span><span class="step-line"></span><span class="step-dot on">2</span>
       <span class="step-cap">第 2 步 · 确认落点</span>
     </div>
-    <p class="hintline" style="font-size:12px;margin-bottom:14px;line-height:1.7">将把文档 <b style="color:var(--b3-theme-on-background)">/常用内容库</b>（笔记本「笔记」）设为内容库。之后随时可在 设置 → 当前内容库 更改。</p>
+    <p class="hintline" style="font-size:12px;margin-bottom:14px;line-height:1.7">将把文档 <b style="color:var(--b3-theme-on-background)">/常用内容库</b>（笔记本「笔记」）设为内容库。模板仍需在设置 → 数据与模板中显式导入，分类条目会保存在此文档。之后可在 设置 → 当前内容库 更改。</p>
     <div class="policy-list">
-      <div class="policy" style="cursor:default"><span style="color:var(--b3-theme-primary)">✓</span><span><span class="p-t">/常用内容库</span><span class="p-d">　将创建 · 条目以真实块保存于此</span></span></div>
+      <div class="policy" style="cursor:default"><span style="color:var(--b3-theme-primary)">✓</span><span><span class="p-t">/常用内容库</span><span class="p-d">　条目与各分类模板以真实块保存在此文档</span></span></div>
     </div>
     <div class="hintline" style="margin-top:12px">创建动作有明确 confirm 提示 · 不动你已有的任何文档</div>
     <div class="form-foot"><button class="btn ghost">上一步</button><button class="btn primary">完成设置</button></div>

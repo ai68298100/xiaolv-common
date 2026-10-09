@@ -826,7 +826,8 @@
       root.appendChild(intro);
       const steps = document.createElement("ol");
       steps.className = "xlc-guide-list";
-      for (const key of ["usageGuideAdd", "usageGuideSearch", "usageGuideInsert", "usageGuideOrganize"]) {
+      const guideKeys = ["usageGuideAdd", "usageGuideSearch", this.deps.isMobile() ? "usageGuideInsertMobile" : "usageGuideInsert", "usageGuideOrganize"];
+      for (const key of guideKeys) {
         const item = document.createElement("li");
         item.textContent = this.deps.t(key);
         steps.appendChild(item);
@@ -1069,6 +1070,8 @@
             this.emptyMessage = this.deps.t("emptyFavorites");
           } else if (!query.text.trim() && this.currentScope === "recent") {
             this.emptyMessage = this.deps.t("emptyRecent");
+          } else if (!query.text.trim() && this.currentScope === "all" && Boolean(query.itemType || query.tag || query.category)) {
+            this.emptyMessage = this.deps.t("emptyFiltered");
           } else if (query.text.trim() && !query.text.trim().startsWith("?") && this.deps.aiEnabled()) {
             this.emptyMessage = this.deps.t("semanticSuggestion");
           } else if (total === 0 && !query.text.trim()) {
@@ -1157,11 +1160,26 @@
           hint.textContent = this.deps.t("emptyLibrarySub");
           empty.appendChild(hint);
         }
-        if (this.emptyMessage === this.deps.t("emptyLibrary") || this.lastQueryText.trim()) {
+        if (this.emptyMessage === this.deps.t("emptyFiltered")) {
+          const clear = document.createElement("button");
+          clear.type = "button";
+          clear.className = "b3-button xlc-btn-ghost xlc-empty-action";
+          clear.textContent = this.deps.t("clearFilters");
+          clear.addEventListener("click", () => {
+            var _a2;
+            this.deps.setFilters({ type: "", tag: "", category: "" });
+            (_a2 = this.dialog) == null ? void 0 : _a2.element.querySelectorAll(".xlc-type-select, .xlc-tag-select, .xlc-category-select").forEach((select) => {
+              select.value = "";
+            });
+            void this.refresh();
+          });
+          empty.appendChild(clear);
+        }
+        if (this.emptyMessage === this.deps.t("emptyLibrary") || this.emptyMessage === this.deps.t("emptyFiltered") || this.lastQueryText.trim()) {
           const create = document.createElement("button");
           create.type = "button";
           create.className = "b3-button xlc-btn-primary xlc-empty-action";
-          create.textContent = "\uFF0B " + this.deps.t("newItem");
+          create.textContent = this.deps.t("newItemAction");
           create.addEventListener("click", () => {
             const query = this.lastQueryText.trim();
             const titleCandidate = query && !query.startsWith("?") ? query.slice(0, 120) : void 0;
@@ -1425,6 +1443,8 @@
         const { entries } = await this.deps.search(query);
         if (seq !== this.searchSeq) return;
         this.results = entries;
+        this.activeProvider = -1;
+        this.activeIndex = Math.min(this.activeIndex, Math.max(0, this.results.length - 1));
       } catch (err) {
         const status = (_a = this.dialog) == null ? void 0 : _a.element.querySelector(".xlc-status");
         if (status) {
@@ -1435,6 +1455,7 @@
       }
       const list = (_c = this.dialog) == null ? void 0 : _c.element.querySelector(".xlc-list");
       if (list) this.renderList(list);
+      this.updatePreview();
     }
     /** 统一导航位：0..results.length-1 为库条目，之后为提供方行 */
     setNav(pos) {
@@ -1648,21 +1669,37 @@
       };
       if (this.activeProvider >= 0) {
         const row = this.providerRows[this.activeProvider];
-        if (!row) return;
-        this.lastPreviewId = row.virtualId;
-        paneTitle.textContent = row.title || row.providerName;
-        paneAi.style.display = "none";
-        paneUsage.style.display = "none";
-        paneWarn.style.display = "none";
-        this.paintPaneMeta(void 0);
-        paneBody.classList.remove("xlc-pane-body--muted", "xlc-pane-body--code");
-        this.paintPaneVars(null, "provider");
-        paneBody.textContent = row.payload;
-        return;
+        if (row) {
+          this.lastPreviewId = row.virtualId;
+          paneTitle.textContent = row.title || row.providerName;
+          paneAi.style.display = "none";
+          paneUsage.style.display = "none";
+          paneWarn.style.display = "none";
+          this.paintPaneMeta(void 0);
+          paneBody.classList.remove("xlc-pane-body--muted", "xlc-pane-body--code");
+          this.paintPaneVars(null, "provider");
+          paneBody.textContent = row.payload;
+          return;
+        }
+        this.activeProvider = -1;
       }
       const entry = this.results[this.activeIndex];
       const id = (_f = forceId != null ? forceId : entry == null ? void 0 : entry.id) != null ? _f : null;
       this.paintPaneMeta(entry);
+      if (!id) {
+        ++this.previewSeq;
+        this.lastPreviewId = "";
+        paneTitle.textContent = "";
+        paneAi.style.display = "none";
+        paneWarn.style.display = "none";
+        paneUsage.style.display = "none";
+        paneBody.classList.add("xlc-pane-body--muted");
+        paneBody.classList.remove("xlc-pane-body--code");
+        paneBody.textContent = this.deps.t("previewNoResult");
+        paneBody.scrollTop = 0;
+        this.paintPaneVars(null, void 0);
+        return;
+      }
       if (!id || id === this.lastPreviewId) return;
       const seq = ++this.previewSeq;
       this.lastPreviewId = id;
@@ -1898,7 +1935,13 @@
                   await this.insertEntryWithVars(entry, (fills) => this.deps.insertToDoc(entry.id, hit.id, hit.hPath, fills));
                 }));
               }
-            }).catch(() => void 0);
+            }).catch((err) => {
+              if (mySeq !== seq) return;
+              const error = document.createElement("div");
+              error.className = "xlc-pickdoc-empty xlc-status--error";
+              error.textContent = this.deps.t("kernelError", err instanceof Error ? err.message : String(err));
+              sec.appendChild(error);
+            });
           });
           const actions2 = menu.querySelectorAll(".xlc-menu-sec");
           (_a2 = actions2[actions2.length - 1]) == null ? void 0 : _a2.before(sec);
@@ -5379,7 +5422,7 @@ ${exception.mark.snippet}`;
       title: t("setupTitle"),
       content: "",
       width: "min(520px, 92vw)",
-      height: "min(640px, 90vh)"
+      height: "min(560px, 90vh)"
       // 固定高：步骤/内容增减不再顶跳弹窗（R146）
     });
     const body = getDialogBody(dialog.element);
@@ -5395,6 +5438,7 @@ ${exception.mark.snippet}`;
     body.appendChild(root);
   }
   function openSettingsDialog(ctx) {
+    var _a;
     const t = ctx.t;
     const dialog = new import_siyuan3.Dialog({
       title: t("openSettings"),
@@ -5417,7 +5461,7 @@ ${exception.mark.snippet}`;
     const libStatus = document.createElement("div");
     libStatus.className = "xlc-form-hint";
     const cfg = ctx.getConfig();
-    libStatus.textContent = cfg ? cfg.mode === "notebook" ? t("libModeNotebook", String(cfg.notebookIds.length)) : t("libModeDoc", String(cfg.containerDocIds.length)) : t("libraryNone");
+    libStatus.textContent = cfg ? cfg.mode === "notebook" ? t("libModeNotebook", String(cfg.notebookIds.length)) : cfg.mode === "tree" ? t("libModeTree", String(cfg.containerDocIds.length)) : t("libModeDoc", String(cfg.containerDocIds.length)) : t("libraryNone");
     const changeBtn = document.createElement("button");
     changeBtn.className = "b3-button";
     changeBtn.textContent = t("openSettingsChangeLib");
@@ -5440,15 +5484,36 @@ ${exception.mark.snippet}`;
         buildLibraryPickerSection(ctx, pickerHost, () => dialog.destroy());
       }
       if (show) requestAnimationFrame(() => {
-        var _a;
+        var _a2;
         try {
-          (_a = pickerHost.querySelector(".b3-text-field")) == null ? void 0 : _a.focus();
+          (_a2 = pickerHost.querySelector(".b3-text-field")) == null ? void 0 : _a2.focus();
         } catch {
         }
       });
     });
     libSec.appendChild(pickerHost);
     root.appendChild(libSec);
+    if (cfg) {
+      const modeLabel = (_a = libStatus.textContent) != null ? _a : "";
+      const setLocation = (location) => {
+        statusText.textContent = `${modeLabel} \xB7 ${location}`;
+      };
+      if (cfg.mode === "notebook") {
+        void ctx.library.listNotebooks().then((result) => {
+          if (!result.ok) return;
+          const names = cfg.notebookIds.map((id) => {
+            var _a2, _b;
+            return (_b = (_a2 = result.data.find((nb) => nb.id === id)) == null ? void 0 : _a2.name) != null ? _b : id;
+          });
+          if (names.length) setLocation(names.join(", "));
+        });
+      } else {
+        const docId = cfg.containerDocIds[0];
+        if (docId) void ctx.library.getDocPath(docId).then((hPath) => {
+          if (hPath) setLocation(hPath);
+        });
+      }
+    }
     buildAiSection(ctx, root);
     buildInsertSection(ctx, root);
     buildSearchSection(ctx, root);
@@ -5697,6 +5762,7 @@ ${exception.mark.snippet}`;
   function buildLibraryPickerSection(ctx, root, onConfigured, opts) {
     const t = ctx.t;
     let step = 1;
+    let setupRevision = 0;
     let pickedDoc = null;
     const stepsEl = buildStepsEl(1, t("setupStep1"));
     root.appendChild(stepsEl);
@@ -5710,6 +5776,10 @@ ${exception.mark.snippet}`;
     usageGuide.style.whiteSpace = "pre-line";
     usageGuide.textContent = t("setupUsageGuide");
     root.appendChild(usageGuide);
+    const recommendation = document.createElement("p");
+    recommendation.className = "xlc-form-hint xlc-setup-recommendation";
+    recommendation.textContent = t("setupRecommendation");
+    root.appendChild(recommendation);
     const step1 = document.createElement("div");
     const modeWrap = document.createElement("div");
     modeWrap.className = "xlc-form-field";
@@ -5722,6 +5792,7 @@ ${exception.mark.snippet}`;
     modeSelect.id = "xlc-setup-mode";
     modeLabel.htmlFor = modeSelect.id;
     const modes = [
+      { v: "new-doc", label: t("setupCreateNewDoc") },
       { v: "doc", label: t("setupPickDoc") },
       { v: "tree", label: t("setupPickDocTree") },
       { v: "notebook", label: t("setupNotebook") }
@@ -5732,6 +5803,8 @@ ${exception.mark.snippet}`;
       opt.textContent = m.label;
       modeSelect.appendChild(opt);
     }
+    const existingConfig = ctx.getConfig();
+    if (existingConfig) modeSelect.value = existingConfig.mode;
     modeWrap.appendChild(modeSelect);
     step1.appendChild(modeWrap);
     const pickerWrap = document.createElement("div");
@@ -5746,41 +5819,71 @@ ${exception.mark.snippet}`;
     pickerWrap.appendChild(pickerList);
     step1.appendChild(pickerWrap);
     let pickerSeq = 0;
-    pickerInput.addEventListener("input", () => {
+    const currentDocId = (existingConfig == null ? void 0 : existingConfig.mode) !== "notebook" ? existingConfig == null ? void 0 : existingConfig.containerDocIds[0] : void 0;
+    const showDocPickerMessage = (message, retry) => {
+      pickerList.textContent = "";
+      const status = document.createElement("div");
+      status.className = "xlc-doclist-empty";
+      status.setAttribute("role", "status");
+      status.setAttribute("aria-live", "polite");
+      status.textContent = message;
+      pickerList.appendChild(status);
+      if (retry) {
+        const retryBtn = document.createElement("button");
+        retryBtn.type = "button";
+        retryBtn.className = "b3-button xlc-btn-ghost xlc-doclist-retry";
+        retryBtn.textContent = t("retry");
+        retryBtn.addEventListener("click", retry);
+        pickerList.appendChild(retryBtn);
+      }
+    };
+    const searchPickerDocs = (keyword) => {
       const seq = ++pickerSeq;
-      const k = pickerInput.value.trim();
       pickerList.innerHTML = "";
+      pickerList.removeAttribute("aria-busy");
       pickedDoc = null;
-      if (!k) return;
-      void ctx.library.searchDocs(k).then((result) => {
+      syncNextState();
+      if (!keyword) return;
+      pickerList.setAttribute("aria-busy", "true");
+      showDocPickerMessage(t("loading"));
+      void ctx.library.searchDocs(keyword).then((result) => {
         if (seq !== pickerSeq) return;
+        pickerList.removeAttribute("aria-busy");
         if (!result.ok || result.data.length === 0) {
-          const empty = document.createElement("div");
-          empty.className = "xlc-doclist-empty";
-          empty.textContent = result.ok ? t("docPickerEmpty") : t("kernelError", result.message);
-          pickerList.appendChild(empty);
+          const message = result.ok ? t("docPickerEmpty") : t("kernelError", result.message);
+          showDocPickerMessage(message, result.ok ? void 0 : () => {
+            if (pickerInput.value.trim() === keyword) searchPickerDocs(keyword);
+          });
           return;
         }
+        pickerList.textContent = "";
         for (const hit of result.data.slice(0, 8)) {
           const item = document.createElement("button");
           item.type = "button";
           item.className = "xlc-doclist-item";
           item.textContent = hit.hPath || hit.name || hit.id;
+          if (hit.id === currentDocId) {
+            pickedDoc = { id: hit.id, hPath: hit.hPath };
+            item.classList.add("xlc-doclist-item--on");
+          }
           item.addEventListener("click", () => {
             pickedDoc = { id: hit.id, hPath: hit.hPath };
             pickerList.querySelectorAll(".xlc-doclist-item").forEach((el) => el.classList.remove("xlc-doclist-item--on"));
             item.classList.add("xlc-doclist-item--on");
+            syncNextState();
           });
           pickerList.appendChild(item);
         }
+        syncNextState();
       }).catch((err) => {
         if (seq !== pickerSeq) return;
-        const empty = document.createElement("div");
-        empty.className = "xlc-doclist-empty";
-        empty.textContent = t("kernelError", err.message);
-        pickerList.appendChild(empty);
+        pickerList.removeAttribute("aria-busy");
+        showDocPickerMessage(t("kernelError", err instanceof Error ? err.message : String(err)), () => {
+          if (pickerInput.value.trim() === keyword) searchPickerDocs(keyword);
+        });
       });
-    });
+    };
+    pickerInput.addEventListener("input", () => searchPickerDocs(pickerInput.value.trim()));
     const nbWrap = document.createElement("div");
     nbWrap.className = "xlc-form-field";
     nbWrap.style.display = "none";
@@ -5791,30 +5894,175 @@ ${exception.mark.snippet}`;
     const nbSelect = document.createElement("select");
     nbSelect.className = "b3-select";
     nbSelect.id = "xlc-setup-notebook";
+    nbSelect.disabled = true;
+    if ((existingConfig == null ? void 0 : existingConfig.mode) === "notebook" && existingConfig.notebookIds[0]) {
+      nbSelect.dataset.currentNotebook = existingConfig.notebookIds[0];
+    }
     nbLabel.htmlFor = nbSelect.id;
     nbWrap.appendChild(nbSelect);
+    const nbStatus = document.createElement("p");
+    nbStatus.className = "xlc-form-hint xlc-setup-notebook-status";
+    nbStatus.textContent = t("setupNotebookLoading");
+    nbWrap.appendChild(nbStatus);
+    const retryNotebooksBtn = document.createElement("button");
+    retryNotebooksBtn.type = "button";
+    retryNotebooksBtn.className = "b3-button xlc-btn-ghost xlc-setup-notebook-retry";
+    retryNotebooksBtn.textContent = t("retry");
+    retryNotebooksBtn.style.display = "none";
+    nbWrap.appendChild(retryNotebooksBtn);
     step1.appendChild(nbWrap);
-    void ctx.library.listNotebooks().then((result) => {
-      if (!result.ok) {
-        ctx.notify("error", t("kernelError", result.message));
+    let notebooksLoaded = false;
+    let notebooksLoading = false;
+    let notebookDocsChecking = false;
+    let checkedNotebookId = "";
+    let notebookDocsState = "unchecked";
+    const loadNotebooks = (force = false) => {
+      if (!force && notebooksLoaded || notebooksLoading) return;
+      notebooksLoading = true;
+      notebooksLoaded = false;
+      nbSelect.disabled = true;
+      nbStatus.textContent = t("setupNotebookLoading");
+      retryNotebooksBtn.style.display = "none";
+      retryNotebookAction = () => {
+        void loadNotebooks(true);
+      };
+      void ctx.library.listNotebooks().then((result) => {
+        nbSelect.textContent = "";
+        if (!result.ok) {
+          return;
+        }
+        if (result.data.length === 0) {
+          notebooksLoaded = true;
+          return;
+        }
+        const choose = document.createElement("option");
+        choose.value = "";
+        choose.textContent = t("setupChooseNotebook");
+        choose.disabled = true;
+        nbSelect.appendChild(choose);
+        for (const nb of result.data) {
+          const opt = document.createElement("option");
+          opt.value = nb.id;
+          opt.textContent = nb.name;
+          nbSelect.appendChild(opt);
+        }
+        nbSelect.value = nbSelect.dataset.currentNotebook && result.data.some((nb) => nb.id === nbSelect.dataset.currentNotebook) ? nbSelect.dataset.currentNotebook : "";
+        notebooksLoaded = true;
+        nbSelect.disabled = false;
+      }).catch(() => {
+      }).finally(() => {
+        notebooksLoading = false;
+        renderNotebookStatus();
+        syncCreateState();
+        syncNextState();
+      });
+    };
+    let retryNotebookAction = () => {
+      void loadNotebooks(true);
+    };
+    retryNotebooksBtn.addEventListener("click", () => retryNotebookAction());
+    const renderNotebookStatus = () => {
+      const selectedId = nbSelect.value;
+      if (notebooksLoading) {
+        nbStatus.textContent = t("setupNotebookLoading");
+        retryNotebooksBtn.style.display = "none";
         return;
       }
-      for (const nb of result.data) {
-        const opt = document.createElement("option");
-        opt.value = nb.id;
-        opt.textContent = nb.name;
-        nbSelect.appendChild(opt);
+      if (!notebooksLoaded) {
+        nbStatus.textContent = t("setupNotebookLoadFailed");
+        retryNotebooksBtn.style.display = "";
+        retryNotebookAction = () => {
+          void loadNotebooks(true);
+        };
+        return;
       }
-    }).catch((err) => {
-      ctx.notify("error", t("kernelError", err.message));
-    });
-    const syncModeUi = () => {
-      const notebook = modeSelect.value === "notebook";
-      pickerWrap.style.display = notebook ? "none" : "";
-      nbWrap.style.display = notebook ? "" : "none";
+      if (nbSelect.options.length <= 1) {
+        nbStatus.textContent = t("setupNotebookEmpty");
+        retryNotebooksBtn.style.display = "";
+        retryNotebookAction = () => {
+          void loadNotebooks(true);
+        };
+        return;
+      }
+      if (modeSelect.value !== "notebook" || !selectedId) {
+        nbStatus.textContent = t("setupNotebookReady");
+        retryNotebooksBtn.style.display = "none";
+        return;
+      }
+      if (notebookDocsChecking) {
+        nbStatus.textContent = t("setupNotebookDocsChecking");
+        retryNotebooksBtn.style.display = "none";
+        return;
+      }
+      if (checkedNotebookId !== selectedId || notebookDocsState === "unchecked") {
+        nbStatus.textContent = t("setupNotebookNeedsDocsCheck");
+        retryNotebooksBtn.style.display = "none";
+        return;
+      }
+      if (notebookDocsState === "ready") {
+        nbStatus.textContent = t("setupNotebookDocsReady");
+        retryNotebooksBtn.style.display = "none";
+        return;
+      }
+      nbStatus.textContent = notebookDocsState === "empty" ? t("setupNotebookNoDocs") : t("setupNotebookDocsCheckFailed");
+      retryNotebooksBtn.style.display = "";
+      retryNotebookAction = () => {
+        const notebookId = nbSelect.value;
+        const revision = setupRevision;
+        void verifyNotebookHasDocs(notebookId).then((valid) => {
+          if (valid && setupRevision === revision && modeSelect.value === "notebook" && nbSelect.value === notebookId) gotoStep(2);
+        });
+      };
     };
-    modeSelect.addEventListener("change", syncModeUi);
-    syncModeUi();
+    async function verifyNotebookHasDocs(notebookId) {
+      if (notebookDocsChecking || !notebookId) return false;
+      notebookDocsChecking = true;
+      checkedNotebookId = notebookId;
+      notebookDocsState = "unchecked";
+      nbSelect.disabled = true;
+      renderNotebookStatus();
+      try {
+        const result = await ctx.library.listNotebookDocs(notebookId);
+        if (!result.ok) {
+          notebookDocsState = "error";
+          ctx.notify("error", t("kernelError", result.message));
+          return false;
+        }
+        if (result.data.length === 0) {
+          notebookDocsState = "empty";
+          ctx.notify("error", t("setupNotebookNoDocs"));
+          return false;
+        }
+        notebookDocsState = "ready";
+        return true;
+      } catch (err) {
+        notebookDocsState = "error";
+        ctx.notify("error", t("kernelError", err instanceof Error ? err.message : String(err)));
+        return false;
+      } finally {
+        notebookDocsChecking = false;
+        nbSelect.disabled = !notebooksLoaded || nbSelect.options.length <= 1;
+        renderNotebookStatus();
+        syncCreateState();
+        syncNextState();
+      }
+    }
+    const syncModeUi = () => {
+      const mode = modeSelect.value;
+      const needsNotebook = mode === "notebook" || mode === "new-doc";
+      pickerWrap.style.display = mode === "doc" || mode === "tree" ? "" : "none";
+      nbWrap.style.display = needsNotebook ? "" : "none";
+      nameWrap.style.display = mode === "new-doc" ? "" : "none";
+      nbLabel.textContent = mode === "new-doc" ? t("setupCreateNotebook") : t("setupNotebook");
+      if (needsNotebook) loadNotebooks();
+      renderNotebookStatus();
+      syncCreateState();
+      syncNextState();
+    };
+    modeSelect.addEventListener("change", () => {
+      setupRevision++;
+      syncModeUi();
+    });
     const nameWrap = document.createElement("div");
     nameWrap.className = "xlc-form-field";
     const nameLabel = document.createElement("label");
@@ -5833,6 +6081,8 @@ ${exception.mark.snippet}`;
     createBtn.className = "b3-button";
     createBtn.style.whiteSpace = "nowrap";
     createBtn.textContent = t("create");
+    createBtn.disabled = true;
+    let creatingLibrary = false;
     createBtn.addEventListener("click", () => {
       const notebookId = nbSelect.value;
       const title = nameInput.value.trim();
@@ -5840,14 +6090,24 @@ ${exception.mark.snippet}`;
         ctx.notify("error", t("invalidItem"));
         return;
       }
+      const revision = setupRevision;
       (0, import_siyuan3.confirm)("\u26A0\uFE0F " + t("setupTitle"), t("setupConfirmCreate", title), () => {
-        if (createBtn.disabled) return;
-        createBtn.disabled = true;
+        if (creatingLibrary || setupRevision !== revision || modeSelect.value !== "new-doc" || nbSelect.value !== notebookId || nameInput.value.trim() !== title) return;
+        creatingLibrary = true;
+        modeSelect.disabled = true;
+        nbSelect.disabled = true;
+        nameInput.disabled = true;
         createBtn.textContent = t("saving");
+        syncCreateState();
         void ctx.library.createLibraryDoc(notebookId, title).then((result) => {
-          createBtn.disabled = false;
+          creatingLibrary = false;
+          modeSelect.disabled = false;
+          nbSelect.disabled = !notebooksLoaded || nbSelect.options.length <= 1;
+          nameInput.disabled = false;
           createBtn.textContent = t("create");
+          syncCreateState();
           if (!result.ok) {
+            nbStatus.textContent = t("kernelError", result.message);
             ctx.notify("error", t("kernelError", result.message));
             return;
           }
@@ -5862,8 +6122,12 @@ ${exception.mark.snippet}`;
           ctx.notify("info", t("libDocCreated", title));
           onConfigured();
         }).catch((err) => {
-          createBtn.disabled = false;
+          creatingLibrary = false;
+          modeSelect.disabled = false;
+          nbSelect.disabled = !notebooksLoaded || nbSelect.options.length <= 1;
+          nameInput.disabled = false;
           createBtn.textContent = t("create");
+          syncCreateState();
           ctx.notify("error", t("kernelError", err.message));
         });
       });
@@ -5871,6 +6135,18 @@ ${exception.mark.snippet}`;
     nameRow.appendChild(createBtn);
     nameWrap.appendChild(nameRow);
     step1.appendChild(nameWrap);
+    function syncCreateState() {
+      createBtn.disabled = creatingLibrary || modeSelect.value !== "new-doc" || !notebooksLoaded || !nbSelect.value || !nameInput.value.trim();
+    }
+    nbSelect.addEventListener("change", () => {
+      setupRevision++;
+      checkedNotebookId = "";
+      notebookDocsState = "unchecked";
+      renderNotebookStatus();
+      syncCreateState();
+      syncNextState();
+    });
+    nameInput.addEventListener("input", syncCreateState);
     const step1Actions = document.createElement("div");
     step1Actions.className = "xlc-form-actions";
     if (opts == null ? void 0 : opts.onDismiss) {
@@ -5886,20 +6162,37 @@ ${exception.mark.snippet}`;
     const nextBtn = document.createElement("button");
     nextBtn.className = "b3-button xlc-btn-primary";
     nextBtn.textContent = t("setupNext");
+    nextBtn.disabled = true;
     nextBtn.addEventListener("click", () => {
       const mode = modeSelect.value;
       if (mode === "notebook" && !nbSelect.value) {
-        ctx.notify("error", t("pickNotebookFirst"));
+        ctx.notify("error", nbSelect.disabled ? t("setupNotebookNotReady") : t("pickNotebookFirst"));
         return;
       }
       if (mode !== "notebook" && !pickedDoc) {
         ctx.notify("error", t("pickDocFirst"));
         return;
       }
+      if (mode === "notebook") {
+        const notebookId = nbSelect.value;
+        const revision = setupRevision;
+        nextBtn.disabled = true;
+        void verifyNotebookHasDocs(notebookId).then((valid) => {
+          if (valid && setupRevision === revision && modeSelect.value === "notebook" && nbSelect.value === notebookId) gotoStep(2);
+        }).finally(() => syncNextState());
+        return;
+      }
       gotoStep(2);
     });
     step1Actions.appendChild(nextBtn);
     step1.appendChild(step1Actions);
+    function syncNextState() {
+      const mode = modeSelect.value;
+      const rootCheckFailed = checkedNotebookId === nbSelect.value && (notebookDocsState === "empty" || notebookDocsState === "error");
+      nextBtn.style.display = mode === "new-doc" ? "none" : "";
+      nextBtn.disabled = mode === "notebook" ? !notebooksLoaded || !nbSelect.value || notebookDocsChecking || rootCheckFailed : mode === "new-doc" || !pickedDoc;
+    }
+    syncModeUi();
     root.appendChild(step1);
     const step2 = document.createElement("div");
     step2.style.display = "none";
@@ -5929,15 +6222,27 @@ ${exception.mark.snippet}`;
           ctx.notify("error", t("invalidItem"));
           return;
         }
-        ctx.applyConfig({
-          configVersion: CONFIG_VERSION,
-          mode: "notebook",
-          notebookIds: [notebookId],
-          containerDocIds: [],
-          createdDocIds: [],
-          configuredAt: Date.now()
+        const revision = setupRevision;
+        finishBtn.disabled = true;
+        void verifyNotebookHasDocs(notebookId).then((valid) => {
+          if (setupRevision !== revision || step !== 2 || modeSelect.value !== "notebook" || nbSelect.value !== notebookId) return;
+          if (!valid) {
+            gotoStep(1);
+            return;
+          }
+          ctx.applyConfig({
+            configVersion: CONFIG_VERSION,
+            mode: "notebook",
+            notebookIds: [notebookId],
+            containerDocIds: [],
+            createdDocIds: [],
+            configuredAt: Date.now()
+          });
+          onConfigured();
+        }).finally(() => {
+          finishBtn.disabled = false;
+          syncNextState();
         });
-        onConfigured();
         return;
       }
       if (!pickedDoc) {
@@ -5974,12 +6279,13 @@ ${exception.mark.snippet}`;
       text.appendChild(titleEl);
       const desc = document.createElement("span");
       desc.className = "xlc-policy-desc";
-      desc.textContent = mode === "notebook" ? t("setupSummaryNotebook") : t("setupSummaryDoc");
+      desc.textContent = mode === "notebook" ? t("setupSummaryNotebook") : mode === "tree" ? t("setupSummaryTree") : t("setupSummaryDoc");
       text.appendChild(desc);
       card.appendChild(text);
       summaryWrap.appendChild(card);
     }
     function gotoStep(next) {
+      setupRevision++;
       step = next;
       stepsEl.remove();
       root.insertBefore(buildStepsEl(step, step === 1 ? t("setupStep1") : t("setupStep2")), root.firstChild);
@@ -5987,6 +6293,18 @@ ${exception.mark.snippet}`;
       hint.style.display = step === 1 ? "" : "none";
       step2.style.display = step === 2 ? "" : "none";
       if (step === 2) paintSummary();
+    }
+    if (existingConfig && existingConfig.mode !== "notebook") {
+      const currentDoc = existingConfig.containerDocIds[0];
+      if (currentDoc) {
+        void ctx.library.getDocPath(currentDoc).then((hPath) => {
+          var _a;
+          if (!hPath || pickerInput.value) return;
+          const pathParts = hPath.split("/").filter(Boolean);
+          pickerInput.value = (_a = pathParts[pathParts.length - 1]) != null ? _a : hPath;
+          pickerInput.dispatchEvent(new Event("input"));
+        });
+      }
     }
   }
   function buildAiSection(ctx, root) {
@@ -6104,26 +6422,6 @@ ${exception.mark.snippet}`;
     ctHint.className = "xlc-form-hint";
     ctHint.textContent = t("customTransformHint");
     aiSec.appendChild(ctHint);
-    const packRow = document.createElement("div");
-    packRow.className = "xlc-setting-row";
-    const packText = document.createElement("span");
-    packText.className = "xlc-setting-text";
-    packText.textContent = t("promptPackHint");
-    packRow.appendChild(packText);
-    const packBtn = document.createElement("button");
-    packBtn.type = "button";
-    packBtn.className = "b3-button";
-    packBtn.textContent = t("promptPackBtn");
-    packBtn.addEventListener("click", () => {
-      const parsed = parseMarkdownPack(PROMPT_PACK_MD);
-      if (parsed.items.length === 0) {
-        ctx.notify("error", t("importFailed", t("importReasonPackEmpty")));
-        return;
-      }
-      openImportPolicyDialog(ctx, { items: parsed.items, pack: parsed.pack }, parsed.issues, { kind: "markdown-pack", items: parsed.items });
-    });
-    packRow.appendChild(packBtn);
-    aiSec.appendChild(packRow);
     root.appendChild(aiSec);
   }
   function buildSearchSection(ctx, root) {
@@ -6167,7 +6465,7 @@ ${exception.mark.snippet}`;
     const libRow = document.createElement("div");
     libRow.className = "xlc-form-hint";
     const cfg = ctx.getConfig();
-    libRow.textContent = `${t("librarySection")}\uFF1A${cfg ? cfg.mode === "notebook" ? t("libModeNotebook", String(cfg.notebookIds.length)) : t("libModeDoc", String(cfg.containerDocIds.length)) : t("libraryNone")}`;
+    libRow.textContent = `${t("librarySection")}\uFF1A${cfg ? cfg.mode === "notebook" ? t("libModeNotebook", String(cfg.notebookIds.length)) : cfg.mode === "tree" ? t("libModeTree", String(cfg.containerDocIds.length)) : t("libModeDoc", String(cfg.containerDocIds.length)) : t("libraryNone")}`;
     dataSec.appendChild(libRow);
     const dataBtns = document.createElement("div");
     dataBtns.style.display = "flex";
@@ -6206,13 +6504,17 @@ ${exception.mark.snippet}`;
         reindexBtn.textContent = t("reindexBtn");
       });
     });
-    mkBtn(t("clearRecents"), () => {
+    const clearRecentsBtn = mkBtn(ctx.state.recents.length ? t("clearRecents") : t("clearRecentsEmpty"), () => {
+      if (ctx.state.recents.length === 0) return;
       (0, import_siyuan3.confirm)("\u26A0\uFE0F " + t("clearRecents"), t("clearRecentsConfirm"), () => {
         ctx.state.recents = [];
         ctx.persistSoon();
+        clearRecentsBtn.textContent = t("clearRecentsEmpty");
+        clearRecentsBtn.disabled = true;
         ctx.notify("info", t("clearRecentsDone"));
       });
     });
+    clearRecentsBtn.disabled = ctx.state.recents.length === 0;
     if (ctx.state.ai.enabled) {
       const auditBtn = mkBtn("\u2726 " + t("tagAuditBtn"));
       withFlight(auditBtn, async () => {
@@ -6288,6 +6590,26 @@ ${exception.mark.snippet}`;
     void importBtn;
     void mkBtn(t("espansoImportBtn"), () => openEspansoImportDialog(ctx));
     dataSec.appendChild(dataBtns);
+    const templateRow = document.createElement("div");
+    templateRow.className = "xlc-setting-row xlc-template-import-row";
+    const templateText = document.createElement("span");
+    templateText.className = "xlc-setting-text";
+    templateText.textContent = t("promptPackHint");
+    templateRow.appendChild(templateText);
+    const templateBtn = document.createElement("button");
+    templateBtn.type = "button";
+    templateBtn.className = "b3-button";
+    templateBtn.textContent = t("promptPackBtn");
+    templateBtn.addEventListener("click", () => {
+      const parsed = parseMarkdownPack(PROMPT_PACK_MD);
+      if (parsed.items.length === 0) {
+        ctx.notify("error", t("importFailed", t("importReasonPackEmpty")));
+        return;
+      }
+      openImportPolicyDialog(ctx, { items: parsed.items, pack: parsed.pack }, parsed.issues, { kind: "markdown-pack", items: parsed.items });
+    });
+    templateRow.appendChild(templateBtn);
+    dataSec.appendChild(templateRow);
     root.appendChild(dataSec);
   }
   function openEspansoImportDialog(ctx) {
@@ -6703,6 +7025,7 @@ ${exception.mark.snippet}`;
       let closed = false;
       let saving = false;
       let tidySeq = 0;
+      let draftSeq = 0;
       const dialog = new import_siyuan4.Dialog({
         title: t("newItem"),
         content: "",
@@ -6711,6 +7034,7 @@ ${exception.mark.snippet}`;
         destroyCallback: () => {
           closed = true;
           ++tidySeq;
+          ++draftSeq;
         }
       });
       const body = getDialogBody(dialog.element);
@@ -6813,21 +7137,29 @@ ${exception.mark.snippet}`;
           tidyBtn.className = "xlc-form-ai";
           tidyBtn.type = "button";
           tidyBtn.textContent = "\u2726 " + t("aiTidy");
+          let tidyBusy = false;
+          const syncTidyButton = () => {
+            tidyBtn.disabled = tidyBusy || !contentEl.value.trim();
+          };
+          contentEl.addEventListener("input", syncTidyButton);
+          syncTidyButton();
           tidyBtn.addEventListener("click", () => {
-            if (closed) return;
+            if (closed || tidyBusy) return;
             const value = contentEl.value.trim();
             if (!value) {
               this.deps.notify("error", t("invalidItem"));
               return;
             }
             const request = ++tidySeq;
-            tidyBtn.disabled = true;
+            tidyBusy = true;
+            syncTidyButton();
             tidyBtn.textContent = t("aiWorking");
             void this.deps.aiTidy(value).then((result) => {
               var _a2, _b;
               if (closed || request !== tidySeq) return;
               tidyBtn.textContent = "\u2726 " + t("aiTidy");
-              tidyBtn.disabled = false;
+              tidyBusy = false;
+              syncTidyButton();
               if (!result.ok) {
                 this.deps.notify("error", result.message);
                 return;
@@ -6855,7 +7187,8 @@ ${exception.mark.snippet}`;
             }).catch((err) => {
               if (closed || request !== tidySeq) return;
               tidyBtn.textContent = "\u2726 " + t("aiTidy");
-              tidyBtn.disabled = false;
+              tidyBusy = false;
+              syncTidyButton();
               this.deps.notify("error", err instanceof Error ? err.message : t("aiTransport"));
             });
           });
@@ -6876,18 +7209,30 @@ ${exception.mark.snippet}`;
         draftInput.className = "b3-text-field";
         draftInput.placeholder = t("aiDraftDesc");
         draftWrap.appendChild(draftInput);
+        let draftBusy = false;
+        draftBtn.disabled = true;
+        const syncDraftButton = () => {
+          draftBtn.disabled = draftBusy || !draftInput.value.trim();
+        };
+        draftInput.addEventListener("input", syncDraftButton);
         draftBtn.addEventListener("click", () => {
-          if (closed) return;
+          if (closed || draftBusy) return;
           const desc = draftInput.value.trim();
-          if (!desc) return;
+          if (!desc) {
+            this.deps.notify("error", t("aiDraftNeedDescription"));
+            draftInput.focus();
+            return;
+          }
           if (draftBtn.disabled) return;
-          draftBtn.disabled = true;
-          const request = ++tidySeq;
+          draftBusy = true;
+          syncDraftButton();
+          const request = ++draftSeq;
           draftBtn.textContent = t("aiWorking");
           void this.deps.aiDraft(desc).then((result) => {
-            if (closed || request !== tidySeq) return;
+            if (closed || request !== draftSeq) return;
             draftBtn.textContent = "\u2726 " + t("aiDraftDesc");
-            draftBtn.disabled = false;
+            draftBusy = false;
+            syncDraftButton();
             if (!result.ok) {
               this.deps.notify("error", result.message);
               return;
@@ -6903,9 +7248,10 @@ ${exception.mark.snippet}`;
             contentBox.value = result.text;
             contentBox.dispatchEvent(new Event("input", { bubbles: true }));
           }).catch((err) => {
-            if (closed || request !== tidySeq) return;
+            if (closed || request !== draftSeq) return;
             draftBtn.textContent = "\u2726 " + t("aiDraftDesc");
-            draftBtn.disabled = false;
+            draftBusy = false;
+            syncDraftButton();
             this.deps.notify("error", err instanceof Error ? err.message : t("aiTransport"));
           });
         });
@@ -6919,6 +7265,7 @@ ${exception.mark.snippet}`;
       cancelBtn.addEventListener("click", () => {
         closed = true;
         ++tidySeq;
+        ++draftSeq;
         dialog.destroy();
       });
       const saveBtn = document.createElement("button");
@@ -7059,7 +7406,10 @@ ${exception.mark.snippet}`;
       usageGuideAdd: "\u589E\u52A0\uFF1A\u70B9\u300C\uFF0B\u65B0\u5EFA\u300D\uFF0C\u6216\u4ECE\u9009\u533A\u3001\u5F53\u524D\u5757\u3001\u526A\u8D34\u677F\u548C\u53F3\u952E\u83DC\u5355\u6355\u83B7\u3002",
       usageGuideSearch: "\u627E\u5230\uFF1A\u641C\u7D22\u6807\u9898\u3001\u6B63\u6587\u3001\u6807\u7B7E\u548C\u5206\u7C7B\uFF1B\u4E5F\u53EF\u4EE5\u7528\u62FC\u97F3\u3001\u6536\u85CF\u3001\u6700\u8FD1\u548C\u5E38\u7528\u6392\u5E8F\u3002",
       usageGuideInsert: "\u4F7F\u7528\uFF1AEnter \u63D2\u5165\uFF0CCtrl/\u2318+Enter \u590D\u5236\uFF0CAlt+1~9 \u76F4\u8FBE\u524D\u4E5D\u6761\uFF1B\u957F\u6309\u6761\u76EE\u53EF\u6253\u5F00\u66F4\u591A\u52A8\u4F5C\u3002",
-      usageGuideOrganize: "\u6574\u7406\uFF1A\u7ED9\u6761\u76EE\u8865\u4E0A\u6E05\u695A\u7684\u6807\u9898\u3001\u6807\u7B7E\u548C\u5206\u7C7B\uFF1B\u8BBE\u7F6E\u4E2D\u7684\u6A21\u677F\u5305\u63D0\u4F9B\u5730\u5740\u3001\u90AE\u7BB1\u3001\u8054\u7CFB\u65B9\u5F0F\u7B49\u793A\u4F8B\u3002",
+      usageGuideInsertMobile: "\u4F7F\u7528\uFF1A\u70B9\u6309\u6761\u76EE\u63D2\u5165\uFF1B\u957F\u6309\u6761\u76EE\u6253\u5F00\u66F4\u591A\u52A8\u4F5C\u3002\u79FB\u52A8\u7AEF\u63D2\u5165\u884C\u4E3A\u5C1A\u672A\u5728\u771F\u5B9E\u601D\u6E90\u5BA2\u6237\u7AEF\u9A8C\u8BC1\u3002",
+      emptyFiltered: "\u5F53\u524D\u7B5B\u9009\u4E0B\u6CA1\u6709\u5339\u914D\u6761\u76EE",
+      clearFilters: "\u6E05\u9664\u7B5B\u9009",
+      usageGuideOrganize: "\u6574\u7406\uFF1A\u7ED9\u6761\u76EE\u8865\u4E0A\u6E05\u695A\u7684\u6807\u9898\u3001\u6807\u7B7E\u548C\u5206\u7C7B\uFF1B\u8BBE\u7F6E \u2192 \u6570\u636E\u4E0E\u6A21\u677F\u53EF\u5BFC\u5165\u90AE\u7BB1\u3001\u5730\u5740\u548C\u8054\u7CFB\u65B9\u5F0F\u793A\u4F8B\u3002",
       usageGuideVariables: "\u6A21\u677F\u89C4\u5219\uFF1A{{xlc:ask:\u5B57\u6BB5}} \u4F1A\u5728\u63D2\u5165\u524D\u8BE2\u95EE\uFF1B{{xlc:date}}\u3001{{xlc:clipboard}} \u7B49\u5360\u4F4D\u7B26\u53EA\u5728\u8C03\u7528\u65F6\u5C55\u5F00\uFF0C\u539F\u6587\u4ECD\u4FDD\u7559\u3002\u6B63\u6587\u4FDD\u5B58\u5728\u601D\u6E90\u771F\u5B9E\u5757\u4E2D\uFF0CAI \u9ED8\u8BA4\u5173\u95ED\u3002",
       insert: "\u63D2\u5165",
       copy: "\u590D\u5236",
@@ -7072,11 +7422,14 @@ ${exception.mark.snippet}`;
       sourceMissing: "\u6765\u6E90\u5931\u6548",
       sourceGone: "\u6765\u6E90\u5757\u5DF2\u4E0D\u5B58\u5728\uFF08\u539F\u6587\u6863\u88AB\u91CD\u7EC4\uFF09\xB7 \u6253\u5F00\u6765\u6E90\u53EF\u91CD\u65B0\u6307\u5B9A",
       previewUnavailable: "\u6682\u65E0\u9884\u89C8",
+      previewNoResult: "\u5F53\u524D\u6CA1\u6709\u53EF\u9884\u89C8\u7684\u6761\u76EE",
       aiFound: "AI \u547D\u4E2D",
       aiWorking: "AI \u5904\u7406\u4E2D\u2026",
       aiOriginalPreserved: "\u539F\u6587\u672A\u88AB\u4FEE\u6539",
       insertNoEditor: "\u5F53\u524D\u6CA1\u6709\u6D3B\u52A8\u7F16\u8F91\u5668\uFF0C\u5DF2\u590D\u5236\u5230\u526A\u8D34\u677F\uFF0C\u53EF\u624B\u52A8\u7C98\u8D34",
-      kernelError: "\u601D\u6E90\u63A5\u53E3\u8C03\u7528\u5931\u8D25",
+      insertFailed: "\u63D2\u5165\u5931\u8D25",
+      insertToDocFailed: "\u76EE\u6807\u6587\u6863\u63D2\u5165\u5931\u8D25",
+      kernelError: "\u601D\u6E90\u63A5\u53E3\u8C03\u7528\u5931\u8D25\uFF1A%s",
       "tf.polish": "\u6DA6\u8272",
       "tf.shorten": "\u7F29\u77ED",
       "tf.formal": "\u6B63\u5F0F\u5316",
@@ -7084,6 +7437,7 @@ ${exception.mark.snippet}`;
       "tf.bulletize": "\u5217\u8868\u5316",
       more: "\u8FD4\u56DE\u52A8\u4F5C",
       newItem: "\u65B0\u5EFA\u6761\u76EE",
+      newItemAction: "\uFF0B \u65B0\u5EFA\u6761\u76EE",
       save: "\u4FDD\u5B58",
       saving: "\u4FDD\u5B58\u4E2D\u2026",
       cancel: "\u53D6\u6D88",
@@ -7092,6 +7446,7 @@ ${exception.mark.snippet}`;
       aiTidy: "AI \u6574\u7406",
       aiDraft: "AI \u8349\u7A3F",
       aiDraftDesc: "\u63CF\u8FF0\u4F60\u60F3\u8981\u7684\u5185\u5BB9\uFF0CAI \u751F\u6210\u8349\u7A3F",
+      aiDraftNeedDescription: "\u8BF7\u5148\u63CF\u8FF0\u60F3\u751F\u6210\u7684\u5185\u5BB9",
       aiApplied: "\u5DF2\u5E94\u7528 AI \u5EFA\u8BAE",
       aiTransform: "AI \u53D8\u6362",
       saved: "\u5DF2\u4FDD\u5B58\uFF1A%s",
@@ -7140,12 +7495,14 @@ ${exception.mark.snippet}`;
       setupLater: "\u7A0D\u540E\u518D\u8BF4",
       setupConfirmHint: "\u521B\u5EFA\u52A8\u4F5C\u6709\u660E\u786E confirm \u63D0\u793A \xB7 \u4E0D\u52A8\u4F60\u5DF2\u6709\u7684\u4EFB\u4F55\u6587\u6863\uFF1B\u4E4B\u540E\u53EF\u5728 \u8BBE\u7F6E \u2192 \u5F53\u524D\u5185\u5BB9\u5E93 \u66F4\u6539\u3002",
       setupSummaryDoc: "\u6761\u76EE\u5C06\u4EE5\u771F\u5B9E\u5757\u4FDD\u5B58\u4E8E\u6B64\u6587\u6863",
-      setupSummaryNotebook: "\u6574\u4E2A\u7B14\u8BB0\u672C\u4F5C\u4E3A\u5185\u5BB9\u5E93",
+      setupSummaryNotebook: "\u7D22\u5F15\u7B14\u8BB0\u672C\u6839\u76EE\u5F55\u4E0B\u4E00\u7EA7\u6587\u6863\uFF0C\u5E76\u5199\u5165\u7B2C\u4E00\u4E2A\u6587\u6863",
+      setupSummaryTree: "\u7D22\u5F15\u6240\u9009\u6587\u6863\u53CA\u6700\u591A 3 \u5C42\u5B50\u6587\u6863\uFF0C\u65B0\u589E\u6761\u76EE\u5199\u5165\u6240\u9009\u6839\u6587\u6863",
       create: "\u521B\u5EFA",
+      retry: "\u91CD\u8BD5",
       useCount: "%s \u6B21",
       quickNew: "\uFF0B \u65B0\u5EFA",
       quickInsertSelected: "\u63D2\u5165\u9009\u4E2D",
-      packBtn: "\u6A21\u677F\u5305",
+      packBtn: "\u5BFC\u51FA\u6A21\u677F\u5305",
       packExportTitle: "\u5BFC\u51FA \xB7 \u6A21\u677F\u5305",
       packCategoryLabel: "\u5206\u7C7B",
       allCategories: "\u5168\u90E8\u5206\u7C7B",
@@ -7205,22 +7562,38 @@ ${exception.mark.snippet}`;
       customTransformHint: "\u4E0E\u5185\u7F6E\u53D8\u6362\u5E76\u5217\u51FA\u73B0\u5728\u6761\u76EE\u52A8\u4F5C\u83DC\u5355 \u2726 \u533A\uFF1B\u8BFB\u53D6\u6B63\u6587\u9075\u5FAA\u300C\u5141\u8BB8 AI \u8BFB\u53D6\u5B8C\u6574\u6B63\u6587\u300D\u5F00\u5173",
       quickCapture: "\u5FEB\u901F\u6355\u83B7\u526A\u8D34\u677F\u4E3A\u6761\u76EE",
       quickCaptureDuplicate: "\u5DF2\u5B58\u5728\u540C\u6587\u6761\u76EE\u300C%s\u300D\uFF0C\u672A\u91CD\u590D\u4FDD\u5B58",
-      promptPackBtn: "\u5BFC\u5165\u63D0\u793A\u8BCD\u573A\u666F\u5305",
-      promptPackHint: "\u5185\u7F6E 10 \u4E2A\u6A21\u677F\uFF1A\u5BA2\u670D\u56DE\u590D / AI \u63D0\u793A\u8BCD / \u7814\u53D1\u5199\u4F5C\uFF1B\u5BFC\u5165\u5F53\u524D\u5E93\u540E\u53EF\u81EA\u7531\u4FEE\u6539",
-      dataSection: "\u6570\u636E\uFF08\u5BFC\u51FA / \u5BFC\u5165\uFF09",
+      promptPackBtn: "\u5BFC\u5165\u5185\u7F6E\u5206\u7C7B\u6A21\u677F",
+      promptPackHint: "\u5185\u7F6E\u6A21\u677F\u4F1A\u4EE5\u5206\u7C7B\u5C5E\u6027\u4FDD\u5B58\u5728\u5F53\u524D\u5E93\u6587\u6863\u4E2D",
+      dataSection: "\u6570\u636E\u4E0E\u6A21\u677F\uFF08\u5BFC\u51FA / \u5BFC\u5165\uFF09",
       librarySection: "\u5F53\u524D\u5185\u5BB9\u5E93",
       libraryNone: "\u672A\u914D\u7F6E",
       reindexBtn: "\u91CD\u5EFA\u7D22\u5F15",
       clearRecents: "\u6E05\u7A7A\u6700\u8FD1\u4F7F\u7528",
+      clearRecentsEmpty: "\u6682\u65E0\u6700\u8FD1\u4F7F\u7528",
       clearRecentsConfirm: "\u6E05\u7A7A\u6700\u8FD1\u4F7F\u7528\u8BB0\u5F55\uFF1F",
       exportBtn: "\u5BFC\u51FA\u5168\u90E8\u6761\u76EE (JSON)",
       importBtn: "\u5BFC\u5165 JSON",
       exportMdBtn: "\u5BFC\u51FA Markdown \u5305\uFF08\u542B\u8D44\u6E90\uFF09",
       tagAuditBtn: "AI \u6807\u7B7E\u4F53\u68C0",
       setupTitle: "\u9009\u62E9\u5E38\u7528\u5185\u5BB9\u5E93",
-      setupHint: "\u6761\u76EE\u5C06\u4EE5\u771F\u5B9E\u5757\u7684\u5F62\u5F0F\u4FDD\u5B58\u5728\u4F60\u9009\u62E9\u7684\u6587\u6863\u4E2D\uFF08\u53EF\u5728\u601D\u6E90\u4E2D\u6B63\u5E38\u7F16\u8F91\uFF09\u3002\u521B\u5EFA\u65B0\u6587\u6863\u524D\u4F1A\u660E\u786E\u63D0\u793A\uFF0C\u4E0D\u4F1A\u9759\u9ED8\u5199\u5165\u3002",
+      setupHint: "\u6761\u76EE\u4FDD\u5B58\u4E3A\u601D\u6E90\u771F\u5B9E\u5757\uFF0C\u53EF\u5728\u601D\u6E90\u4E2D\u7EE7\u7EED\u7F16\u8F91\u3002\u521B\u5EFA\u65B0\u6587\u6863\u524D\u4F1A\u660E\u786E\u786E\u8BA4\u3002",
+      setupUsageGuide: "\u5F00\u59CB\u4F7F\u7528\uFF1A\u4ECE\u9762\u677F\u65B0\u5EFA\uFF0C\u6216\u4ECE\u526A\u8D34\u677F\u6355\u83B7\uFF1B\u641C\u7D22\u540E\u9009\u62E9\u6761\u76EE\uFF0C\u518D\u7528\u64CD\u4F5C\u533A\u63D2\u5165\u6216\u590D\u5236\u3002\u6A21\u677F\u53D8\u91CF {{xlc:ask:\u5B57\u6BB5}} \u4F1A\u5728\u4F7F\u7528\u524D\u8BE2\u95EE\u3002",
+      setupRecommendation: "\u63A8\u8350\u65B0\u5EFA\u4E00\u4E2A\u5E93\u6587\u6863\uFF1B\u5206\u7C7B\u662F\u6761\u76EE\u5C5E\u6027\uFF0C\u6A21\u677F\u7531\u4F60\u786E\u8BA4\u540E\u5BFC\u5165\u5E76\u4FDD\u5B58\u5728\u8BE5\u6587\u6863\u3002",
+      setupCreateNewDoc: "\u65B0\u5EFA\u4E13\u7528\u5E93\u6587\u6863\uFF08\u63A8\u8350\uFF09",
       setupPickDoc: "\u9009\u62E9\u73B0\u6709\u6587\u6863",
       setupNotebook: "\u6309\u7B14\u8BB0\u672C",
+      setupCreateNotebook: "\u65B0\u5EFA\u6587\u6863\u6240\u5728\u7B14\u8BB0\u672C",
+      setupChooseNotebook: "\u8BF7\u9009\u62E9\u7B14\u8BB0\u672C",
+      setupNotebookLoading: "\u6B63\u5728\u8BFB\u53D6\u53EF\u7528\u7B14\u8BB0\u672C\u2026",
+      setupNotebookReady: "\u53EF\u7528\u7B14\u8BB0\u672C\u5DF2\u52A0\u8F7D",
+      setupNotebookNeedsDocsCheck: "\u9009\u62E9\u7B14\u8BB0\u672C\u540E\uFF0C\u4E0B\u4E00\u6B65\u4F1A\u68C0\u67E5\u6839\u76EE\u5F55\u6587\u6863",
+      setupNotebookDocsReady: "\u6839\u76EE\u5F55\u6587\u6863\u5DF2\u68C0\u67E5\uFF0C\u53EF\u4EE5\u7EE7\u7EED\u8BBE\u7F6E\u5185\u5BB9\u5E93",
+      setupNotebookEmpty: "\u6CA1\u6709\u53EF\u7528\u7B14\u8BB0\u672C",
+      setupNotebookLoadFailed: "\u7B14\u8BB0\u672C\u8BFB\u53D6\u5931\u8D25",
+      setupNotebookNotReady: "\u7B14\u8BB0\u672C\u5C1A\u672A\u52A0\u8F7D\u5B8C\u6210",
+      setupNotebookNoDocs: "\u8BE5\u7B14\u8BB0\u672C\u6839\u76EE\u5F55\u6CA1\u6709\u6587\u6863",
+      setupNotebookDocsChecking: "\u6B63\u5728\u68C0\u67E5\u7B14\u8BB0\u672C\u6839\u76EE\u5F55\u6587\u6863\u2026",
+      setupNotebookDocsCheckFailed: "\u68C0\u67E5\u7B14\u8BB0\u672C\u6839\u76EE\u5F55\u5931\u8D25\uFF0C\u53EF\u91CD\u8BD5",
       setupNewDoc: "\u521B\u5EFA\u65B0\u5E93\u6587\u6863",
       setupNewDocName: "\u5E38\u7528\u5185\u5BB9\u5E93",
       docPicker: "\u9009\u62E9\u5E93\u6587\u6863",
@@ -7240,6 +7613,7 @@ ${exception.mark.snippet}`;
       copyFailed: "\u590D\u5236\u5931\u8D25\uFF1A\u65E0\u6CD5\u5199\u5165\u526A\u8D34\u677F",
       libModeNotebook: "\u7B14\u8BB0\u672C \xD7 %s",
       libModeDoc: "\u6587\u6863\u5E93 \xB7 %s \u4E2A\u6587\u6863",
+      libModeTree: "\u6587\u6863\u6811 \xB7 %s \u4E2A\u6839\u6587\u6863",
       setupPickDocTree: "\u9009\u62E9\u73B0\u6709\u6587\u6863\uFF08\u542B\u5B50\u6587\u6863\uFF09",
       ctDeleteConfirm: "\u5220\u9664\u81EA\u5B9A\u4E49\u53D8\u6362\u300C%s\u300D\uFF1F\u8BE5\u64CD\u4F5C\u4E0D\u53EF\u6062\u590D\u3002",
       ctDeleted: "\u5DF2\u5220\u9664\u81EA\u5B9A\u4E49\u53D8\u6362\u300C%s\u300D",
@@ -7261,22 +7635,31 @@ ${exception.mark.snippet}`;
     return text;
   };
   function makeDeps(overrides = {}) {
-    var _a;
+    var _a, _b;
     const aiOn = (_a = overrides.aiEnabled) != null ? _a : true;
+    let activeFilters = { ...(_b = overrides.filters) != null ? _b : { type: "", tag: "", category: "" } };
     return {
-      t: T,
+      t: (key, ...args) => key === "newItemAction" && overrides.newItemAction ? overrides.newItemAction : T(key, ...args),
       search: async (query) => {
-        var _a2, _b;
+        var _a2, _b2;
         const w = window;
         w.__xlcSearchCalls = ((_a2 = w.__xlcSearchCalls) != null ? _a2 : 0) + 1;
         if (overrides.empty) return { entries: [], truncated: false, total: 0 };
-        const text = typeof query === "string" ? query : (_b = query == null ? void 0 : query.text) != null ? _b : "";
+        const text = typeof query === "string" ? query : (_b2 = query == null ? void 0 : query.text) != null ? _b2 : "";
         const q = text.trim();
-        const entries = !q || q.startsWith("?") ? ENTRIES : ENTRIES.filter((e) => {
+        let entries = !q || q.startsWith("?") ? ENTRIES : ENTRIES.filter((e) => {
           var _a3;
           const hay = [e.title, e.alias, e.summary, e.category, ...(_a3 = e.tags) != null ? _a3 : []].join(" ").toLowerCase();
           return hay.includes(q.toLowerCase());
         });
+        if (typeof query !== "string") {
+          if (query.itemType) entries = entries.filter((entry) => entry.itemType === query.itemType);
+          if (query.tag) entries = entries.filter((entry) => {
+            var _a3, _b3;
+            return (_b3 = entry.tags) == null ? void 0 : _b3.includes((_a3 = query.tag) != null ? _a3 : "");
+          });
+          if (query.category) entries = entries.filter((entry) => entry.category === query.category);
+        }
         return { entries, truncated: false, total: 128 };
       },
       getTags: async () => ["\u5BA2\u6237\u6C9F\u901A", "\u6A21\u677F", "\u5F00\u53D1"],
@@ -7316,13 +7699,11 @@ ${exception.mark.snippet}`;
       },
       saveTransformed: async () => {
       },
-      getFilters: () => {
-        var _a2;
-        return (_a2 = overrides.filters) != null ? _a2 : { type: "", tag: "", category: "" };
-      },
+      getFilters: () => ({ ...activeFilters }),
       getLibraryName: async () => "/\u5E38\u7528\u5185\u5BB9\u5E93",
       setFilters: (filters) => {
         var _a2;
+        activeFilters = { ...filters };
         const w = window;
         ((_a2 = w.__xlcSetFilters) != null ? _a2 : w.__xlcSetFilters = []).push({ ...filters });
       },
@@ -7375,7 +7756,7 @@ ${exception.mark.snippet}`;
       }
       return dialog;
     },
-    openSettings() {
+    openSettings(mode = "doc") {
       const ctx = {
         t: T,
         state: {
@@ -7390,10 +7771,13 @@ ${exception.mark.snippet}`;
           search: { pinyin: true, placeholders: true },
           insert: { promptVariables: true, recordUsage: true }
         },
-        getConfig: () => ({ configVersion: 1, mode: "doc", notebookIds: [], containerDocIds: ["20240101120001-hijklmn"], createdDocIds: [], configuredAt: 1 }),
+        getConfig: () => ({ configVersion: 1, mode, notebookIds: mode === "notebook" ? ["20240101"] : [], containerDocIds: mode === "notebook" ? [] : ["20240101120001-hijklmn"], createdDocIds: [], configuredAt: 1 }),
         library: {
           listNotebooks: async () => ({ ok: true, data: [{ id: "20240101", name: "\u7B14\u8BB0" }] }),
-          searchDocs: async (k) => k ? [{ id: "20240101120001-hijklmn", hPath: "/\u5E38\u7528\u5185\u5BB9\u5E93", box: "nb", name: "\u5E38\u7528\u5185\u5BB9\u5E93" }] : [],
+          listNotebookDocs: async () => ({ ok: true, data: [{ id: "20240101120001-hijklmn", name: "\u5E38\u7528\u5185\u5BB9\u5E93" }] }),
+          createLibraryDoc: async () => ({ ok: true, data: { docId: "20240101120001-hijklmn" } }),
+          searchDocs: async (k) => k ? { ok: true, data: [{ id: "20240101120001-hijklmn", hPath: "/\u5E38\u7528\u5185\u5BB9\u5E93", box: "nb", name: "\u5E38\u7528\u5185\u5BB9\u5E93" }] } : { ok: true, data: [] },
+          getDocPath: async () => "/\u5E38\u7528\u5185\u5BB9\u5E93",
           reindex: async () => ({ entries: [], items: /* @__PURE__ */ new Map(), truncated: false, docsScanned: 1, errors: [], builtAt: 1 }),
           ensureIndex: async () => ({
             entries: ENTRIES.map((e) => ({ ...e })),
@@ -7431,7 +7815,10 @@ ${exception.mark.snippet}`;
       };
       openSettingsDialog(ctx);
     },
-    openSetup() {
+    openSetup(options) {
+      let notebookRequests = 0;
+      let notebookDocRequests = 0;
+      let docSearchRequests = 0;
       const ctx = {
         t: T,
         state: {
@@ -7446,18 +7833,36 @@ ${exception.mark.snippet}`;
           search: { pinyin: true, placeholders: true },
           insert: { promptVariables: true, recordUsage: true }
         },
-        getConfig: () => null,
+        getConfig: () => (options == null ? void 0 : options.existingMode) === "notebook" ? { configVersion: 1, mode: "notebook", notebookIds: ["20240101"], containerDocIds: [], createdDocIds: [], configuredAt: 1 } : (options == null ? void 0 : options.existingMode) ? { configVersion: 1, mode: options.existingMode, notebookIds: [], containerDocIds: ["20240101120001-hijklmn"], createdDocIds: [], configuredAt: 1 } : null,
         library: {
-          listNotebooks: async () => ({ ok: true, data: [{ id: "20240101", name: "\u7B14\u8BB0" }] }),
-          searchDocs: async () => [],
+          listNotebooks: async () => {
+            notebookRequests++;
+            return (options == null ? void 0 : options.notebookLoadError) && notebookRequests === 1 ? { ok: false, reason: "kernel-error", message: "offline" } : { ok: true, data: [{ id: "20240101", name: "\u7B14\u8BB0" }] };
+          },
+          listNotebookDocs: async () => {
+            notebookDocRequests++;
+            if (options == null ? void 0 : options.notebookDocsDelayMs) await new Promise((resolve) => setTimeout(resolve, options.notebookDocsDelayMs));
+            if ((options == null ? void 0 : options.notebookDocsCheckError) && notebookDocRequests === 1) return { ok: false, reason: "kernel-error", message: "offline" };
+            return { ok: true, data: (options == null ? void 0 : options.emptyNotebook) ? [] : [{ id: "20240101120001-hijklmn", name: "\u5E38\u7528\u5185\u5BB9\u5E93" }] };
+          },
+          createLibraryDoc: async () => ({ ok: true, data: { docId: "20240101120001-hijklmn" } }),
+          searchDocs: async (k) => {
+            docSearchRequests++;
+            if (options == null ? void 0 : options.docSearchDelayMs) await new Promise((resolve) => setTimeout(resolve, options.docSearchDelayMs));
+            if ((options == null ? void 0 : options.docSearchErrorOnce) && docSearchRequests === 1) return { ok: false, reason: "kernel-error", message: "offline" };
+            return k ? { ok: true, data: [{ id: "20240101120001-hijklmn", hPath: "/\u5E38\u7528\u5185\u5BB9\u5E93", box: "nb", name: "\u5E38\u7528\u5185\u5BB9\u5E93" }] } : { ok: true, data: [] };
+          },
+          getDocPath: async () => "/\u5E38\u7528\u5185\u5BB9\u5E93",
           reindex: async () => ({ entries: [], items: /* @__PURE__ */ new Map(), truncated: false, docsScanned: 0, errors: [], builtAt: 1 })
         },
         ai: { updateSettings: () => {
         }, getSettings: () => ({ enabled: false, shareContent: false }) },
         registry: { list: () => [], listExecutable: () => [] },
-        notify: () => {
+        notify: (_kind, message) => {
+          document.body.dataset.xlcSetupNotice = message;
         },
-        applyConfig: () => {
+        applyConfig: (config) => {
+          document.body.dataset.xlcSetupConfig = JSON.stringify(config);
         },
         persistSoon: () => {
         },
@@ -7471,7 +7876,7 @@ ${exception.mark.snippet}`;
       };
       openSetupDialog(ctx);
     },
-    openCapture(aiOn = true) {
+    openCapture(aiOn = true, aiDelayMs = 0) {
       const capture = new CaptureDialog({
         t: T,
         getSelectionText: () => ({ text: "", blockId: null }),
@@ -7486,8 +7891,14 @@ ${exception.mark.snippet}`;
         getBlockKramdown: async () => "\u5757\u5185\u5BB9",
         exportDocContent: async () => ({ hPath: "/\u5E38\u7528\u5185\u5BB9\u5E93", content: "# \u5185\u5BB9" }),
         aiEnabled: () => aiOn,
-        aiTidy: async (content) => ({ ok: true, title: "AI \u5EFA\u8BAE " + content.slice(0, 6), tags: ["AI"] }),
-        aiDraft: async (desc) => ({ ok: true, text: "\u8349\u7A3F\uFF08" + desc + "\uFF09" }),
+        aiTidy: async (content) => {
+          if (aiDelayMs) await new Promise((resolve) => setTimeout(resolve, aiDelayMs));
+          return { ok: true, title: "AI \u5EFA\u8BAE " + content.slice(0, 6), tags: ["AI"] };
+        },
+        aiDraft: async (desc) => {
+          if (aiDelayMs) await new Promise((resolve) => setTimeout(resolve, aiDelayMs));
+          return { ok: true, text: "\u8349\u7A3F\uFF08" + desc + "\uFF09" };
+        },
         findDuplicate: async () => null,
         getLibraryName: async () => "/\u5E38\u7528\u5185\u5BB9\u5E93"
       });

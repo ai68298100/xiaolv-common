@@ -7,6 +7,7 @@ const esbuild = require("esbuild");
 const ROOT = path.resolve(__dirname, "..");
 const OUT = path.join(ROOT, "docs", "design");
 const STUB = path.join(__dirname, "harness", "stub-dom.cjs");
+const enI18n = require(path.join(ROOT, "src", "i18n", "en.json"));
 
 let chromium;
 try {
@@ -152,10 +153,11 @@ fs.writeFileSync(path.join(OUT, "harness.html"), html);
         providerHeader: (document.querySelector(".xlc-provider-header")?.textContent ?? "").includes("提供方内容"),
         providerRows: document.querySelectorAll(".xlc-row--provider").length >= 1,
         footerGear: (document.querySelector(".xlc-footer-gear")?.textContent ?? "").includes("设置"),
-        // R68：非 AI 结果态显示「✦ 常用 · N 次」预览徽标
-        paneUsageBadge: (() => {
+        // 无本地命中时不保留上一条目的使用徽标或预览。
+        paneUsageHidden: (() => {
             const el = document.querySelector(".xlc-pane-usage");
-            return el !== null && el.offsetParent !== null && (el.textContent ?? "").includes("32");
+            const body = document.querySelector(".xlc-pane-body");
+            return el !== null && el.offsetParent === null && body?.textContent === "当前没有可预览的条目";
         })(),
     }));
     // 窄容器（<620px）：单列降级（预览隐藏）
@@ -190,7 +192,7 @@ fs.writeFileSync(path.join(OUT, "harness.html"), html);
     });
     await page.waitForTimeout(400);
     const settingsAssertions = await page.evaluate(() => ({
-        sections: ["AI 助手", "搜索", "数据", "提供方内容"].every((s) => document.body.textContent.includes(s)),
+        sections: ["AI 助手", "搜索", "数据与模板", "提供方内容"].every((s) => document.body.textContent.includes(s)),
         toggles: document.querySelectorAll(".xlc-setting-row input[type=checkbox]").length >= 3,
         providerRow: (document.body.textContent || "").includes("小驴打卡"),
         dataButtons: (document.body.textContent || "").includes("重建索引") && (document.body.textContent || "").includes("导出"),
@@ -201,12 +203,16 @@ fs.writeFileSync(path.join(OUT, "harness.html"), html);
             && (document.querySelector(".xlc-ct-name")?.value ?? "") === "客服话术"
             && (document.body.textContent || "").includes("添加自定义变换"),
         // R74：提示词场景包入口
-        promptPack: (document.body.textContent || "").includes("导入提示词场景包"),
+        promptPack: (document.body.textContent || "").includes("导入内置分类模板"),
+        promptPackInDataSection: (() => {
+            const btn = Array.from(document.querySelectorAll("button")).find((b) => (b.textContent ?? "").includes("导入内置分类模板"));
+            return !!btn && (btn.closest(".xlc-card")?.querySelector(".xlc-form-label")?.textContent ?? "").includes("数据与模板");
+        })(),
     }));
     if (Object.values(settingsAssertions).some((v) => !v)) {
         throw new Error("settings smoke failed: " + JSON.stringify(settingsAssertions));
     }
-    console.log("  smoke ✓ settings: 5 assertions");
+    console.log("  smoke ✓ settings: 6 assertions");
     await page.screenshot({path: path.join(OUT, "production-settings-light.png")});
     // 模板包导出对话框（R71/F6，原型屏 8 右帧：分类筛选 / 包名 / 内容清单）
     await page.evaluate(() => {
@@ -222,7 +228,7 @@ fs.writeFileSync(path.join(OUT, "harness.html"), html);
             container.style.margin = "0 auto";
             container.style.maxWidth = "620px";
         }
-        const packBtn = Array.from(document.querySelectorAll(".b3-button")).find((b) => b.textContent === "模板包");
+        const packBtn = Array.from(document.querySelectorAll(".b3-button")).find((b) => b.textContent === "导出模板包");
         if (packBtn) packBtn.click();
     });
     await page.waitForTimeout(600);
@@ -268,19 +274,292 @@ fs.writeFileSync(path.join(OUT, "harness.html"), html);
     await page.waitForTimeout(400);
     const setupAssertions = await page.evaluate(() => {
         const text = document.body.textContent || "";
+        const create = Array.from(document.querySelectorAll("button")).find((b) => (b.textContent ?? "").includes("创建"));
+        const next = Array.from(document.querySelectorAll("button")).find((b) => (b.textContent ?? "").includes("下一步"));
         return {
             hint: text.includes("真实块"),
+            usageGuide: text.includes("开始使用：") && !text.includes("setupUsageGuide"),
+            recommendation: text.includes("分类是条目属性") && text.includes("模板由你确认后导入"),
+            recommendedModeSelected: document.querySelector("#xlc-setup-mode")?.value === "new-doc",
             modeSelect: !!document.querySelector(".xlc-form select"),
             notebook: text.includes("按笔记本"),
             createBtn: text.includes("创建新库文档"),
+            createTargetVisible: text.includes("新建文档所在笔记本"),
+            createDisabledUntilNotebookSelection: !!create && create.disabled,
+            nextDisabledWithoutDoc: !!next && next.disabled,
             docPicker: (document.querySelector("input[placeholder]")?.getAttribute("placeholder") ?? "").includes("选择库文档") || !!document.querySelector(".xlc-doclist"),
         };
     });
     if (Object.values(setupAssertions).some((v) => !v)) {
         throw new Error("setup smoke failed: " + JSON.stringify(setupAssertions));
     }
-    console.log("  smoke ✓ setup: 5 assertions");
+    console.log("  smoke ✓ setup: 10 assertions");
     await page.screenshot({path: path.join(OUT, "production-setup-light.png")});
+    await page.evaluate(() => {
+        const stage = document.getElementById("stage");
+        document.querySelectorAll(".b3-dialog").forEach((el) => el.remove());
+        stage.innerHTML = "";
+        window.XlcHarness.openSetup({existingMode: "doc", docSearchErrorOnce: true, docSearchDelayMs: 350});
+        const dialogRoot = document.querySelector(".b3-dialog");
+        if (dialogRoot) stage.appendChild(dialogRoot);
+    });
+    await page.waitForFunction(() => document.querySelector(".xlc-doclist")?.getAttribute("aria-busy") === "true", undefined, {timeout: 3000});
+    const pickerLoading = await page.evaluate(() => {
+        const list = document.querySelector(".xlc-doclist");
+        return list?.getAttribute("aria-busy") === "true"
+            && (list.querySelector(".xlc-doclist-empty")?.textContent ?? "").includes("加载中");
+    });
+    if (!pickerLoading) throw new Error("doc-picker loading state missing");
+    await page.waitForFunction(() => {
+        const list = document.querySelector(".xlc-doclist");
+        return !!list?.querySelector(".xlc-doclist-retry") && (list.textContent ?? "").includes("offline");
+    }, undefined, {timeout: 3000});
+    const pickerFailure = await page.evaluate(() => {
+        const list = document.querySelector(".xlc-doclist");
+        return {
+            preservesCause: (list?.textContent ?? "").includes("思源接口调用失败：offline"),
+            notMisreportedAsEmpty: !(list?.textContent ?? "").includes("没有匹配的文档"),
+            retryVisible: !!list?.querySelector(".xlc-doclist-retry"),
+        };
+    });
+    if (Object.values(pickerFailure).some((v) => !v)) {
+        throw new Error("doc-picker failure state smoke failed: " + JSON.stringify(pickerFailure));
+    }
+    const pickerRetry = await page.evaluate(() => {
+        document.querySelector(".xlc-doclist-retry")?.click();
+        const list = document.querySelector(".xlc-doclist");
+        return list?.getAttribute("aria-busy") === "true"
+            && (list.querySelector(".xlc-doclist-empty")?.textContent ?? "").includes("加载中");
+    });
+    if (!pickerRetry) throw new Error("doc-picker retry did not restart loading state");
+    await page.waitForSelector(".xlc-doclist-item", {timeout: 3000});
+    const pickerRecovered = await page.evaluate(() => {
+        const next = Array.from(document.querySelectorAll("button")).find((b) => (b.textContent ?? "").includes("下一步"));
+        return {
+            resultRestored: Array.from(document.querySelectorAll(".xlc-doclist-item")).some((b) => (b.textContent ?? "").includes("常用内容库")),
+            nextEnabled: !!next && !next.disabled,
+            busyCleared: document.querySelector(".xlc-doclist")?.getAttribute("aria-busy") !== "true",
+        };
+    });
+    if (Object.values(pickerRecovered).some((v) => !v)) {
+        throw new Error("doc-picker retry recovery smoke failed: " + JSON.stringify(pickerRecovered));
+    }
+    console.log("  smoke ✓ doc-picker loading, failure cause, retry and recovery: 8 assertions");
+    await page.evaluate(() => {
+        const stage = document.getElementById("stage");
+        document.querySelectorAll(".b3-dialog").forEach((el) => el.remove());
+        stage.innerHTML = "";
+        window.XlcHarness.openSetup({emptyNotebook: true});
+        const dialogRoot = document.querySelector(".b3-dialog");
+        if (dialogRoot) stage.appendChild(dialogRoot);
+    });
+    await page.waitForTimeout(500);
+    const emptyNotebook = await page.evaluate(async () => {
+        const mode = document.querySelector("#xlc-setup-mode");
+        mode.value = "notebook";
+        mode.dispatchEvent(new Event("change", {bubbles: true}));
+        await new Promise((resolve) => setTimeout(resolve, 250));
+        const notebook = document.querySelector("#xlc-setup-notebook");
+        notebook.value = "20240101";
+        notebook.dispatchEvent(new Event("change", {bubbles: true}));
+        const next = Array.from(document.querySelectorAll("button")).find((b) => (b.textContent ?? "").includes("下一步"));
+        const create = Array.from(document.querySelectorAll("button")).find((b) => (b.textContent ?? "").includes("创建"));
+        next?.click();
+        await new Promise((resolve) => setTimeout(resolve, 300));
+        return {
+            remainsOnStepOne: !document.body.textContent.includes("第 2 步 · 确认落点"),
+            explainsEmptyNotebook: document.body.textContent.includes("根目录没有文档")
+                || (document.body.dataset.xlcSetupNotice ?? "").includes("根目录没有文档"),
+            didNotApplyConfig: !document.body.dataset.xlcSetupConfig,
+            createDisabledInNotebookIndexMode: !!create && create.disabled,
+            rootCheckRequiresRetry: !!next && next.disabled
+                && document.querySelector(".xlc-setup-notebook-retry")?.style.display !== "none",
+        };
+    });
+    if (Object.values(emptyNotebook).some((v) => !v)) {
+        throw new Error("empty-notebook setup smoke failed: " + JSON.stringify(emptyNotebook));
+    }
+    console.log("  smoke ✓ empty-notebook setup: 5 assertions");
+    await page.evaluate(() => {
+        const stage = document.getElementById("stage");
+        document.querySelectorAll(".b3-dialog").forEach((el) => el.remove());
+        stage.innerHTML = "";
+        window.XlcHarness.openSetup({notebookLoadError: true});
+        const dialogRoot = document.querySelector(".b3-dialog");
+        if (dialogRoot) stage.appendChild(dialogRoot);
+    });
+    await page.waitForTimeout(150);
+    const retrySetup = await page.evaluate(async () => {
+        const retry = document.querySelector(".xlc-setup-notebook-retry");
+        const status = document.querySelector(".xlc-setup-notebook-status");
+        const wasError = status?.textContent?.includes("读取失败") && retry?.style.display !== "none";
+        retry?.click();
+        await new Promise((resolve) => setTimeout(resolve, 150));
+        const notebook = document.querySelector("#xlc-setup-notebook");
+        const create = Array.from(document.querySelectorAll("button")).find((b) => (b.textContent ?? "").includes("创建"));
+        const selectReady = !notebook?.disabled && notebook?.options.length === 2;
+        notebook.value = "20240101";
+        notebook.dispatchEvent(new Event("change", {bubbles: true}));
+        return {
+            showsRetryableError: !!wasError,
+            retryLoadsNotebooks: !!selectReady && status?.textContent?.includes("已加载"),
+            createEnabledAfterSelection: !!create && !create.disabled,
+        };
+    });
+    if (Object.values(retrySetup).some((v) => !v)) {
+        throw new Error("notebook retry setup smoke failed: " + JSON.stringify(retrySetup));
+    }
+    console.log("  smoke ✓ notebook load failure and retry: 3 assertions");
+    await page.evaluate(() => {
+        const stage = document.getElementById("stage");
+        document.querySelectorAll(".b3-dialog").forEach((el) => el.remove());
+        stage.innerHTML = "";
+        window.XlcHarness.openSetup({existingMode: "notebook"});
+        const dialogRoot = document.querySelector(".b3-dialog");
+        if (dialogRoot) stage.appendChild(dialogRoot);
+    });
+    await page.waitForTimeout(150);
+    const existingSetup = await page.evaluate(() => ({
+        modeRestored: document.querySelector("#xlc-setup-mode")?.value === "notebook",
+        notebookRestored: document.querySelector("#xlc-setup-notebook")?.value === "20240101",
+        nextEnabled: !Array.from(document.querySelectorAll("button")).find((b) => (b.textContent ?? "").includes("下一步"))?.disabled,
+    }));
+    if (Object.values(existingSetup).some((v) => !v)) {
+        throw new Error("existing notebook setup smoke failed: " + JSON.stringify(existingSetup));
+    }
+    console.log("  smoke ✓ existing notebook configuration restored: 3 assertions");
+    await page.evaluate(() => {
+        const stage = document.getElementById("stage");
+        document.querySelectorAll(".b3-dialog").forEach((el) => el.remove());
+        stage.innerHTML = "";
+        window.XlcHarness.openSetup({notebookDocsCheckError: true});
+        const dialogRoot = document.querySelector(".b3-dialog");
+        if (dialogRoot) stage.appendChild(dialogRoot);
+    });
+    await page.waitForTimeout(150);
+    const notebookDocsRetry = await page.evaluate(async () => {
+        const mode = document.querySelector("#xlc-setup-mode");
+        mode.value = "notebook";
+        mode.dispatchEvent(new Event("change", {bubbles: true}));
+        await new Promise((resolve) => setTimeout(resolve, 150));
+        const notebook = document.querySelector("#xlc-setup-notebook");
+        notebook.value = "20240101";
+        notebook.dispatchEvent(new Event("change", {bubbles: true}));
+        const next = Array.from(document.querySelectorAll("button")).find((b) => (b.textContent ?? "").includes("下一步"));
+        next?.click();
+        await new Promise((resolve) => setTimeout(resolve, 150));
+        const retry = document.querySelector(".xlc-setup-notebook-retry");
+        const status = document.querySelector(".xlc-setup-notebook-status");
+        const failure = status?.textContent?.includes("检查笔记本根目录失败") && retry?.style.display !== "none";
+        retry?.click();
+        await new Promise((resolve) => setTimeout(resolve, 150));
+        return {
+            showsRootCheckFailure: !!failure,
+            retriesRootCheck: document.body.textContent.includes("第 2 步 · 确认落点"),
+        };
+    });
+    if (Object.values(notebookDocsRetry).some((v) => !v)) {
+        throw new Error("notebook root-doc retry smoke failed: " + JSON.stringify(notebookDocsRetry));
+    }
+    console.log("  smoke ✓ notebook root-doc check retry: 2 assertions");
+    await page.evaluate(() => {
+        const stage = document.getElementById("stage");
+        document.querySelectorAll(".b3-dialog").forEach((el) => el.remove());
+        stage.innerHTML = "";
+        window.XlcHarness.openSetup({notebookDocsDelayMs: 250, existingMode: "doc"});
+        const dialogRoot = document.querySelector(".b3-dialog");
+        if (dialogRoot) stage.appendChild(dialogRoot);
+        const mode = document.querySelector("#xlc-setup-mode");
+        mode.value = "notebook";
+        mode.dispatchEvent(new Event("change", {bubbles: true}));
+    });
+    await page.waitForFunction(() => {
+        const notebook = document.querySelector("#xlc-setup-notebook");
+        return notebook && !notebook.disabled && notebook.options.length > 1;
+    }, {timeout: 3000});
+    const staleSetupValidation = await page.evaluate(async () => {
+        const mode = document.querySelector("#xlc-setup-mode");
+        const notebook = document.querySelector("#xlc-setup-notebook");
+        const next = Array.from(document.querySelectorAll("button")).find((b) => (b.textContent ?? "").includes("下一步"));
+        mode.value = "notebook";
+        mode.dispatchEvent(new Event("change", {bubbles: true}));
+        notebook.value = "20240101";
+        notebook.dispatchEvent(new Event("change", {bubbles: true}));
+        const nextWasEnabled = !!next && !next.disabled;
+        next?.click();
+        const validationStarted = document.querySelector(".xlc-setup-notebook-status")?.textContent?.includes("正在检查") ?? false;
+        mode.value = "new-doc";
+        mode.dispatchEvent(new Event("change", {bubbles: true}));
+        await new Promise((resolve) => setTimeout(resolve, 320));
+        return {
+            validationStarted: nextWasEnabled && validationStarted,
+            modeRemainsNewDoc: mode.value === "new-doc",
+            noStaleConfirmationStep: !document.body.textContent.includes("第 2 步 · 确认落点"),
+            noInvalidConfigApplied: !document.body.dataset.xlcSetupConfig,
+            nextHiddenAndDisabled: !!next && next.style.display === "none" && next.disabled,
+        };
+    });
+    if (Object.values(staleSetupValidation).some((v) => !v)) {
+        throw new Error("stale notebook validation smoke failed: " + JSON.stringify(staleSetupValidation));
+    }
+    console.log("  smoke ✓ stale notebook validation after mode change: 4 assertions");
+    await page.evaluate(() => {
+        const stage = document.getElementById("stage");
+        document.querySelectorAll(".b3-dialog").forEach((el) => el.remove());
+        stage.innerHTML = "";
+        window.XlcHarness.openSettings("tree");
+        const dialogRoot = document.querySelector(".b3-dialog");
+        if (dialogRoot) stage.appendChild(dialogRoot);
+    });
+    await page.waitForTimeout(100);
+    const treeLibraryLabels = await page.evaluate(() => {
+        const labels = Array.from(document.querySelectorAll(".xlc-setting-text, .xlc-form-hint"))
+            .filter((el) => (el.textContent ?? "").includes("文档树 · 1 个根文档"));
+        return labels.length >= 2 && document.body.textContent.includes("/常用内容库");
+    });
+    if (!treeLibraryLabels) throw new Error("tree library labels or path are inconsistent");
+    console.log("  smoke ✓ tree library labels and path: 2 assertions");
+    await page.evaluate(() => {
+        const stage = document.getElementById("stage");
+        document.querySelectorAll(".b3-dialog").forEach((el) => el.remove());
+        stage.innerHTML = "";
+        window.XlcHarness.openDialog({filters: {type: "asset", tag: "", category: ""}});
+        const input = document.querySelector(".xlc-search-input");
+        input.value = "";
+        input.dispatchEvent(new Event("input", {bubbles: true}));
+    });
+    await page.waitForTimeout(150);
+    await page.screenshot({path: path.join(OUT, "production-empty-filtered-light.png")});
+    const filteredEmpty = await page.evaluate(async () => {
+        const empty = document.querySelector(".xlc-empty");
+        const clear = Array.from(empty?.querySelectorAll("button") ?? []).find((b) => (b.textContent ?? "").includes("清除筛选"));
+        const add = Array.from(empty?.querySelectorAll("button") ?? []).find((b) => (b.textContent ?? "").includes("新建条目"));
+        clear?.click();
+        await new Promise((resolve) => setTimeout(resolve, 100));
+        return {
+            explainsFilteredEmpty: empty?.textContent?.includes("当前筛选下没有匹配条目"),
+            hasClearAndAdd: !!clear && !!add,
+            clearRestoresRows: (document.querySelectorAll(".xlc-row").length > 0),
+        };
+    });
+    if (Object.values(filteredEmpty).some((v) => !v)) {
+        throw new Error("filtered-empty recovery smoke failed: " + JSON.stringify(filteredEmpty));
+    }
+    console.log("  smoke ✓ filtered empty recovery: 3 assertions");
+    await page.evaluate(() => {
+        const stage = document.getElementById("stage");
+        document.querySelectorAll(".b3-dialog").forEach((el) => el.remove());
+        stage.innerHTML = "";
+        window.XlcHarness.openDialog({mobile: true});
+        const guide = document.querySelector(".xlc-footer-guide");
+        guide?.click();
+    });
+    const mobileGuide = await page.evaluate(() => {
+        const text = document.body.textContent ?? "";
+        return text.includes("点按条目插入") && !text.includes("Alt+1~9 直达前九条");
+    });
+    if (!mobileGuide) throw new Error("mobile usage guide contains desktop-only shortcuts");
+    console.log("  smoke ✓ mobile usage guide: 2 assertions");
     // 捕获表单（生产 CaptureDialog DOM）
     await page.evaluate(() => {
         const stage = document.getElementById("stage");
@@ -333,7 +612,12 @@ fs.writeFileSync(path.join(OUT, "harness.html"), html);
         }
         const tidyBtn = Array.from(document.querySelectorAll(".xlc-form-ai")).find((b) => b.textContent.includes("AI 整理"));
         const content = document.querySelector(".xlc-form-content");
-        if (content) content.value = "项目延期通知模板内容";
+        const disabledUntilContent = !!tidyBtn && tidyBtn.disabled;
+        if (content) {
+            content.value = "项目延期通知模板内容";
+            content.dispatchEvent(new Event("input", {bubbles: true}));
+        }
+        document.body.dataset.xlcTidyGate = `${disabledUntilContent}:${!!tidyBtn && !tidyBtn.disabled}`;
         if (tidyBtn) tidyBtn.click();
     });
     await page.waitForTimeout(400);
@@ -344,6 +628,7 @@ fs.writeFileSync(path.join(OUT, "harness.html"), html);
             sugrowVisible: !!sugrow && sugrow.offsetParent !== null && sugrow.textContent.includes("全部采纳"),
             // R70：建议行文案「AI 建议」+ 标题加粗
             sugrowWording: !!sugrow && sugrow.textContent.includes("AI 建议") && !!sugrow.querySelector("b"),
+            tidyRequiresContent: document.body.dataset.xlcTidyGate === "true:true",
             savePrimary: !!save && save.classList.contains("xlc-btn-primary"),
             twoColRows: document.querySelectorAll(".xlc-form-row").length >= 2,
         };
@@ -517,6 +802,7 @@ fs.writeFileSync(path.join(OUT, "harness.html"), html);
             emptyNewItem: !!empty && !!empty.querySelector(".xlc-empty-action")
                 && (empty.querySelector(".xlc-empty-action")?.textContent ?? "").includes("新建"),
             queryPrefillsTitle: document.body.dataset.xlcNewItemTitle === "不存在的词条",
+            previewCleared: document.querySelector(".xlc-pane-body")?.textContent === "当前没有可预览的条目",
             footerClaim: !!footer && footer.textContent.includes("思源块真源"),
             footerCount: !!footer && footer.textContent.includes("共 0 条"),
         };
@@ -524,7 +810,7 @@ fs.writeFileSync(path.join(OUT, "harness.html"), html);
     if (Object.values(emptyAssertions).some((v) => !v)) {
         throw new Error("empty-state smoke failed: " + JSON.stringify(emptyAssertions));
     }
-    console.log("  smoke ✓ empty-state: 6 assertions");
+    console.log("  smoke ✓ empty-state: 7 assertions");
     await page.screenshot({path: path.join(OUT, "production-empty-light.png")});
     // 语义查询只用于找内容，不能静默变成新条目的标题。
     await page.evaluate(() => {
@@ -555,6 +841,22 @@ fs.writeFileSync(path.join(OUT, "harness.html"), html);
         throw new Error(`semantic query must not prefill a title: ${semanticEmptyTitle}`);
     }
     console.log("  smoke ✓ semantic-empty-title: query not carried over");
+    await page.evaluate((label) => {
+        const stage = document.getElementById("stage");
+        stage.className = "b3-scope light";
+        document.querySelectorAll(".b3-dialog").forEach((el) => el.remove());
+        stage.innerHTML = "";
+        window.XlcHarness.openDialog({empty: true, query: "", newItemAction: label});
+        const dialogRoot = document.querySelector(".b3-dialog");
+        if (dialogRoot) stage.appendChild(dialogRoot);
+    }, enI18n.newItemAction);
+    await page.waitForTimeout(400);
+    const englishEmptyAction = await page.evaluate((expected) => {
+        const button = document.querySelector(".xlc-empty-action");
+        return button?.textContent === expected && !button.textContent.includes("新建");
+    }, enI18n.newItemAction);
+    if (!englishEmptyAction) throw new Error("empty-state new-item action did not use the English localized label");
+    console.log("  smoke ✓ empty-state action localization: 2 assertions");
     // R107 证据：搜索命中高亮（延期 命中前两行标题；纯截图，不新增断言）
     await page.evaluate(() => {
         const stage = document.getElementById("stage");
@@ -715,6 +1017,21 @@ fs.writeFileSync(path.join(OUT, "harness.html"), html);
     });
     await page.waitForTimeout(300);
     await page.screenshot({path: path.join(OUT, "production-settings-dark.png")});
+    const prototypePage = await browser.newPage({viewport: {width: 3040, height: 1400}, deviceScaleFactor: 1});
+    await prototypePage.goto("file:///" + path.join(OUT, "prototype.html").replace(/\\/g, "/"));
+    await prototypePage.waitForLoadState("load");
+    for (const [heading, file] of [
+        ["屏 1 · 桌面搜索弹窗", "prototype-desktop-dialog.png"],
+        ["屏 1 空态 · 未命中", "prototype-empty-state.png"],
+        ["屏 5 · 设置", "prototype-settings.png"],
+        ["屏 6 · 首跑引导", "prototype-setup.png"],
+    ]) {
+        const section = prototypePage.locator("section").filter({hasText: heading}).first();
+        await section.screenshot({path: path.join(OUT, file), animations: "disabled"});
+    }
+    await prototypePage.screenshot({path: path.join(OUT, "prototype-all.png"), fullPage: true, animations: "disabled"});
+    await prototypePage.close();
     await browser.close();
     console.log("production renders done:", fs.readdirSync(OUT).filter((f) => f.startsWith("production-")).join(", "));
+    console.log("prototype snapshots updated: desktop, empty-state, settings, setup, all");
 })();

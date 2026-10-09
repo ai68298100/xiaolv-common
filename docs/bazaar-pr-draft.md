@@ -1,50 +1,36 @@
-# 集市上架 PR 草稿（待批准后执行，本文档不含任何推送动作）
+# 思源集市上架准备与 PR 流程
 
-> 发布政策：bazaar 仓库的 fork / 修改 / PR 必须在用户明确说「可以推送集市」之后执行。
-> 本文提前备好全部内容，批准后流程约 10 分钟。
+> 本文按官方当前集市仓库流程核对（2026-10-10）。发布 GitHub Release 不等于提交集市 PR；只有用户明确说「可以推送集市」后，才操作 `siyuan-note/bazaar`。
 
-## 前置自检（全部满足后才发起）
+## 当前准备情况
 
-| 项 | 状态 |
-| --- | --- |
-| 桌面真机验收 B-001（`pnpm e2e` 全绿输出留档 docs/acceptance/） | ⏳ 待用户令牌 |
-| 移动端演练 B-002（安装/升级/卸载/降级提示核对） | ⏳ 待真机 |
-| 正式 icon/preview | ✅ 已替换占位图 |
-| 密钥扫描（`git log -p` + 现源码无令牌/密钥字面量） | 发布前最后跑一遍 |
-| package.zip 构建 | ✅ |
+| 检查项 | 状态 | 说明 |
+| --- | --- | --- |
+| GitHub Latest Release | v0.3.8 发布中 | 上架前须确认 Latest Release 附带同版本 `package.zip` |
+| 源码与许可 | 已具备 | GitHub 仓库公开，根目录 `LICENSE` 为 MIT |
+| Manifest | 已核对 | `plugin.json` 的 `name` 与仓库名均为 `xiaolv-common`；版本使用 semver；README 中英文路径均存在 |
+| 发布包文件 | 构建后核对 | 至少包含 `plugin.json`、`index.js`、`index.css`、README、声明的图标/预览图及 i18n；用 `pnpm run check:package` 检查根相对结构与版本一致性 |
+| 图标 | 可用 | PNG，48,877 bytes；低于 64 KiB 限制，尺寸 260×260（官方建议 160×160） |
+| 预览图 | 可用 | PNG，1024×768、270,419 bytes；低于 512 KiB 限制 |
+| Electron 桌面验收 B-001 | 待完成 | 当前缺真实前端插件运行时验收；这是产品验收未完成项，不是官方 PR Check 的明示硬门槛 |
+| Android 真机验收 B-002 | 待完成 | 移动端能力仍按 README 降级提示声明；不是官方 PR Check 的明示硬门槛 |
 
-## 第一步：fork 并修改 siyuan-note/bazaar
+图标与预览图不是集市 PR 的必需项；一旦在 manifest 声明，文件需存在并满足官方格式和大小限制。截图或 GIF 也不是 PR 的硬要求。
 
-1. Fork `https://github.com/siyuan-note/bazaar`（或用既有 fork）。
-2. 在 `plugins.json` 追加条目（**以仓库实际 schema 为准核对字段名后再提交**）：
+## 官方 PR 流程
 
-```json
-{
-  "name": "xiaolv-common",
-  "repo": "ai68298100/xiaolv-common",
-  "branch": "main",
-  "headline": "一次捕获，处处调用：锚定真实思源块的常用内容资产层",
-  "author": "ai68298100",
-  "home": "https://github.com/ai68298100/xiaolv-common",
-  "icon": "icon.png",
-  "preview": "preview.png",
-  "description": "常用语、模板、代码、链接、图片、附件与块结构的快速调用器。条目锚定真实思源块（来源可回链、失效可见），支持插入时变量填充、片段嵌套、AI 整理/变换/语义找、模板包分享、移动端 sheet。",
-  "keywords": ["常用语", "模板", "片段", "AI", "快速插入", "小驴常用"]
-}
-```
+1. 先确认 GitHub Latest Release 已发布，tag、`plugin.json` 版本和 `package.zip` 内容来自同一提交。Release 附件必须包含 `package.zip`。
+2. Fork 并同步 `https://github.com/siyuan-note/bazaar`，从 `main` 创建 `add-plugin-xiaolv-common` 分支。
+3. 只修改 bazaar 仓库根目录 `plugins.txt`，追加一行 `ai68298100/xiaolv-common`。每个 PR 只新增一个插件，目标分支为 `main`。
+4. 提交信息和 PR 标题均使用 `Add ai68298100/xiaolv-common`。PR 正文使用官方 `.github/PULL_REQUEST_TEMPLATE.md`，按模板确认无侵权内容并在末尾附仓库链接：`https://github.com/ai68298100/xiaolv-common`。
+5. 等待 PR Check 核验 Latest Release、`package.zip` 必要文件和 metadata。检查失败时修正原 PR，不要另开重复 PR。
+6. 维护者审核并合并后，后续版本只需发布新的 GitHub Release，不需要重复提交集市 PR。
 
-## 第二步：PR 描述（建议文案）
+若插件闭源，官方模板要求提供可供维护者完整审阅的源码私有仓库并授予指定维护者访问；本插件为 MIT 开源仓库，不适用该项。
 
-**标题**：`[Plugin] 小驴常用（内测版） (xiaolv-common)`
+## 官方依据
 
-**正文要点**：
-- 功能：八类捕获入口；双栏搜索弹窗（键盘全链路 + Alt+1~9 直达 + `?` AI 语义找）；插入时变量填充；片段嵌套；模板包分享；AI 整理/草稿/变换（含自定义指令）/语义找/标签体检；使用计数与常用排序；快速捕获；移动端 sheet。
-- 差异化：条目锚定真实思源块——来源可回链、失效可见、随思源同步；`xiaolv-common/v1` 协议供其他插件注册内容源。
-- 安全：不使用 SQL 查询作为核心依赖；AI 默认关、不保存密钥、正文出域显式开关、原文永不被改写；全部写入有回执。
-- 质量：209 项自动化测试 + 15 组生产渲染冒烟；桌面内核链路提供 `pnpm e2e` 一键验收（输出留档 docs/acceptance/）。
-- 开源：MIT。
-
-## 第三步：PR 后
-
-- 回应 bazaar 维护者的审核意见（常见：icon/preview 尺寸、README 语言、minAppVersion）。
-- 合并后集市可搜「小驴常用（内测版）」；后续版本 = 改 plugin.json `version` + 打 tag + bazaar 自动跟随。
+- [集市提交说明](https://github.com/siyuan-note/bazaar/blob/main/README.zh-CN.md#提交集市包)
+- [维护者流程](https://github.com/siyuan-note/bazaar/blob/main/AGENTS.md)
+- [PR 模板](https://github.com/siyuan-note/bazaar/blob/main/.github/PULL_REQUEST_TEMPLATE.md)
+- [插件样例上架与 plugin.json 规范](https://github.com/siyuan-note/plugin-sample/blob/main/README.zh-CN.md#上架集市)

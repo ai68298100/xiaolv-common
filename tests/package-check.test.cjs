@@ -43,7 +43,7 @@ function makeZip(entries) {
 }
 
 const requiredEntries = [
-    "index.js", "index.css", "plugin.json", "README.md", "icon.png", "preview.png",
+    "index.js", "index.css", "plugin.json", "README.md", "LICENSE", "icon.png", "preview.png",
     "i18n/zh-CN.json", "i18n/en.json",
 ];
 
@@ -70,6 +70,16 @@ test("package check rejects an archive missing root index.js", (t) => {
     const result = spawnSync(process.execPath, [checker, tempZip], {encoding: "utf8"});
     assert.equal(result.status, 1);
     assert.match(result.stderr, /缺少必需文件：index\.js/);
+});
+
+test("package check rejects an archive missing LICENSE", (t) => {
+    const tempZip = path.join(os.tmpdir(), `xlc-package-check-license-${process.pid}.zip`);
+    t.after(() => fs.rmSync(tempZip, {force: true}));
+    fs.writeFileSync(tempZip, makeZip(requiredEntries.filter((entry) => entry !== "LICENSE")));
+
+    const result = spawnSync(process.execPath, [checker, tempZip], {encoding: "utf8"});
+    assert.equal(result.status, 1);
+    assert.match(result.stderr, /缺少必需文件：LICENSE/);
 });
 
 test("ZIP entry reader rejects a malformed archive", () => {

@@ -43,6 +43,7 @@ const required = [
     "index.css",
     "plugin.json",
     "README.md",
+    "LICENSE",
     "icon.png",
     "preview.png",
     "i18n/zh-CN.json",

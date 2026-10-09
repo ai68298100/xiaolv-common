@@ -1,6 +1,6 @@
 {
   "name": "xiaolv-common",
-  "version": "0.3.7",
+  "version": "0.3.8",
   "description": "SiYuan plugin: quick recall and reuse of common content anchored to real SiYuan blocks.",
   "main": "index.js",
   "scripts": {

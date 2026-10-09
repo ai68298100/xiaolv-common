@@ -169,6 +169,20 @@ const check = (name, ok, detail = "") => {
         value: document.querySelector(".xlc-type-select")?.value ?? "",
     }));
     check("D1 类型改选落 setFilters 并重查", dState.calls > callsBefore && dState.set.some((f) => f.type === "code") && dState.value === "code", JSON.stringify(dState));
+    await page.evaluate(() => {
+        const sel = document.querySelector(".xlc-type-select");
+        if (sel) {
+            sel.value = "";
+            sel.dispatchEvent(new Event("change", {bubbles: true}));
+        }
+        const input = document.querySelector(".xlc-search-input");
+        if (input) {
+            input.value = "";
+            input.dispatchEvent(new Event("input", {bubbles: true}));
+        }
+    });
+    await sleep(350);
+    check("D2 清除筛选后操作列表恢复", (await rows()).length > 0, JSON.stringify(await rows()));
 
     // ── E. 排序菜单：弹出四档、点选后关闭 ──
     await page.evaluate(() => document.querySelector(".xlc-sort-chip")?.click());
@@ -269,6 +283,48 @@ const check = (name, ok, detail = "") => {
     await sleep(300);
     const ctFocus = await page.evaluate(() => Boolean(document.activeElement?.classList.contains("xlc-ct-name")));
     check("I3 添加自定义变换后名称输入聚焦", ctFocus, String(await page.evaluate(() => document.activeElement?.className)));
+
+    // ── I4. 捕获表单 AI 整理与 AI 草稿并发完成后，各自恢复按钮与结果 ──
+    await page.evaluate(() => {
+        document.querySelectorAll(".b3-dialog, .xlc-dialog").forEach((el) => el.remove());
+        window.XlcHarness.openCapture(true, 180);
+    });
+    await sleep(120);
+    const concurrentAi = await page.evaluate(() => {
+        const content = document.querySelector(".xlc-form-content");
+        if (content) {
+            content.value = "客服说明";
+            content.dispatchEvent(new Event("input", {bubbles: true}));
+        }
+        const draftInput = Array.from(document.querySelectorAll(".xlc-form-field input")).find((el) => el.placeholder.includes("描述"));
+        if (draftInput) {
+            draftInput.value = "欢迎语";
+            draftInput.dispatchEvent(new Event("input", {bubbles: true}));
+        }
+        const buttons = Array.from(document.querySelectorAll(".xlc-form-ai"));
+        const tidy = buttons.find((el) => (el.textContent ?? "").includes("AI 整理"));
+        const draft = buttons.find((el) => (el.textContent ?? "").includes("描述你想要"));
+        tidy?.click();
+        if (content) {
+            content.value = "";
+            content.dispatchEvent(new Event("input", {bubbles: true}));
+        }
+        draft?.click();
+        return {tidy: Boolean(tidy), draft: Boolean(draft)};
+    });
+    await sleep(350);
+    const concurrentAiResult = await page.evaluate(() => {
+        const buttons = Array.from(document.querySelectorAll(".xlc-form-ai"));
+        const tidy = buttons.find((el) => (el.textContent ?? "").includes("AI 整理"));
+        const draft = buttons.find((el) => (el.textContent ?? "").includes("描述你想要"));
+        const content = document.querySelector(".xlc-form-content");
+        return {
+            bothButtonsRestored: Boolean(tidy && draft && !tidy.disabled && !draft.disabled),
+            tidyResultShown: getComputedStyle(document.querySelector(".xlc-sugrow")).display !== "none",
+            draftResultApplied: content?.value === "草稿（欢迎语）",
+        };
+    });
+    check("I4 并发 AI 整理/草稿各自恢复状态", concurrentAi.tidy && concurrentAi.draft && concurrentAiResult.bothButtonsRestored && concurrentAiResult.tidyResultShown && concurrentAiResult.draftResultApplied, JSON.stringify(concurrentAiResult));
 
     // ── J. 移动端底部 sheet：选中行 + 插入选中可用 ──
     await open({mobile: true});

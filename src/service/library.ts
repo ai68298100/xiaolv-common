@@ -172,14 +172,14 @@ export class LibraryService {
         try {
             // 信封形状（R164 真机实证）：data = {notebooks:[...]}（对象非裸数组）；
             // 此前按裸数组解析恒得空表 → 首跑/更改库的笔记本下拉恒空，「创建新库文档」被守卫拦死。
-            const data = await this.kernel.request<{notebooks?: unknown} | Array<{id?: unknown; name?: unknown}>>("lsNotebooks", {});
-            const raw: Array<{id?: unknown; name?: unknown}> = Array.isArray(data)
+            const data = await this.kernel.request<{notebooks?: unknown} | Array<{id?: unknown; name?: unknown; closed?: unknown}>>("lsNotebooks", {});
+            const raw: Array<{id?: unknown; name?: unknown; closed?: unknown}> = Array.isArray(data)
                 ? data
                 : Array.isArray((data as {notebooks?: unknown})?.notebooks)
-                    ? (data as {notebooks: Array<{id?: unknown; name?: unknown}>}).notebooks
+                    ? (data as {notebooks: Array<{id?: unknown; name?: unknown; closed?: unknown}>}).notebooks
                     : [];
             const list = raw
-                .filter((n): n is {id: string; name: string} => typeof n?.id === "string" && typeof n?.name === "string" && !n.name.startsWith("&nbsp;"))
+                .filter((n): n is {id: string; name: string} => typeof n?.id === "string" && typeof n?.name === "string" && n.closed !== true && !n.name.startsWith("&nbsp;"))
                 .map((n) => ({id: n.id, name: n.name}));
             return ok(list);
         } catch (err) {
@@ -198,6 +198,21 @@ export class LibraryService {
             }));
             if (!docId) return fail("kernel-error", "createDocWithMd returned no id");
             return ok({docId});
+        } catch (err) {
+            return toFailureReceipt(err);
+        }
+    }
+
+    /** 列出笔记本根下的一级文档，供首跑校验真实可写落点。 */
+    async listNotebookDocs(notebookId: string): Promise<Receipt<Array<{id: string; name: string}>>> {
+        if (!notebookId) return fail("invalid-input", "notebook required");
+        try {
+            const data = await this.kernel.request<{files?: unknown}>("listDocsByPath", {notebook: notebookId, path: "/"});
+            const files = Array.isArray(data?.files) ? data.files : [];
+            const docs = files
+                .filter((f): f is {id: string; name?: unknown} => !!f && typeof (f as {id?: unknown}).id === "string" && isBlockId((f as {id: string}).id))
+                .map((f) => ({id: f.id, name: typeof f.name === "string" ? f.name : f.id}));
+            return ok(docs);
         } catch (err) {
             return toFailureReceipt(err);
         }
