@@ -285,5 +285,12 @@
   "aiContentTooLong": "内容超过 %s 字，请缩短后重试",
   "varParseFailed": "变量解析失败，本次将按原文插入",
   "pickNotebookFirst": "请先在上方选择笔记本",
-  "pickDocFirst": "请先在上方选择库文档"
+  "pickDocFirst": "请先在上方选择库文档",
+  "espansoImportBtn": "从 Espanso 导入",
+  "espansoTitle": "从 Espanso 导入常用语",
+  "espansoHint": "粘贴 Espanso 的 match 配置（如 base.yml）全文。日期/剪贴板/随机变量与表单字段会转为本库语法；script/shell 等无等价映射的变量原样保留并逐条列出；TextExpander 专有格式暂不支持。",
+  "espansoPlaceholder": "matches:\n  - trigger: \":sig\"\n    replace: \"要复用的内容\"",
+  "espansoParse": "解析预览",
+  "espansoParsed": "解析出 %s 条，可进入导入策略",
+  "espansoNone": "未解析出可用条目，请确认粘贴的是 Espanso match 配置"
 }

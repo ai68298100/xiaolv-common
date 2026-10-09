@@ -8,6 +8,7 @@ import {validateImport, ConflictPolicy, ImportIssue, ImportReceipt, ExportedItem
 import {buildZip} from "../model/zip";
 import {buildMarkdownExport} from "../service/export-markdown";
 import {parseMarkdownPack} from "../service/import-markdown";
+import {parseEspansoYaml} from "../service/espanso-import";
 import {LibraryService} from "../service/library";
 import {AiAssistant} from "../service/ai";
 import {ProviderRegistry} from "../service/providers";
@@ -1051,8 +1052,96 @@ function buildDataSection(ctx: SettingsUiContext, root: HTMLElement): void {
         fileInput.click();
     });
     void importBtn;
+    void mkBtn(t("espansoImportBtn"), () => openEspansoImportDialog(ctx));
     dataSec.appendChild(dataBtns);
     root.appendChild(dataSec);
+}
+
+/** Espanso 配置导入（G2/R164）：粘贴 match YAML → 解析预览（条数+问题清单）→ 复用导入策略管道落库。 */
+function openEspansoImportDialog(ctx: SettingsUiContext): void {
+    const t = ctx.t;
+    const dialog = new Dialog({
+        title: t("espansoTitle"),
+        content: "",
+        width: "min(560px, 92vw)",
+        height: "min(600px, 86vh)",
+    });
+    const container = dialog.element.querySelector(".b3-dialog__container");
+    if (container) container.classList.add("xlc-settings-host");
+    const body = getDialogBody(dialog.element);
+    if (!body) return;
+    body.innerHTML = "";
+    const root = document.createElement("div");
+    root.className = "xlc-form";
+
+    const hint = document.createElement("p");
+    hint.className = "xlc-form-hint";
+    hint.textContent = t("espansoHint");
+    root.appendChild(hint);
+
+    const ta = document.createElement("textarea");
+    ta.className = "b3-text-field";
+    ta.rows = 10;
+    ta.placeholder = t("espansoPlaceholder");
+    ta.setAttribute("spellcheck", "false");
+    root.appendChild(ta);
+
+    const preview = document.createElement("div");
+    preview.className = "xlc-form-hint";
+    preview.style.whiteSpace = "pre-wrap";
+    root.appendChild(preview);
+
+    const foot = document.createElement("div");
+    foot.className = "xlc-form-row";
+    foot.style.justifyContent = "flex-end";
+    foot.style.gap = "8px";
+    const cancelBtn = document.createElement("button");
+    cancelBtn.className = "b3-button";
+    cancelBtn.textContent = t("cancel");
+    foot.appendChild(cancelBtn);
+    const nextBtn = document.createElement("button");
+    nextBtn.className = "b3-button xlc-btn-primary";
+    nextBtn.textContent = t("setupNext");
+    nextBtn.disabled = true;
+    foot.appendChild(nextBtn);
+    root.appendChild(foot);
+    body.appendChild(root);
+
+    let parsedItems: ExportedItem[] = [];
+    const runParse = (): void => {
+        parsedItems = [];
+        nextBtn.disabled = true;
+        preview.textContent = "";
+        const result = parseEspansoYaml(ta.value);
+        if (result.items.length === 0) {
+            preview.textContent = result.issues.length ? result.issues.slice(0, 5).join("\n") : t("espansoNone");
+            return;
+        }
+        parsedItems = result.items;
+        const lines = [t("espansoParsed", String(result.items.length))];
+        for (const issue of result.issues.slice(0, 5)) lines.push(`· ${issue}`);
+        if (result.issues.length > 5) lines.push(`· …+${result.issues.length - 5}`);
+        preview.textContent = lines.join("\n");
+        nextBtn.disabled = false;
+    };
+    // 输入防抖 400ms（与搜索输入同节奏）：粘贴后无需额外点按钮
+    let parseTimer: ReturnType<typeof setTimeout> | undefined;
+    ta.addEventListener("input", () => {
+        if (parseTimer) clearTimeout(parseTimer);
+        parseTimer = setTimeout(runParse, 400);
+    });
+    cancelBtn.addEventListener("click", () => dialog.destroy());
+    nextBtn.addEventListener("click", () => {
+        if (parsedItems.length === 0) return;
+        dialog.destroy();
+        openImportPolicyDialog(
+            ctx,
+            {items: parsedItems.map((i) => ({id: i.id, title: i.title}))},
+            [],
+            {kind: "espanso", items: parsedItems},
+        );
+    });
+    ta.focus();
 }
 
 /** AI 标签体检：仅标签清单出域；结果只展示，不自动修改任何条目 */
@@ -1123,7 +1212,7 @@ export function openImportPolicyDialog(
     ctx: SettingsUiContext,
     parsed: {items: Array<{id: string; title: string}>; pack?: {name: string; vars: string[]}},
     issues: ImportIssue[],
-    source: {kind: "json"; text: string} | {kind: "markdown-pack"; items: ExportedItem[]},
+    source: {kind: "json"; text: string} | {kind: "markdown-pack"; items: ExportedItem[]} | {kind: "espanso"; items: ExportedItem[]},
 ): void {
     const t = ctx.t;
     const dialog = new Dialog({

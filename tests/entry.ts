@@ -21,6 +21,7 @@ import * as promptPack from "../src/service/prompt-pack";
 import * as dedupe from "../src/model/dedupe";
 import * as capture from "../src/ui/capture";
 import * as importer from "../src/service/importer";
+import * as espanso from "../src/service/espanso-import";
 import * as library from "../src/service/library";
 import * as commands from "../src/service/commands";
 import * as providers from "../src/service/providers";
@@ -45,6 +46,7 @@ export {
     dedupe,
     capture,
     importer,
+    espanso,
     transfer,
     client,
     lru,

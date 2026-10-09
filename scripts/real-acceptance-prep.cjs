@@ -132,7 +132,7 @@ function waitKernel(origin, deadlineMs) {
     if (!/^\d{14}-[0-9a-z]{7}$/.test(docId)) { console.error("[prep] 建库文档失败"); if (child?.pid) killTree(child.pid); process.exit(1); }
     const petalDir = path.join(WS, "data", "storage", "petal", "xiaolv-common");
     fs.mkdirSync(petalDir, {recursive: true});
-    fs.writeFileSync(path.join(petalDir, "config.json"), JSON.stringify({configVersion: 1, mode: "doc", notebookIds: [], containerDocIds: [docId], createdDocIds: [docId], configuredAt: Date.now()}));
+    if (!args.includes("--no-config")) { fs.writeFileSync(path.join(petalDir, "config.json"), JSON.stringify({configVersion: 1, mode: "doc", notebookIds: [], containerDocIds: [docId], createdDocIds: [docId], configuredAt: Date.now()})); }
     for (const f of ["desktop", "browser-desktop"]) {
         await api(ORIGIN, token, "/api/petal/setPetalEnabled", {frontend: f, packageName: "xiaolv-common", enabled: true});
     }

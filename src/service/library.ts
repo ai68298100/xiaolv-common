@@ -170,8 +170,15 @@ export class LibraryService {
 
     async listNotebooks(): Promise<Receipt<Array<{id: string; name: string}>>> {
         try {
-            const data = await this.kernel.request<Array<{id?: unknown; name?: unknown}>>("lsNotebooks", {});
-            const list = (Array.isArray(data) ? data : [])
+            // 信封形状（R164 真机实证）：data = {notebooks:[...]}（对象非裸数组）；
+            // 此前按裸数组解析恒得空表 → 首跑/更改库的笔记本下拉恒空，「创建新库文档」被守卫拦死。
+            const data = await this.kernel.request<{notebooks?: unknown} | Array<{id?: unknown; name?: unknown}>>("lsNotebooks", {});
+            const raw: Array<{id?: unknown; name?: unknown}> = Array.isArray(data)
+                ? data
+                : Array.isArray((data as {notebooks?: unknown})?.notebooks)
+                    ? (data as {notebooks: Array<{id?: unknown; name?: unknown}>}).notebooks
+                    : [];
+            const list = raw
                 .filter((n): n is {id: string; name: string} => typeof n?.id === "string" && typeof n?.name === "string" && !n.name.startsWith("&nbsp;"))
                 .map((n) => ({id: n.id, name: n.name}));
             return ok(list);

@@ -6,3 +6,4 @@ tests/.build/
 .DS_Store
 
 .mimosa/
+prep-r*.tmp

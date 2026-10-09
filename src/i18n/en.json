@@ -285,5 +285,12 @@
   "aiContentTooLong": "Content exceeds %s chars; please shorten and retry",
   "varParseFailed": "Variable parsing failed; inserting as-is this time",
   "pickNotebookFirst": "Pick a notebook above first",
-  "pickDocFirst": "Pick a library document above first"
+  "pickDocFirst": "Pick a library document above first",
+  "espansoImportBtn": "Import from Espanso",
+  "espansoTitle": "Import snippets from Espanso",
+  "espansoHint": "Paste your Espanso match config (e.g. base.yml). Date/clipboard/random vars and form fields are mapped to native syntax; unmappable vars (script/shell) are kept as-is and listed. TextExpander proprietary format is not supported yet.",
+  "espansoPlaceholder": "matches:\n  - trigger: \":sig\"\n    replace: \"your snippet\"",
+  "espansoParse": "Parse preview",
+  "espansoParsed": "%s items parsed — continue to import policy",
+  "espansoNone": "No importable items found — check that this is an Espanso match config"
 }
