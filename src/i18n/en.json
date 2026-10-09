@@ -126,7 +126,7 @@
   "duplicated": "Duplicated: %s",
   "dataSection": "Data (export / import)",
   "exportBtn": "Export all items (JSON)",
-  "importBtn": "Import JSON",
+  "importBtn": "Import JSON / Markdown pack",
   "importPolicyTitle": "Choose conflict policy",
   "importPolicySkip": "Skip duplicates (keep existing)",
   "importPolicyOverwrite": "Overwrite duplicates",

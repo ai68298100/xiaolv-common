@@ -126,7 +126,7 @@
   "duplicated": "已创建副本：%s",
   "dataSection": "数据（导出 / 导入）",
   "exportBtn": "导出全部条目（JSON）",
-  "importBtn": "导入 JSON",
+  "importBtn": "导入 JSON / Markdown 包",
   "importPolicyTitle": "选择重复处理策略",
   "importPolicySkip": "跳过重复（保留现有）",
   "importPolicyOverwrite": "覆盖重复",
