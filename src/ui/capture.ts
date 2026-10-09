@@ -144,8 +144,8 @@ export class CaptureDialog {
     }
 
     /** 手动新建（空表单） */
-    newManual(): void {
-        this.openForm("", "text", null);
+    newManual(titleCandidate?: string): void {
+        this.openForm("", "text", null, titleCandidate ? {title: titleCandidate} : undefined);
     }
 
     /** 右键块引用捕获：把被引用块存为 blockref 条目（目标块=引用目标） */

@@ -137,6 +137,12 @@ fs.writeFileSync(path.join(OUT, "harness.html"), html);
             return el !== null && el.offsetParent !== null && text.includes("变量") && text.includes("客户名称");
         })(),
         paneVarsCursor: (document.querySelector(".xlc-pane-vars")?.textContent ?? "").includes("光标落点"),
+        // R169：桌面顶栏常驻新增入口 + 底栏使用说明入口
+        topNewItem: (() => {
+            const btn = document.querySelector(".xlc-top-new");
+            return btn !== null && (btn.textContent ?? "").includes("新建");
+        })(),
+        usageGuide: (document.querySelector(".xlc-footer-guide")?.textContent ?? "").includes("使用说明"),
     }));
     await shoot("desktop-dark", {theme: "dark", aiEnabled: true, missing: false}, () => ({
         rows: document.querySelectorAll(".xlc-row[data-xlc-index]").length >= 3,
@@ -504,9 +510,13 @@ fs.writeFileSync(path.join(OUT, "harness.html"), html);
     const emptyAssertions = await page.evaluate(() => {
         const empty = document.querySelector(".xlc-empty");
         const footer = document.querySelector(".xlc-footer");
+        empty?.querySelector(".xlc-empty-action")?.click();
         return {
             emptyBlock: !!empty && empty.textContent.includes("AI 语义搜索"),
             emptyHint: !!empty && empty.textContent.includes("?"),
+            emptyNewItem: !!empty && !!empty.querySelector(".xlc-empty-action")
+                && (empty.querySelector(".xlc-empty-action")?.textContent ?? "").includes("新建"),
+            queryPrefillsTitle: document.body.dataset.xlcNewItemTitle === "不存在的词条",
             footerClaim: !!footer && footer.textContent.includes("思源块真源"),
             footerCount: !!footer && footer.textContent.includes("共 0 条"),
         };
@@ -514,8 +524,37 @@ fs.writeFileSync(path.join(OUT, "harness.html"), html);
     if (Object.values(emptyAssertions).some((v) => !v)) {
         throw new Error("empty-state smoke failed: " + JSON.stringify(emptyAssertions));
     }
-    console.log("  smoke ✓ empty-state: 4 assertions");
+    console.log("  smoke ✓ empty-state: 6 assertions");
     await page.screenshot({path: path.join(OUT, "production-empty-light.png")});
+    // 语义查询只用于找内容，不能静默变成新条目的标题。
+    await page.evaluate(() => {
+        const stage = document.getElementById("stage");
+        stage.className = "b3-scope light";
+        document.querySelectorAll(".b3-dialog").forEach((el) => el.remove());
+        stage.innerHTML = "";
+        window.XlcHarness.openDialog({empty: true, aiEnabled: true, query: "?空结果"});
+        const dialogRoot = document.querySelector(".b3-dialog");
+        if (dialogRoot) stage.appendChild(dialogRoot);
+        const root = document.querySelector(".xlc-dialog");
+        if (root) {
+            root.style.height = "560px";
+            root.style.position = "relative";
+        }
+        const container = document.querySelector(".b3-dialog__container");
+        if (container) {
+            container.style.margin = "0 auto";
+            container.style.maxWidth = "760px";
+        }
+    });
+    await page.waitForTimeout(500);
+    const semanticEmptyTitle = await page.evaluate(() => {
+        document.querySelector(".xlc-empty-action")?.click();
+        return document.body.dataset.xlcNewItemTitle ?? "missing";
+    });
+    if (semanticEmptyTitle !== "") {
+        throw new Error(`semantic query must not prefill a title: ${semanticEmptyTitle}`);
+    }
+    console.log("  smoke ✓ semantic-empty-title: query not carried over");
     // R107 证据：搜索命中高亮（延期 命中前两行标题；纯截图，不新增断言）
     await page.evaluate(() => {
         const stage = document.getElementById("stage");

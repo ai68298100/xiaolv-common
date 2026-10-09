@@ -57,7 +57,7 @@ export interface DialogDeps {
     /** 使用计数（F3 展示：行 meta 与预览徽标；侧车只读） */
     getUsage: () => Record<string, {count: number; lastAt: number}>;
     /** 手动新建条目（移动端「＋ 新建」入口） */
-    newItem: () => void;
+    newItem: (titleCandidate?: string) => void;
     /** AI 语义找（? 前缀触发；仅元数据出域；候选先按当前筛选过滤） */
     aiSemantic: (desc: string, filters: {itemType: string; tag: string; scope: "all" | "favorites" | "recent"}) => Promise<{ok: true; entries: SearchEntry[]} | {ok: false; message: string}>;
     /** AI 变换（需正文出域权限） */
@@ -230,6 +230,19 @@ export class CommonSearchDialog {
                 kbdRow.appendChild(kbd);
             }
             top.appendChild(kbdRow);
+
+            // 常驻新建入口（截图②）：搜索时无需先清空或离开弹窗即可添加条目。
+            // 移动端在底栏保留同一动作，避免窄屏顶栏拥挤。
+            const topActions = document.createElement("div");
+            topActions.className = "xlc-top-actions";
+            const topNew = document.createElement("button");
+            topNew.type = "button";
+            topNew.className = "b3-button xlc-btn-primary xlc-top-new";
+            topNew.textContent = this.deps.t("quickNew");
+            topNew.setAttribute("aria-label", this.deps.t("newItem"));
+            topNew.addEventListener("click", () => this.deps.newItem());
+            topActions.appendChild(topNew);
+            top.appendChild(topActions);
         }
         root.appendChild(top);
 
@@ -475,6 +488,13 @@ export class CommonSearchDialog {
             claim.textContent = this.deps.t("dataTruth");
             footer.appendChild(claim);
         }
+        // 使用说明双端可达：把常见的捕获、搜索、插入与整理路径放在弹窗内，降低首次上手成本。
+        const guide = document.createElement("button");
+        guide.type = "button";
+        guide.className = "b3-button b3-button--text xlc-btn-ghost xlc-footer-guide";
+        guide.textContent = "ⓘ " + this.deps.t("usageGuideBtn");
+        guide.addEventListener("click", () => this.openUsageGuide());
+        footer.appendChild(guide);
         // 设置入口双端可达（移动端无顶栏/命令面板，此处是唯一设置路径）
         const gear = document.createElement("button");
         gear.className = "b3-button b3-button--text xlc-btn-ghost xlc-footer-gear";
@@ -486,6 +506,47 @@ export class CommonSearchDialog {
         footer.appendChild(gear);
         root.appendChild(footer);
         return root;
+    }
+
+    /** 打开一页内置使用说明（不离开搜索弹窗，适合首次使用与移动端）。 */
+    private openUsageGuide(): void {
+        const guideDialog = new Dialog({
+            title: this.deps.t("usageGuideTitle"),
+            content: "",
+            width: "min(520px, 92vw)",
+            height: "auto",
+        });
+        const body = getDialogBody(guideDialog.element);
+        if (!body) return;
+        body.innerHTML = "";
+        const root = document.createElement("div");
+        root.className = "xlc-form xlc-guide";
+        const intro = document.createElement("p");
+        intro.className = "xlc-form-hint xlc-guide-intro";
+        intro.textContent = this.deps.t("usageGuideIntro");
+        root.appendChild(intro);
+        const steps = document.createElement("ol");
+        steps.className = "xlc-guide-list";
+        for (const key of ["usageGuideAdd", "usageGuideSearch", "usageGuideInsert", "usageGuideOrganize"]) {
+            const item = document.createElement("li");
+            item.textContent = this.deps.t(key);
+            steps.appendChild(item);
+        }
+        root.appendChild(steps);
+        const variables = document.createElement("p");
+        variables.className = "xlc-form-hint xlc-guide-vars";
+        variables.textContent = this.deps.t("usageGuideVariables");
+        root.appendChild(variables);
+        const actions = document.createElement("div");
+        actions.className = "xlc-form-actions";
+        const close = document.createElement("button");
+        close.type = "button";
+        close.className = "b3-button xlc-btn-primary";
+        close.textContent = this.deps.t("close");
+        close.addEventListener("click", () => guideDialog.destroy());
+        actions.appendChild(close);
+        root.appendChild(actions);
+        body.appendChild(root);
     }
 
     private buildPaneHead(): HTMLElement {
@@ -816,11 +877,19 @@ export class CommonSearchDialog {
                 hint.className = "xlc-empty-hint";
                 hint.textContent = this.deps.t("emptyLibrarySub");
                 empty.appendChild(hint);
+            }
+            // 搜索无命中时同样提供下一步，避免用户只能返回其他入口再新建。
+            // 空库分支沿用既有按钮；收藏/最近空态不显示，防止动作与当前范围语义冲突。
+            if (this.emptyMessage === this.deps.t("emptyLibrary") || this.lastQueryText.trim()) {
                 const create = document.createElement("button");
                 create.type = "button";
                 create.className = "b3-button xlc-btn-primary xlc-empty-action";
                 create.textContent = "＋ " + this.deps.t("newItem");
-                create.addEventListener("click", () => this.deps.newItem());
+                create.addEventListener("click", () => {
+                    const query = this.lastQueryText.trim();
+                    const titleCandidate = query && !query.startsWith("?") ? query.slice(0, 120) : undefined;
+                    this.deps.newItem(titleCandidate);
+                });
                 empty.appendChild(create);
             }
             list.appendChild(empty);

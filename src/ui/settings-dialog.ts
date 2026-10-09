@@ -444,6 +444,13 @@ function buildLibraryPickerSection(ctx: SettingsUiContext, root: HTMLElement, on
     hint.style.marginBottom = "12px";
     hint.textContent = t("setupHint");
     root.appendChild(hint);
+    // 首次设置就给出可执行的最短路径，避免用户配置完库后不知道如何开始。
+    // 模板包仍由用户显式点击导入，避免在库中静默写入示例块。
+    const usageGuide = document.createElement("p");
+    usageGuide.className = "xlc-form-hint";
+    usageGuide.style.whiteSpace = "pre-line";
+    usageGuide.textContent = t("setupUsageGuide");
+    root.appendChild(usageGuide);
 
     // ---- 第 1 步：选库方式 ----
     const step1 = document.createElement("div");

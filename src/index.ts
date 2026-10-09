@@ -418,6 +418,12 @@ export default class XiaolvCommonPlugin extends Plugin {
             callback: () => void this.capture?.quickCaptureFromClipboard(),
         });
         this.addCommand({
+            // 手动新建也进入命令面板，给不在编辑器上下文里的用户一条明确入口。
+            langKey: "newItem",
+            hotkey: "⌥⇧N",
+            callback: () => void this.capture?.newManual(),
+        });
+        this.addCommand({
             langKey: "captureBlock",
             hotkey: "⌥⇧B",
             callback: () => void this.capture?.captureCurrentBlock(),
@@ -873,7 +879,7 @@ export default class XiaolvCommonPlugin extends Plugin {
             },
             promptVariables: () => this.state.insert.promptVariables,
             getUsage: () => this.state.usage,
-            newItem: () => this.capture.newManual(),
+            newItem: (titleCandidate?: string) => this.capture.newManual(titleCandidate),
             openSource: async (itemId) => {
                 const got = await this.library.getItem(itemId);
                 if (!got.ok) {

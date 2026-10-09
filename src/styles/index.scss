@@ -231,6 +231,22 @@ body.b3-theme-dark,
     margin-left: auto;
   }
 
+  // 顶栏常驻新增入口（截图②）：快捷键提示与按钮保持紧凑，不挤压搜索框。
+  .xlc-top-actions {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-shrink: 0;
+  }
+
+  .xlc-top-new {
+    min-height: 30px;
+    padding: 4px 11px;
+    border-radius: var(--xlc-radius-sm);
+    white-space: nowrap;
+    font-size: 12px;
+  }
+
   .xlc-search {
     flex: 1;
     min-width: 220px;
@@ -863,7 +879,18 @@ body.b3-theme-dark,
       min-height: 26px;
       white-space: nowrap;
     }
+
+    .xlc-footer-guide {
+      border: none;
+      background: transparent;
+      color: var(--b3-theme-on-surface);
+      font-size: 11.5px;
+      padding: 2px 6px;
+      min-height: 26px;
+      white-space: nowrap;
+    }
   }
+
 
   // ---- 动作菜单（分组 + AI 变换）----
   .xlc-menu {
@@ -1914,5 +1941,28 @@ body.b3-theme-dark,
       transition-duration: 0ms !important;
       animation-duration: 0ms !important;
     }
+  }
+}
+
+// 内置使用说明（独立 Dialog 内的 .xlc-form 子类）
+.xlc-guide {
+  .xlc-guide-intro,
+  .xlc-guide-vars {
+    margin: 0;
+  }
+
+  .xlc-guide-list {
+    margin: 0;
+    padding-left: 22px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    line-height: 1.65;
+    color: var(--b3-theme-on-background);
+  }
+
+  .xlc-guide-list li::marker {
+    color: var(--b3-theme-primary);
+    font-weight: 600;
   }
 }

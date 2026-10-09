@@ -47,7 +47,7 @@ Also built-in: **dynamic placeholders** `{{xlc:date}} / {{xlc:time}} / {{xlc:dat
 | **Frequent sort** | Insert/copy counts usage (local, clearable); "⇅ Frequent" = count × recency |
 | **Template packs** | Settings → Data → "Template pack": filter by category, export a named `.md` pack with variable list; recipients get real SiYuan blocks |
 | **Custom AI transforms** | Settings → AI assistant → custom transforms (≤10), listed beside the five built-ins in the action menu ✦ section |
-| **Prompt scene pack** | Settings → AI assistant → import the built-in pack: 10 templates across support / AI prompts / dev writing |
+| **Prompt scene pack** | Settings → AI assistant → import the built-in pack: 16 editable templates across quick guide / address / email / contacts / support / AI prompts / dev writing |
 | **Quick capture** | Command "Quick capture clipboard as item" (⌥⇧V): form-less one-step save with type inference and honest duplicate skip |
 
 ## B-001 desktop acceptance (one-shot script)
@@ -72,6 +72,17 @@ Mirrors every kernel flow the plugin uses (create library doc → append items +
 | structure | structure as-is (superblock unwrapped) | markdown | source doc/block |
 
 Missing assets: insert/open fail honestly, copy-link still works. Deleted sources show a "source missing" badge — never silently disappearing.
+
+## Quick start and library rules
+
+After choosing a library, build it in this order:
+
+1. **Capture**: save a selection from the context menu, use Quick capture for the clipboard, or click **＋ New** in the panel. Add a clear title, tags, and category so later searches can find it.
+2. **Reuse**: open the top-bar panel, press `Enter` to insert and `Ctrl/⌘+Enter` to copy. On mobile, tap to insert and long-press for more actions. Favorites and Frequent sort keep high-use items close.
+3. **Template**: write `{{xlc:ask:field}}` for a value requested on insert and `{{xlc:ask:field|A,B}}` for a dropdown. Date and clipboard placeholders expand only when called; the stored template stays unchanged.
+4. **Organize**: start with categories such as support, email, address, contacts, prompts, writing, and development. Settings → AI assistant → **Import prompt scene pack** provides 16 editable examples, including a usage guide, email signature, address, and contact card. Import is explicit and goes through the duplicate policy; it never writes silently.
+
+Keep one scenario per item, turn changing details (recipient, date, amount) into variables, and use tags to connect related variants.
 
 ## xiaolv-common/v1 protocol
 

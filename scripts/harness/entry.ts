@@ -30,6 +30,13 @@ const T = (key: string, ...args: string[]): string => {
         "type.text": "纯文本", "type.markdown": "Markdown", "type.url": "网址", "type.code": "代码", "type.image": "图片", "type.asset": "附件", "type.blockref": "块引用", "type.structure": "块结构", filterFavorites: "收藏", filterRecent: "最近",
         empty: "没有匹配的条目", usageHint: "↑↓ 选择 · Enter 插入 · Ctrl+Enter 复制 · Esc 关闭",
         usageHintMobile: "点按插入 · 长按更多",
+        usageGuideBtn: "使用说明", usageGuideTitle: "小驴常用怎么用",
+        usageGuideIntro: "把高频内容存进思源块，之后搜索、预览，再插入或复制。",
+        usageGuideAdd: "增加：点「＋新建」，或从选区、当前块、剪贴板和右键菜单捕获。",
+        usageGuideSearch: "找到：搜索标题、正文、标签和分类；也可以用拼音、收藏、最近和常用排序。",
+        usageGuideInsert: "使用：Enter 插入，Ctrl/⌘+Enter 复制，Alt+1~9 直达前九条；长按条目可打开更多动作。",
+        usageGuideOrganize: "整理：给条目补上清楚的标题、标签和分类；设置中的模板包提供地址、邮箱、联系方式等示例。",
+        usageGuideVariables: "模板规则：{{xlc:ask:字段}} 会在插入前询问；{{xlc:date}}、{{xlc:clipboard}} 等占位符只在调用时展开，原文仍保留。正文保存在思源真实块中，AI 默认关闭。",
         insert: "插入", copy: "复制", openSource: "打开来源", edit: "编辑", delete: "删除",
         insertRef: "插入引用", insertEmbed: "插入嵌入", insertCopy: "复制内容",
         sourceMissing: "来源失效", sourceGone: "来源块已不存在（原文档被重组）· 打开来源可重新指定", previewUnavailable: "暂无预览",
@@ -176,14 +183,16 @@ function makeDeps(overrides: {aiEnabled?: boolean; missing?: boolean; mobile?: b
             "xlc-demo0000003": {count: 11, lastAt: 200},
             "xlc-demo0000005": {count: 4, lastAt: 100},
         }),
-        newItem: () => {},
+        newItem: (titleCandidate?: string) => {
+            document.body.dataset.xlcNewItemTitle = titleCandidate ?? "";
+        },
         providerSearch: async (query: string) => query.includes("工作台") ? [
             {virtualId: "pv:xiaolv-speed-switch:1", providerId: "xiaolv-speed-switch", providerName: "小驴雷切", title: "当前工作台", payload: "快速回到工作台布局（提供方演示数据）"},
             {virtualId: "pv:xiaolv-checkin:1", providerId: "xiaolv-checkin", providerName: "小驴打卡", title: "今日打卡状态", payload: "已完成 3/4 项习惯打卡（提供方演示数据）"},
         ] : [],
         insertProviderPayload: async () => true,
         copyProviderPayload: async () => true,
-        aiSemantic: async (_desc: string) => ({ok: true as const, entries: ENTRIES.slice(0, 3)}),
+        aiSemantic: async (desc: string) => ({ok: true as const, entries: desc === "空结果" ? [] : ENTRIES.slice(0, 3)}),
         aiTransform: async (_itemId: string, kind: TransformKind) => ({
             ok: true as const,
             text: kind === "translate-en"

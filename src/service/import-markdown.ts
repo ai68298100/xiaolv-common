@@ -78,10 +78,16 @@ export function parseMarkdownPack(md: string): MarkdownPackParseResult {
         // 回溯：注释前最近的行首 `## `（标题行），但不越过上一条目的注释结束
         const titleLineStart = md.lastIndexOf("\n## ", itemStart) + 1;
         const chunkStart = Math.max(Math.min(titleLineStart, itemStart), lowerBound);
-        const nextStart = commentEnds[i + 1];
-        const chunkEnd = nextStart !== undefined
-            ? Math.max(md.lastIndexOf("\n## ", nextStart) + 1, nextStart)
-            : md.length;
+        // 下一条记录的边界是它的标题行（标题位于 xlc-item 注释之前）。
+        // 不能用下一条注释结束位置：那会把下一条的元数据注释并入当前正文，
+        // 导致导入后的条目出现 xlc-item 文本与错误的变量提示。
+        const nextCommentStart = commentStarts[i + 1];
+        const nextTitleStart = nextCommentStart === undefined
+            ? -1
+            : md.lastIndexOf("\n## ", nextCommentStart) + 1;
+        const chunkEnd = nextTitleStart > itemStart
+            ? nextTitleStart
+            : (nextCommentStart ?? md.length);
         chunks.push(md.slice(chunkStart, chunkEnd));
     }
 

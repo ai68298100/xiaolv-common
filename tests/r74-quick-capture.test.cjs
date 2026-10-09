@@ -1,7 +1,7 @@
 // R74：F8 快速捕获剪贴板（无表单一步入库 / 同文去重诚实提示）+ F7 提示词场景包内容完整性。
 const test = require("node:test");
 const assert = require("node:assert");
-const {capture, importMarkdown} = require("./.build/entry.cjs");
+const {capture, importMarkdown, variables} = require("./.build/entry.cjs");
 const {CaptureDialog} = capture;
 const {parseMarkdownPack} = importMarkdown;
 const {PROMPT_PACK_MD, PROMPT_PACK_NAME} = require("./.build/entry.cjs").promptPack;
@@ -73,9 +73,9 @@ test("快速捕获：同文已存在 → 诚实提示不重复写入（不弹确
 
 // ---- 提示词场景包 ----
 
-test("场景包：10 个条目全部可解析（ID/类型合法），清单与包名正确", () => {
+test("场景包：16 个条目全部可解析（ID/类型合法），清单与包名正确", () => {
     const parsed = parseMarkdownPack(PROMPT_PACK_MD);
-    assert.strictEqual(parsed.items.length, 10);
+    assert.strictEqual(parsed.items.length, 16);
     assert.ok(parsed.items.every((i) => /^xlc-[0-9a-z]{10,40}$/.test(i.id)));
     assert.strictEqual(parsed.pack?.name, PROMPT_PACK_NAME);
     assert.ok((parsed.pack?.vars.length ?? 0) >= 5);
@@ -90,4 +90,18 @@ test("场景包：覆盖三大场景且演示变量系统（ask 与 cursor）", 
     const withCursor = parsed.items.filter((i) => i.kramdown.includes("{{xlc:cursor}}"));
     assert.ok(withVars.length >= 7);
     assert.ok(withCursor.length >= 4);
+});
+
+test("场景包：包含可直接改写的使用说明、地址与邮箱模板", () => {
+    const parsed = parseMarkdownPack(PROMPT_PACK_MD);
+    const byTitle = new Map(parsed.items.map((item) => [item.title, item]));
+    const guide = byTitle.get("使用说明：三步开始");
+    assert.ok(guide, "缺少使用说明条目");
+    assert.match(guide.kramdown, /保存|调用|整理/);
+    assert.match(guide.kramdown, /xlc:ask/);
+    assert.ok(!guide.kramdown.includes("xlc-item"), "条目边界不应把下一条元数据带入使用说明");
+    assert.strictEqual(variables.listAskFields(guide.kramdown).length, 0, "使用说明中的语法示例不应触发填写卡");
+    assert.ok(parsed.items.some((item) => item.category === "地址" && /xlc:ask:收件人/.test(item.kramdown)));
+    assert.ok(parsed.items.some((item) => item.category === "邮箱" && /xlc:ask:邮箱/.test(item.kramdown)));
+    assert.ok(parsed.items.some((item) => item.category === "联系方式"));
 });
