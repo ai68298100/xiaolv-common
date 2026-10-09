@@ -354,10 +354,12 @@ export default class XiaolvCommonPlugin extends Plugin {
     /** 提供方失败通知记忆（每提供方每会话一次；成功即清除） */
     private providerFailureSeen = new Set<string>();
 
-    /** 列表来源失效预检（批量一次 checkBlocksExist；不阻塞渲染，仅喂徽标） */
+    /** 列表来源失效预检（批量一次 checkBlocksExist；不阻塞渲染，喂完徽标即重绘当前列表）。
+     *  节流 5s：防止逐键搜索连发内核调用；R166 真机发现 30s 节流 + 不重绘会让失效警告
+     *  滞后到「下次搜索且超节流窗口」才可见——违反「来源删除必须可见」约束，现最坏滞后一个预检周期。 */
     private async prefetchSourceHealth(entries: Array<{sourceDocId?: string; sourceBlockId?: string}>): Promise<void> {
         const now = Date.now();
-        if (now - this.lastHealthPrefetch < 30_000) return;
+        if (now - this.lastHealthPrefetch < 5_000) return;
         this.lastHealthPrefetch = now;
         const ids = new Set<string>();
         for (const e of entries.slice(0, 100)) {
@@ -368,6 +370,8 @@ export default class XiaolvCommonPlugin extends Plugin {
         try {
             const map = parseExistingMap(await this.kernelClient.request("checkBlocksExist", {ids: Array.from(ids)}));
             this.missingSources = new Set(Object.entries(map).filter(([, ok]) => !ok).map(([id]) => id));
+            // 重绘走保滚动位刷新；预检已被节流挡住，不会递归
+            this.searchDialog?.refreshAfterExternalChange();
         } catch {
             // 预检失败不打扰用户：徽标缺席，打开来源时仍有实时校验兜底
         }
