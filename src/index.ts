@@ -36,6 +36,7 @@ import {ICONS} from "./ui/icons";
 import {openSetupDialog, openSettingsDialog, type SettingsUiContext} from "./ui/settings-dialog";
 import {buildVariableBar} from "./ui/variable-form";
 import type {TransformKind} from "./service/ai";
+import {mountXlcBridge} from "./service/external-bridge";
 
 type TFn = (key: string, ...args: string[]) => string;
 
@@ -79,6 +80,8 @@ export default class XiaolvCommonPlugin extends Plugin {
     private missingSources = new Set<string>();
     /** 协议命令 ID → 执行器（xiaolv.common.*，供雷切等按稳定 ID 调用） */
     public readonly protocolCommands: Record<string, (payload?: unknown) => Promise<unknown>> = {};
+    /** 对外窗口桥卸载器（T-0031 · ADR-0013；onunload 注销 window.xiaolvCommon） */
+    private bridgeDisposer: (() => void) | null = null;
 
     async onload(): Promise<void> {
         try {
@@ -180,6 +183,8 @@ export default class XiaolvCommonPlugin extends Plugin {
             onStateChange: () => this.persistSoon(),
             onLibraryChange: () => this.searchDialog?.refreshAfterExternalChange(),
         });
+        // 对外窗口桥 window.xiaolvCommon v1（T-0031 · ADR-0013）：只读子集，服务已装配即可挂
+        this.bridgeDisposer = mountXlcBridge(this.service);
         try {
             // 思源智能体能力（3.8.x）：按关键词搜常用条目——只读 localRead，输出仅元数据
             this.addAgentCapability({
@@ -1341,6 +1346,13 @@ export default class XiaolvCommonPlugin extends Plugin {
     }
 
     onunload(): void {
+        // 对外窗口桥先行注销（兄弟插件在桥消失后应得到 unsupported，而非悬挂调用）
+        try {
+            this.bridgeDisposer?.();
+        } catch {
+            // 宿主 window 已销毁：忽略
+        }
+        this.bridgeDisposer = null;
         // 事件总线/监听全部随 dialog destroy 释放；侧车已节流持久化
         if (this.menuHandler) {
             try {

@@ -2,6 +2,12 @@
 
 本文件记录「小驴常用（内测版）」的面向用户的变化。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
 
+## [0.4.0] — 2026-10-11
+
+### 新增
+
+- 对外窗口桥 `window.xiaolvCommon` v1（只读子集）：兄弟插件可协商后调用 search / get / recent / favorites 与完整能力描述符；方法返回 xiaolv-common/v1 协议信封。写入面留待 v2（桥写开关设计，见 ADR 0013）。
+
 ## [0.3.9] — 2026-10-10
 
 围绕首次使用和日常调用体验，统一入口检查、页面反馈、表单布局与跨页面状态刷新。

@@ -28,6 +28,7 @@ import * as providers from "../src/service/providers";
 import * as service from "../src/service/service";
 import * as ai from "../src/service/ai";
 import * as startup from "../src/model/startup";
+import * as externalBridge from "../src/service/external-bridge";
 
 export {
     item,
@@ -57,4 +58,5 @@ export {
     service,
     ai,
     startup,
+    externalBridge,
 };
