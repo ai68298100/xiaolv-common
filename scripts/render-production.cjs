@@ -196,6 +196,11 @@ fs.writeFileSync(path.join(OUT, "harness.html"), html);
         toggles: document.querySelectorAll(".xlc-setting-row input[type=checkbox]").length >= 3,
         providerRow: (document.body.textContent || "").includes("小驴打卡"),
         dataButtons: (document.body.textContent || "").includes("重建索引") && (document.body.textContent || "").includes("导出"),
+        formHost: (() => {
+            const host = document.querySelector(".b3-dialog__container.xlc-form-host");
+            const body = host?.querySelector(".b3-dialog__body, .b3-dialog__content");
+            return !!host && !!body && parseFloat(getComputedStyle(body).paddingLeft) >= 16;
+        })(),
         // R70：开关说明拆为标题+副文本
         switchSubs: (document.body.textContent || "").includes("插件不保存密钥") && (document.body.textContent || "").includes("全拼/首字母本地匹配"),
         // R73：自定义变换编辑器（列表行输入值 + 添加按钮；input value 不出现在 textContent）
@@ -212,7 +217,7 @@ fs.writeFileSync(path.join(OUT, "harness.html"), html);
     if (Object.values(settingsAssertions).some((v) => !v)) {
         throw new Error("settings smoke failed: " + JSON.stringify(settingsAssertions));
     }
-    console.log("  smoke ✓ settings: 6 assertions");
+    console.log("  smoke ✓ settings: 7 assertions");
     await page.screenshot({path: path.join(OUT, "production-settings-light.png")});
     // 模板包导出对话框（R71/F6，原型屏 8 右帧：分类筛选 / 包名 / 内容清单）
     await page.evaluate(() => {
@@ -247,6 +252,11 @@ fs.writeFileSync(path.join(OUT, "harness.html"), html);
             badges: (packDialog?.textContent ?? "").includes("条目") && (packDialog?.textContent ?? "").includes("含变量"),
             contentsHint: (packDialog?.textContent ?? "").includes("assets"),
             exportBtn: Array.from(packDialog?.querySelectorAll("button") ?? []).some((b) => (b.textContent ?? "").includes("导出")),
+            formHost: (() => {
+                const body = packDialog?.querySelector(".b3-dialog__body, .b3-dialog__content");
+                return !!packDialog?.classList.contains("xlc-form-host")
+                    && !!body && parseFloat(getComputedStyle(body).paddingLeft) >= 16;
+            })(),
             // R76 性能门禁：打开对话框零 kramdown 预取（正文延迟到点导出时才取）
             noPrefetch: ((window).__xlcKdCalls ?? 0) === 0,
         };
@@ -254,7 +264,7 @@ fs.writeFileSync(path.join(OUT, "harness.html"), html);
     if (Object.values(packAssertions).some((v) => !v)) {
         throw new Error("pack-export smoke failed: " + JSON.stringify(packAssertions));
     }
-    console.log("  smoke ✓ pack-export: 7 assertions");
+    console.log("  smoke ✓ pack-export: 8 assertions");
     await page.screenshot({path: path.join(OUT, "production-pack-export-light.png")});
     // 首跑引导（库选择器，全新安装第一屏）
     await page.evaluate(() => {
@@ -288,12 +298,17 @@ fs.writeFileSync(path.join(OUT, "harness.html"), html);
             createDisabledUntilNotebookSelection: !!create && create.disabled,
             nextDisabledWithoutDoc: !!next && next.disabled,
             docPicker: (document.querySelector("input[placeholder]")?.getAttribute("placeholder") ?? "").includes("选择库文档") || !!document.querySelector(".xlc-doclist"),
+            formHost: (() => {
+                const host = document.querySelector(".b3-dialog__container.xlc-form-host");
+                const body = host?.querySelector(".b3-dialog__body, .b3-dialog__content");
+                return !!host && !!body && parseFloat(getComputedStyle(body).paddingLeft) >= 16;
+            })(),
         };
     });
     if (Object.values(setupAssertions).some((v) => !v)) {
         throw new Error("setup smoke failed: " + JSON.stringify(setupAssertions));
     }
-    console.log("  smoke ✓ setup: 10 assertions");
+    console.log("  smoke ✓ setup: 11 assertions");
     await page.screenshot({path: path.join(OUT, "production-setup-light.png")});
     await page.evaluate(() => {
         const stage = document.getElementById("stage");
@@ -587,6 +602,11 @@ fs.writeFileSync(path.join(OUT, "harness.html"), html);
             saveBtn: text.includes("保存"),
             aiTidy: !!document.querySelector(".xlc-form-ai") && text.includes("AI 整理"),
             aiDraft: text.includes("草稿"),
+            formHost: (() => {
+                const host = document.querySelector(".b3-dialog__container.xlc-form-host");
+                const body = host?.querySelector(".b3-dialog__body, .b3-dialog__content");
+                return !!host && !!body && parseFloat(getComputedStyle(body).paddingLeft) >= 16;
+            })(),
             // R70：原型屏 3 顺序 —— 类型|别名 行在标题之下
             metaRowAfterTitle: !!typeWrap && !!titleWrap && Boolean(titleWrap.compareDocumentPosition(typeWrap) & Node.DOCUMENT_POSITION_FOLLOWING),
         };
@@ -594,7 +614,7 @@ fs.writeFileSync(path.join(OUT, "harness.html"), html);
     if (Object.values(captureAssertions).some((v) => !v)) {
         throw new Error("capture smoke failed: " + JSON.stringify(captureAssertions));
     }
-    console.log("  smoke ✓ capture: 7 assertions");
+    console.log("  smoke ✓ capture: 8 assertions");
     await page.screenshot({path: path.join(OUT, "production-capture-light.png")});
     // 捕获表单 AI 建议态（点「AI 整理」→ sugrow + 全部采纳 + 主色保存钮）
     await page.evaluate(() => {
@@ -993,12 +1013,17 @@ fs.writeFileSync(path.join(OUT, "harness.html"), html);
             descs: (document.querySelector(".xlc-policy-desc")?.textContent ?? "").length > 0,
             receiptHint: (document.body.textContent ?? "").includes("逐项回执"),
             badges: (document.body.textContent ?? "").includes("18 条目"),
+            formHost: (() => {
+                const host = document.querySelector(".b3-dialog__container.xlc-form-host");
+                const body = host?.querySelector(".b3-dialog__body, .b3-dialog__content");
+                return !!host && !!body && parseFloat(getComputedStyle(body).paddingLeft) >= 16;
+            })(),
         };
     });
     if (Object.values(importAssertions).some((v) => !v)) {
         throw new Error("import-policy smoke failed: " + JSON.stringify(importAssertions));
     }
-    console.log("  smoke ✓ import-policy: 5 assertions");
+    console.log("  smoke ✓ import-policy: 6 assertions");
     await page.screenshot({path: path.join(OUT, "production-import-policy-light.png")});
     // 设置暗色
     await page.evaluate(() => {

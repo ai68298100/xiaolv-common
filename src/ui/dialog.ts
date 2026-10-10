@@ -514,8 +514,9 @@ export class CommonSearchDialog {
             title: this.deps.t("usageGuideTitle"),
             content: "",
             width: "min(520px, 92vw)",
-            height: "auto",
+            height: "min(520px, 84vh)",
         });
+        guideDialog.element.querySelector(".b3-dialog__container")?.classList.add("xlc-form-host");
         const body = getDialogBody(guideDialog.element);
         if (!body) return;
         body.innerHTML = "";

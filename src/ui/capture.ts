@@ -228,13 +228,14 @@ export class CaptureDialog {
             title: t("newItem"),
             content: "",
             width: "min(460px, 92vw)",
-            height: "auto",
+            height: "min(720px, 90vh)",
             destroyCallback: () => {
                 closed = true;
                 ++tidySeq;
                 ++draftSeq;
             },
         });
+        dialog.element.querySelector(".b3-dialog__container")?.classList.add("xlc-form-host");
         const body = getDialogBody(dialog.element);
         if (!body) return;
         body.innerHTML = "";

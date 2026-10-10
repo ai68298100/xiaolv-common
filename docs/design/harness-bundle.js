@@ -809,12 +809,14 @@
     }
     /** 打开一页内置使用说明（不离开搜索弹窗，适合首次使用与移动端）。 */
     openUsageGuide() {
+      var _a;
       const guideDialog = new import_siyuan2.Dialog({
         title: this.deps.t("usageGuideTitle"),
         content: "",
         width: "min(520px, 92vw)",
-        height: "auto"
+        height: "min(520px, 84vh)"
       });
+      (_a = guideDialog.element.querySelector(".b3-dialog__container")) == null ? void 0 : _a.classList.add("xlc-form-host");
       const body = getDialogBody(guideDialog.element);
       if (!body) return;
       body.innerHTML = "";
@@ -5417,6 +5419,7 @@ ${exception.mark.snippet}`;
     return row;
   }
   function openSetupDialog(ctx, opts) {
+    var _a;
     const t = ctx.t;
     const dialog = new import_siyuan3.Dialog({
       title: t("setupTitle"),
@@ -5425,20 +5428,21 @@ ${exception.mark.snippet}`;
       height: "min(560px, 90vh)"
       // 固定高：步骤/内容增减不再顶跳弹窗（R146）
     });
+    (_a = dialog.element.querySelector(".b3-dialog__container")) == null ? void 0 : _a.classList.add("xlc-form-host", "xlc-settings-host");
     const body = getDialogBody(dialog.element);
     if (!body) return;
     body.innerHTML = "";
     const root = document.createElement("div");
     root.className = "xlc-form";
     buildLibraryPickerSection(ctx, root, () => {
-      var _a;
+      var _a2;
       dialog.destroy();
-      (_a = opts == null ? void 0 : opts.onConfigured) == null ? void 0 : _a.call(opts);
+      (_a2 = opts == null ? void 0 : opts.onConfigured) == null ? void 0 : _a2.call(opts);
     }, { onDismiss: () => dialog.destroy() });
     body.appendChild(root);
   }
   function openSettingsDialog(ctx) {
-    var _a;
+    var _a, _b;
     const t = ctx.t;
     const dialog = new import_siyuan3.Dialog({
       title: t("openSettings"),
@@ -5447,6 +5451,7 @@ ${exception.mark.snippet}`;
       height: "min(720px, 90vh)"
       // 固定高：展开/收起/提示行显隐不再顶跳弹窗（R146）
     });
+    (_a = dialog.element.querySelector(".b3-dialog__container")) == null ? void 0 : _a.classList.add("xlc-form-host", "xlc-settings-host");
     const body = getDialogBody(dialog.element);
     if (!body) return;
     body.innerHTML = "";
@@ -5494,7 +5499,7 @@ ${exception.mark.snippet}`;
     libSec.appendChild(pickerHost);
     root.appendChild(libSec);
     if (cfg) {
-      const modeLabel = (_a = libStatus.textContent) != null ? _a : "";
+      const modeLabel = (_b = libStatus.textContent) != null ? _b : "";
       const setLocation = (location) => {
         statusText.textContent = `${modeLabel} \xB7 ${location}`;
       };
@@ -5502,8 +5507,8 @@ ${exception.mark.snippet}`;
         void ctx.library.listNotebooks().then((result) => {
           if (!result.ok) return;
           const names = cfg.notebookIds.map((id) => {
-            var _a2, _b;
-            return (_b = (_a2 = result.data.find((nb) => nb.id === id)) == null ? void 0 : _a2.name) != null ? _b : id;
+            var _a2, _b2;
+            return (_b2 = (_a2 = result.data.find((nb) => nb.id === id)) == null ? void 0 : _a2.name) != null ? _b2 : id;
           });
           if (names.length) setLocation(names.join(", "));
         });
@@ -5522,6 +5527,7 @@ ${exception.mark.snippet}`;
     body.appendChild(root);
   }
   async function openPackExportDialog(ctx) {
+    var _a;
     const t = ctx.t;
     const idx = await ctx.library.ensureIndex();
     const all = Array.from(idx.items.values());
@@ -5533,6 +5539,7 @@ ${exception.mark.snippet}`;
       height: "min(600px, 90vh)"
       // 固定高：分类切换不顶跳（R146）
     });
+    (_a = dialog.element.querySelector(".b3-dialog__container")) == null ? void 0 : _a.classList.add("xlc-form-host", "xlc-settings-host");
     const body = getDialogBody(dialog.element);
     if (!body) return;
     body.innerHTML = "";
@@ -5647,8 +5654,8 @@ ${exception.mark.snippet}`;
       const category = catSelect.value;
       const items = category ? all.filter((i) => i.category === category) : all;
       const withVars = items.filter((i) => {
-        var _a;
-        return ((_a = i.varCount) != null ? _a : 0) > 0;
+        var _a2;
+        return ((_a2 = i.varCount) != null ? _a2 : 0) > 0;
       }).length;
       paintMeta(items.length, withVars);
     };
@@ -6621,7 +6628,7 @@ ${exception.mark.snippet}`;
       height: "min(600px, 86vh)"
     });
     const container = dialog.element.querySelector(".b3-dialog__container");
-    if (container) container.classList.add("xlc-settings-host");
+    if (container) container.classList.add("xlc-form-host", "xlc-settings-host");
     const body = getDialogBody(dialog.element);
     if (!body) return;
     body.innerHTML = "";
@@ -6692,6 +6699,7 @@ ${exception.mark.snippet}`;
     ta.focus();
   }
   async function runTagAudit(ctx) {
+    var _a;
     const t = ctx.t;
     let idx;
     try {
@@ -6719,6 +6727,7 @@ ${exception.mark.snippet}`;
       height: "min(520px, 84vh)"
       // 固定高：建议清单增长不顶跳（R146）
     });
+    (_a = dialog.element.querySelector(".b3-dialog__container")) == null ? void 0 : _a.classList.add("xlc-form-host", "xlc-settings-host");
     const body = getDialogBody(dialog.element);
     if (!body) return;
     body.innerHTML = "";
@@ -6754,6 +6763,7 @@ ${exception.mark.snippet}`;
     body.appendChild(wrap);
   }
   function openImportPolicyDialog(ctx, parsed, issues, source) {
+    var _a;
     const t = ctx.t;
     const dialog = new import_siyuan3.Dialog({
       title: t("importPolicyTitle"),
@@ -6762,6 +6772,7 @@ ${exception.mark.snippet}`;
       height: "min(560px, 86vh)"
       // 固定高：策略卡片高度稳定（R146）
     });
+    (_a = dialog.element.querySelector(".b3-dialog__container")) == null ? void 0 : _a.classList.add("xlc-form-host", "xlc-settings-host");
     const body = getDialogBody(dialog.element);
     if (!body) return;
     body.innerHTML = "";
@@ -7020,7 +7031,7 @@ ${exception.mark.snippet}`;
       this.openForm(doc.content.slice(0, 1e5), "markdown", null, { title, docId, sourceType: "doc-fragment" });
     }
     openForm(defaultText, defaultType, sourceBlockId, overrides) {
-      var _a;
+      var _a, _b;
       const t = this.deps.t;
       let closed = false;
       let saving = false;
@@ -7030,13 +7041,14 @@ ${exception.mark.snippet}`;
         title: t("newItem"),
         content: "",
         width: "min(460px, 92vw)",
-        height: "auto",
+        height: "min(720px, 90vh)",
         destroyCallback: () => {
           closed = true;
           ++tidySeq;
           ++draftSeq;
         }
       });
+      (_a = dialog.element.querySelector(".b3-dialog__container")) == null ? void 0 : _a.classList.add("xlc-form-host");
       const body = getDialogBody(dialog.element);
       if (!body) return;
       body.innerHTML = "";
@@ -7081,7 +7093,7 @@ ${exception.mark.snippet}`;
       const contentEl = field(t("contentLabel"), defaultText, true, "xlc-form-content");
       const varbar = buildVariableBar(t, () => contentEl);
       contentEl.parentElement.after(varbar);
-      const titleEl = field(t("title"), (_a = overrides == null ? void 0 : overrides.title) != null ? _a : "", false, "xlc-form-title");
+      const titleEl = field(t("title"), (_b = overrides == null ? void 0 : overrides.title) != null ? _b : "", false, "xlc-form-title");
       form.appendChild(metaRow);
       const aliasEl = field(t("alias"), "", false, "xlc-form-alias", metaRow);
       const tagRow = document.createElement("div");
@@ -7155,7 +7167,7 @@ ${exception.mark.snippet}`;
             syncTidyButton();
             tidyBtn.textContent = t("aiWorking");
             void this.deps.aiTidy(value).then((result) => {
-              var _a2, _b;
+              var _a2, _b2;
               if (closed || request !== tidySeq) return;
               tidyBtn.textContent = "\u2726 " + t("aiTidy");
               tidyBusy = false;
@@ -7176,7 +7188,7 @@ ${exception.mark.snippet}`;
               }
               const parts = [
                 ((_a2 = result.tags) == null ? void 0 : _a2.length) ? result.tags.join("/") : "",
-                (_b = result.category) != null ? _b : ""
+                (_b2 = result.category) != null ? _b2 : ""
               ].filter(Boolean);
               if (parts.length) {
                 const tail = document.createElement("span");

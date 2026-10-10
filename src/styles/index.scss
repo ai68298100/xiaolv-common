@@ -1280,11 +1280,16 @@ body.b3-theme-dark,
   }
 
   .xlc-form-actions {
+    position: sticky;
+    bottom: 0;
+    z-index: 1;
     display: flex;
     justify-content: flex-end;
     align-items: center;
     gap: 8px;
-    margin-top: 2px;
+    margin: 2px -2px -2px;
+    padding: 10px 2px 2px;
+    background: linear-gradient(to bottom, transparent, var(--b3-theme-background) 14px);
   }
 
   // 行内说明（编辑弹窗来源行：文本 + 动作按钮）
@@ -1671,16 +1676,30 @@ body.b3-theme-dark,
   }
 }
 
-// ---------- 设置类弹窗固定高（R146：内容增减不再顶跳弹窗） ----------
-// 容器固定高 + 主体内部滚动；作用域：根节点为 .xlc-form 的弹窗（设置/首跑/标签体检等）
-.b3-dialog__container:has(> .b3-dialog__body > .xlc-form) {
+// ---------- 表单弹窗宿主（R172：稳定内边距与滚动边界） ----------
+// 普通表单必须显式挂 xlc-form-host；:has() 只保留作旧结构兜底，不能依赖宿主的 DOM 层级推断。
+.b3-dialog__container.xlc-form-host,
+.b3-dialog__container:has(> .b3-dialog__body > .xlc-form),
+.b3-dialog__container:has(> .b3-dialog__content > .xlc-form) {
   display: flex;
   flex-direction: column;
+  min-height: 0;
 
-  .b3-dialog__body {
+  .b3-dialog__body,
+  .b3-dialog__content {
     flex: 1;
     min-height: 0;
     overflow-y: auto;
+    box-sizing: border-box;
+    // 思源不同版本的 body/content 默认 padding 不一致；统一给插件表单留出呼吸空间。
+    padding: 18px 20px 20px;
+    display: flex;
+    flex-direction: column;
+
+    > .xlc-form {
+      width: 100%;
+      min-width: 0;
+    }
   }
 }
 
@@ -1788,6 +1807,15 @@ body.b3-theme-dark,
     display: flex;
     flex-direction: column;
     overflow: hidden;
+  }
+}
+
+// 普通表单在窄屏继续保留可触控的左右边距；内容区滚动时边缘不再贴屏。
+@media (max-width: 620px) {
+  .b3-dialog__container.xlc-form-host {
+    .b3-dialog__body, .b3-dialog__content {
+      padding: 14px 16px 16px;
+    }
   }
 }
 

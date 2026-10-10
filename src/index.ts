@@ -1038,8 +1038,9 @@ export default class XiaolvCommonPlugin extends Plugin {
             title: `${t("edit")} · ${(item.title || t("unknownType")).slice(0, 24)}${item.title.length > 24 ? "…" : ""}`,
             content: "",
             width: "min(520px, 92vw)",
-            height: "auto",
+            height: "min(720px, 90vh)",
         });
+        dialog.element.querySelector(".b3-dialog__container")?.classList.add("xlc-form-host");
         const body = getDialogBody(dialog.element);
         if (!body) return;
         body.innerHTML = "";
