@@ -2,7 +2,7 @@
 
 > 定位：**思源笔记的内容资产层**——高频内容是有元数据、有来源、可检索、可变通、可共享的真实块资产（v3，2026-10-07 调研后修订）。三大一级场景：客服/邮件模板、AI 提示词库、研发/写作常用件。
 > 精准定位与调研证据：[docs/positioning.md](docs/positioning.md)。UI 基准：[docs/design/prototype.html](docs/design/prototype.html)（v3）+ [docs/design/design-spec.md](docs/design/design-spec.md)。生产证据：docs/design/production-*.png。
-> 状态：v0.3.9 待发布（2026-10-10）；**内核链路已真机验收（独立内核 v3.8.7-alpha.6，12/12，`pnpm e2e:iso`）**；思源前端（Electron）内插件运行时验收仍待现场确认（B-001 部分解除）。当期账本：[docs/dev-plan-2026-10-06.md](docs/dev-plan-2026-10-06.md)。
+> 状态：v0.3.9 已发布（2026-10-10）；**内核链路已真机验收（独立内核 v3.8.7-alpha.6，12/12，`pnpm e2e:iso`）**；思源前端（Electron）内插件运行时验收仍待现场确认（B-001 部分解除）。当期账本：[docs/dev-plan-2026-10-06.md](docs/dev-plan-2026-10-06.md)。
 
 ## R2：AI 融入与原型质感（2026-10-06，用户指令立项）
 
@@ -163,9 +163,9 @@
 - [x] 新用户引导聚焦三步卡并避免重复长文；更新首跑原型与弹窗阅读空间
 - [ ] 思源 Electron 桌面及 Android 真机验收（沿用 B-001/B-002）
 
-## R177：v0.3.9 发布前收口（2026-10-10）
+## R177：v0.3.9 发布收口（2026-10-10）
 
 - [x] 独立思源内核 E2E 12/12 通过（建库、属性、块结构、更新、导出、存在性校验和清理）
 - [x] 同步版本元数据、README 本次更新、CHANGELOG 与发布边界
-- [ ] 完成全门禁、打包并推送 GitHub Release
+- [x] 完成全门禁、打包并推送 GitHub Release（`v0.3.9`）
 - [ ] 思源 Electron 桌面及 Android 真机验收（沿用 B-001/B-002）
