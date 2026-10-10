@@ -27,7 +27,7 @@
   --b3-theme-primary-lighter: #c6d5fa;
   --b3-theme-on-primary: #fff;
   --b3-theme-background: #ffffff;
-  --b3-theme-surface: #f7f8fa;
+  --b3-theme-surface: #f2f4f7;
   --b3-theme-on-background: #1f2329;
   --b3-theme-on-surface: #7d8085;
   --b3-border-color: #e5e7eb;
@@ -46,7 +46,7 @@
   --b3-theme-primary-lighter: #2c3a55;
   --b3-theme-on-primary: #fff;
   --b3-theme-background: #1e1e1f;
-  --b3-theme-surface: #26262a;
+  --b3-theme-surface: #292a30;
   --b3-theme-on-background: #dcdcdc;
   --b3-theme-on-surface: #8a8a93;
   --b3-border-color: #36363a;
@@ -95,7 +95,11 @@ button { font-family: var(--font); cursor: pointer; }
   display:inline-flex; width:18px; height:18px; align-items:center; justify-content:center;
   border-radius:50%; font-size:11px; color:#c2503a; background:rgba(226,106,80,.12); flex-shrink:0;
 }
-.kbd { font-size:11px; color: var(--b3-theme-on-surface); border:1px solid var(--b3-border-color); border-bottom-width:2px; border-radius:4px; padding:0 6px; line-height:18px; background:var(--b3-theme-surface); white-space:nowrap; }
+.kbd { display:inline-flex; align-items:center; gap:5px; font-size:10.5px; color:var(--b3-theme-on-surface); border:1px solid var(--b3-border-color); border-radius:7px; padding:2px 7px 2px 4px; line-height:16px; background:var(--b3-theme-surface); white-space:nowrap; }
+.kbd small { display:inline-flex; align-items:center; min-height:18px; padding:0 5px; border:1px solid var(--b3-border-color); border-bottom-width:2px; border-radius:4px; background:var(--b3-theme-background); color:var(--b3-theme-on-background); font-size:10px; font-weight:600; }
+.kbdbar { display:flex; align-items:center; gap:5px; margin:4px 14px 0; padding:4px 6px; border:1px solid var(--b3-border-color); border-radius:8px; background:var(--b3-theme-surface); box-shadow:var(--shadow-1); overflow:auto; scrollbar-width:none; }
+.kbdbar::-webkit-scrollbar { display:none; }
+.kbdbar b { flex:0 0 auto; margin-right:2px; color:var(--b3-theme-on-surface); font-size:11px; letter-spacing:.2px; white-space:nowrap; }
 .btn {
   border: 1px solid var(--b3-border-color); background: var(--b3-theme-background); color: var(--b3-theme-on-background);
   border-radius: 8px; padding: 5px 12px; font-size: 12.5px; line-height: 18px; min-height: 28px;
@@ -147,7 +151,11 @@ button { font-family: var(--font); cursor: pointer; }
 }
 .search:focus-within { border-color: var(--b3-theme-primary); background: var(--b3-theme-background); }
 .search .q { color: var(--b3-theme-primary); font-weight:600; }
+.search-icon { position:relative; display:inline-block; width:16px; height:16px; flex:0 0 16px; color:var(--b3-theme-on-surface); }
+.search-icon::before { content:""; position:absolute; left:2px; top:2px; width:8px; height:8px; border:1.6px solid currentColor; border-radius:50%; }
+.search-icon::after { content:""; position:absolute; left:10px; top:11px; width:5px; height:1.6px; border-radius:1px; background:currentColor; transform:rotate(45deg); transform-origin:left center; }
 .search input { flex:1; border:none; outline:none; background:transparent; color:var(--b3-theme-on-background); font-size:13.5px; font-family:var(--font); }
+.search-hint { margin:4px 16px 0; color:var(--b3-theme-on-surface); font-size:11px; line-height:1.35; }
 .search-clear { flex-shrink:0; width:18px; height:18px; display:inline-flex; align-items:center; justify-content:center; border-radius:50%; background:var(--b3-border-color); color:var(--b3-theme-on-surface); font-size:12px; line-height:1; cursor:pointer; }
 .search-clear:hover { background:var(--b3-theme-on-surface); color:var(--b3-theme-background); }
 .filters { display:flex; align-items:center; gap:6px; padding: 8px 14px; flex-wrap: wrap; }
@@ -259,7 +267,7 @@ button { font-family: var(--font); cursor: pointer; }
 /* ---------- 屏 5：设置（分区卡片） ---------- */
 .setdlg { width: 560px; margin: 20px auto 0; background:var(--b3-theme-background); border-radius:12px; box-shadow:var(--shadow); border:1px solid var(--b3-border-color); padding:6px 18px 18px; height:472px; overflow:auto; }
 .setdlg h3 { font-size:15px; margin:10px 0 0; }
-.set-card { border:1px solid var(--b3-border-color); background:var(--b3-theme-surface); border-radius:10px; padding:12px 14px; margin-top:12px; box-shadow: var(--shadow-1); }
+.set-card { border:1px solid var(--b3-border-color); background:var(--b3-theme-background); border-radius:10px; padding:14px 16px; margin-top:12px; box-shadow: var(--shadow-1); }
 .set-card h4 { font-size:12px; font-weight:600; color:var(--b3-theme-on-surface); margin:0 0 8px; letter-spacing:.4px; }
 .set-row { display:flex; align-items:center; gap:10px; font-size:12.5px; color:var(--b3-theme-on-background); padding:3px 0; }
 .set-row .sub { font-size:11px; color:var(--b3-theme-on-surface); }
@@ -278,6 +286,13 @@ button { font-family: var(--font); cursor: pointer; }
 .step-dot.on { background: var(--b3-theme-primary); border-color: var(--b3-theme-primary); color: var(--b3-theme-on-primary); font-weight: 600; }
 .step-line { flex: 0 0 24px; height: 1px; background: var(--b3-border-color); }
 .step-cap { font-size: 11px; color: var(--b3-theme-on-surface); margin-left: 4px; }
+.setup-quickstart { display:flex; flex-direction:column; gap:8px; margin:2px 0 12px; padding:11px 12px; border:1px solid var(--b3-border-color); border-radius:10px; background:var(--b3-theme-surface); box-shadow:var(--shadow-sm); }
+.setup-quickstart h3 { margin:0 0 1px; font-size:12px; line-height:1.5; font-weight:650; color:var(--b3-theme-on-background); }
+.setup-quickstart .qrow { display:flex; align-items:flex-start; gap:9px; min-width:0; }
+.setup-quickstart .qnum { display:inline-flex; align-items:center; justify-content:center; flex:0 0 19px; width:19px; height:19px; margin-top:1px; border-radius:50%; background:var(--badge-md-bg); color:var(--b3-theme-primary); font-size:11px; font-weight:700; }
+.setup-quickstart .qcopy { display:flex; flex-direction:column; gap:1px; min-width:0; line-height:1.55; }
+.setup-quickstart strong { font-size:12px; color:var(--b3-theme-on-background); }
+.setup-quickstart .qdesc { font-size:11px; color:var(--b3-theme-on-surface); }
 
 /* ---------- 屏 7：移动端 ---------- */
 .phone { width: 340px; height: 640px; border-radius: 24px; background: var(--b3-theme-background); position:relative; overflow:hidden; box-shadow: 0 2px 12px rgba(0,0,0,.18); border:1px solid var(--b3-border-color); display:flex; flex-direction:column; }
@@ -387,8 +402,8 @@ button { font-family: var(--font); cursor: pointer; }
     <button class="btn" disabled style="opacity:.5;cursor:not-allowed">disabled</button>
     <span class="chip">chip</span>
     <span class="chip on">chip on</span>
-    <span class="chip ai-chip" style="color:#3575f0">✦ AI 找到的</span>
-    <span class="kbd">↩ 插入</span>
+    <span class="chip ai-chip" style="color:#3575f0">✦ AI 语义搜索</span>
+    <span class="kbd">Enter <small>插入</small></span>
     <span class="ordinal">1</span>
   </div>
 </div>
@@ -396,22 +411,23 @@ button { font-family: var(--font); cursor: pointer; }
 
 <!-- ======== 屏 1：桌面搜索弹窗 ======== -->
 <section>
-<h2>屏 1 · 桌面搜索弹窗（双栏预览 · 分组置顶 · 变量徽标 · 使用计数）</h2>
+<h2>屏 1 · 桌面搜索弹窗（双栏预览 · 默认排序收藏优先 · 分类分组 · 变量徽标 · 使用计数）</h2>
 <div class="pair">
 <div class="frame t-light">
   <div class="dlg">
     <div class="dlg-head">
       <span class="dlg-title">小驴常用</span>
-      <span class="kbd">↑↓</span><span class="kbd">↩ 插入</span><span class="kbd">⌃↩ 复制</span><span class="kbd">⌥1-9 直达</span><span class="kbd">Esc</span><button class="btn primary" style="margin-left:auto">＋ 新建</button>
+      <button class="btn primary" style="margin-left:auto">＋ 新建条目</button>
     </div>
-    <div class="search"><span class="q">?</span><input value="客户延期" placeholder="搜索常用内容（? 前缀 = AI 语义找）"><span class="search-clear" title="清空搜索">×</span></div>
+    <div class="search"><span class="search-icon" aria-hidden="true"></span><input value="客户延期" placeholder="搜索标题、别名、标签、分类和正文摘要"><span class="search-clear" title="清空搜索">×</span></div><div class="search-hint">输入 ? + 描述，按含义搜索（需启用 AI）</div>
+    <div class="kbdbar"><b>操作提示</b><span class="kbd">↑ ↓ <small>选择</small></span><span class="kbd">Enter <small>插入</small></span><span class="kbd">Ctrl + Enter <small>复制</small></span><span class="kbd">Alt + 1-9 <small>快速插入</small></span><span class="kbd">Esc <small>关闭面板</small></span></div>
     <div class="filters">
-      <button class="chip">类型 ▾</button><button class="chip">标签 ▾</button><button class="chip">分类 ▾</button>
-      <button class="chip">★ 收藏</button><button class="chip">🕐 最近</button><button class="chip on">⇅ 常用</button>
+      <button class="chip">类型：全部 ▾</button><button class="chip">标签：全部 ▾</button><button class="chip">分类：全部 ▾</button>
+      <button class="chip">★ 只看收藏</button><button class="chip">最近使用</button><button class="chip on">⇅ 排序：默认排序（收藏优先）</button>
     </div>
     <div class="dlg-body">
       <div class="list">
-        <div class="group-head">📌 置顶 · 1</div>
+        <div class="group-head">★ 收藏 · 1（默认排序）</div>
         <div class="row on">
           <div style="flex:1;min-width:0">
             <div class="tt"><span class="ordinal">1</span><span class="badge md">MD</span><span class="t">项目延期道歉与补偿方案</span><span class="badge var">2 变量</span></div>
@@ -465,16 +481,17 @@ button { font-family: var(--font); cursor: pointer; }
         </div>
       </div>
     </div>
-    <div class="dlg-foot"><span class="count">共 128 条 · 常用排序</span><span class="claim">思源块真源 · 失效可见</span><span class="gear">⚙ 设置</span></div>
+    <div class="dlg-foot"><span class="count">库内条目：128 条</span><span class="claim">保存到思源文档；来源移动或删除时会提示</span><span class="gear">⚙ 设置 / 更改内容库</span></div>
   </div>
 </div>
 <div class="frame t-dark">
   <div class="dlg">
-    <div class="dlg-head"><span class="dlg-title">小驴常用</span><span class="kbd">↑↓</span><span class="kbd">↩ 插入</span><span class="kbd">⌥1-9</span><span class="kbd">Esc</span><button class="btn primary" style="margin-left:auto">＋ 新建</button></div>
-    <div class="search"><span class="q" style="opacity:.55">?</span><input value="" placeholder="搜索常用内容（? 前缀 = AI 语义找）"></div>
+    <div class="dlg-head"><span class="dlg-title">小驴常用</span><button class="btn primary" style="margin-left:auto">＋ 新建条目</button></div>
+    <div class="search"><span class="search-icon" aria-hidden="true"></span><input value="" placeholder="搜索标题、别名、标签、分类和正文摘要"></div><div class="search-hint">输入 ? + 描述，按含义搜索（需启用 AI）</div>
+    <div class="kbdbar"><b>操作提示</b><span class="kbd">↑ ↓ <small>选择</small></span><span class="kbd">Enter <small>插入</small></span><span class="kbd">Ctrl + Enter <small>复制</small></span><span class="kbd">Alt + 1-9 <small>快速插入</small></span><span class="kbd">Esc <small>关闭面板</small></span></div>
     <div class="filters">
-      <button class="chip ai-chip" style="color:var(--b3-theme-primary)">✦ AI 找到的 · 5 条</button>
-      <button class="chip on">全部类型</button><button class="chip">★ 收藏</button>
+      <button class="chip ai-chip" style="color:var(--b3-theme-primary)">✦ AI 推荐：5 条</button>
+      <button class="chip on">类型：全部</button><button class="chip">★ 只看收藏</button>
     </div>
     <div class="dlg-body">
       <div class="list">
@@ -492,7 +509,7 @@ button { font-family: var(--font); cursor: pointer; }
         </div>
       </div>
       <div class="pane">
-        <div class="pane-head"><span class="pane-title">项目延期道歉与补偿方案</span><span class="badge ai">✦ AI 找到的</span></div>
+        <div class="pane-head"><span class="pane-title">项目延期道歉与补偿方案</span><span class="badge ai">✦ AI 语义搜索</span></div>
         <div class="pane-vars">插入时将询问 2 个变量：<code>{{xlc:ask:客户名称}}</code><code>{{xlc:ask:补偿比例}}</code></div>
         <div class="pane-body">尊敬的王总：
 
@@ -506,7 +523,7 @@ button { font-family: var(--font); cursor: pointer; }
         </div>
       </div>
     </div>
-    <div class="dlg-foot"><span class="count">共 128 条</span><span class="claim">AI 由思源 设置→人工智能 提供</span></div>
+    <div class="dlg-foot"><span class="count">AI 推荐：5 条</span><span class="claim">保存到思源文档；来源移动或删除时会提示</span></div>
   </div>
 </div>
 </div>
@@ -518,32 +535,34 @@ button { font-family: var(--font); cursor: pointer; }
 <div class="pair">
 <div class="frame t-light">
   <div class="dlg">
-    <div class="dlg-head"><span class="dlg-title">小驴常用</span><span class="kbd">↑↓</span><span class="kbd">↩ 插入</span><span class="kbd">⌃↩ 复制</span><span class="kbd">Esc</span><button class="btn primary" style="margin-left:auto">＋ 新建</button></div>
-    <div class="search"><span class="q">?</span><input value="走新材料" placeholder="搜索常用内容（? 前缀 = AI 语义找）"><span class="search-clear">×</span></div>
-    <div class="filters"><button class="chip on">全部类型</button><button class="chip">标签 ▾</button><button class="chip">分类 ▾</button><button class="chip">★ 收藏</button><button class="chip">最近</button></div>
+    <div class="dlg-head"><span class="dlg-title">小驴常用</span><button class="btn primary" style="margin-left:auto">＋ 新建条目</button></div>
+    <div class="search"><span class="search-icon" aria-hidden="true"></span><input value="走新材料" placeholder="搜索标题、别名、标签、分类和正文摘要"><span class="search-clear">×</span></div><div class="search-hint">输入 ? + 描述，按含义搜索（需启用 AI）</div>
+    <div class="kbdbar"><b>操作提示</b><span class="kbd">↑ ↓ <small>选择</small></span><span class="kbd">Enter <small>插入</small></span><span class="kbd">Ctrl + Enter <small>复制</small></span><span class="kbd">Alt + 1-9 <small>快速插入</small></span><span class="kbd">Esc <small>关闭面板</small></span></div>
+    <div class="filters"><button class="chip on">类型：全部</button><button class="chip">标签：全部 ▾</button><button class="chip">分类：全部 ▾</button><button class="chip">★ 只看收藏</button><button class="chip">最近使用</button></div>
     <div class="dlg-body">
       <div class="list">
         <div class="empty-state">
           <span class="empty-icon">✦</span>
-          <strong>没有本地结果</strong>
-          <p>可在关键词前加 ? 使用 AI 语义搜索，也可以直接把搜索词作为新条目的标题候选。</p>
-          <div class="empty-actions"><button class="btn primary">＋ 新建“走新材料”</button></div>
+          <strong>没有找到匹配内容</strong>
+          <p>新建时会把当前搜索词填入标题，你可以继续修改；也可输入 ? 加描述进行 AI 语义搜索。</p>
+          <div class="empty-actions"><button class="btn primary">＋ 新建「走新材料」</button></div>
         </div>
       </div>
       <div class="pane">
         <div class="pane-head"><span class="pane-title"></span></div>
-        <div class="pane-body empty-preview">当前没有可预览的条目</div>
+        <div class="pane-body empty-preview">选择左侧条目后，这里会显示预览</div>
         <div class="pane-foot"><button class="btn primary" disabled style="opacity:.5;cursor:not-allowed">插入</button><button class="btn" disabled style="opacity:.5;cursor:not-allowed">复制</button><span class="spacer"></span><button class="btn ghost" disabled style="opacity:.5;cursor:not-allowed">编辑</button></div>
       </div>
     </div>
-    <div class="dlg-foot"><span class="count">共 1 条</span><span class="claim">思源块真源 · 失效可见</span><span class="gear">⚙ 设置</span></div>
+    <div class="dlg-foot"><span class="count">库内条目：128 条</span><span class="claim">保存到思源文档；来源移动或删除时会提示</span><span class="gear">⚙ 设置 / 更改内容库</span></div>
   </div>
 </div>
 <div class="frame t-dark">
   <div class="dlg">
-    <div class="dlg-head"><span class="dlg-title">小驴常用</span><span class="kbd">↑↓</span><span class="kbd">↩ 插入</span><span class="kbd">Esc</span><button class="btn primary" style="margin-left:auto">＋ 新建</button></div>
-    <div class="search"><span class="q" style="opacity:.55">?</span><input value="" placeholder="搜索常用内容（? 前缀 = AI 语义找）"></div>
-    <div class="filters"><button class="chip on">类型：块引用 ×</button><button class="chip">标签 ▾</button><button class="chip">分类 ▾</button><button class="chip">★ 收藏</button></div>
+    <div class="dlg-head"><span class="dlg-title">小驴常用</span><button class="btn primary" style="margin-left:auto">＋ 新建条目</button></div>
+    <div class="search"><span class="search-icon" aria-hidden="true"></span><input value="" placeholder="搜索标题、别名、标签、分类和正文摘要"></div><div class="search-hint">输入 ? + 描述，按含义搜索（需启用 AI）</div>
+    <div class="kbdbar"><b>操作提示</b><span class="kbd">↑ ↓ <small>选择</small></span><span class="kbd">Enter <small>插入</small></span><span class="kbd">Ctrl + Enter <small>复制</small></span><span class="kbd">Alt + 1-9 <small>快速插入</small></span><span class="kbd">Esc <small>关闭面板</small></span></div>
+    <div class="filters"><button class="chip on">类型：块引用 ×</button><button class="chip">标签：全部 ▾</button><button class="chip">分类：全部 ▾</button><button class="chip">★ 只看收藏</button></div>
     <div class="dlg-body">
       <div class="list">
         <div class="empty-state">
@@ -555,11 +574,11 @@ button { font-family: var(--font); cursor: pointer; }
       </div>
       <div class="pane">
         <div class="pane-head"><span class="pane-title"></span></div>
-        <div class="pane-body empty-preview">当前没有可预览的条目</div>
+        <div class="pane-body empty-preview">选择左侧条目后，这里会显示预览</div>
         <div class="pane-foot"><button class="btn primary" disabled style="opacity:.5;cursor:not-allowed">插入</button><button class="btn" disabled style="opacity:.5;cursor:not-allowed">复制</button><span class="spacer"></span><button class="btn ghost" disabled style="opacity:.5;cursor:not-allowed">编辑</button></div>
       </div>
     </div>
-    <div class="dlg-foot"><span class="count">共 128 条</span><span class="claim">思源块真源 · 失效可见</span><span class="gear">⚙ 设置</span></div>
+    <div class="dlg-foot"><span class="count">库内条目：128 条</span><span class="claim">保存到思源文档；来源移动或删除时会提示</span><span class="gear">⚙ 设置 / 更改内容库</span></div>
   </div>
 </div>
 </div>
@@ -689,7 +708,7 @@ button { font-family: var(--font); cursor: pointer; }
 <h2>屏 4 · 变量填充卡片（插入前轻量表单：Enter 插入 · Tab 切字段 · Esc 取消）</h2>
 <div class="pair">
 <div class="frame t-light insert-stage">
-  <div class="insert-ghost">← 来源：搜索弹窗按 ↩（条目含变量）<br>填充结果直接插入光标处；{{xlc:cursor}} 决定落点 →</div>
+  <div class="insert-ghost">← 来源：搜索弹窗按 Enter（条目含变量）<br>填充结果直接插入光标处；{{xlc:cursor}} 决定落点 →</div>
   <div class="varform">
     <div class="vf-head">
       <span class="badge md">MD</span>
@@ -717,7 +736,7 @@ button { font-family: var(--font); cursor: pointer; }
   </div>
 </div>
 <div class="frame t-dark insert-stage">
-  <div class="insert-ghost">搜索「?客户投诉」→ AI 找到「投诉标准回复」→ ↩ 触发填充</div>
+  <div class="insert-ghost">搜索「?客户投诉」→ AI 语义搜索推荐「投诉标准回复」→ Enter 插入并填写变量</div>
   <div class="varform">
     <div class="vf-head">
       <span class="badge md">MD</span>
@@ -781,7 +800,7 @@ button { font-family: var(--font); cursor: pointer; }
       <div class="set-row"><span class="grow">动态占位符<div class="sub">插入时替换 {{xlc:date}} 等</div></span><button class="switch on"></button></div>
     </div>
     <div class="set-card">
-      <h4>提供方内容</h4>
+      <h4>其他插件内容</h4>
       <div class="set-row"><span class="badge ai">可执行</span>小驴雷切（v1）</div>
       <div class="set-row"><span class="badge warn">待重载</span>小驴打卡（v1）</div>
     </div>
@@ -844,13 +863,18 @@ button { font-family: var(--font); cursor: pointer; }
       <span class="step-cap">第 1 步 · 选择库方式</span>
     </div>
     <p class="hintline" style="font-size:12px;margin-bottom:6px;line-height:1.6">条目保存为思源真实块，可继续编辑。创建新文档前会明确确认。</p>
-    <p class="hintline" style="font-size:12px;margin-bottom:6px;line-height:1.6">开始使用：从面板新建，或从剪贴板捕获；搜索后选择条目，再用操作区插入或复制。<code>{{xlc:ask:字段}}</code> 会在使用前询问。</p>
-    <p class="hintline" style="font-size:12px;margin-bottom:10px;line-height:1.6;padding:7px 9px;border-left:3px solid var(--b3-theme-primary);background:var(--badge-text-bg);border-radius:4px;color:var(--b3-theme-on-background)">推荐新建一个库文档；分类是条目属性，模板由你确认后导入并保存在该文档。</p>
+    <p class="hintline" style="font-size:12px;margin-bottom:10px;line-height:1.6;padding:7px 9px;border-left:3px solid var(--b3-theme-primary);background:var(--badge-md-bg);border-radius:4px;color:var(--b3-theme-on-background)">推荐在已有笔记本中新建一个专用库文档；分类会保存在每条内容上，模板由你确认后导入。</p>
+    <div class="setup-quickstart">
+      <h3>配置完成后这样开始</h3>
+      <div class="qrow"><span class="qnum">1</span><span class="qcopy"><strong>先放一条内容</strong><span class="qdesc">在面板点「新建条目」，或从选区、剪贴板和右键菜单保存。</span></span></div>
+      <div class="qrow"><span class="qnum">2</span><span class="qcopy"><strong>再找到它</strong><span class="qdesc">输入标题、标签或分类搜索；点选条目即可查看预览。</span></span></div>
+      <div class="qrow"><span class="qnum">3</span><span class="qcopy"><strong>最后使用</strong><span class="qdesc">按 Enter 插入，或复制后粘贴；模板可在使用时填写变量。</span></span></div>
+    </div>
     <p class="hintline" style="font-size:12px;margin-bottom:12px;line-height:1.6">创建文档并设为当前内容库前会明确确认；按笔记本索引时，根目录需至少有一个文档。</p>
     <div class="fld"><label>库方式</label><select class="inp"><option selected>新建专用库文档（推荐）</option><option>选择现有文档</option><option>选择文档树</option><option>按笔记本索引</option></select></div>
     <div class="fld" style="margin-top:12px"><label>新建文档所在笔记本</label>
       <select class="inp"><option>请选择笔记本</option><option selected>笔记</option></select>
-      <div class="hintline">笔记本加载失败或列表为空时可重试；创建前需填写标题并确认。</div>
+      <div class="hintline">选择一个已有笔记本，插件不会新建笔记本。</div>
     </div>
     <div class="fld"><label>创建新库文档</label>
       <div style="display:flex;gap:8px"><input class="inp" value="常用内容库"><button class="btn" style="white-space:nowrap">创建</button></div>
@@ -888,8 +912,7 @@ button { font-family: var(--font); cursor: pointer; }
   <div class="sheet-mask"></div>
   <div class="sheet">
     <div class="grabber"></div>
-    <div class="search"><input placeholder="搜索常用内容"></div>
-    <div class="ph-sec">最近使用</div>
+    <div class="search"><span class="search-icon" aria-hidden="true"></span><input placeholder="搜索标题、别名、标签、分类和正文摘要"></div>
     <div class="row on">
       <div style="flex:1;min-width:0">
         <div class="tt"><span class="badge text">TXT</span><span class="t">会议纪要开头</span><span class="badge var">2 变量</span></div>
@@ -908,11 +931,12 @@ button { font-family: var(--font); cursor: pointer; }
         <div class="meta">引用到「产品模板库」</div>
       </div><span class="star">☆</span>
     </div>
+    <div class="ph-sec" style="text-align:center">点按条目立即插入 · 长按条目查看操作</div>
+    <div class="ph-sec" style="text-align:center">移动端直接插入待验证；当前会复制到剪贴板</div>
     <div class="sheet-foot">
-      <button class="btn">＋ 新建</button>
+      <button class="btn">＋ 新建条目</button>
       <button class="btn primary">插入选中</button>
     </div>
-    <div class="ph-sec" style="text-align:center">移动端直接插入待真机验证 · 将复制到剪贴板</div>
   </div>
 </div>
 <div class="phone t-dark">

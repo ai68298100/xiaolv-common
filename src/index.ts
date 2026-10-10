@@ -11,7 +11,8 @@ import {getDialogBody} from "./ui/dialog-dom";
 import "@/styles/index.scss";
 import {LIMITS, SIDECAR_LOAD_TIMEOUT_MS, STORAGE_KEYS} from "./constants";
 import {createKernelClient, parseExistingMap, type IKernelClient, type SyncPost} from "./kernel/client";
-import {CommonItem, isItemType} from "./model/item";
+import {CommonItem, isItemType, isSafeHttpUrl} from "./model/item";
+import {buildEmbedBlock} from "./model/actions";
 import {ExportedItem, buildBundle, validateImport, ConflictPolicy, ImportReceipt} from "./model/transfer";
 import {importBundle as importBundleCore} from "./service/importer";
 import {importMarkdownBundle} from "./service/import-markdown";
@@ -147,6 +148,7 @@ export default class XiaolvCommonPlugin extends Plugin {
         this.executor = new ActionExecutor(this.library, this.host, this.notify, (item) => {
             this.service.touchRecent(item.id);
             this.recordUsage(item.id);
+            this.searchDialog?.refreshAfterExternalChange();
         }, {
             enabled: () => this.state.search.placeholders,
             now: () => new Date(),
@@ -176,6 +178,7 @@ export default class XiaolvCommonPlugin extends Plugin {
             ai: this.ai,
             state: this.state,
             onStateChange: () => this.persistSoon(),
+            onLibraryChange: () => this.searchDialog?.refreshAfterExternalChange(),
         });
         try {
             // 思源智能体能力（3.8.x）：按关键词搜常用条目——只读 localRead，输出仅元数据
@@ -212,6 +215,7 @@ export default class XiaolvCommonPlugin extends Plugin {
                 const result = await this.library.createItem(input);
                 if (!result.ok) return {ok: false, message: result.message};
                 this.notify("info", this.i18nFn()("saved", result.data.item.title));
+                this.searchDialog?.refreshAfterExternalChange();
                 return {ok: true, message: result.data.item.title, itemId: result.data.item.id};
             },
             notify: this.notify,
@@ -243,12 +247,9 @@ export default class XiaolvCommonPlugin extends Plugin {
                 }
             },
             findDuplicate: async (content) => {
-                try {
-                    const idx = await this.library.ensureIndex();
-                    return findDuplicateByContent(content, idx.entries);
-                } catch {
-                    return null; // 去重检查失败不阻断保存
-                }
+                const idx = await this.library.ensureIndex();
+                // 查重失败必须回到表单错误态，不能把“无法检查”伪装成“没有重复”。
+                return findDuplicateByContent(content, idx.entries);
             },
             getLibraryName: async () => {
                 const cfg = this.config;
@@ -263,6 +264,8 @@ export default class XiaolvCommonPlugin extends Plugin {
                 if (!docId) return null;
                 return await this.library.getDocPath(docId);
             },
+            isConfigured: () => Boolean(this.config),
+            onNotConfigured: () => this.openSetup(),
         });
         // 协议命令面（稳定 ID；雷切等通过 app.plugins 获取本插件后调用）
         this.protocolCommands["xiaolv.common.open"] = async () => {
@@ -317,6 +320,7 @@ export default class XiaolvCommonPlugin extends Plugin {
     onDataChanged(_reason?: string): void {
         try {
             this.library?.invalidateIndex();
+            this.previewCache.clear();
         } catch {
             // 索引失效失败无副作用（SWR 会兜底重建）
         }
@@ -663,9 +667,10 @@ export default class XiaolvCommonPlugin extends Plugin {
             },
             searchDocs: async (k) => {
                 const result = await this.library.searchDocs(k);
-                return result.ok ? result.data : [];
+                if (!result.ok) throw new Error(result.message);
+                return result.data;
             },
-            insertToDoc: async (itemId, docId, hPath, fills) => {
+            insertToDoc: async (itemId, docId, hPath, fills, mode = "insert") => {
                 const got = await this.library.getItem(itemId);
                 if (!got.ok) {
                     this.notify("error", got.message);
@@ -675,7 +680,9 @@ export default class XiaolvCommonPlugin extends Plugin {
                 // blockref 条目：插引用语法（而非条目块自身的空 kramdown）
                 let markdown: string;
                 if (item.itemType === "blockref" && item.targetBlockId) {
-                    markdown = `((${item.targetBlockId} '${(item.title || "ref").replace(/'/g, "\\'")}'))`;
+                    markdown = mode === "insert-embed"
+                        ? buildEmbedBlock(item.targetBlockId)
+                        : `((${item.targetBlockId} '${(item.title || "ref").replace(/'/g, "\\'")}'))`;
                 } else {
                     const kd = await this.library.getItemKramdown(item);
                     if (!kd.ok) {
@@ -741,6 +748,7 @@ export default class XiaolvCommonPlugin extends Plugin {
                 });
                 if (created.ok) {
                     this.notify("info", this.i18nFn()("saved", created.data.item.title));
+                    this.searchDialog?.refreshAfterExternalChange();
                 } else {
                     this.notify("error", created.message);
                 }
@@ -921,12 +929,13 @@ export default class XiaolvCommonPlugin extends Plugin {
                 return ok;
             },
             aiEnabled: () => this.state.ai.enabled,
+            hasActiveEditor: () => this.host.hasActiveEditor(),
             aiSemantic: async (desc, filters) => {
                 try {
                     const idx = await this.library.ensureIndex();
                     // 语义找候选先按类型/标签/收藏范围过滤（与普通搜索的筛选语义一致）
                     const safeItemType = filters.itemType && isItemType(filters.itemType) ? filters.itemType : "";
-                    const scoped = applyBasicFilters(idx.entries, {itemType: safeItemType, tag: filters.tag, scope: filters.scope}, this.searchContext());
+                    const scoped = applyBasicFilters(idx.entries, {itemType: safeItemType, tag: filters.tag, category: filters.category, scope: filters.scope}, this.searchContext());
                     const meta: SearchMetaEntry[] = scoped.map((e) => ({
                         id: e.id,
                         title: e.title,
@@ -954,7 +963,9 @@ export default class XiaolvCommonPlugin extends Plugin {
                     return {ok: false as const, message: this.aiErrorText(err)};
                 }
             },
-            listCustomTransforms: () => this.state.ai.customTransforms.map((ct) => ({id: ct.id, name: ct.name})),
+            listCustomTransforms: () => this.state.ai.customTransforms
+                .filter((ct) => ct.name.trim() && ct.prompt.trim())
+                .map((ct) => ({id: ct.id, name: ct.name})),
             aiTransformCustom: async (itemId, customId) => {
                 try {
                     const ct = this.state.ai.customTransforms.find((c) => c.id === customId);
@@ -993,6 +1004,7 @@ export default class XiaolvCommonPlugin extends Plugin {
                         this.previewCache.clear();
                         this.state.favorites = this.state.favorites.filter((id) => id !== itemId);
                         this.state.recents = this.state.recents.filter((r) => r.id !== itemId);
+                        delete this.state.usage[itemId];
                         this.persistSoon();
                         // 删除回执即时给出；后台重建索引失败另行诚实提示（不吞 rejection，R138）
                         this.notify("info", this.i18nFn()("deleted", got.data.title));
@@ -1166,6 +1178,12 @@ export default class XiaolvCommonPlugin extends Plugin {
                 this.notify("error", t("invalidItem"));
                 return;
             }
+            if (item.itemType === "url" && !isSafeHttpUrl(contentEl.value.trim())) {
+                contentEl.classList.add("xlc-input--error");
+                contentEl.focus();
+                this.notify("error", t("invalidItem"));
+                return;
+            }
             saving = true;
             save.disabled = true;
             save.textContent = t("saving");
@@ -1176,10 +1194,13 @@ export default class XiaolvCommonPlugin extends Plugin {
                 tags: tagsEl.value.split(/[,,]/).map((s) => s.trim()).filter(Boolean),
                 category: categoryEl.value,
                 markdown: contentEl.value !== initialKramdown ? contentEl.value : undefined,
+                // URL 条目的真实打开/插入目标来自 custom-xlc-url；编辑正文时同步更新，避免预览与实际动作分叉。
+                url: item.itemType === "url" ? contentEl.value.trim() : undefined,
             }).then((result) => {
                 if (result.ok) {
                     this.previewCache.clear();
                     this.notify("info", t("updated", shortTitle(result.data.item.title)));
+                    this.searchDialog?.refreshAfterExternalChange();
                     dialog.destroy();
                 } else {
                     saving = false;
@@ -1221,6 +1242,7 @@ export default class XiaolvCommonPlugin extends Plugin {
             fetchAssetBytes: (path) => this.fetchAssetBytes(path),
             aiErrorText: (err) => this.aiErrorText(err),
             applyPinyinAdapter: () => this.applyPinyinAdapter(),
+            refreshSearch: () => this.searchDialog?.refreshAfterExternalChange(),
         };
     }
 
@@ -1260,6 +1282,7 @@ export default class XiaolvCommonPlugin extends Plugin {
         this.library.setConfig(config);
         this.persistSidecar(STORAGE_KEYS.config, config);
         void this.library.reindex().then((idx) => {
+            this.searchDialog?.refreshAfterExternalChange();
             this.notify("info", idx.truncated
                 ? this.i18nFn()("reindexTruncated", String(LIMITS.maxItems))
                 : this.i18nFn()("reindexDone", String(idx.entries.length)));
@@ -1303,8 +1326,17 @@ export default class XiaolvCommonPlugin extends Plugin {
 
     registerProvider(descriptor: ProviderDescriptor, runtime?: {search?(query: string): Promise<Array<{title: string; payload: string}>>}): void {
         const result = this.service.registerProvider(descriptor, runtime);
+        if (result.ok) this.searchDialog?.refreshAfterExternalChange();
         this.notify(result.ok ? "info" : "error", result.ok
             ? this.i18nFn()("providerRegistered", descriptor.displayName)
+            : (result.message ?? "rejected"));
+    }
+
+    unregisterProvider(pluginId: string): void {
+        const result = this.service.unregisterProvider(pluginId);
+        if (result.ok) this.searchDialog?.refreshAfterExternalChange();
+        this.notify(result.ok ? "info" : "error", result.ok
+            ? this.i18nFn()("providerUnregistered", pluginId)
             : (result.message ?? "rejected"));
     }
 

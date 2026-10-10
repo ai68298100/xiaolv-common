@@ -441,6 +441,7 @@
       this.longPressCancel = null;
       /** IME 组合输入中（中文输入法组词期间跳过刷新，compositionend 后统一刷新） */
       this.isComposing = false;
+      this.filterOptionsSeq = 0;
       /** 普通点击 = 主动作（insert；blockref = 插入引用）。含变量时先弹填充卡片（F1）。
        *  执行期防重入（R138）：双击行/按住 Enter 不得重复插入同一块。 */
       this.primaryBusy = false;
@@ -452,8 +453,7 @@
     }
     open() {
       const isMobile = this.deps.isMobile();
-      const content = this.buildDom(isMobile);
-      this.dialog = new import_siyuan2.Dialog({
+      const dialog = new import_siyuan2.Dialog({
         title: this.deps.t("pluginName"),
         content: "",
         width: isMobile ? "100vw" : "min(760px, 94vw)",
@@ -463,10 +463,15 @@
           this.deps.close();
         }
       });
-      const body = getDialogBody(this.dialog.element);
+      this.dialog = dialog;
+      const content = this.buildDom(isMobile);
+      const body = getDialogBody(dialog.element);
       if (body) {
         body.innerHTML = "";
         body.appendChild(content);
+        void this.refreshFilterOptions().then((changed) => {
+          if (changed) void this.refresh();
+        });
       }
       const container = this.dialog.element.querySelector(".b3-dialog__container");
       if (container) container.classList.add(isMobile ? "xlc-sheet" : "xlc-dialog-host");
@@ -476,6 +481,7 @@
         if (last) {
           input.value = last;
           this.currentScope = "all";
+          input.dispatchEvent(new Event("input", { bubbles: true }));
         }
         input.focus();
       }
@@ -486,12 +492,15 @@
       root.className = "xlc-dialog" + (isMobile ? " xlc-dialog--mobile" : "");
       const top = document.createElement("div");
       top.className = "xlc-top";
+      const topMain = document.createElement("div");
+      topMain.className = "xlc-top-main";
+      const searchBlock = document.createElement("div");
+      searchBlock.className = "xlc-search-block";
       const search = document.createElement("div");
       search.className = "xlc-search";
       const qMark = document.createElement("span");
-      qMark.className = "xlc-search-q";
-      qMark.textContent = "?";
-      qMark.title = this.deps.t("aiSemanticHint");
+      qMark.className = "xlc-search-icon";
+      qMark.setAttribute("aria-hidden", "true");
       const input = document.createElement("input");
       input.className = "b3-text-field xlc-search-input";
       input.placeholder = this.deps.t("searchPlaceholder");
@@ -504,7 +513,6 @@
       input.setAttribute("aria-expanded", "true");
       input.setAttribute("aria-label", this.deps.t("searchPlaceholder"));
       const syncQMark = () => {
-        qMark.classList.toggle("xlc-search-q--off", input.value.startsWith("?"));
         clearBtn.classList.toggle("xlc-search-clear--on", input.value.length > 0);
       };
       const clearBtn = document.createElement("button");
@@ -542,24 +550,41 @@
       search.appendChild(qMark);
       search.appendChild(input);
       search.appendChild(clearBtn);
-      top.appendChild(search);
+      searchBlock.appendChild(search);
+      const searchHint = document.createElement("div");
+      searchHint.className = "xlc-search-hint";
+      searchHint.textContent = this.deps.t("searchHint");
+      searchBlock.appendChild(searchHint);
+      topMain.appendChild(searchBlock);
+      let kbdRow = null;
       if (!isMobile) {
         const isApple = /Mac|iPhone|iPad/i.test(navigator.platform || "");
-        const kbdRow = document.createElement("div");
+        kbdRow = document.createElement("div");
         kbdRow.className = "xlc-kbdrow";
+        kbdRow.setAttribute("aria-label", this.deps.t("keyboardHelp"));
+        const kbdLabel = document.createElement("span");
+        kbdLabel.className = "xlc-kbdrow-label";
+        kbdLabel.textContent = this.deps.t("shortcutLabel");
+        kbdRow.appendChild(kbdLabel);
         for (const hint of [
-          "\u2191\u2193",
-          this.deps.t("kbdEnter"),
-          this.deps.t("kbdCopy", isApple ? "\u2318" : "\u2303"),
-          this.deps.t("kbdAltDirect"),
-          "Esc"
+          { key: "\u2191 \u2193", action: this.deps.t("kbdNav") },
+          { key: "Enter", action: this.deps.t("kbdEnter") },
+          { key: `${isApple ? "\u2318" : "Ctrl"} + Enter`, action: this.deps.t("kbdCopy") },
+          { key: `${isApple ? "\u2325" : "Alt"} + 1-9`, action: this.deps.t("kbdQuickInsert") },
+          { key: "Esc", action: this.deps.t("kbdClose") }
         ]) {
           const kbd = document.createElement("span");
-          kbd.className = "xlc-kbd";
-          kbd.textContent = hint;
+          kbd.className = "xlc-kbd xlc-kbd-hint";
+          kbd.title = `${hint.key}\uFF1A${hint.action}`;
+          const key = document.createElement("span");
+          key.className = "xlc-kbd-key";
+          key.textContent = hint.key;
+          const action = document.createElement("span");
+          action.className = "xlc-kbd-label";
+          action.textContent = hint.action;
+          kbd.append(key, action);
           kbdRow.appendChild(kbd);
         }
-        top.appendChild(kbdRow);
         const topActions = document.createElement("div");
         topActions.className = "xlc-top-actions";
         const topNew = document.createElement("button");
@@ -569,8 +594,10 @@
         topNew.setAttribute("aria-label", this.deps.t("newItem"));
         topNew.addEventListener("click", () => this.deps.newItem());
         topActions.appendChild(topNew);
-        top.appendChild(topActions);
+        topMain.appendChild(topActions);
       }
+      top.appendChild(topMain);
+      if (kbdRow) top.appendChild(kbdRow);
       root.appendChild(top);
       const filters = document.createElement("div");
       filters.className = "xlc-filters";
@@ -579,7 +606,7 @@
       typeSelect.setAttribute("aria-label", this.deps.t("type"));
       const allOpt = document.createElement("option");
       allOpt.value = "";
-      allOpt.textContent = this.deps.t("filterAll");
+      allOpt.textContent = this.deps.t("filterAllType");
       typeSelect.appendChild(allOpt);
       for (const t of ITEM_TYPES) {
         const opt = document.createElement("option");
@@ -602,27 +629,7 @@
       const tagSelect = document.createElement("select");
       tagSelect.className = "b3-select xlc-tag-select";
       tagSelect.setAttribute("aria-label", this.deps.t("tags"));
-      if (savedFilters.tag) tagSelect.value = savedFilters.tag;
-      void this.deps.getTags().then((tags) => {
-        var _a;
-        const first = document.createElement("option");
-        first.value = "";
-        first.textContent = this.deps.t("tags");
-        tagSelect.appendChild(first);
-        for (const tag of tags) {
-          const opt = document.createElement("option");
-          opt.value = tag;
-          opt.textContent = tag;
-          tagSelect.appendChild(opt);
-        }
-        if (savedFilters.tag && tags.includes(savedFilters.tag)) {
-          tagSelect.value = savedFilters.tag;
-          void this.refresh();
-        } else if (savedFilters.tag) {
-          this.deps.setFilters({ type: typeSelect.value, tag: "", category: (_a = categorySelect == null ? void 0 : categorySelect.value) != null ? _a : "" });
-          void this.refresh();
-        }
-      }).catch(() => void 0);
+      tagSelect.disabled = true;
       tagSelect.addEventListener("change", () => {
         var _a;
         this.deps.setFilters({
@@ -636,28 +643,7 @@
       const categorySelect = document.createElement("select");
       categorySelect.className = "b3-select xlc-category-select";
       categorySelect.setAttribute("aria-label", this.deps.t("category"));
-      if (savedFilters.category) categorySelect.value = savedFilters.category;
-      void this.deps.getCategories().then((categories) => {
-        var _a;
-        const first = document.createElement("option");
-        first.value = "";
-        first.textContent = this.deps.t("category");
-        categorySelect.appendChild(first);
-        if (categories.length === 0) return;
-        for (const category of categories) {
-          const opt = document.createElement("option");
-          opt.value = category;
-          opt.textContent = category;
-          categorySelect.appendChild(opt);
-        }
-        if (savedFilters.category && categories.includes(savedFilters.category)) {
-          categorySelect.value = savedFilters.category;
-          void this.refresh();
-        } else if (savedFilters.category) {
-          this.deps.setFilters({ type: typeSelect.value, tag: (_a = tagSelect == null ? void 0 : tagSelect.value) != null ? _a : "", category: "" });
-          void this.refresh();
-        }
-      }).catch(() => void 0);
+      categorySelect.disabled = true;
       categorySelect.addEventListener("change", () => {
         this.deps.setFilters({ type: typeSelect.value, tag: tagSelect.value, category: categorySelect.value });
         void this.refresh();
@@ -683,7 +669,9 @@
       sortChip.className = "xlc-chip xlc-sort-chip";
       const paintSort = () => {
         const sort = this.deps.getSort();
-        sortChip.textContent = "\u21C5 " + this.deps.t(`sort.${sort}`);
+        sortChip.textContent = "\u21C5 " + this.deps.t("sort") + "\uFF1A" + this.deps.t(`sort.${sort}`);
+        sortChip.title = this.deps.t(`sortHint.${sort}`);
+        sortChip.setAttribute("aria-label", `${this.deps.t("sort")}\uFF1A${this.deps.t(`sort.${sort}`)}\u3002${this.deps.t(`sortHint.${sort}`)}`);
         sortChip.classList.toggle("xlc-chip--on", sort !== "manual");
       };
       paintSort();
@@ -762,6 +750,7 @@
       footer.className = "xlc-footer";
       const count = document.createElement("span");
       count.className = "xlc-footer-count";
+      count.setAttribute("aria-live", "polite");
       if (isMobile) {
         const footBtns = document.createElement("div");
         footBtns.className = "xlc-mobile-foot";
@@ -771,8 +760,9 @@
         newBtn.addEventListener("click", () => this.deps.newItem());
         footBtns.appendChild(newBtn);
         const insertBtn = document.createElement("button");
-        insertBtn.className = "b3-button xlc-btn-primary";
+        insertBtn.className = "b3-button xlc-btn-primary xlc-mobile-insert";
         insertBtn.textContent = this.deps.t("quickInsertSelected");
+        insertBtn.disabled = true;
         insertBtn.addEventListener("click", () => {
           const entry = this.results[this.activeIndex];
           if (entry) void this.runPrimary(entry);
@@ -786,8 +776,11 @@
       footer.appendChild(count);
       if (!isMobile) {
         const claim = document.createElement("span");
-        claim.className = "xlc-footer-claim";
+        claim.className = "xlc-footer-claim xlc-footer-claim--static";
         claim.textContent = this.deps.t("dataTruth");
+        claim.title = this.deps.t("dataTruthHint");
+        claim.setAttribute("role", "note");
+        claim.setAttribute("aria-label", this.deps.t("dataTruthHint"));
         footer.appendChild(claim);
       }
       const guide = document.createElement("button");
@@ -931,6 +924,74 @@
       foot.appendChild(edit);
       return foot;
     }
+    /** 重新加载标签/分类选项；成功时清理已经不存在的持久化筛选，失败时保留当前筛选并给出提示。 */
+    async refreshFilterOptions() {
+      var _a, _b;
+      const tagSelect = (_a = this.dialog) == null ? void 0 : _a.element.querySelector(".xlc-tag-select");
+      const categorySelect = (_b = this.dialog) == null ? void 0 : _b.element.querySelector(".xlc-category-select");
+      if (!tagSelect || !categorySelect) return false;
+      const seq = ++this.filterOptionsSeq;
+      const current = this.deps.getFilters();
+      tagSelect.disabled = true;
+      categorySelect.disabled = true;
+      tagSelect.title = "";
+      categorySelect.title = "";
+      tagSelect.replaceChildren();
+      categorySelect.replaceChildren();
+      const tagAll = document.createElement("option");
+      tagAll.value = "";
+      tagAll.textContent = this.deps.t("filterAllTags");
+      tagSelect.appendChild(tagAll);
+      const categoryAll = document.createElement("option");
+      categoryAll.value = "";
+      categoryAll.textContent = this.deps.t("filterAllCategories");
+      categorySelect.appendChild(categoryAll);
+      const [tagsResult, categoriesResult] = await Promise.allSettled([this.deps.getTags(), this.deps.getCategories()]);
+      if (seq !== this.filterOptionsSeq || !this.dialog) return false;
+      const tags = tagsResult.status === "fulfilled" ? Array.from(new Set(tagsResult.value.filter(Boolean))) : [];
+      const categories = categoriesResult.status === "fulfilled" ? Array.from(new Set(categoriesResult.value.filter(Boolean))) : [];
+      for (const tag of tags) {
+        const option = document.createElement("option");
+        option.value = tag;
+        option.textContent = tag;
+        tagSelect.appendChild(option);
+      }
+      for (const category of categories) {
+        const option = document.createElement("option");
+        option.value = category;
+        option.textContent = category;
+        categorySelect.appendChild(option);
+      }
+      if (tagsResult.status === "rejected") {
+        tagSelect.title = this.deps.t("kernelError", this.deps.t("tags"));
+        if (current.tag) {
+          const option = document.createElement("option");
+          option.value = current.tag;
+          option.textContent = current.tag;
+          tagSelect.appendChild(option);
+        }
+      }
+      if (categoriesResult.status === "rejected") {
+        categorySelect.title = this.deps.t("kernelError", this.deps.t("category"));
+        if (current.category) {
+          const option = document.createElement("option");
+          option.value = current.category;
+          option.textContent = current.category;
+          categorySelect.appendChild(option);
+        }
+      }
+      const nextTag = tagsResult.status === "fulfilled" ? current.tag && tags.includes(current.tag) ? current.tag : "" : current.tag;
+      const nextCategory = categoriesResult.status === "fulfilled" ? current.category && categories.includes(current.category) ? current.category : "" : current.category;
+      tagSelect.value = nextTag;
+      categorySelect.value = nextCategory;
+      tagSelect.disabled = false;
+      categorySelect.disabled = false;
+      const changed = tagsResult.status === "fulfilled" && nextTag !== current.tag || categoriesResult.status === "fulfilled" && nextCategory !== current.category;
+      if (changed) {
+        this.deps.setFilters({ type: current.type, tag: nextTag, category: nextCategory });
+      }
+      return changed;
+    }
     attachLongPress(list, isMobile) {
       let pressTimer;
       let startY = 0;
@@ -985,7 +1046,7 @@
       return { text, itemType, tag, category, scope: this.currentScope };
     }
     async refresh() {
-      var _a, _b, _c, _d, _e, _f;
+      var _a, _b, _c, _d, _e, _f, _g, _h;
       const seq = ++this.searchSeq;
       const query = this.buildQuery();
       this.lastQueryText = query.text.trim();
@@ -995,6 +1056,8 @@
       const footer = (_c = this.dialog) == null ? void 0 : _c.element.querySelector(".xlc-footer");
       const aiBanner = (_d = this.dialog) == null ? void 0 : _d.element.querySelector(".xlc-ai-banner");
       if (!list) return;
+      const mobileInsert = (_e = this.dialog) == null ? void 0 : _e.element.querySelector(".xlc-mobile-insert");
+      if (mobileInsert) mobileInsert.disabled = true;
       this.lastPreviewId = null;
       list.classList.add("xlc-list--loading");
       list.setAttribute("aria-busy", "true");
@@ -1006,7 +1069,7 @@
       try {
         const text = query.text.trim();
         if (text.startsWith("?") && text.length > 1) {
-          const aiResult = await this.deps.aiSemantic(text.slice(1), { itemType: (_e = query.itemType) != null ? _e : "", tag: (_f = query.tag) != null ? _f : "", scope: this.currentScope });
+          const aiResult = await this.deps.aiSemantic(text.slice(1), { itemType: (_f = query.itemType) != null ? _f : "", tag: (_g = query.tag) != null ? _g : "", category: (_h = query.category) != null ? _h : "", scope: this.currentScope });
           if (seq !== this.searchSeq) return;
           if (aiResult.ok) {
             this.results = aiResult.entries;
@@ -1018,7 +1081,9 @@
             directError = aiResult.message;
           }
           if (aiBanner) aiBanner.style.display = this.aiResults && this.results.length ? "" : "none";
-          if (aiBanner && this.aiResults) aiBanner.textContent = `\u2726 ${this.deps.t("aiFound")} \xB7 ${this.results.length}`;
+          if (aiBanner && this.aiResults) {
+            aiBanner.textContent = `\u2726 ${this.deps.t("aiResultCount", String(this.results.length))}`;
+          }
         } else {
           const result = await this.deps.search(query);
           if (seq !== this.searchSeq) return;
@@ -1060,10 +1125,10 @@
         status.classList.toggle("xlc-status--error", isError);
         if (directError) {
           status.textContent = directError;
-        } else if (this.results.length) {
-          status.textContent = "";
         } else if (loadError) {
           status.textContent = this.deps.t("kernelError", loadError);
+        } else if (this.results.length) {
+          status.textContent = "";
         } else if (loading) {
           status.textContent = this.deps.t("indexing");
         } else {
@@ -1087,8 +1152,14 @@
         const count = footer.querySelector(".xlc-footer-count");
         if (count && !this.deps.isMobile()) {
           const sortSuffix = this.deps.getSort() === "frequent" ? ` \xB7 ${this.deps.t("sort.frequent")}` : "";
-          count.textContent = this.deps.t("totalItems", String(total)) + sortSuffix + (truncated ? " \u26A0" : "");
-          count.title = truncated ? this.deps.t("truncatedHint") : "";
+          if (directError) {
+            count.textContent = "";
+            count.title = "";
+          } else {
+            const countLabel = this.aiResults ? this.deps.t("aiResultCount", String(total)) : this.deps.t("totalItems", String(total));
+            count.textContent = countLabel + (!this.aiResults ? sortSuffix : "") + (truncated ? " \u26A0" : "");
+            count.title = truncated ? this.deps.t("truncatedHint") : "";
+          }
         }
       }
       this.providerRows = [];
@@ -1133,7 +1204,7 @@
       if (cursor < text.length) parent.appendChild(document.createTextNode(text.slice(cursor)));
     }
     renderList(list) {
-      var _a, _b, _c, _d, _e, _f, _g, _h;
+      var _a, _b, _c, _d, _e, _f;
       list.innerHTML = "";
       if (this.results.length === 0 && this.providerRows.length === 0 && this.emptyMessage) {
         const empty = document.createElement("div");
@@ -1146,10 +1217,22 @@
         text.className = "xlc-empty-text";
         text.textContent = this.emptyMessage;
         empty.appendChild(text);
-        if (this.emptyMessage === this.deps.t("semanticSuggestion")) {
+        const queryText = this.lastQueryText.trim();
+        if (queryText && !queryText.startsWith("?")) {
+          const titleHint = document.createElement("div");
+          titleHint.className = "xlc-empty-hint";
+          titleHint.textContent = this.deps.t("emptyQueryHint");
+          empty.appendChild(titleHint);
+          if (this.deps.aiEnabled()) {
+            const hint = document.createElement("div");
+            hint.className = "xlc-empty-hint";
+            hint.textContent = this.deps.t("aiSemanticHint");
+            empty.appendChild(hint);
+          }
+        } else if (queryText.startsWith("?")) {
           const hint = document.createElement("div");
           hint.className = "xlc-empty-hint";
-          hint.textContent = this.deps.t("aiSemanticHint");
+          hint.textContent = this.deps.t("semanticEmptyHint");
           empty.appendChild(hint);
         } else if (this.emptyMessage === this.deps.t("emptyFavorites")) {
           const hint = document.createElement("div");
@@ -1161,11 +1244,19 @@
           hint.className = "xlc-empty-hint";
           hint.textContent = this.deps.t("emptyLibrarySub");
           empty.appendChild(hint);
+          const guide = document.createElement("button");
+          guide.type = "button";
+          guide.className = "b3-button xlc-btn-ghost xlc-empty-action";
+          guide.dataset.xlcAction = "help";
+          guide.textContent = "\u24D8 " + this.deps.t("usageGuideBtn");
+          guide.addEventListener("click", () => this.openUsageGuide());
+          empty.appendChild(guide);
         }
         if (this.emptyMessage === this.deps.t("emptyFiltered")) {
           const clear = document.createElement("button");
           clear.type = "button";
           clear.className = "b3-button xlc-btn-ghost xlc-empty-action";
+          clear.dataset.xlcAction = "clear-filters";
           clear.textContent = this.deps.t("clearFilters");
           clear.addEventListener("click", () => {
             var _a2;
@@ -1181,11 +1272,16 @@
           const create = document.createElement("button");
           create.type = "button";
           create.className = "b3-button xlc-btn-primary xlc-empty-action";
-          create.textContent = this.deps.t("newItemAction");
+          create.dataset.xlcAction = "new-item";
+          const query = this.lastQueryText.trim();
+          const fullTitleCandidate = query && !query.startsWith("?") ? query.slice(0, 120) : "";
+          const buttonTitle = fullTitleCandidate.length > 24 ? `${fullTitleCandidate.slice(0, 24)}\u2026` : fullTitleCandidate;
+          create.textContent = buttonTitle ? this.deps.t("newItemActionWithQuery", buttonTitle) : this.deps.t("newItemAction");
+          const accessibleLabel = fullTitleCandidate ? this.deps.t("newItemWithTitle", fullTitleCandidate) : this.deps.t("newItemAction");
+          create.setAttribute("aria-label", accessibleLabel);
+          create.title = accessibleLabel;
           create.addEventListener("click", () => {
-            const query = this.lastQueryText.trim();
-            const titleCandidate = query && !query.startsWith("?") ? query.slice(0, 120) : void 0;
-            this.deps.newItem(titleCandidate);
+            this.deps.newItem(fullTitleCandidate || void 0);
           });
           empty.appendChild(create);
         }
@@ -1216,7 +1312,7 @@
         const catKeys = Array.from(byCat.keys()).sort((a, b) => a.localeCompare(b, "zh-Hans-CN"));
         const ordered = [];
         if (isManual && favs.length > 0) {
-          groupLabels.push({ label: "\u{1F4CC} " + this.deps.t("groupPinned"), count: favs.length });
+          groupLabels.push({ label: "\u2605 " + this.deps.t("groupFavorites"), count: favs.length });
           ordered.push(...favs);
         }
         for (const key of catKeys) {
@@ -1278,6 +1374,8 @@
         const badge = document.createElement("span");
         badge.className = `xlc-badge xlc-badge--${entry.itemType}`;
         badge.textContent = (_d = TYPE_BADGES2[entry.itemType]) != null ? _d : "TXT";
+        badge.title = this.deps.t(`type.${entry.itemType}`);
+        badge.setAttribute("aria-label", this.deps.t(`type.${entry.itemType}`));
         title.appendChild(badge);
         const titleText = document.createElement("span");
         titleText.className = "xlc-row-titletext";
@@ -1366,17 +1464,34 @@
         }
       }
       this.paintActive();
+      this.syncPaneActions();
+    }
+    /** 预览区动作随当前选中行同步；键盘切换/来源预检也必须更新按钮状态。 */
+    syncPaneActions() {
+      var _a, _b, _c, _d, _e;
       const actionable = this.results.length > 0;
-      const scope = (_h = (_g = this.dialog) == null ? void 0 : _g.element) != null ? _h : document;
+      const scope = (_b = (_a = this.dialog) == null ? void 0 : _a.element) != null ? _b : document;
       scope.querySelectorAll(".xlc-pane-foot .b3-button").forEach((btn) => {
-        var _a2;
+        var _a2, _b2;
         if (this.activeProvider >= 0) {
-          const act = (_a2 = btn.dataset.xlcPaneAct) != null ? _a2 : "";
-          btn.disabled = !(act === "insert" || act === "copy");
-        } else {
-          btn.disabled = !actionable;
+          const act2 = (_a2 = btn.dataset.xlcPaneAct) != null ? _a2 : "";
+          btn.disabled = !(act2 === "insert" || act2 === "copy");
+          return;
         }
+        const entry = this.results[this.activeIndex];
+        const act = (_b2 = btn.dataset.xlcPaneAct) != null ? _b2 : "";
+        const unavailable = !entry || act === "ai" && !this.deps.aiEnabled() || act === "source" && this.deps.isSourceMissing(entry);
+        btn.disabled = !actionable || unavailable;
+        btn.removeAttribute("title");
+        if (act === "ai" && !this.deps.aiEnabled()) btn.title = this.deps.t("aiDisabled");
+        if (act === "source" && entry && this.deps.isSourceMissing(entry)) btn.title = this.deps.t("sourceGone");
       });
+      const insertBtn = scope.querySelector('[data-xlc-pane-act="insert"]');
+      if (insertBtn && this.activeProvider < 0) {
+        const directInsert = (_e = (_d = (_c = this.deps).hasActiveEditor) == null ? void 0 : _d.call(_c)) != null ? _e : true;
+        insertBtn.textContent = directInsert ? this.deps.t("insert") : this.deps.t("insertNoEditorAction");
+        insertBtn.title = directInsert ? "" : this.deps.t("insertNoEditor");
+      }
       const mobileInsert = scope.querySelector(".xlc-mobile-foot .xlc-btn-primary");
       if (mobileInsert) mobileInsert.disabled = !actionable;
     }
@@ -1438,25 +1553,19 @@
     }
     async refreshPreservingPosition() {
       var _a, _b, _c;
-      const seq = ++this.searchSeq;
-      const query = this.buildQuery();
-      this.lastQueryText = query.text.trim();
-      try {
-        const { entries } = await this.deps.search(query);
-        if (seq !== this.searchSeq) return;
-        this.results = entries;
-        this.activeProvider = -1;
-        this.activeIndex = Math.min(this.activeIndex, Math.max(0, this.results.length - 1));
-      } catch (err) {
-        const status = (_a = this.dialog) == null ? void 0 : _a.element.querySelector(".xlc-status");
-        if (status) {
-          status.textContent = this.deps.t("kernelError", (_b = err == null ? void 0 : err.message) != null ? _b : "unknown");
-          status.classList.add("xlc-status--error");
-        }
-        return;
+      const list = (_a = this.dialog) == null ? void 0 : _a.element.querySelector(".xlc-list");
+      const scrollTop = (_b = list == null ? void 0 : list.scrollTop) != null ? _b : 0;
+      const selectedId = (_c = this.results[this.activeIndex]) == null ? void 0 : _c.id;
+      await this.refreshFilterOptions();
+      await this.refresh();
+      if (selectedId) {
+        const next = this.results.findIndex((entry) => entry.id === selectedId);
+        if (next >= 0) this.activeIndex = next;
       }
-      const list = (_c = this.dialog) == null ? void 0 : _c.element.querySelector(".xlc-list");
-      if (list) this.renderList(list);
+      if (list) {
+        this.renderList(list);
+        list.scrollTop = scrollTop;
+      }
       this.updatePreview();
     }
     /** 统一导航位：0..results.length-1 为库条目，之后为提供方行 */
@@ -1542,7 +1651,7 @@
       const sec = document.createElement("div");
       sec.className = "xlc-menu-sec";
       for (const mode of modes) {
-        sec.appendChild(this.menuButton(mode === current ? "\u2713" : " ", this.deps.t(`sort.${mode}`), "xlc-menu-item" + (mode === current ? " xlc-menu-item--on" : ""), async () => {
+        const option = this.menuButton(mode === current ? "\u2713" : " ", this.deps.t(`sort.${mode}`), "xlc-menu-item" + (mode === current ? " xlc-menu-item--on" : ""), async () => {
           var _a2;
           this.sortMenuClosedAt = Date.now();
           (_a2 = this.menuDismiss) == null ? void 0 : _a2.call(this);
@@ -1551,7 +1660,9 @@
           paintSort();
           this.restoreFocusToSearch();
           void this.refresh();
-        }));
+        });
+        option.title = this.deps.t(`sortHint.${mode}`);
+        sec.appendChild(option);
       }
       menu.appendChild(sec);
       const host = (_e = (_d = (_b = this.dialog) == null ? void 0 : _b.element.querySelector(".xlc-dialog")) != null ? _d : (_c = this.dialog) == null ? void 0 : _c.element) != null ? _e : document.body;
@@ -1659,6 +1770,7 @@
       const paneAi = (_d = this.dialog) == null ? void 0 : _d.element.querySelector(".xlc-pane-ai");
       const paneUsage = (_e = this.dialog) == null ? void 0 : _e.element.querySelector(".xlc-pane-usage");
       if (!paneBody || !paneTitle || !paneWarn || !paneAi || !paneUsage) return;
+      this.syncPaneActions();
       const paintUsageBadge = (entry2) => {
         var _a2;
         const count = entry2 ? (_a2 = this.usageCounts.get(entry2.id)) != null ? _a2 : 0 : 0;
@@ -1751,8 +1863,8 @@
     }
     /** F1：插入前询问变量（设置可关；无 ask 字段零打扰；code 条目不询问）。
      *  perform 收到 fills（undefined=未触发询问，走原路径）。 */
-    async insertEntryWithVars(entry, perform) {
-      var _a, _b;
+    async insertEntryWithVars(entry, perform, options) {
+      var _a, _b, _c;
       if (!this.deps.promptVariables()) {
         await perform();
         return;
@@ -1774,6 +1886,7 @@
             status.classList.add("xlc-status--error");
           }
         }
+        (_c = options == null ? void 0 : options.beforePerform) == null ? void 0 : _c.call(options);
         await perform();
         return;
       }
@@ -1786,7 +1899,8 @@
         fields,
         onConfirm: (fills) => {
           this.varFormOpen = false;
-          this.destroy();
+          if (options == null ? void 0 : options.beforePerform) options.beforePerform();
+          else this.destroy();
           void perform(fills);
         },
         // 取消/关闭（Esc/scrim/取消钮）后焦点回搜索框，与浮层菜单一致（R128）
@@ -1840,18 +1954,23 @@
         });
         const sec1 = document.createElement("div");
         sec1.className = "xlc-menu-sec";
-        const addAction = (icon, label, run, cls = "xlc-menu-item") => {
+        const addAction = (icon, label, run, cls = "xlc-menu-item", destroyBeforeRun = true) => {
           sec1.appendChild(this.menuButton(icon, label, cls, async () => {
-            this.destroy();
+            var _a2;
+            if (destroyBeforeRun) this.destroy();
+            else {
+              (_a2 = this.menuDismiss) == null ? void 0 : _a2.call(this);
+              this.menuDismiss = null;
+            }
             await run();
           }));
         };
         if (entry.itemType === "blockref") {
-          addAction("\uFF0B", this.deps.t("insertRef"), () => this.deps.runAction(entry.id, "insert-ref"));
-          addAction("\u229E", this.deps.t("insertEmbed"), () => this.deps.runAction(entry.id, "insert-embed"));
+          addAction("\uFF0B", this.deps.t("insertRef"), () => this.deps.insertTarget ? this.deps.insertToDoc(entry.id, this.deps.insertTarget.docId, this.deps.insertTarget.hPath, void 0, "insert-ref") : this.deps.runAction(entry.id, "insert-ref"));
+          addAction("\u229E", this.deps.t("insertEmbed"), () => this.deps.insertTarget ? this.deps.insertToDoc(entry.id, this.deps.insertTarget.docId, this.deps.insertTarget.hPath, void 0, "insert-embed") : this.deps.runAction(entry.id, "insert-embed"));
           addAction("\u29C9", this.deps.t("insertCopy"), () => this.deps.runAction(entry.id, "copy-content"));
         } else {
-          addAction("\uFF0B", this.deps.t("insert"), () => this.insertEntryWithVars(entry, (fills) => fills ? this.deps.runActionWithFills(entry.id, "insert", fills) : this.deps.runAction(entry.id, "insert")));
+          addAction("\uFF0B", this.deps.t("insert"), () => this.insertEntryWithVars(entry, (fills) => this.runActionFor(entry, fills), { beforePerform: () => this.destroy() }), "xlc-menu-item", false);
           addAction("\u29C9", this.deps.t("copy"), () => this.deps.runAction(entry.id, "copy"));
         }
         menu.appendChild(sec1);
@@ -5425,8 +5544,8 @@ ${exception.mark.snippet}`;
       title: t("setupTitle"),
       content: "",
       width: "min(520px, 92vw)",
-      height: "min(560px, 90vh)"
-      // 固定高：步骤/内容增减不再顶跳弹窗（R146）
+      height: "min(680px, 90vh)"
+      // 首次快速开始卡需要留出阅读空间，长屏仍保持视口内滚动（R175）
     });
     (_a = dialog.element.querySelector(".b3-dialog__container")) == null ? void 0 : _a.classList.add("xlc-form-host", "xlc-settings-host");
     const body = getDialogBody(dialog.element);
@@ -5704,11 +5823,20 @@ ${exception.mark.snippet}`;
     foot.appendChild(hint);
     const clearBtn = document.createElement("button");
     clearBtn.className = "b3-button";
-    clearBtn.textContent = t("clearUsageBtn");
+    const hasUsage = () => Object.values(ctx.state.usage).some((item) => item.count > 0);
+    const syncClearUsage = () => {
+      clearBtn.disabled = !hasUsage();
+      clearBtn.textContent = hasUsage() ? t("clearUsageBtn") : t("clearUsageEmpty");
+    };
+    syncClearUsage();
     clearBtn.addEventListener("click", () => {
+      if (!hasUsage()) return;
       (0, import_siyuan3.confirm)("\u26A0\uFE0F " + t("clearUsageBtn"), t("clearUsageConfirm"), () => {
+        var _a;
         ctx.state.usage = {};
         ctx.persistSoon();
+        (_a = ctx.refreshSearch) == null ? void 0 : _a.call(ctx);
+        syncClearUsage();
         ctx.notify("info", t("clearUsageDone"));
       });
     });
@@ -5787,6 +5915,43 @@ ${exception.mark.snippet}`;
     recommendation.className = "xlc-form-hint xlc-setup-recommendation";
     recommendation.textContent = t("setupRecommendation");
     root.appendChild(recommendation);
+    const existingConfig = ctx.getConfig();
+    const showQuickStart = !existingConfig;
+    if (showQuickStart) usageGuide.style.display = "none";
+    const quickStart = document.createElement("section");
+    quickStart.className = "xlc-setup-quickstart";
+    quickStart.setAttribute("aria-labelledby", "xlc-setup-quickstart-title");
+    const quickStartTitle = document.createElement("h3");
+    quickStartTitle.className = "xlc-setup-quickstart-title";
+    quickStartTitle.id = "xlc-setup-quickstart-title";
+    quickStartTitle.textContent = t("setupQuickStartTitle");
+    quickStart.appendChild(quickStartTitle);
+    const quickStartItems = [
+      ["1", t("setupQuickStart1Title"), t("setupQuickStart1Desc")],
+      ["2", t("setupQuickStart2Title"), t("setupQuickStart2Desc")],
+      ["3", t("setupQuickStart3Title"), t("setupQuickStart3Desc")]
+    ];
+    for (const [number, title, desc] of quickStartItems) {
+      const item = document.createElement("div");
+      item.className = "xlc-setup-quickstart-item";
+      const dot = document.createElement("span");
+      dot.className = "xlc-setup-quickstart-dot";
+      dot.textContent = number;
+      dot.setAttribute("aria-hidden", "true");
+      const copy = document.createElement("span");
+      copy.className = "xlc-setup-quickstart-copy";
+      const itemTitle = document.createElement("strong");
+      itemTitle.className = "xlc-setup-quickstart-item-title";
+      itemTitle.textContent = title;
+      const itemDesc = document.createElement("span");
+      itemDesc.className = "xlc-setup-quickstart-item-desc";
+      itemDesc.textContent = desc;
+      copy.append(itemTitle, itemDesc);
+      item.append(dot, copy);
+      quickStart.appendChild(item);
+    }
+    root.appendChild(quickStart);
+    if (!showQuickStart) quickStart.style.display = "none";
     const step1 = document.createElement("div");
     const modeWrap = document.createElement("div");
     modeWrap.className = "xlc-form-field";
@@ -5810,7 +5975,6 @@ ${exception.mark.snippet}`;
       opt.textContent = m.label;
       modeSelect.appendChild(opt);
     }
-    const existingConfig = ctx.getConfig();
     if (existingConfig) modeSelect.value = existingConfig.mode;
     modeWrap.appendChild(modeSelect);
     step1.appendChild(modeWrap);
@@ -5985,10 +6149,7 @@ ${exception.mark.snippet}`;
       }
       if (nbSelect.options.length <= 1) {
         nbStatus.textContent = t("setupNotebookEmpty");
-        retryNotebooksBtn.style.display = "";
-        retryNotebookAction = () => {
-          void loadNotebooks(true);
-        };
+        retryNotebooksBtn.style.display = "none";
         return;
       }
       if (modeSelect.value !== "notebook" || !selectedId) {
@@ -6012,7 +6173,7 @@ ${exception.mark.snippet}`;
         return;
       }
       nbStatus.textContent = notebookDocsState === "empty" ? t("setupNotebookNoDocs") : t("setupNotebookDocsCheckFailed");
-      retryNotebooksBtn.style.display = "";
+      retryNotebooksBtn.style.display = notebookDocsState === "error" ? "" : "none";
       retryNotebookAction = () => {
         const notebookId = nbSelect.value;
         const revision = setupRevision;
@@ -6298,6 +6459,9 @@ ${exception.mark.snippet}`;
       root.insertBefore(buildStepsEl(step, step === 1 ? t("setupStep1") : t("setupStep2")), root.firstChild);
       step1.style.display = step === 1 ? "" : "none";
       hint.style.display = step === 1 ? "" : "none";
+      usageGuide.style.display = step === 1 && !showQuickStart ? "" : "none";
+      recommendation.style.display = step === 1 ? "" : "none";
+      quickStart.style.display = step === 1 && showQuickStart ? "" : "none";
       step2.style.display = step === 2 ? "" : "none";
       if (step === 2) paintSummary();
     }
@@ -6357,6 +6521,7 @@ ${exception.mark.snippet}`;
       ctx.ai.updateSettings(ctx.state.ai);
       ctx.persistSoon();
     };
+    let addCtBtn = null;
     const repaintCt = () => {
       ctList.textContent = "";
       for (const ct of ctx.state.ai.customTransforms) {
@@ -6405,19 +6570,17 @@ ${exception.mark.snippet}`;
         empty.textContent = t("customTransformEmpty");
         ctList.appendChild(empty);
       }
+      if (addCtBtn) addCtBtn.disabled = ctx.state.ai.customTransforms.length >= 10;
     };
     repaintCt();
-    const addCtBtn = document.createElement("button");
+    addCtBtn = document.createElement("button");
     addCtBtn.type = "button";
     addCtBtn.className = "b3-button";
     addCtBtn.style.alignSelf = "flex-start";
     addCtBtn.textContent = t("customTransformAdd");
     addCtBtn.addEventListener("click", () => {
       var _a;
-      if (ctx.state.ai.customTransforms.length >= 10) {
-        ctx.notify("error", t("customTransformCap"));
-        return;
-      }
+      if (ctx.state.ai.customTransforms.length >= 10) return;
       const id = `xltf-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
       ctx.state.ai.customTransforms = [...ctx.state.ai.customTransforms, { id, name: t("customTransformNewName"), prompt: "" }];
       persistCt();
@@ -6445,12 +6608,24 @@ ${exception.mark.snippet}`;
       ctx.state.search.pinyin = value;
       ctx.applyPinyinAdapter();
       ctx.persistSoon();
+      const pinyinInput = pinyinRow.querySelector("input");
+      pinyinInput == null ? void 0 : pinyinInput.setAttribute("aria-busy", "true");
+      if (pinyinInput) pinyinInput.disabled = true;
+      pinyinRow.setAttribute("aria-busy", "true");
       void ctx.library.reindex().then((idx) => {
+        var _a;
         if (mySeq !== pinyinSeq) return;
+        (_a = ctx.refreshSearch) == null ? void 0 : _a.call(ctx);
         ctx.notify("info", t("reindexDone", String(idx.entries.length)));
       }).catch((err) => {
         if (mySeq !== pinyinSeq) return;
         ctx.notify("error", t("kernelError", err.message));
+      }).finally(() => {
+        if (pinyinInput) {
+          pinyinInput.disabled = false;
+          pinyinInput.removeAttribute("aria-busy");
+        }
+        pinyinRow.removeAttribute("aria-busy");
       });
     });
     searchSec.appendChild(pinyinRow);
@@ -6503,6 +6678,8 @@ ${exception.mark.snippet}`;
       reindexBtn.disabled = true;
       reindexBtn.textContent = t("indexing");
       void ctx.library.reindex().then((idx) => {
+        var _a;
+        (_a = ctx.refreshSearch) == null ? void 0 : _a.call(ctx);
         ctx.notify("info", idx.truncated ? t("reindexTruncated", String(LIMITS.maxItems)) : t("reindexDone", String(idx.entries.length)));
       }).catch((err) => {
         ctx.notify("error", t("kernelError", err.message));
@@ -6514,8 +6691,10 @@ ${exception.mark.snippet}`;
     const clearRecentsBtn = mkBtn(ctx.state.recents.length ? t("clearRecents") : t("clearRecentsEmpty"), () => {
       if (ctx.state.recents.length === 0) return;
       (0, import_siyuan3.confirm)("\u26A0\uFE0F " + t("clearRecents"), t("clearRecentsConfirm"), () => {
+        var _a;
         ctx.state.recents = [];
         ctx.persistSoon();
+        (_a = ctx.refreshSearch) == null ? void 0 : _a.call(ctx);
         clearRecentsBtn.textContent = t("clearRecentsEmpty");
         clearRecentsBtn.disabled = true;
         ctx.notify("info", t("clearRecentsDone"));
@@ -6664,16 +6843,20 @@ ${exception.mark.snippet}`;
     root.appendChild(foot);
     body.appendChild(root);
     let parsedItems = [];
+    let parsedText = null;
     const runParse = () => {
+      const sourceText = ta.value;
       parsedItems = [];
+      parsedText = null;
       nextBtn.disabled = true;
       preview.textContent = "";
-      const result = parseEspansoYaml(ta.value);
+      const result = parseEspansoYaml(sourceText);
       if (result.items.length === 0) {
         preview.textContent = result.issues.length ? result.issues.slice(0, 5).join("\n") : t("espansoNone");
         return;
       }
       parsedItems = result.items;
+      parsedText = sourceText;
       const lines = [t("espansoParsed", String(result.items.length))];
       for (const issue of result.issues.slice(0, 5)) lines.push(`\xB7 ${issue}`);
       if (result.issues.length > 5) lines.push(`\xB7 \u2026+${result.issues.length - 5}`);
@@ -6683,11 +6866,15 @@ ${exception.mark.snippet}`;
     let parseTimer;
     ta.addEventListener("input", () => {
       if (parseTimer) clearTimeout(parseTimer);
+      parsedItems = [];
+      parsedText = null;
+      nextBtn.disabled = true;
+      preview.textContent = "";
       parseTimer = setTimeout(runParse, 400);
     });
     cancelBtn.addEventListener("click", () => dialog.destroy());
     nextBtn.addEventListener("click", () => {
-      if (parsedItems.length === 0) return;
+      if (nextBtn.disabled || parsedItems.length === 0 || parsedText !== ta.value) return;
       dialog.destroy();
       openImportPolicyDialog(
         ctx,
@@ -6805,6 +6992,8 @@ ${exception.mark.snippet}`;
       dialog.destroy();
       const promise = source.kind === "json" ? ctx.importBundleText(source.text, policy) : ctx.importMarkdownItems(source.items, policy);
       void promise.then((receipt) => {
+        var _a2;
+        (_a2 = ctx.refreshSearch) == null ? void 0 : _a2.call(ctx);
         ctx.notify(receipt.failed > 0 ? "error" : "info", t(
           "importDone",
           String(receipt.created),
@@ -6880,8 +7069,16 @@ ${exception.mark.snippet}`;
       /** 快速捕获并发锁（⌥⇧V 连按防重入） */
       this.quickCapturing = false;
     }
+    /** 保存前的共同前置条件：没有内容库时直接回到首次设置，避免先访问宿主再报错。 */
+    ensureConfigured() {
+      var _a, _b;
+      if (!this.deps.isConfigured || this.deps.isConfigured()) return true;
+      (_b = (_a = this.deps).onNotConfigured) == null ? void 0 : _b.call(_a);
+      return false;
+    }
     /** 保存当前选区（命令/顶栏入口） */
     async saveSelection() {
+      if (!this.ensureConfigured()) return;
       const sel = this.deps.getSelectionText();
       const text = sel.text.trim();
       if (!text) {
@@ -6892,6 +7089,7 @@ ${exception.mark.snippet}`;
     }
     /** 从剪贴板捕获（失败诚实回执） */
     async captureFromClipboard() {
+      if (!this.ensureConfigured()) return;
       try {
         const text = (await this.deps.readClipboardText()).trim();
         if (!text) {
@@ -6908,7 +7106,12 @@ ${exception.mark.snippet}`;
     /** 快速捕获剪贴板（F8）：无表单一步入库——类型推断 + 首行作标题；
      *  同文已存在则诚实提示不重复写入（不打断）；⌥⇧V 连按防重入。 */
     async quickCaptureFromClipboard() {
+      var _a, _b;
       if (this.quickCapturing) return;
+      if (this.deps.isConfigured && !this.deps.isConfigured()) {
+        (_b = (_a = this.deps).onNotConfigured) == null ? void 0 : _b.call(_a);
+        return;
+      }
       this.quickCapturing = true;
       try {
         await this.doQuickCapture();
@@ -6959,11 +7162,13 @@ ${exception.mark.snippet}`;
     }
     /** 手动新建（空表单） */
     newManual(titleCandidate) {
+      if (!this.ensureConfigured()) return;
       this.openForm("", "text", null, titleCandidate ? { title: titleCandidate } : void 0);
     }
     /** 右键块引用捕获：把被引用块存为 blockref 条目（目标块=引用目标） */
     captureBlockRef(blockId, refText) {
       var _a;
+      if (!this.ensureConfigured()) return;
       if (!isBlockRefTarget(blockId)) {
         this.deps.notify("error", this.deps.t("invalidItem"));
         return;
@@ -6978,6 +7183,7 @@ ${exception.mark.snippet}`;
     /** 右键图片捕获：assets/ 图片存为图片条目（非 assets 图诚实拒绝） */
     captureImage(assetPath, altText) {
       var _a;
+      if (!this.ensureConfigured()) return;
       const target = classifyLinkTarget(assetPath);
       if (!target || target.kind !== "asset") {
         this.deps.notify("error", this.deps.t("invalidItem"));
@@ -6989,6 +7195,7 @@ ${exception.mark.snippet}`;
     /** 右键链接捕获：http(s) 外链 → url 条目；assets/ → asset 条目；其余诚实拒绝 */
     captureLink(href, text) {
       var _a, _b;
+      if (!this.ensureConfigured()) return;
       const target = classifyLinkTarget(href);
       if (!target) {
         this.deps.notify("error", this.deps.t("invalidItem"));
@@ -7002,12 +7209,19 @@ ${exception.mark.snippet}`;
     }
     /** 捕获当前块：光标所在块整体作为条目（选区文本优先级低于整块语义） */
     async captureCurrentBlock() {
+      if (!this.ensureConfigured()) return;
       const blockId = this.deps.getSelectionText().blockId;
       if (!blockId) {
         this.deps.notify("error", this.deps.t("captureBlockNone"));
         return;
       }
-      const kramdown = await this.deps.getBlockKramdown(blockId);
+      let kramdown;
+      try {
+        kramdown = await this.deps.getBlockKramdown(blockId);
+      } catch (err) {
+        this.deps.notify("error", this.deps.t("kernelError", err instanceof Error ? err.message : String(err)));
+        return;
+      }
       if (kramdown === null || !kramdown.trim()) {
         this.deps.notify("error", this.deps.t("captureBlockFailed"));
         return;
@@ -7017,12 +7231,19 @@ ${exception.mark.snippet}`;
     /** 捕获当前文档：整文档 Markdown 作为结构条目（来源 = 该文档） */
     async captureCurrentDoc() {
       var _a;
+      if (!this.ensureConfigured()) return;
       const docId = this.deps.currentDocId();
       if (!docId) {
         this.deps.notify("error", this.deps.t("relinkNoDoc"));
         return;
       }
-      const doc = await this.deps.exportDocContent(docId);
+      let doc;
+      try {
+        doc = await this.deps.exportDocContent(docId);
+      } catch (err) {
+        this.deps.notify("error", this.deps.t("kernelError", err instanceof Error ? err.message : String(err)));
+        return;
+      }
       if (!doc) {
         this.deps.notify("error", this.deps.t("captureDocFailed"));
         return;
@@ -7031,7 +7252,11 @@ ${exception.mark.snippet}`;
       this.openForm(doc.content.slice(0, 1e5), "markdown", null, { title, docId, sourceType: "doc-fragment" });
     }
     openForm(defaultText, defaultType, sourceBlockId, overrides) {
-      var _a, _b;
+      var _a, _b, _c, _d;
+      if (this.deps.isConfigured && !this.deps.isConfigured()) {
+        (_b = (_a = this.deps).onNotConfigured) == null ? void 0 : _b.call(_a);
+        return;
+      }
       const t = this.deps.t;
       let closed = false;
       let saving = false;
@@ -7048,7 +7273,7 @@ ${exception.mark.snippet}`;
           ++draftSeq;
         }
       });
-      (_a = dialog.element.querySelector(".b3-dialog__container")) == null ? void 0 : _a.classList.add("xlc-form-host");
+      (_c = dialog.element.querySelector(".b3-dialog__container")) == null ? void 0 : _c.classList.add("xlc-form-host");
       const body = getDialogBody(dialog.element);
       if (!body) return;
       body.innerHTML = "";
@@ -7093,7 +7318,7 @@ ${exception.mark.snippet}`;
       const contentEl = field(t("contentLabel"), defaultText, true, "xlc-form-content");
       const varbar = buildVariableBar(t, () => contentEl);
       contentEl.parentElement.after(varbar);
-      const titleEl = field(t("title"), (_b = overrides == null ? void 0 : overrides.title) != null ? _b : "", false, "xlc-form-title");
+      const titleEl = field(t("title"), (_d = overrides == null ? void 0 : overrides.title) != null ? _d : "", false, "xlc-form-title");
       form.appendChild(metaRow);
       const aliasEl = field(t("alias"), "", false, "xlc-form-alias", metaRow);
       const tagRow = document.createElement("div");
@@ -7311,10 +7536,19 @@ ${exception.mark.snippet}`;
           markdown = "```\n" + contentValue + "\n```";
         } else if (type === "url") {
           markdown = contentValue.trim();
+          if (!isSafeHttpUrl(markdown)) {
+            flagContentError();
+            this.deps.notify("error", t("invalidItem"));
+            return;
+          }
         }
+        saving = true;
+        saveBtn.disabled = true;
+        saveBtn.textContent = t("checkingDuplicate");
+        cancelBtn.disabled = true;
         const doSave = () => {
           var _a2;
-          if (closed || saving) return;
+          if (closed) return;
           saving = true;
           saveBtn.disabled = true;
           saveBtn.textContent = t("saving");
@@ -7327,6 +7561,7 @@ ${exception.mark.snippet}`;
             alias: aliasEl.value || void 0,
             tags: tagsEl.value ? tagsEl.value.split(/[,,]/).map((s) => s.trim()).filter(Boolean) : void 0,
             category: categoryEl.value || void 0,
+            url: type === "url" ? markdown : void 0,
             targetBlockId: overrides == null ? void 0 : overrides.targetBlockId,
             source: docId ? { sourceDocId: docId, sourceBlockId: sourceBlockId != null ? sourceBlockId : void 0, sourceType: (_a2 = overrides == null ? void 0 : overrides.sourceType) != null ? _a2 : sourceBlockId ? "selection" : "manual" } : void 0
           }).then((result) => {
@@ -7350,16 +7585,25 @@ ${exception.mark.snippet}`;
           });
         };
         void this.deps.findDuplicate(contentValue).then((dup) => {
-          if (closed || saving) return;
+          if (closed) return;
           if (!dup) {
+            saving = false;
             doSave();
             return;
           }
+          saving = false;
+          saveBtn.disabled = false;
+          saveBtn.textContent = t("save");
+          cancelBtn.disabled = false;
           (0, import_siyuan4.confirm)("\u26A0\uFE0F " + t("duplicateTitle"), t("duplicateConfirm", dup.title), () => {
             if (!closed) doSave();
           });
         }).catch((err) => {
           if (closed) return;
+          saving = false;
+          saveBtn.disabled = false;
+          saveBtn.textContent = t("save");
+          cancelBtn.disabled = false;
           this.deps.notify("error", t("kernelError", err instanceof Error ? err.message : String(err)));
         });
       });
@@ -7390,7 +7634,8 @@ ${exception.mark.snippet}`;
     var _a;
     const map = {
       pluginName: "\u5C0F\u9A74\u5E38\u7528\uFF08\u5185\u6D4B\u7248\uFF09",
-      searchPlaceholder: "\u641C\u7D22\u5E38\u7528\u5185\u5BB9\uFF08? \u524D\u7F00 = AI \u8BED\u4E49\u641C\u7D22\uFF09",
+      searchPlaceholder: "\u641C\u7D22\u6807\u9898\u3001\u522B\u540D\u3001\u6807\u7B7E\u3001\u5206\u7C7B\u548C\u6B63\u6587\u6458\u8981",
+      searchHint: "\u8F93\u5165 ? \u52A0\u63CF\u8FF0\uFF0C\u6309\u542B\u4E49\u641C\u7D22\uFF08\u9700\u5728\u672C\u63D2\u4EF6\u8BBE\u7F6E\u4E2D\u542F\u7528 AI\uFF09",
       type: "\u7C7B\u578B",
       tags: "\u6807\u7B7E",
       tagsHint: "\u9017\u53F7\u5206\u9694",
@@ -7399,6 +7644,9 @@ ${exception.mark.snippet}`;
       category: "\u5206\u7C7B",
       contentLabel: "\u5185\u5BB9\uFF08Markdown\uFF09",
       filterAll: "\u5168\u90E8\u7C7B\u578B",
+      filterAllType: "\u7C7B\u578B\uFF1A\u5168\u90E8",
+      filterAllTags: "\u6807\u7B7E\uFF1A\u5168\u90E8",
+      filterAllCategories: "\u5206\u7C7B\uFF1A\u5168\u90E8",
       "type.text": "\u7EAF\u6587\u672C",
       "type.markdown": "Markdown",
       "type.url": "\u7F51\u5740",
@@ -7407,22 +7655,22 @@ ${exception.mark.snippet}`;
       "type.asset": "\u9644\u4EF6",
       "type.blockref": "\u5757\u5F15\u7528",
       "type.structure": "\u5757\u7ED3\u6784",
-      filterFavorites: "\u6536\u85CF",
-      filterRecent: "\u6700\u8FD1",
-      empty: "\u6CA1\u6709\u5339\u914D\u7684\u6761\u76EE",
-      usageHint: "\u2191\u2193 \u9009\u62E9 \xB7 Enter \u63D2\u5165 \xB7 Ctrl+Enter \u590D\u5236 \xB7 Esc \u5173\u95ED",
-      usageHintMobile: "\u70B9\u6309\u63D2\u5165 \xB7 \u957F\u6309\u66F4\u591A",
-      usageGuideBtn: "\u4F7F\u7528\u8BF4\u660E",
+      filterFavorites: "\u53EA\u770B\u6536\u85CF",
+      filterRecent: "\u6700\u8FD1\u4F7F\u7528",
+      empty: "\u6CA1\u6709\u627E\u5230\u5339\u914D\u5185\u5BB9",
+      usageHint: "\u2191 \u2193 \u9009\u62E9 \xB7 Enter \u63D2\u5165 \xB7 Ctrl/\u2318 + Enter \u590D\u5236 \xB7 Alt + 1-9 \u5FEB\u901F\u63D2\u5165 \xB7 Esc \u5173\u95ED",
+      usageHintMobile: "\u70B9\u6309\u6761\u76EE\u5C1D\u8BD5\u63D2\u5165\uFF1B\u82E5\u5BBF\u4E3B\u4E0D\u652F\u6301\u4F1A\u590D\u5236\u5230\u526A\u8D34\u677F \xB7 \u957F\u6309\u67E5\u770B\u64CD\u4F5C",
+      usageGuideBtn: "\u4F7F\u7528\u5E2E\u52A9",
       usageGuideTitle: "\u5C0F\u9A74\u5E38\u7528\u600E\u4E48\u7528",
-      usageGuideIntro: "\u628A\u9AD8\u9891\u5185\u5BB9\u5B58\u8FDB\u601D\u6E90\u5757\uFF0C\u4E4B\u540E\u641C\u7D22\u3001\u9884\u89C8\uFF0C\u518D\u63D2\u5165\u6216\u590D\u5236\u3002",
-      usageGuideAdd: "\u589E\u52A0\uFF1A\u70B9\u300C\uFF0B\u65B0\u5EFA\u300D\uFF0C\u6216\u4ECE\u9009\u533A\u3001\u5F53\u524D\u5757\u3001\u526A\u8D34\u677F\u548C\u53F3\u952E\u83DC\u5355\u6355\u83B7\u3002",
-      usageGuideSearch: "\u627E\u5230\uFF1A\u641C\u7D22\u6807\u9898\u3001\u6B63\u6587\u3001\u6807\u7B7E\u548C\u5206\u7C7B\uFF1B\u4E5F\u53EF\u4EE5\u7528\u62FC\u97F3\u3001\u6536\u85CF\u3001\u6700\u8FD1\u548C\u5E38\u7528\u6392\u5E8F\u3002",
-      usageGuideInsert: "\u4F7F\u7528\uFF1AEnter \u63D2\u5165\uFF0CCtrl/\u2318+Enter \u590D\u5236\uFF0CAlt+1~9 \u76F4\u8FBE\u524D\u4E5D\u6761\uFF1B\u957F\u6309\u6761\u76EE\u53EF\u6253\u5F00\u66F4\u591A\u52A8\u4F5C\u3002",
-      usageGuideInsertMobile: "\u4F7F\u7528\uFF1A\u70B9\u6309\u6761\u76EE\u63D2\u5165\uFF1B\u957F\u6309\u6761\u76EE\u6253\u5F00\u66F4\u591A\u52A8\u4F5C\u3002\u79FB\u52A8\u7AEF\u63D2\u5165\u884C\u4E3A\u5C1A\u672A\u5728\u771F\u5B9E\u601D\u6E90\u5BA2\u6237\u7AEF\u9A8C\u8BC1\u3002",
+      usageGuideIntro: "\u628A\u5E38\u7528\u5185\u5BB9\u4FDD\u5B58\u5728\u601D\u6E90\u6587\u6863\u4E2D\uFF0C\u4E4B\u540E\u641C\u7D22\u3001\u9884\u89C8\uFF0C\u518D\u63D2\u5165\u6216\u590D\u5236\u3002",
+      usageGuideAdd: "\u65B0\u589E\uFF1A\u70B9\u300C\uFF0B \u65B0\u5EFA\u6761\u76EE\u300D\uFF0C\u6216\u4ECE\u9009\u533A\u3001\u5F53\u524D\u5757\u3001\u526A\u8D34\u677F\u548C\u53F3\u952E\u83DC\u5355\u4FDD\u5B58\u3002",
+      usageGuideSearch: "\u67E5\u627E\uFF1A\u641C\u7D22\u6807\u9898\u3001\u522B\u540D\u3001\u6458\u8981\u3001\u6807\u7B7E\u548C\u5206\u7C7B\uFF1B\u4E5F\u53EF\u4EE5\u7528\u62FC\u97F3\u3001\u6536\u85CF\u3001\u6700\u8FD1\u4F7F\u7528\u548C\u5E38\u7528\u6392\u5E8F\u3002",
+      usageGuideInsert: "\u4F7F\u7528\uFF1AEnter \u63D2\u5165\u5F53\u524D\u6761\u76EE\uFF0CCtrl/\u2318 + Enter \u590D\u5236\u5F53\u524D\u6761\u76EE\uFF0CAlt/\u2325 + 1-9 \u63D2\u5165\u5BF9\u5E94\u6761\u76EE\uFF1B\u957F\u6309\u6761\u76EE\u53EF\u6253\u5F00\u66F4\u591A\u64CD\u4F5C\u3002",
+      usageGuideInsertMobile: "\u4F7F\u7528\uFF1A\u70B9\u6309\u6761\u76EE\u5C1D\u8BD5\u63D2\u5165\uFF1B\u82E5\u601D\u6E90\u5BA2\u6237\u7AEF\u4E0D\u652F\u6301\uFF0C\u4F1A\u590D\u5236\u5230\u526A\u8D34\u677F\u3002\u79FB\u52A8\u7AEF\u63D2\u5165\u5C1A\u672A\u5728\u771F\u5B9E\u5BA2\u6237\u7AEF\u9A8C\u8BC1\uFF1B\u957F\u6309\u6761\u76EE\u53EF\u6253\u5F00\u66F4\u591A\u64CD\u4F5C\u3002",
       emptyFiltered: "\u5F53\u524D\u7B5B\u9009\u4E0B\u6CA1\u6709\u5339\u914D\u6761\u76EE",
       clearFilters: "\u6E05\u9664\u7B5B\u9009",
       usageGuideOrganize: "\u6574\u7406\uFF1A\u7ED9\u6761\u76EE\u8865\u4E0A\u6E05\u695A\u7684\u6807\u9898\u3001\u6807\u7B7E\u548C\u5206\u7C7B\uFF1B\u8BBE\u7F6E \u2192 \u6570\u636E\u4E0E\u6A21\u677F\u53EF\u5BFC\u5165\u90AE\u7BB1\u3001\u5730\u5740\u548C\u8054\u7CFB\u65B9\u5F0F\u793A\u4F8B\u3002",
-      usageGuideVariables: "\u6A21\u677F\u89C4\u5219\uFF1A{{xlc:ask:\u5B57\u6BB5}} \u4F1A\u5728\u63D2\u5165\u524D\u8BE2\u95EE\uFF1B{{xlc:date}}\u3001{{xlc:clipboard}} \u7B49\u5360\u4F4D\u7B26\u53EA\u5728\u8C03\u7528\u65F6\u5C55\u5F00\uFF0C\u539F\u6587\u4ECD\u4FDD\u7559\u3002\u6B63\u6587\u4FDD\u5B58\u5728\u601D\u6E90\u771F\u5B9E\u5757\u4E2D\uFF0CAI \u9ED8\u8BA4\u5173\u95ED\u3002",
+      usageGuideVariables: "\u6A21\u677F\u89C4\u5219\uFF1A{{xlc:ask:\u5B57\u6BB5}} \u4F1A\u5728\u63D2\u5165\u524D\u8BE2\u95EE\uFF1B{{xlc:date}}\u3001{{xlc:clipboard}} \u7B49\u5360\u4F4D\u7B26\u53EA\u5728\u4F7F\u7528\u65F6\u5C55\u5F00\uFF0C\u4E0D\u4F1A\u6539\u5199\u5E93\u4E2D\u7684\u539F\u6587\u3002AI \u9ED8\u8BA4\u5173\u95ED\u3002",
       insert: "\u63D2\u5165",
       copy: "\u590D\u5236",
       openSource: "\u6253\u5F00\u6765\u6E90",
@@ -7432,10 +7680,10 @@ ${exception.mark.snippet}`;
       insertEmbed: "\u63D2\u5165\u5D4C\u5165",
       insertCopy: "\u590D\u5236\u5185\u5BB9",
       sourceMissing: "\u6765\u6E90\u5931\u6548",
-      sourceGone: "\u6765\u6E90\u5757\u5DF2\u4E0D\u5B58\u5728\uFF08\u539F\u6587\u6863\u88AB\u91CD\u7EC4\uFF09\xB7 \u6253\u5F00\u6765\u6E90\u53EF\u91CD\u65B0\u6307\u5B9A",
+      sourceGone: "\u539F\u5185\u5BB9\u5757\u5DF2\u79FB\u52A8\u6216\u5220\u9664\u3002\u70B9\u51FB\u300C\u6253\u5F00\u6765\u6E90\u300D\u53EF\u91CD\u65B0\u6307\u5B9A\u4F4D\u7F6E\u3002",
       previewUnavailable: "\u6682\u65E0\u9884\u89C8",
-      previewNoResult: "\u5F53\u524D\u6CA1\u6709\u53EF\u9884\u89C8\u7684\u6761\u76EE",
-      aiFound: "AI \u547D\u4E2D",
+      previewNoResult: "\u9009\u62E9\u5DE6\u4FA7\u6761\u76EE\u540E\uFF0C\u8FD9\u91CC\u4F1A\u663E\u793A\u9884\u89C8",
+      aiFound: "AI \u8BED\u4E49\u641C\u7D22",
       aiWorking: "AI \u5904\u7406\u4E2D\u2026",
       aiOriginalPreserved: "\u539F\u6587\u672A\u88AB\u4FEE\u6539",
       insertNoEditor: "\u5F53\u524D\u6CA1\u6709\u6D3B\u52A8\u7F16\u8F91\u5668\uFF0C\u5DF2\u590D\u5236\u5230\u526A\u8D34\u677F\uFF0C\u53EF\u624B\u52A8\u7C98\u8D34",
@@ -7462,27 +7710,29 @@ ${exception.mark.snippet}`;
       aiApplied: "\u5DF2\u5E94\u7528 AI \u5EFA\u8BAE",
       aiTransform: "AI \u53D8\u6362",
       saved: "\u5DF2\u4FDD\u5B58\uFF1A%s",
-      dataTruth: "\u601D\u6E90\u5757\u771F\u6E90 \xB7 \u5931\u6548\u53EF\u89C1",
+      dataTruth: "\u4FDD\u5B58\u5230\u601D\u6E90\u6587\u6863\uFF1B\u6765\u6E90\u79FB\u52A8\u6216\u5220\u9664\u65F6\u4F1A\u63D0\u793A",
+      dataTruthHint: "\u5185\u5BB9\u4EE5\u601D\u6E90\u5757\u4FDD\u5B58\u5728\u6240\u9009\u5185\u5BB9\u5E93\u6587\u6863\uFF0C\u6761\u76EE\u548C\u6765\u6E90\u4ECD\u53EF\u5728\u601D\u6E90\u4E2D\u7F16\u8F91\u3002",
       adoptAll: "\u5168\u90E8\u91C7\u7EB3",
       actionsNoun: "\u52A8\u4F5C",
-      semanticSuggestion: "\u6CA1\u6709\u672C\u5730\u7ED3\u679C\u3002\u8BD5\u8BD5 AI \u8BED\u4E49\u641C\u7D22\uFF1A\u5728\u5173\u952E\u8BCD\u524D\u52A0 ?",
-      aiSemanticHint: "\u8F93\u5165 ? \u52A0\u63CF\u8FF0\uFF0C\u5982\u300C?\u7ED9\u5BA2\u6237\u7684\u9053\u6B49\u56DE\u590D\u300D\uFF0CAI \u5728\u5143\u6570\u636E\u4E2D\u627E\u6700\u76F8\u5173\u6761\u76EE",
+      semanticSuggestion: "\u6CA1\u6709\u627E\u5230\u5339\u914D\u5185\u5BB9",
+      aiSemanticHint: "\u8F93\u5165 ? \u52A0\u63CF\u8FF0\uFF0C\u4F8B\u5982\u300C?\u7ED9\u5BA2\u6237\u7684\u9053\u6B49\u56DE\u590D\u300D\u3002AI \u4F9D\u636E\u6807\u9898\u3001\u522B\u540D\u3001\u6807\u7B7E\u3001\u5206\u7C7B\u548C\u6458\u8981\u63A8\u8350\u6761\u76EE\uFF0C\u4E0D\u8BFB\u53D6\u5B8C\u6574\u6B63\u6587\u3002",
       varCountBadge: "%s \u53D8\u91CF",
       paneVarsLabel: "\u63D2\u5165\u65F6\u5C06\u8BE2\u95EE %s \u4E2A\u53D8\u91CF\uFF1A",
       insertVariable: "\u63D2\u5165\u53D8\u91CF\uFF1A",
       varFormTitle: "\u586B\u5199\u53D8\u91CF",
       varFormSub: "\u672C\u6761\u76EE\u542B %s \u4E2A\u53D8\u91CF\uFF0C\u586B\u5199\u540E\u4E00\u6B21\u6027\u63D2\u5165\uFF1B\u586B\u5199\u503C\u4EC5\u7528\u4E8E\u672C\u6B21\uFF0C\u4E0D\u56DE\u5199\u5E93\u3002",
       varFormHint: "Tab \u4E0B\u4E00\u9879 \xB7 Enter \u63D2\u5165",
-      groupPinned: "\u7F6E\u9876",
+      groupFavorites: "\u6536\u85CF",
       groupAll: "\u5168\u90E8",
       groupUncategorized: "\u65E0\u5206\u7C7B",
       insertSection: "\u53D8\u91CF\u4E0E\u63D2\u5165",
       promptVariablesToggle: "\u63D2\u5165\u524D\u8BE2\u95EE\u53D8\u91CF",
       promptVariablesSub: "\u542B {{xlc:ask:\u2026}} \u7684\u6761\u76EE\u63D2\u5165\u524D\u5F39\u51FA\u586B\u5145\u5361\u7247",
       recordUsageToggle: "\u8BB0\u5F55\u4F7F\u7528\u6B21\u6570",
-      recordUsageSub: "\u4EC5\u672C\u5730\u5B58\u50A8\uFF0C\u53EF\u4E00\u952E\u6E05\u9664\uFF1B\u7528\u4E8E\u300C\u5E38\u7528\u300D\u6392\u5E8F",
+      recordUsageSub: "\u4EC5\u672C\u5730\u5B58\u50A8\uFF0C\u53EF\u4E00\u952E\u6E05\u9664\uFF1B\u7528\u4E8E\u300C\u5E38\u7528\u300D\u6392\u5E8F\u3002\u5173\u95ED\u540E\u4F1A\u4FDD\u7559\u5DF2\u6709\u7EDF\u8BA1\u3002",
       usageStatsHint: "\u4F7F\u7528\u7EDF\u8BA1\u4EC5\u4FDD\u5B58\u5728\u672C\u673A",
       clearUsageBtn: "\u6E05\u7A7A\u4F7F\u7528\u7EDF\u8BA1",
+      clearUsageEmpty: "\u6682\u65E0\u4F7F\u7528\u7EDF\u8BA1",
       clearUsageConfirm: "\u6E05\u7A7A\u5168\u90E8\u4F7F\u7528\u8BA1\u6570\uFF1F",
       clearUsageDone: "\u5DF2\u6E05\u7A7A\u4F7F\u7528\u7EDF\u8BA1",
       importPolicySkipDesc: "\u540C\u540D\u540C\u6E90\u6761\u76EE\u4E0D\u52A8\uFF0C\u4EC5\u65B0\u589E\u7F3A\u5931\u9879",
@@ -7512,7 +7762,7 @@ ${exception.mark.snippet}`;
       create: "\u521B\u5EFA",
       retry: "\u91CD\u8BD5",
       useCount: "%s \u6B21",
-      quickNew: "\uFF0B \u65B0\u5EFA",
+      quickNew: "\uFF0B \u65B0\u5EFA\u6761\u76EE",
       quickInsertSelected: "\u63D2\u5165\u9009\u4E2D",
       packBtn: "\u5BFC\u51FA\u6A21\u677F\u5305",
       packExportTitle: "\u5BFC\u51FA \xB7 \u6A21\u677F\u5305",
@@ -7527,12 +7777,18 @@ ${exception.mark.snippet}`;
       emptyFavorites: "\u8FD8\u6CA1\u6709\u6536\u85CF\u7684\u6761\u76EE",
       emptyFavoritesSub: "\u70B9\u51FB\u6761\u76EE\u53F3\u4FA7 \u2606 \u4E00\u952E\u6536\u85CF\uFF0C\u6536\u85CF\u4F1A\u7F6E\u9876\u663E\u793A",
       emptyRecent: "\u6682\u65E0\u6700\u8FD1\u4F7F\u7528\u7684\u6761\u76EE",
-      "sort.manual": "\u624B\u52A8/\u7F6E\u9876",
-      "sort.recent": "\u6700\u8FD1\u4F7F\u7528",
-      "sort.title": "\u6807\u9898",
-      "sort.frequent": "\u5E38\u7528",
+      "sort.manual": "\u9ED8\u8BA4\u6392\u5E8F\uFF08\u6536\u85CF\u4F18\u5148\uFF09",
+      "sort.recent": "\u6700\u8FD1\u4F7F\u7528\u5728\u524D",
+      "sort.title": "\u6309\u6807\u9898\u6392\u5E8F",
+      "sort.frequent": "\u4F7F\u7528\u9891\u6B21",
       sort: "\u6392\u5E8F",
-      totalItems: "\u5171 %s \u6761",
+      totalItems: "\u5E93\u5185\u6761\u76EE\uFF1A%s \u6761",
+      resultCount: "%s \u6761\u7ED3\u679C",
+      aiResultCount: "AI \u63A8\u8350\uFF1A%s \u6761",
+      "sortHint.manual": "\u6536\u85CF\u6761\u76EE\u4F18\u5148\u663E\u793A\uFF1B\u5176\u4F59\u6761\u76EE\u6309\u6700\u8FD1\u4F7F\u7528\u548C\u66F4\u65B0\u65F6\u95F4\u6392\u5217",
+      "sortHint.recent": "\u6700\u8FD1\u63D2\u5165\u6216\u590D\u5236\u8FC7\u7684\u6761\u76EE\u6392\u5728\u524D\u9762",
+      "sortHint.title": "\u6D4F\u89C8\u5217\u8868\u65F6\u6309\u6807\u9898\u6392\u5E8F\uFF1B\u641C\u7D22\u65F6\u4ECD\u6309\u5339\u914D\u7A0B\u5EA6\u6392\u5E8F",
+      "sortHint.frequent": "\u4F7F\u7528\u6B21\u6570\u8F83\u591A\u7684\u6761\u76EE\u6392\u5728\u524D\u9762\uFF1B\u6B21\u6570\u76F8\u540C\u5219\u6700\u8FD1\u4F7F\u7528\u7684\u4F18\u5148",
       duplicateItem: "\u521B\u5EFA\u526F\u672C",
       insertToDoc: "\u63D2\u5165\u5230\u6307\u5B9A\u6587\u6863",
       insertToDocPick: "\u9009\u62E9\u76EE\u6807\u6587\u6863\uFF08\u8F93\u5165\u5173\u952E\u8BCD\u641C\u7D22\uFF09",
@@ -7544,9 +7800,9 @@ ${exception.mark.snippet}`;
       aiInsertOriginal: "\u63D2\u5165\u539F\u6587",
       saveTransformed: "\u5B58\u4E3A\u65B0\u6761\u76EE",
       deleteConfirm: "\u5220\u9664\u6761\u76EE\u300C%s\u300D\uFF1F",
-      providerSection: "\u63D0\u4F9B\u65B9\u5185\u5BB9",
-      providerInsert: "\u63D2\u5165\uFF08\u63D0\u4F9B\u65B9\uFF09",
-      providerCopy: "\u590D\u5236\uFF08\u63D0\u4F9B\u65B9\uFF09",
+      providerSection: "\u5176\u4ED6\u63D2\u4EF6\u5185\u5BB9",
+      providerInsert: "\u63D2\u5165\u5176\u4ED6\u63D2\u4EF6\u5185\u5BB9",
+      providerCopy: "\u590D\u5236\u5176\u4ED6\u63D2\u4EF6\u5185\u5BB9",
       providerExecutable: "\u53EF\u6267\u884C",
       providerPendingReload: "\u5F85\u91CD\u8F7D",
       openSettings: "\u8BBE\u7F6E / \u66F4\u6539\u5185\u5BB9\u5E93",
@@ -7564,6 +7820,11 @@ ${exception.mark.snippet}`;
       placeholdersToggleSub: "\u63D2\u5165\u65F6\u66FF\u6362 {{xlc:date}} \u7B49\u4E3A\u5F53\u524D\u65E5\u671F\u65F6\u95F4",
       aiSuggestion: "AI \u5EFA\u8BAE",
       clearSearch: "\u6E05\u7A7A\u641C\u7D22",
+      shortcutLabel: "\u64CD\u4F5C\u63D0\u793A",
+      newItemActionWithQuery: "\uFF0B \u65B0\u5EFA\u300C%s\u300D",
+      newItemWithTitle: "\u5C06\u300C%s\u300D\u9884\u586B\u4E3A\u6807\u9898\u5E76\u65B0\u5EFA\u6761\u76EE",
+      emptyQueryHint: "\u65B0\u5EFA\u65F6\u4F1A\u628A\u5F53\u524D\u641C\u7D22\u8BCD\u586B\u5165\u6807\u9898\uFF0C\u4F60\u53EF\u4EE5\u7EE7\u7EED\u4FEE\u6539\u3002",
+      semanticEmptyHint: "AI \u641C\u7D22\u6CA1\u6709\u627E\u5230\u76F8\u5173\u6761\u76EE\u3002\u53EF\u8C03\u6574\u63CF\u8FF0\uFF0C\u6216\u65B0\u5EFA\u6761\u76EE\u540E\u81EA\u884C\u586B\u5199\u6807\u9898\u548C\u5185\u5BB9\u3002",
       customTransformSection: "\u81EA\u5B9A\u4E49\u53D8\u6362",
       customTransformAdd: "\uFF0B \u6DFB\u52A0\u81EA\u5B9A\u4E49\u53D8\u6362",
       customTransformName: "\u540D\u79F0",
@@ -7588,19 +7849,26 @@ ${exception.mark.snippet}`;
       exportMdBtn: "\u5BFC\u51FA Markdown \u5305\uFF08\u542B\u8D44\u6E90\uFF09",
       tagAuditBtn: "AI \u6807\u7B7E\u4F53\u68C0",
       setupTitle: "\u9009\u62E9\u5E38\u7528\u5185\u5BB9\u5E93",
-      setupHint: "\u6761\u76EE\u4FDD\u5B58\u4E3A\u601D\u6E90\u771F\u5B9E\u5757\uFF0C\u53EF\u5728\u601D\u6E90\u4E2D\u7EE7\u7EED\u7F16\u8F91\u3002\u521B\u5EFA\u65B0\u6587\u6863\u524D\u4F1A\u660E\u786E\u786E\u8BA4\u3002",
+      setupHint: "\u6761\u76EE\u4FDD\u5B58\u4E3A\u601D\u6E90\u6587\u6863\uFF0C\u53EF\u7EE7\u7EED\u7F16\u8F91\u3002\u521B\u5EFA\u65B0\u6587\u6863\u524D\u4F1A\u660E\u786E\u786E\u8BA4\u3002",
       setupUsageGuide: "\u5F00\u59CB\u4F7F\u7528\uFF1A\u4ECE\u9762\u677F\u65B0\u5EFA\uFF0C\u6216\u4ECE\u526A\u8D34\u677F\u6355\u83B7\uFF1B\u641C\u7D22\u540E\u9009\u62E9\u6761\u76EE\uFF0C\u518D\u7528\u64CD\u4F5C\u533A\u63D2\u5165\u6216\u590D\u5236\u3002\u6A21\u677F\u53D8\u91CF {{xlc:ask:\u5B57\u6BB5}} \u4F1A\u5728\u4F7F\u7528\u524D\u8BE2\u95EE\u3002",
-      setupRecommendation: "\u63A8\u8350\u65B0\u5EFA\u4E00\u4E2A\u5E93\u6587\u6863\uFF1B\u5206\u7C7B\u662F\u6761\u76EE\u5C5E\u6027\uFF0C\u6A21\u677F\u7531\u4F60\u786E\u8BA4\u540E\u5BFC\u5165\u5E76\u4FDD\u5B58\u5728\u8BE5\u6587\u6863\u3002",
+      setupRecommendation: "\u63A8\u8350\u65B0\u5EFA\u4E00\u4E2A\u4E13\u7528\u5E93\u6587\u6863\uFF1B\u5B83\u4F1A\u653E\u5165\u4F60\u9009\u62E9\u7684\u5DF2\u6709\u7B14\u8BB0\u672C\uFF08\u4E0D\u4F1A\u65B0\u5EFA\u7B14\u8BB0\u672C\uFF09\u3002\u5206\u7C7B\u4F1A\u4FDD\u5B58\u5728\u6BCF\u6761\u5185\u5BB9\u4E0A\uFF0C\u6A21\u677F\u7531\u4F60\u786E\u8BA4\u540E\u5BFC\u5165\u5230\u8BE5\u6587\u6863\u3002",
+      setupQuickStartTitle: "\u914D\u7F6E\u5B8C\u6210\u540E\u8FD9\u6837\u5F00\u59CB",
+      setupQuickStart1Title: "\u5148\u653E\u4E00\u6761\u5185\u5BB9",
+      setupQuickStart1Desc: "\u5728\u9762\u677F\u70B9\u300C\u65B0\u5EFA\u6761\u76EE\u300D\uFF0C\u6216\u4ECE\u9009\u533A\u3001\u526A\u8D34\u677F\u548C\u53F3\u952E\u83DC\u5355\u4FDD\u5B58\u3002",
+      setupQuickStart2Title: "\u518D\u627E\u5230\u5B83",
+      setupQuickStart2Desc: "\u8F93\u5165\u6807\u9898\u3001\u6807\u7B7E\u6216\u5206\u7C7B\u641C\u7D22\uFF1B\u70B9\u9009\u6761\u76EE\u5373\u53EF\u67E5\u770B\u9884\u89C8\u3002",
+      setupQuickStart3Title: "\u6700\u540E\u4F7F\u7528",
+      setupQuickStart3Desc: "\u6309 Enter \u63D2\u5165\uFF0C\u6216\u590D\u5236\u540E\u7C98\u8D34\uFF1B\u8BBE\u7F6E\u4E2D\u7684\u6A21\u677F\u53EF\u5728\u4F7F\u7528\u65F6\u586B\u5199\u53D8\u91CF\u3002",
       setupCreateNewDoc: "\u65B0\u5EFA\u4E13\u7528\u5E93\u6587\u6863\uFF08\u63A8\u8350\uFF09",
       setupPickDoc: "\u9009\u62E9\u73B0\u6709\u6587\u6863",
       setupNotebook: "\u6309\u7B14\u8BB0\u672C",
-      setupCreateNotebook: "\u65B0\u5EFA\u6587\u6863\u6240\u5728\u7B14\u8BB0\u672C",
+      setupCreateNotebook: "\u9009\u62E9\u5DF2\u6709\u7B14\u8BB0\u672C\uFF08\u4E0D\u4F1A\u65B0\u5EFA\u7B14\u8BB0\u672C\uFF09",
       setupChooseNotebook: "\u8BF7\u9009\u62E9\u7B14\u8BB0\u672C",
       setupNotebookLoading: "\u6B63\u5728\u8BFB\u53D6\u53EF\u7528\u7B14\u8BB0\u672C\u2026",
       setupNotebookReady: "\u53EF\u7528\u7B14\u8BB0\u672C\u5DF2\u52A0\u8F7D",
       setupNotebookNeedsDocsCheck: "\u9009\u62E9\u7B14\u8BB0\u672C\u540E\uFF0C\u4E0B\u4E00\u6B65\u4F1A\u68C0\u67E5\u6839\u76EE\u5F55\u6587\u6863",
       setupNotebookDocsReady: "\u6839\u76EE\u5F55\u6587\u6863\u5DF2\u68C0\u67E5\uFF0C\u53EF\u4EE5\u7EE7\u7EED\u8BBE\u7F6E\u5185\u5BB9\u5E93",
-      setupNotebookEmpty: "\u6CA1\u6709\u53EF\u7528\u7B14\u8BB0\u672C",
+      setupNotebookEmpty: "\u6CA1\u6709\u53EF\u7528\u7B14\u8BB0\u672C\u3002\u8BF7\u5148\u5728\u601D\u6E90\u65B0\u5EFA\u7B14\u8BB0\u672C\uFF0C\u6216\u5207\u6362\u4E3A\u9009\u62E9\u73B0\u6709\u6587\u6863\u3002",
       setupNotebookLoadFailed: "\u7B14\u8BB0\u672C\u8BFB\u53D6\u5931\u8D25",
       setupNotebookNotReady: "\u7B14\u8BB0\u672C\u5C1A\u672A\u52A0\u8F7D\u5B8C\u6210",
       setupNotebookNoDocs: "\u8BE5\u7B14\u8BB0\u672C\u6839\u76EE\u5F55\u6CA1\u6709\u6587\u6863",
@@ -7613,13 +7881,18 @@ ${exception.mark.snippet}`;
       captureHint: "\u6761\u76EE\u5C06\u4FDD\u5B58\u4E3A\u771F\u5B9E\u601D\u6E90\u5757 \xB7 \u53D8\u91CF\u5728\u63D2\u5165\u65F6\u8BE2\u95EE",
       captureHintLib: "\u5E93\uFF1A%s",
       docCount: "%s \u4E2A\u6587\u6863",
-      emptyLibrary: "\u5185\u5BB9\u5E93\u8FD8\u662F\u7A7A\u7684",
-      emptyLibrarySub: "\u4ECE\u9009\u533A\u3001\u526A\u8D34\u677F\u6216\u53F3\u952E\u83DC\u5355\u6355\u83B7\u5E38\u7528\u5185\u5BB9\uFF1B\u4E5F\u53EF\u4EE5\u76F4\u63A5\u65B0\u5EFA\u4E00\u6761",
+      emptyLibrary: "\u8FD8\u6CA1\u6709\u5E38\u7528\u5185\u5BB9",
+      emptyLibrarySub: "\u5148\u65B0\u5EFA\u4E00\u6761\uFF0C\u6216\u4ECE\u9009\u533A\u3001\u526A\u8D34\u677F\u548C\u53F3\u952E\u83DC\u5355\u4FDD\u5B58\uFF1B\u5185\u5BB9\u4F1A\u4FDD\u5B58\u5728\u5F53\u524D\u5185\u5BB9\u5E93",
       updatedAtLabel: "\u66F4\u65B0\u4E8E %s",
       // R138 键集（缺失时 T 回落键名，截图/断言会看到裸键）
-      kbdEnter: "\u21A9 \u63D2\u5165",
-      kbdCopy: "%s\u21A9 \u590D\u5236",
-      kbdAltDirect: "\u23251-9 \u76F4\u8FBE",
+      keyboardHelp: "\u952E\u76D8\u5FEB\u6377\u64CD\u4F5C",
+      kbdNav: "\u5207\u6362\u9009\u4E2D\u6761\u76EE",
+      kbdEnter: "\u63D2\u5165\u9009\u4E2D\u6761\u76EE",
+      kbdCopy: "\u590D\u5236\u9009\u4E2D\u6761\u76EE",
+      kbdAltDirect: "%s + 1-9 \u5FEB\u901F\u63D2\u5165",
+      kbdEsc: "\u5173\u95ED",
+      kbdQuickInsert: "\u5FEB\u901F\u63D2\u5165\u5BF9\u5E94\u6761\u76EE",
+      kbdClose: "\u5173\u95ED\u9762\u677F",
       loading: "\u52A0\u8F7D\u4E2D\u2026",
       truncatedHint: "\u6761\u76EE\u8D85\u51FA\u7D22\u5F15\u4E0A\u9650\uFF0C\u5DF2\u622A\u65AD\u663E\u793A\uFF1B\u6570\u636E\u4ECD\u5B89\u5168\u5728\u5E93\u4E2D",
       copyFailed: "\u590D\u5236\u5931\u8D25\uFF1A\u65E0\u6CD5\u5199\u5165\u526A\u8D34\u677F",

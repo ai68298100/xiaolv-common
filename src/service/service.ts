@@ -19,6 +19,8 @@ export interface ServiceDeps {
     /** 侧车读写（由插件入口提供 saveData 节流） */
     state: PluginState;
     onStateChange: () => void;
+    /** 库块发生外部写入时通知当前 UI；可选以兼容独立协议测试/宿主。 */
+    onLibraryChange?: () => void;
 }
 
 function toRef(item: Pick<CommonItem, "id" | "itemType" | "title">): CommonItemRef {
@@ -81,9 +83,13 @@ export class XiaolvCommonService {
     }
 
     private searchCtx(): SearchContext {
+        const sort = this.deps.state.sort;
         return {
             favorites: new Set(this.deps.state.favorites),
             recents: new Map(this.deps.state.recents.map((r) => [r.id, r.usedAt])),
+            usage: new Map(Object.entries(this.deps.state.usage ?? {}).map(([id, usage]) => [id, usage.count])),
+            manualOrder: sort === "manual" ? new Map(this.deps.state.favorites.map((id, index) => [id, index])) : undefined,
+            sort,
             now: Date.now(),
         };
     }
@@ -129,6 +135,7 @@ export class XiaolvCommonService {
             } as NewItemInput["source"],
         });
         if (!created.ok) return failureEnvelope(created.reason === "timeout" ? "timeout" : created.reason === "invalid-input" ? "invalid-input" : "kernel-error", created.message);
+        this.deps.onLibraryChange?.();
         this.emitEvent(EVENTS.itemCreated, created.data.item.id, created.data.item.itemType);
         return successEnvelope(toRef(created.data.item));
     }
@@ -145,6 +152,7 @@ export class XiaolvCommonService {
             category: typeof obj.category === "string" ? obj.category : undefined,
         });
         if (!updated.ok) return failureEnvelope(updated.reason === "timeout" ? "timeout" : updated.reason === "not-found" ? "not-found" : "kernel-error", updated.message);
+        this.deps.onLibraryChange?.();
         this.emitEvent(EVENTS.itemUpdated, updated.data.item.id, updated.data.item.itemType);
         return successEnvelope(toRef(updated.data.item));
     }
@@ -156,7 +164,9 @@ export class XiaolvCommonService {
         // 侧车清理用归一化后的 id（raw 非字符串时会残留幽灵收藏，R144）
         this.deps.state.favorites = this.deps.state.favorites.filter((x) => x !== id);
         this.deps.state.recents = this.deps.state.recents.filter((r) => r.id !== id);
+        delete this.deps.state.usage[id];
         this.deps.onStateChange();
+        this.deps.onLibraryChange?.();
         this.emitEvent(EVENTS.itemDeleted, id);
         return successEnvelope(undefined);
     }

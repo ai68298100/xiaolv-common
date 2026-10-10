@@ -120,7 +120,7 @@ fs.writeFileSync(path.join(OUT, "harness.html"), html);
         ordinals: document.querySelectorAll(".xlc-row-ordinal").length >= 3,
         // R67：分组头（置顶/全部）+ 行变量徽标 + 预览变量提示行
         groupHeads: document.querySelectorAll(".xlc-group-head").length >= 2,
-        pinnedGroup: (document.querySelector(".xlc-group-head")?.textContent ?? "").includes("置顶"),
+        pinnedGroup: (document.querySelector(".xlc-group-head")?.textContent ?? "").includes("收藏"),
         varBadge: (document.querySelector(".xlc-badge--var")?.textContent ?? "").includes("变量"),
         // R68：行 meta 使用次数（F3 展示）
         rowUseCount: ((document.querySelectorAll(".xlc-row-meta")[0] ?? {textContent: ""}).textContent ?? "").includes("32 次"),
@@ -129,8 +129,12 @@ fs.writeFileSync(path.join(OUT, "harness.html"), html);
             const btn = document.querySelector(".xlc-search-clear");
             return !!btn && btn.classList.contains("xlc-search-clear--on");
         })(),
-        // R69：kbd 补 ⌥1-9；标题内联 ★ 去重；提示行含光标落点
-        kbdAltChips: Array.from(document.querySelectorAll(".xlc-kbd")).some((el) => (el.textContent ?? "").includes("1-9")),
+        // R69：快捷键改为「键帽 + 动作」两层，标题内联 ★ 去重；提示行含光标落点
+        kbdAltChips: Array.from(document.querySelectorAll(".xlc-kbd-key")).some((el) => (el.textContent ?? "").includes("1-9")),
+        shortcutBar: (() => {
+            const bar = document.querySelector(".xlc-kbdrow");
+            return !!bar && (bar.textContent ?? "").includes("操作提示") && bar.querySelectorAll(".xlc-kbd-key").length >= 5;
+        })(),
         favmarkGone: document.querySelectorAll(".xlc-row-favmark").length === 0,
         paneVars: (() => {
             const el = document.querySelector(".xlc-pane-vars");
@@ -141,23 +145,23 @@ fs.writeFileSync(path.join(OUT, "harness.html"), html);
         // R169：桌面顶栏常驻新增入口 + 底栏使用说明入口
         topNewItem: (() => {
             const btn = document.querySelector(".xlc-top-new");
-            return btn !== null && (btn.textContent ?? "").includes("新建");
+            return btn !== null && (btn.textContent ?? "").includes("新建条目");
         })(),
-        usageGuide: (document.querySelector(".xlc-footer-guide")?.textContent ?? "").includes("使用说明"),
+        usageGuide: (document.querySelector(".xlc-footer-guide")?.textContent ?? "").includes("使用帮助"),
     }));
     await shoot("desktop-dark", {theme: "dark", aiEnabled: true, missing: false}, () => ({
         rows: document.querySelectorAll(".xlc-row[data-xlc-index]").length >= 3,
         pane: !!document.querySelector(".xlc-pane"),
     }));
     await shoot("provider-light", {theme: "light", aiEnabled: true, missing: false, query: "工作台"}, () => ({
-        providerHeader: (document.querySelector(".xlc-provider-header")?.textContent ?? "").includes("提供方内容"),
+        providerHeader: (document.querySelector(".xlc-provider-header")?.textContent ?? "").includes("其他插件内容"),
         providerRows: document.querySelectorAll(".xlc-row--provider").length >= 1,
         footerGear: (document.querySelector(".xlc-footer-gear")?.textContent ?? "").includes("设置"),
         // 无本地命中时不保留上一条目的使用徽标或预览。
         paneUsageHidden: (() => {
             const el = document.querySelector(".xlc-pane-usage");
             const body = document.querySelector(".xlc-pane-body");
-            return el !== null && el.offsetParent === null && body?.textContent === "当前没有可预览的条目";
+            return el !== null && el.offsetParent === null && body?.textContent === "选择左侧条目后，这里会显示预览";
         })(),
     }));
     // 窄容器（<620px）：单列降级（预览隐藏）
@@ -192,7 +196,7 @@ fs.writeFileSync(path.join(OUT, "harness.html"), html);
     });
     await page.waitForTimeout(400);
     const settingsAssertions = await page.evaluate(() => ({
-        sections: ["AI 助手", "搜索", "数据与模板", "提供方内容"].every((s) => document.body.textContent.includes(s)),
+        sections: ["AI 助手", "搜索", "数据与模板", "其他插件内容"].every((s) => document.body.textContent.includes(s)),
         toggles: document.querySelectorAll(".xlc-setting-row input[type=checkbox]").length >= 3,
         providerRow: (document.body.textContent || "").includes("小驴打卡"),
         dataButtons: (document.body.textContent || "").includes("重建索引") && (document.body.textContent || "").includes("导出"),
@@ -207,6 +211,11 @@ fs.writeFileSync(path.join(OUT, "harness.html"), html);
         customTransforms: (document.body.textContent || "").includes("自定义变换")
             && (document.querySelector(".xlc-ct-name")?.value ?? "") === "客服话术"
             && (document.body.textContent || "").includes("添加自定义变换"),
+        clearUsageDisabledWhenEmpty: (() => {
+            const button = Array.from(document.querySelectorAll("button")).find((b) => (b.textContent ?? "").includes("暂无使用统计"));
+            return !!button && button.disabled;
+        })(),
+        usageRetentionExplained: (document.body.textContent || "").includes("关闭后会保留已有统计"),
         // R74：提示词场景包入口
         promptPack: (document.body.textContent || "").includes("导入内置分类模板"),
         promptPackInDataSection: (() => {
@@ -217,7 +226,7 @@ fs.writeFileSync(path.join(OUT, "harness.html"), html);
     if (Object.values(settingsAssertions).some((v) => !v)) {
         throw new Error("settings smoke failed: " + JSON.stringify(settingsAssertions));
     }
-    console.log("  smoke ✓ settings: 7 assertions");
+    console.log("  smoke ✓ settings: 9 assertions");
     await page.screenshot({path: path.join(OUT, "production-settings-light.png")});
     // 模板包导出对话框（R71/F6，原型屏 8 右帧：分类筛选 / 包名 / 内容清单）
     await page.evaluate(() => {
@@ -287,14 +296,24 @@ fs.writeFileSync(path.join(OUT, "harness.html"), html);
         const create = Array.from(document.querySelectorAll("button")).find((b) => (b.textContent ?? "").includes("创建"));
         const next = Array.from(document.querySelectorAll("button")).find((b) => (b.textContent ?? "").includes("下一步"));
         return {
-            hint: text.includes("真实块"),
-            usageGuide: text.includes("开始使用：") && !text.includes("setupUsageGuide"),
-            recommendation: text.includes("分类是条目属性") && text.includes("模板由你确认后导入"),
+            hint: text.includes("思源文档") && text.includes("可继续编辑"),
+            usageGuide: (() => {
+                const guide = Array.from(document.querySelectorAll(".xlc-form-hint"))
+                    .find((el) => (el.textContent ?? "").includes("开始使用："));
+                return !!guide && getComputedStyle(guide).display === "none";
+            })(),
+            recommendation: text.includes("分类会保存在每条内容上") && text.includes("模板由你确认后导入"),
+            quickStart: (() => {
+                const card = document.querySelector(".xlc-setup-quickstart");
+                return !!card && getComputedStyle(card).display !== "none"
+                    && card.textContent.includes("先放一条内容")
+                    && card.textContent.includes("再找到它") && card.textContent.includes("最后使用");
+            })(),
             recommendedModeSelected: document.querySelector("#xlc-setup-mode")?.value === "new-doc",
             modeSelect: !!document.querySelector(".xlc-form select"),
             notebook: text.includes("按笔记本"),
             createBtn: text.includes("创建新库文档"),
-            createTargetVisible: text.includes("新建文档所在笔记本"),
+            createTargetVisible: text.includes("选择已有笔记本（不会新建笔记本）"),
             createDisabledUntilNotebookSelection: !!create && create.disabled,
             nextDisabledWithoutDoc: !!next && next.disabled,
             docPicker: (document.querySelector("input[placeholder]")?.getAttribute("placeholder") ?? "").includes("选择库文档") || !!document.querySelector(".xlc-doclist"),
@@ -308,8 +327,32 @@ fs.writeFileSync(path.join(OUT, "harness.html"), html);
     if (Object.values(setupAssertions).some((v) => !v)) {
         throw new Error("setup smoke failed: " + JSON.stringify(setupAssertions));
     }
-    console.log("  smoke ✓ setup: 11 assertions");
+    console.log("  smoke ✓ setup: 12 assertions");
     await page.screenshot({path: path.join(OUT, "production-setup-light.png")});
+    const setupStepTransition = await page.evaluate(async () => {
+        const mode = document.querySelector("#xlc-setup-mode");
+        mode.value = "doc";
+        mode.dispatchEvent(new Event("change", {bubbles: true}));
+        const input = document.querySelector("input[placeholder]");
+        input.value = "常用内容库";
+        input.dispatchEvent(new Event("input", {bubbles: true}));
+        await new Promise((resolve) => setTimeout(resolve, 360));
+        const doc = document.querySelector(".xlc-doclist-item");
+        doc?.click();
+        const next = Array.from(document.querySelectorAll("button")).find((b) => (b.textContent ?? "").includes("下一步"));
+        next?.click();
+        const guide = Array.from(document.querySelectorAll(".xlc-form-hint")).find((el) => (el.textContent ?? "").includes("开始使用："));
+        const recommendation = document.querySelector(".xlc-setup-recommendation");
+        return {
+            reachedConfirmStep: document.body.textContent.includes("第 2 步 · 确认落点"),
+            hidesFirstStepGuide: !!guide && getComputedStyle(guide).display === "none",
+            hidesFirstStepRecommendation: !!recommendation && getComputedStyle(recommendation).display === "none",
+        };
+    });
+    if (Object.values(setupStepTransition).some((v) => !v)) {
+        throw new Error("setup step transition smoke failed: " + JSON.stringify(setupStepTransition));
+    }
+    console.log("  smoke ✓ setup step transition: 3 assertions");
     await page.evaluate(() => {
         const stage = document.getElementById("stage");
         document.querySelectorAll(".b3-dialog").forEach((el) => el.remove());
@@ -387,8 +430,7 @@ fs.writeFileSync(path.join(OUT, "harness.html"), html);
                 || (document.body.dataset.xlcSetupNotice ?? "").includes("根目录没有文档"),
             didNotApplyConfig: !document.body.dataset.xlcSetupConfig,
             createDisabledInNotebookIndexMode: !!create && create.disabled,
-            rootCheckRequiresRetry: !!next && next.disabled
-                && document.querySelector(".xlc-setup-notebook-retry")?.style.display !== "none",
+            emptyStateDoesNotOfferRetry: document.querySelector(".xlc-setup-notebook-retry")?.style.display === "none",
         };
     });
     if (Object.values(emptyNotebook).some((v) => !v)) {
@@ -438,11 +480,15 @@ fs.writeFileSync(path.join(OUT, "harness.html"), html);
         modeRestored: document.querySelector("#xlc-setup-mode")?.value === "notebook",
         notebookRestored: document.querySelector("#xlc-setup-notebook")?.value === "20240101",
         nextEnabled: !Array.from(document.querySelectorAll("button")).find((b) => (b.textContent ?? "").includes("下一步"))?.disabled,
+        quickStartHiddenForExistingConfig: (() => {
+            const card = document.querySelector(".xlc-setup-quickstart");
+            return !!card && getComputedStyle(card).display === "none";
+        })(),
     }));
     if (Object.values(existingSetup).some((v) => !v)) {
         throw new Error("existing notebook setup smoke failed: " + JSON.stringify(existingSetup));
     }
-    console.log("  smoke ✓ existing notebook configuration restored: 3 assertions");
+    console.log("  smoke ✓ existing notebook configuration restored: 4 assertions");
     await page.evaluate(() => {
         const stage = document.getElementById("stage");
         document.querySelectorAll(".b3-dialog").forEach((el) => el.remove());
@@ -571,7 +617,7 @@ fs.writeFileSync(path.join(OUT, "harness.html"), html);
     });
     const mobileGuide = await page.evaluate(() => {
         const text = document.body.textContent ?? "";
-        return text.includes("点按条目插入") && !text.includes("Alt+1~9 直达前九条");
+        return text.includes("点按条目尝试插入") && text.includes("复制到剪贴板") && !text.includes("Alt+1~9 直达前九条");
     });
     if (!mobileGuide) throw new Error("mobile usage guide contains desktop-only shortcuts");
     console.log("  smoke ✓ mobile usage guide: 2 assertions");
@@ -817,14 +863,14 @@ fs.writeFileSync(path.join(OUT, "harness.html"), html);
         const footer = document.querySelector(".xlc-footer");
         empty?.querySelector(".xlc-empty-action")?.click();
         return {
-            emptyBlock: !!empty && empty.textContent.includes("AI 语义搜索"),
-            emptyHint: !!empty && empty.textContent.includes("?"),
+            emptyBlock: !!empty && empty.textContent.includes("没有找到匹配内容"),
+        emptyHint: !!empty && empty.textContent.includes("AI 依据标题") && empty.textContent.includes("?"),
             emptyNewItem: !!empty && !!empty.querySelector(".xlc-empty-action")
                 && (empty.querySelector(".xlc-empty-action")?.textContent ?? "").includes("新建"),
             queryPrefillsTitle: document.body.dataset.xlcNewItemTitle === "不存在的词条",
-            previewCleared: document.querySelector(".xlc-pane-body")?.textContent === "当前没有可预览的条目",
-            footerClaim: !!footer && footer.textContent.includes("思源块真源"),
-            footerCount: !!footer && footer.textContent.includes("共 0 条"),
+            previewCleared: document.querySelector(".xlc-pane-body")?.textContent === "选择左侧条目后，这里会显示预览",
+            footerClaim: !!footer && footer.textContent.includes("保存到思源文档"),
+            footerCount: !!footer && footer.textContent.includes("库内条目：0 条"),
         };
     });
     if (Object.values(emptyAssertions).some((v) => !v)) {
@@ -872,7 +918,8 @@ fs.writeFileSync(path.join(OUT, "harness.html"), html);
     }, enI18n.newItemAction);
     await page.waitForTimeout(400);
     const englishEmptyAction = await page.evaluate((expected) => {
-        const button = document.querySelector(".xlc-empty-action");
+        const button = Array.from(document.querySelectorAll(".xlc-empty-action"))
+            .find((el) => (el.textContent ?? "") === expected);
         return button?.textContent === expected && !button.textContent.includes("新建");
     }, enI18n.newItemAction);
     if (!englishEmptyAction) throw new Error("empty-state new-item action did not use the English localized label");
@@ -951,6 +998,19 @@ fs.writeFileSync(path.join(OUT, "harness.html"), html);
         }
     });
     await page.waitForTimeout(500);
+    const emptyLibraryGuide = await page.evaluate(() => {
+        const empty = document.querySelector(".xlc-empty");
+        const help = Array.from(empty?.querySelectorAll(".xlc-empty-action") ?? [])
+            .find((el) => (el.textContent ?? "").includes("使用帮助"));
+        return {
+            explainsNextStep: !!empty && empty.textContent.includes("先新建一条"),
+            hasHelp: !!help && (help.textContent ?? "").includes("使用帮助"),
+        };
+    });
+    if (Object.values(emptyLibraryGuide).some((v) => !v)) {
+        throw new Error("empty-library onboarding smoke failed: " + JSON.stringify(emptyLibraryGuide));
+    }
+    console.log("  smoke ✓ empty-library onboarding: 2 assertions");
     await page.screenshot({path: path.join(OUT, "production-empty-library-light.png")});
     // 移动端 sheet（390×844 触控形态：圆角卡片行 + 点按提示）
     await page.setViewportSize({width: 390, height: 844});

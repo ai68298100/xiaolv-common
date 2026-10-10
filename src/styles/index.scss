@@ -126,6 +126,40 @@ body.b3-theme-dark,
   background-color: var(--b3-theme-surface);
 }
 
+.xlc-kbd-hint {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-height: 24px;
+  padding: 2px 7px 2px 4px;
+  border: 1px solid var(--b3-border-color);
+  border-radius: 7px;
+  background: var(--b3-theme-surface);
+  color: var(--b3-theme-on-surface);
+  font-size: 10.5px;
+  white-space: nowrap;
+  user-select: none;
+}
+
+.xlc-kbd-key {
+  display: inline-flex;
+  align-items: center;
+  min-height: 18px;
+  padding: 0 5px;
+  border: 1px solid var(--b3-border-color);
+  border-bottom-width: 2px;
+  border-radius: 4px;
+  background: var(--b3-theme-background);
+  color: var(--b3-theme-on-background);
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 16px;
+}
+
+.xlc-kbd-label {
+  line-height: 16px;
+}
+
 // ---------- 统一按钮（插件作用域内收拢 b3-button 观感） ----------
 .xlc-dialog .b3-button,
 .xlc-form .b3-button {
@@ -212,39 +246,85 @@ body.b3-theme-dark,
   display: flex;
   flex-direction: column;
   height: 100%;
-  gap: 8px;
+  gap: 10px;
+  padding: 2px;
+  background: var(--b3-theme-surface);
   color: var(--b3-theme-on-background);
 
   // ---- 顶部：搜索 + 快捷键提示 ----
   .xlc-top {
     display: flex;
-    align-items: center;
-    gap: 8px;
+    align-items: flex-start;
+    gap: 10px;
     flex-wrap: wrap;
+  }
+
+  .xlc-top-main {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    flex: 1;
+    min-width: 0;
+  }
+
+  .xlc-search-block {
+    flex: 1;
+    min-width: 220px;
+  }
+
+  .xlc-search-hint {
+    margin: 4px 2px 0;
+    color: var(--b3-theme-on-surface);
+    font-size: 11px;
+    line-height: 1.35;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
 
   .xlc-kbdrow {
     display: flex;
     align-items: center;
-    gap: 4px;
+    gap: 5px;
     flex-shrink: 0;
-    margin-left: auto;
+    width: 100%;
+    justify-content: flex-start;
+    padding: 4px 6px;
+    border: 1px solid var(--b3-border-color);
+    border-radius: var(--xlc-radius);
+    background: var(--b3-theme-surface);
+    box-shadow: var(--xlc-shadow-1);
+    overflow-x: auto;
+    scrollbar-width: none;
+
+    &::-webkit-scrollbar { display: none; }
+  }
+
+  .xlc-kbdrow-label {
+    flex: 0 0 auto;
+    margin-right: 2px;
+    color: var(--b3-theme-on-surface);
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: .2px;
+    white-space: nowrap;
   }
 
   // 顶栏常驻新增入口（截图②）：快捷键提示与按钮保持紧凑，不挤压搜索框。
   .xlc-top-actions {
     display: flex;
     align-items: center;
-    gap: 6px;
+    gap: 5px;
     flex-shrink: 0;
   }
 
   .xlc-top-new {
-    min-height: 30px;
-    padding: 4px 11px;
-    border-radius: var(--xlc-radius-sm);
+    min-height: 36px;
+    padding: 6px 14px;
+    border-radius: var(--xlc-radius);
     white-space: nowrap;
-    font-size: 12px;
+    font-size: 12.5px;
+    box-shadow: var(--xlc-shadow-1);
   }
 
   .xlc-search {
@@ -257,7 +337,7 @@ body.b3-theme-dark,
     border: 1.5px solid transparent;
     border-radius: var(--xlc-radius-sm);
     padding: 0 10px;
-    height: 38px;
+    height: 40px;
     transition: border-color var(--xlc-dur-fast) var(--xlc-ease),
                 background-color var(--xlc-dur-fast) var(--xlc-ease),
                 box-shadow var(--xlc-dur-fast) var(--xlc-ease);
@@ -267,17 +347,43 @@ body.b3-theme-dark,
       background-color: var(--b3-theme-background);
       box-shadow: var(--xlc-shadow-1);
 
-      .xlc-search-q { opacity: 1; }
     }
 
-    .xlc-search-q {
-      color: var(--b3-theme-primary);
-      font-weight: 600;
-      transition: opacity var(--xlc-dur-fast) var(--xlc-ease);
+    .xlc-search-icon {
+      position: relative;
+      display: inline-block;
+      width: 16px;
+      height: 16px;
+      flex: 0 0 16px;
+      color: var(--b3-theme-on-surface);
       user-select: none;
 
-      // 输入以 ? 开头时隐藏装饰性提示（防「??」双写）
-      &--off { display: none; }
+      &::before,
+      &::after {
+        content: "";
+        position: absolute;
+        display: block;
+      }
+
+      &::before {
+        width: 8px;
+        height: 8px;
+        left: 2px;
+        top: 2px;
+        border: 1.6px solid currentColor;
+        border-radius: 50%;
+      }
+
+      &::after {
+        width: 5px;
+        height: 1.6px;
+        left: 10px;
+        top: 11px;
+        border-radius: 1px;
+        background: currentColor;
+        transform: rotate(45deg);
+        transform-origin: left center;
+      }
     }
 
     .xlc-search-input {
@@ -335,16 +441,17 @@ body.b3-theme-dark,
     gap: 6px;
     align-items: center;
     flex-wrap: wrap;
+    padding: 0 2px;
 
     .b3-select {
       appearance: none;
       -webkit-appearance: none;
-      max-width: 128px;
+      max-width: 118px;
       border: 1px solid var(--b3-border-color);
       border-radius: 999px;
-      padding: 2px 26px 2px 12px;
+      padding: 2px 22px 2px 10px;
       height: 26px;
-      font-size: 12px;
+      font-size: 11.5px;
       font-family: inherit;
       color: var(--b3-theme-on-surface);
       background-color: transparent;
@@ -374,8 +481,8 @@ body.b3-theme-dark,
     background: transparent;
     color: var(--b3-theme-on-surface);
     border-radius: 999px;
-    padding: 2px 11px;
-    font-size: 12px;
+    padding: 2px 9px;
+    font-size: 11.5px;
     line-height: 20px;
     min-height: 26px;
     font-family: inherit;
@@ -447,8 +554,9 @@ body.b3-theme-dark,
     display: flex;
     min-height: 0;
     border: 1px solid var(--b3-border-color);
-    border-radius: var(--xlc-radius);
+    border-radius: var(--xlc-radius-lg);
     background-color: var(--b3-theme-surface);
+    box-shadow: var(--xlc-shadow-1);
     overflow: hidden;
   }
 
@@ -651,6 +759,9 @@ body.b3-theme-dark,
     // 空库就地新建（R107）：空态里的核心动作
     .xlc-empty-action {
       margin-top: 10px;
+      max-width: 100%;
+      white-space: normal;
+      overflow-wrap: anywhere;
     }
   }
 
@@ -855,7 +966,7 @@ body.b3-theme-dark,
     font-size: 11.5px;
     color: var(--b3-theme-on-surface);
     border-top: 1px solid var(--b3-border-color);
-    padding-top: 8px;
+    padding: 8px 2px 0;
     flex-wrap: wrap;
 
     .xlc-footer-count {
@@ -865,9 +976,20 @@ body.b3-theme-dark,
 
     .xlc-footer-claim {
       margin-left: auto;
+      padding: 3px 9px;
+      border: 1px solid var(--b3-border-color);
+      border-radius: 999px;
+      background: var(--b3-theme-surface);
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
+    }
+
+    .xlc-footer-claim--static {
+      padding: 2px 0;
+      border-color: transparent;
+      background: transparent;
+      cursor: default;
     }
 
     .xlc-footer-gear {
@@ -1097,7 +1219,7 @@ body.b3-theme-dark,
 .xlc-form {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 14px;
   // 基准字号 13：卡片内裸文本（说明、状态行）不再回落宿主 16px
   font-size: 13px;
   color: var(--b3-theme-on-background);
@@ -1307,10 +1429,17 @@ body.b3-theme-dark,
 // ---------- 设置分区卡片（原型屏5）----------
 .xlc-form .xlc-card {
   border: 1px solid var(--b3-border-color);
-  background-color: var(--b3-theme-surface);
-  border-radius: var(--xlc-radius);
-  padding: 12px 14px;
+  background-color: var(--b3-theme-background);
+  border-radius: var(--xlc-radius-lg);
+  padding: 14px 16px;
   box-shadow: var(--xlc-shadow-1);
+  transition: border-color var(--xlc-dur-fast) var(--xlc-ease),
+              box-shadow var(--xlc-dur-fast) var(--xlc-ease);
+
+  &:focus-within {
+    border-color: var(--b3-theme-primary-light);
+    box-shadow: var(--xlc-shadow-1), 0 0 0 2px var(--xlc-ai-tint);
+  }
 
   > .xlc-form-label {
     font-size: 12px;
@@ -1326,6 +1455,79 @@ body.b3-theme-dark,
   border-radius: var(--xlc-radius-xs);
   background: var(--xlc-badge-md-bg);
   color: var(--b3-theme-on-background) !important;
+}
+
+// 首跑快速开始：用三步短卡解释配置后的第一条成功路径，控制信息密度。
+.xlc-setup-quickstart {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 2px 0 4px;
+  padding: 11px 12px;
+  border: 1px solid var(--b3-border-color);
+  border-radius: var(--xlc-radius);
+  background: var(--b3-theme-surface);
+  box-shadow: var(--xlc-shadow-1);
+}
+
+.xlc-setup-quickstart-title {
+  margin: 0 0 1px;
+  font-size: 12px;
+  line-height: 1.5;
+  font-weight: 650;
+  color: var(--b3-theme-on-background);
+}
+
+.xlc-setup-quickstart-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  min-width: 0;
+}
+
+.xlc-setup-quickstart-dot {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 19px;
+  width: 19px;
+  height: 19px;
+  margin-top: 1px;
+  border-radius: 50%;
+  background: var(--xlc-ai-tint);
+  color: var(--b3-theme-primary);
+  font-size: 11px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.xlc-setup-quickstart-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+  line-height: 1.55;
+}
+
+.xlc-setup-quickstart-item-title {
+  font-size: 12px;
+  color: var(--b3-theme-on-background);
+}
+
+.xlc-setup-quickstart-item-desc {
+  font-size: 11px;
+  color: var(--b3-theme-on-surface);
+}
+
+// 设置/首跑/导入等页面共用中性画布，内容卡片用更亮的面层建立层级。
+.b3-dialog__container.xlc-form-host {
+  background-color: var(--b3-theme-surface);
+
+  .b3-dialog__header {
+    position: relative;
+    z-index: 1;
+    padding-bottom: 4px;
+  }
 }
 
 .xlc-template-import-row {
@@ -1838,6 +2040,14 @@ body.b3-theme-dark,
       }
     }
   }
+
+  .xlc-search-hint {
+    white-space: normal;
+  }
+
+  .xlc-top-main {
+    width: 100%;
+  }
 }
 
 // ---------- 移动端：底部 sheet（触控优先；行 = 圆角卡片，原型屏4）----------
@@ -1847,6 +2057,15 @@ body.b3-theme-dark,
   .xlc-kbdrow { display: none; }
 
   .xlc-search { height: 40px; }
+
+  // 语义搜索提示在窄屏完整保留入口和前置条件，最多显示两行。
+  .xlc-search-hint {
+    white-space: normal;
+    overflow: hidden;
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+  }
 
   // 移动端搜索输入 16px：低于该值 iOS 聚焦时整页缩放（R109）
   .xlc-search-input { font-size: 16px; }

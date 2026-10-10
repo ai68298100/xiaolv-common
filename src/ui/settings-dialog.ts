@@ -58,6 +58,7 @@ export interface SettingsUiContext {
     fetchAssetBytes(assetPath: string): Promise<Uint8Array | null>;
     aiErrorText(err: unknown): string;
     applyPinyinAdapter(): void;
+    refreshSearch?(): void;
 }
 
 export interface SetupDialogOptions {
@@ -74,7 +75,7 @@ export function openSetupDialog(ctx: SettingsUiContext, opts?: SetupDialogOption
         title: t("setupTitle"),
         content: "",
         width: "min(520px, 92vw)",
-        height: "min(560px, 90vh)", // 固定高：步骤/内容增减不再顶跳弹窗（R146）
+        height: "min(680px, 90vh)", // 首次快速开始卡需要留出阅读空间，长屏仍保持视口内滚动（R175）
     });
     dialog.element.querySelector(".b3-dialog__container")?.classList.add("xlc-form-host", "xlc-settings-host");
     const body = getDialogBody(dialog.element);
@@ -379,11 +380,19 @@ function buildInsertSection(ctx: SettingsUiContext, root: HTMLElement): void {
     foot.appendChild(hint);
     const clearBtn = document.createElement("button");
     clearBtn.className = "b3-button";
-    clearBtn.textContent = t("clearUsageBtn");
+    const hasUsage = (): boolean => Object.values(ctx.state.usage).some((item) => item.count > 0);
+    const syncClearUsage = (): void => {
+        clearBtn.disabled = !hasUsage();
+        clearBtn.textContent = hasUsage() ? t("clearUsageBtn") : t("clearUsageEmpty");
+    };
+    syncClearUsage();
     clearBtn.addEventListener("click", () => {
+        if (!hasUsage()) return;
         confirm("⚠️ " + t("clearUsageBtn"), t("clearUsageConfirm"), () => {
             ctx.state.usage = {};
             ctx.persistSoon();
+            ctx.refreshSearch?.();
+            syncClearUsage();
             ctx.notify("info", t("clearUsageDone"));
         });
     });
@@ -476,6 +485,46 @@ function buildLibraryPickerSection(ctx: SettingsUiContext, root: HTMLElement, on
     recommendation.className = "xlc-form-hint xlc-setup-recommendation";
     recommendation.textContent = t("setupRecommendation");
     root.appendChild(recommendation);
+    const existingConfig = ctx.getConfig();
+    const showQuickStart = !existingConfig;
+    // 未配置用户优先读三步卡；详细变量说明留给可重复打开的完整帮助，避免首屏重复堆字。
+    if (showQuickStart) usageGuide.style.display = "none";
+
+    // 首次进入时把最短可用路径拆成可扫描的三步，避免用户只看到配置项却不知道配置完成后做什么。
+    const quickStart = document.createElement("section");
+    quickStart.className = "xlc-setup-quickstart";
+    quickStart.setAttribute("aria-labelledby", "xlc-setup-quickstart-title");
+    const quickStartTitle = document.createElement("h3");
+    quickStartTitle.className = "xlc-setup-quickstart-title";
+    quickStartTitle.id = "xlc-setup-quickstart-title";
+    quickStartTitle.textContent = t("setupQuickStartTitle");
+    quickStart.appendChild(quickStartTitle);
+    const quickStartItems: Array<[string, string, string]> = [
+        ["1", t("setupQuickStart1Title"), t("setupQuickStart1Desc")],
+        ["2", t("setupQuickStart2Title"), t("setupQuickStart2Desc")],
+        ["3", t("setupQuickStart3Title"), t("setupQuickStart3Desc")],
+    ];
+    for (const [number, title, desc] of quickStartItems) {
+        const item = document.createElement("div");
+        item.className = "xlc-setup-quickstart-item";
+        const dot = document.createElement("span");
+        dot.className = "xlc-setup-quickstart-dot";
+        dot.textContent = number;
+        dot.setAttribute("aria-hidden", "true");
+        const copy = document.createElement("span");
+        copy.className = "xlc-setup-quickstart-copy";
+        const itemTitle = document.createElement("strong");
+        itemTitle.className = "xlc-setup-quickstart-item-title";
+        itemTitle.textContent = title;
+        const itemDesc = document.createElement("span");
+        itemDesc.className = "xlc-setup-quickstart-item-desc";
+        itemDesc.textContent = desc;
+        copy.append(itemTitle, itemDesc);
+        item.append(dot, copy);
+        quickStart.appendChild(item);
+    }
+    root.appendChild(quickStart);
+    if (!showQuickStart) quickStart.style.display = "none";
 
     // ---- 第 1 步：选库方式 ----
     const step1 = document.createElement("div");
@@ -501,7 +550,6 @@ function buildLibraryPickerSection(ctx: SettingsUiContext, root: HTMLElement, on
         opt.textContent = m.label;
         modeSelect.appendChild(opt);
     }
-    const existingConfig = ctx.getConfig();
     if (existingConfig) modeSelect.value = existingConfig.mode;
     modeWrap.appendChild(modeSelect);
     step1.appendChild(modeWrap);
@@ -676,8 +724,7 @@ function buildLibraryPickerSection(ctx: SettingsUiContext, root: HTMLElement, on
         }
         if (nbSelect.options.length <= 1) {
             nbStatus.textContent = t("setupNotebookEmpty");
-            retryNotebooksBtn.style.display = "";
-            retryNotebookAction = () => { void loadNotebooks(true); };
+            retryNotebooksBtn.style.display = "none";
             return;
         }
         if (modeSelect.value !== "notebook" || !selectedId) {
@@ -701,7 +748,7 @@ function buildLibraryPickerSection(ctx: SettingsUiContext, root: HTMLElement, on
             return;
         }
         nbStatus.textContent = notebookDocsState === "empty" ? t("setupNotebookNoDocs") : t("setupNotebookDocsCheckFailed");
-        retryNotebooksBtn.style.display = "";
+        retryNotebooksBtn.style.display = notebookDocsState === "error" ? "" : "none";
         retryNotebookAction = () => {
             const notebookId = nbSelect.value;
             const revision = setupRevision;
@@ -999,6 +1046,9 @@ function buildLibraryPickerSection(ctx: SettingsUiContext, root: HTMLElement, on
         root.insertBefore(buildStepsEl(step, step === 1 ? t("setupStep1") : t("setupStep2")), root.firstChild);
         step1.style.display = step === 1 ? "" : "none";
         hint.style.display = step === 1 ? "" : "none";
+        usageGuide.style.display = step === 1 && !showQuickStart ? "" : "none";
+        recommendation.style.display = step === 1 ? "" : "none";
+        quickStart.style.display = step === 1 && showQuickStart ? "" : "none";
         step2.style.display = step === 2 ? "" : "none";
         if (step === 2) paintSummary();
     }
@@ -1061,6 +1111,7 @@ function buildAiSection(ctx: SettingsUiContext, root: HTMLElement): void {
         ctx.ai.updateSettings(ctx.state.ai);
         ctx.persistSoon();
     };
+    let addCtBtn: HTMLButtonElement | null = null;
     const repaintCt = (): void => {
         ctList.textContent = "";
         for (const ct of ctx.state.ai.customTransforms) {
@@ -1110,18 +1161,16 @@ function buildAiSection(ctx: SettingsUiContext, root: HTMLElement): void {
             empty.textContent = t("customTransformEmpty");
             ctList.appendChild(empty);
         }
+        if (addCtBtn) addCtBtn.disabled = ctx.state.ai.customTransforms.length >= 10;
     };
     repaintCt();
-    const addCtBtn = document.createElement("button");
+    addCtBtn = document.createElement("button");
     addCtBtn.type = "button";
     addCtBtn.className = "b3-button";
     addCtBtn.style.alignSelf = "flex-start";
     addCtBtn.textContent = t("customTransformAdd");
     addCtBtn.addEventListener("click", () => {
-        if (ctx.state.ai.customTransforms.length >= 10) {
-            ctx.notify("error", t("customTransformCap"));
-            return;
-        }
+        if (ctx.state.ai.customTransforms.length >= 10) return;
         const id = `xltf-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
         ctx.state.ai.customTransforms = [...ctx.state.ai.customTransforms, {id, name: t("customTransformNewName"), prompt: ""}];
         persistCt();
@@ -1153,12 +1202,23 @@ function buildSearchSection(ctx: SettingsUiContext, root: HTMLElement): void {
         ctx.state.search.pinyin = value;
         ctx.applyPinyinAdapter();
         ctx.persistSoon();
+        const pinyinInput = pinyinRow.querySelector<HTMLInputElement>("input");
+        pinyinInput?.setAttribute("aria-busy", "true");
+        if (pinyinInput) pinyinInput.disabled = true;
+        pinyinRow.setAttribute("aria-busy", "true");
         void ctx.library.reindex().then((idx) => {
             if (mySeq !== pinyinSeq) return;
+            ctx.refreshSearch?.();
             ctx.notify("info", t("reindexDone", String(idx.entries.length)));
         }).catch((err) => {
             if (mySeq !== pinyinSeq) return;
             ctx.notify("error", t("kernelError", (err as Error).message));
+        }).finally(() => {
+            if (pinyinInput) {
+                pinyinInput.disabled = false;
+                pinyinInput.removeAttribute("aria-busy");
+            }
+            pinyinRow.removeAttribute("aria-busy");
         });
     });
     searchSec.appendChild(pinyinRow);
@@ -1223,6 +1283,7 @@ function buildDataSection(ctx: SettingsUiContext, root: HTMLElement): void {
         reindexBtn.disabled = true;
         reindexBtn.textContent = t("indexing");
         void ctx.library.reindex().then((idx) => {
+            ctx.refreshSearch?.();
             ctx.notify("info", idx.truncated
                 ? t("reindexTruncated", String(LIMITS.maxItems))
                 : t("reindexDone", String(idx.entries.length)));
@@ -1238,6 +1299,7 @@ function buildDataSection(ctx: SettingsUiContext, root: HTMLElement): void {
         confirm("⚠️ " + t("clearRecents"), t("clearRecentsConfirm"), () => {
             ctx.state.recents = [];
             ctx.persistSoon();
+            ctx.refreshSearch?.();
             clearRecentsBtn.textContent = t("clearRecentsEmpty");
             clearRecentsBtn.disabled = true;
             ctx.notify("info", t("clearRecentsDone"));
@@ -1393,16 +1455,20 @@ function openEspansoImportDialog(ctx: SettingsUiContext): void {
     body.appendChild(root);
 
     let parsedItems: ExportedItem[] = [];
+    let parsedText: string | null = null;
     const runParse = (): void => {
+        const sourceText = ta.value;
         parsedItems = [];
+        parsedText = null;
         nextBtn.disabled = true;
         preview.textContent = "";
-        const result = parseEspansoYaml(ta.value);
+        const result = parseEspansoYaml(sourceText);
         if (result.items.length === 0) {
             preview.textContent = result.issues.length ? result.issues.slice(0, 5).join("\n") : t("espansoNone");
             return;
         }
         parsedItems = result.items;
+        parsedText = sourceText;
         const lines = [t("espansoParsed", String(result.items.length))];
         for (const issue of result.issues.slice(0, 5)) lines.push(`· ${issue}`);
         if (result.issues.length > 5) lines.push(`· …+${result.issues.length - 5}`);
@@ -1413,11 +1479,16 @@ function openEspansoImportDialog(ctx: SettingsUiContext): void {
     let parseTimer: ReturnType<typeof setTimeout> | undefined;
     ta.addEventListener("input", () => {
         if (parseTimer) clearTimeout(parseTimer);
+        // 立即让旧预览失效；400ms 防抖期间不能继续导入上一次的解析结果。
+        parsedItems = [];
+        parsedText = null;
+        nextBtn.disabled = true;
+        preview.textContent = "";
         parseTimer = setTimeout(runParse, 400);
     });
     cancelBtn.addEventListener("click", () => dialog.destroy());
     nextBtn.addEventListener("click", () => {
-        if (parsedItems.length === 0) return;
+        if (nextBtn.disabled || parsedItems.length === 0 || parsedText !== ta.value) return;
         dialog.destroy();
         openImportPolicyDialog(
             ctx,
@@ -1543,6 +1614,7 @@ export function openImportPolicyDialog(
             ? ctx.importBundleText(source.text, policy)
             : ctx.importMarkdownItems(source.items, policy);
         void promise.then((receipt) => {
+            ctx.refreshSearch?.();
             ctx.notify(receipt.failed > 0 ? "error" : "info", t(
                 "importDone",
                 String(receipt.created),

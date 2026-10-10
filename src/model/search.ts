@@ -97,12 +97,13 @@ export function passesFilters(entry: SearchEntry, query: SearchQuery, ctx: Searc
     if (query.tag && !entry.tags.includes(query.tag)) return false;
     if (query.category && entry.category !== query.category) return false;
     if (query.scope === "favorites" && !ctx.favorites.has(entry.id)) return false;
+    if (query.scope === "recent" && !ctx.recents.has(entry.id)) return false;
     return true;
 }
 
 /** 仅筛选不过滤打分（`?` 语义找的候选预过滤用——语义找忽略文本但必须尊重类型/标签/收藏范围） */
-export function applyBasicFilters(entries: readonly SearchEntry[], query: Pick<SearchQuery, "itemType" | "tag" | "scope">, ctx: SearchContext): SearchEntry[] {
-    return entries.filter((e) => passesFilters(e, {text: "", itemType: query.itemType, tag: query.tag, scope: query.scope}, ctx));
+export function applyBasicFilters(entries: readonly SearchEntry[], query: Pick<SearchQuery, "itemType" | "tag" | "category" | "scope">, ctx: SearchContext): SearchEntry[] {
+    return entries.filter((e) => passesFilters(e, {text: "", itemType: query.itemType, tag: query.tag, category: query.category, scope: query.scope}, ctx));
 }
 
 function compareResults(a: ScoredResult, b: ScoredResult, ctx: SearchContext): number {
@@ -117,6 +118,11 @@ function compareResults(a: ScoredResult, b: ScoredResult, ctx: SearchContext): n
         const ca = ctx.usage?.get(a.entry.id) ?? 0;
         const cb = ctx.usage?.get(b.entry.id) ?? 0;
         if (cb !== ca) return cb - ca;
+        const ra = ctx.recents.get(a.entry.id) ?? 0;
+        const rb = ctx.recents.get(b.entry.id) ?? 0;
+        if (rb !== ra) return rb - ra;
+    }
+    if (ctx.sort === "recent" && a.score === 0 && b.score === 0) {
         const ra = ctx.recents.get(a.entry.id) ?? 0;
         const rb = ctx.recents.get(b.entry.id) ?? 0;
         if (rb !== ra) return rb - ra;

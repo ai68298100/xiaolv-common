@@ -192,9 +192,9 @@ const check = (name, ok, detail = "") => {
         if (!menu) return {open: false, items: []};
         return {open: true, items: Array.from(menu.querySelectorAll("button, [role=menuitem]")).map((b) => (b.textContent ?? "").trim())};
     });
-    check("E1 排序菜单含四档", sortMenu.open && ["手动/置顶", "最近使用", "常用", "标题"].every((t) => sortMenu.items.some((i) => i.includes(t))), JSON.stringify(sortMenu.items));
+    check("E1 排序菜单含四档", sortMenu.open && ["默认排序（收藏优先）", "最近使用在前", "使用频次", "按标题排序"].every((t) => sortMenu.items.some((i) => i.includes(t))), JSON.stringify(sortMenu.items));
     await page.evaluate(() => {
-        const item = Array.from(document.querySelectorAll(".xlc-menu button, .xlc-menu [role=menuitem]")).find((b) => (b.textContent ?? "").includes("常用"));
+        const item = Array.from(document.querySelectorAll(".xlc-menu button, .xlc-menu [role=menuitem]")).find((b) => (b.textContent ?? "").includes("使用频次"));
         item?.dispatchEvent(new KeyboardEvent("keydown", {key: "Enter", bubbles: true}));
         item?.click();
     });
@@ -337,6 +337,14 @@ const check = (name, ok, detail = "") => {
         return {sheet: Boolean(sheet), btnEnabled: Boolean(btn && !btn.disabled), newRowActive: Boolean(document.querySelector(".xlc-row--active"))};
     });
     check("J1 移动端 sheet：插入选中可用 + 点行选中", mobile.sheet && mobile.btnEnabled && mobile.newRowActive, JSON.stringify(mobile));
+
+    await open({mobile: true, empty: true, query: "不存在的条目"});
+    await sleep(200);
+    const mobileEmpty = await page.evaluate(() => {
+        const btn = document.querySelector(".xlc-mobile-insert");
+        return {buttonExists: Boolean(btn), disabledWithoutResults: Boolean(btn?.disabled)};
+    });
+    check("J2 移动端无搜索结果时禁用插入选中", mobileEmpty.buttonExists && mobileEmpty.disabledWithoutResults, JSON.stringify(mobileEmpty));
 
     // ── 全局：页面异常为零 ──
     check("Z1 全程 0 页面异常/控制台错误", pageErrors.length === 0, pageErrors.slice(0, 3).join(" | "));

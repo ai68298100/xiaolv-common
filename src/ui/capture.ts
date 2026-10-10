@@ -42,6 +42,8 @@ export interface CaptureDeps {
     findDuplicate(content: string): Promise<{id: string; title: string} | null>;
     /** 落点库名（异步可缺；null/失败则提示行保持缺省，不阻塞表单） */
     getLibraryName?: () => Promise<string | null>;
+    isConfigured?: () => boolean;
+    onNotConfigured?: () => void;
 }
 
 /** 选区 → 条目类型推断 */
@@ -61,8 +63,16 @@ export class CaptureDialog {
 
     constructor(private readonly deps: CaptureDeps) {}
 
+    /** 保存前的共同前置条件：没有内容库时直接回到首次设置，避免先访问宿主再报错。 */
+    private ensureConfigured(): boolean {
+        if (!this.deps.isConfigured || this.deps.isConfigured()) return true;
+        this.deps.onNotConfigured?.();
+        return false;
+    }
+
     /** 保存当前选区（命令/顶栏入口） */
     async saveSelection(): Promise<void> {
+        if (!this.ensureConfigured()) return;
         const sel = this.deps.getSelectionText();
         const text = sel.text.trim();
         if (!text) {
@@ -75,6 +85,7 @@ export class CaptureDialog {
 
     /** 从剪贴板捕获（失败诚实回执） */
     async captureFromClipboard(): Promise<void> {
+        if (!this.ensureConfigured()) return;
         try {
             const text = (await this.deps.readClipboardText()).trim();
             if (!text) {
@@ -93,6 +104,10 @@ export class CaptureDialog {
      *  同文已存在则诚实提示不重复写入（不打断）；⌥⇧V 连按防重入。 */
     async quickCaptureFromClipboard(): Promise<void> {
         if (this.quickCapturing) return;
+        if (this.deps.isConfigured && !this.deps.isConfigured()) {
+            this.deps.onNotConfigured?.();
+            return;
+        }
         this.quickCapturing = true;
         try {
             await this.doQuickCapture();
@@ -145,11 +160,13 @@ export class CaptureDialog {
 
     /** 手动新建（空表单） */
     newManual(titleCandidate?: string): void {
+        if (!this.ensureConfigured()) return;
         this.openForm("", "text", null, titleCandidate ? {title: titleCandidate} : undefined);
     }
 
     /** 右键块引用捕获：把被引用块存为 blockref 条目（目标块=引用目标） */
     captureBlockRef(blockId: string, refText: string): void {
+        if (!this.ensureConfigured()) return;
         if (!isBlockRefTarget(blockId)) {
             this.deps.notify("error", this.deps.t("invalidItem"));
             return;
@@ -164,6 +181,7 @@ export class CaptureDialog {
 
     /** 右键图片捕获：assets/ 图片存为图片条目（非 assets 图诚实拒绝） */
     captureImage(assetPath: string, altText: string): void {
+        if (!this.ensureConfigured()) return;
         const target = classifyLinkTarget(assetPath);
         if (!target || target.kind !== "asset") {
             this.deps.notify("error", this.deps.t("invalidItem"));
@@ -175,6 +193,7 @@ export class CaptureDialog {
 
     /** 右键链接捕获：http(s) 外链 → url 条目；assets/ → asset 条目；其余诚实拒绝 */
     captureLink(href: string, text: string): void {
+        if (!this.ensureConfigured()) return;
         const target = classifyLinkTarget(href);
         if (!target) {
             this.deps.notify("error", this.deps.t("invalidItem"));
@@ -189,12 +208,19 @@ export class CaptureDialog {
 
     /** 捕获当前块：光标所在块整体作为条目（选区文本优先级低于整块语义） */
     async captureCurrentBlock(): Promise<void> {
+        if (!this.ensureConfigured()) return;
         const blockId = this.deps.getSelectionText().blockId;
         if (!blockId) {
             this.deps.notify("error", this.deps.t("captureBlockNone"));
             return;
         }
-        const kramdown = await this.deps.getBlockKramdown(blockId);
+        let kramdown: string | null;
+        try {
+            kramdown = await this.deps.getBlockKramdown(blockId);
+        } catch (err) {
+            this.deps.notify("error", this.deps.t("kernelError", err instanceof Error ? err.message : String(err)));
+            return;
+        }
         if (kramdown === null || !kramdown.trim()) {
             this.deps.notify("error", this.deps.t("captureBlockFailed"));
             return;
@@ -204,12 +230,19 @@ export class CaptureDialog {
 
     /** 捕获当前文档：整文档 Markdown 作为结构条目（来源 = 该文档） */
     async captureCurrentDoc(): Promise<void> {
+        if (!this.ensureConfigured()) return;
         const docId = this.deps.currentDocId();
         if (!docId) {
             this.deps.notify("error", this.deps.t("relinkNoDoc"));
             return;
         }
-        const doc = await this.deps.exportDocContent(docId);
+        let doc: {hPath: string; content: string} | null;
+        try {
+            doc = await this.deps.exportDocContent(docId);
+        } catch (err) {
+            this.deps.notify("error", this.deps.t("kernelError", err instanceof Error ? err.message : String(err)));
+            return;
+        }
         if (!doc) {
             this.deps.notify("error", this.deps.t("captureDocFailed"));
             return;
@@ -219,6 +252,10 @@ export class CaptureDialog {
     }
 
     openForm(defaultText: string, defaultType: ItemType, sourceBlockId: string | null, overrides?: {title?: string; docId?: string; targetBlockId?: string; sourceType?: "block" | "doc-fragment" | "resource"}): void {
+        if (this.deps.isConfigured && !this.deps.isConfigured()) {
+            this.deps.onNotConfigured?.();
+            return;
+        }
         const t = this.deps.t;
         let closed = false;
         let saving = false;
@@ -520,9 +557,19 @@ export class CaptureDialog {
                 markdown = "```\n" + contentValue + "\n```";
             } else if (type === "url") {
                 markdown = contentValue.trim();
+                if (!isSafeHttpUrl(markdown)) {
+                    flagContentError();
+                    this.deps.notify("error", t("invalidItem"));
+                    return;
+                }
             }
+            // 查重同样是保存流程的一部分：先锁住动作，避免内核查询期间连点落入重复条目。
+            saving = true;
+            saveBtn.disabled = true;
+            saveBtn.textContent = t("checkingDuplicate");
+            cancelBtn.disabled = true;
             const doSave = (): void => {
-                if (closed || saving) return;
+                if (closed) return;
                 saving = true;
                 saveBtn.disabled = true;
                 saveBtn.textContent = t("saving");
@@ -535,6 +582,7 @@ export class CaptureDialog {
                     alias: (aliasEl as HTMLInputElement).value || undefined,
                     tags: (tagsEl as HTMLInputElement).value ? (tagsEl as HTMLInputElement).value.split(/[,,]/).map((s) => s.trim()).filter(Boolean) : undefined,
                     category: (categoryEl as HTMLInputElement).value || undefined,
+                    url: type === "url" ? markdown : undefined,
                     targetBlockId: overrides?.targetBlockId,
                     source: docId ? {sourceDocId: docId, sourceBlockId: sourceBlockId ?? undefined, sourceType: overrides?.sourceType ?? (sourceBlockId ? "selection" : "manual")} : undefined,
                 }).then((result) => {
@@ -560,16 +608,25 @@ export class CaptureDialog {
             };
             // 去重防护：同文条目已存在 → 明确确认（不静默重复入库）
             void this.deps.findDuplicate(contentValue).then((dup) => {
-                if (closed || saving) return;
+                if (closed) return;
                 if (!dup) {
+                    saving = false;
                     doSave();
                     return;
                 }
+                saving = false;
+                saveBtn.disabled = false;
+                saveBtn.textContent = t("save");
+                cancelBtn.disabled = false;
                 confirm("⚠️ " + t("duplicateTitle"), t("duplicateConfirm", dup.title), () => {
                     if (!closed) doSave();
                 });
             }).catch((err: unknown) => {
                 if (closed) return;
+                saving = false;
+                saveBtn.disabled = false;
+                saveBtn.textContent = t("save");
+                cancelBtn.disabled = false;
                 this.deps.notify("error", t("kernelError", err instanceof Error ? err.message : String(err)));
             });
         });

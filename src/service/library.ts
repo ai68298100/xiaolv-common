@@ -162,8 +162,14 @@ export class LibraryService {
     }
 
     async reindex(): Promise<IndexBuildResult> {
-        this.index = await this.buildIndex();
-        return this.index;
+        const gen = this.indexGen;
+        const result = await this.buildIndex();
+        if (gen === this.indexGen) {
+            this.index = result;
+            return result;
+        }
+        // 写入/换库发生在扫描期间时，丢弃陈旧快照并按当前代次重建。
+        return this.ensureIndex();
     }
 
     // ---- 库发现与首次设置 ----

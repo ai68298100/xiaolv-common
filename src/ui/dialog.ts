@@ -19,7 +19,7 @@ export interface DialogDeps {
     search: (query: SearchQuery) => Promise<{entries: SearchEntry[]; truncated: boolean; total: number; loading?: boolean; error?: string}>;
     /** 文档搜索（插入到指定文档的选择器） */
     searchDocs: (k: string) => Promise<Array<{id: string; hPath: string; name: string}>>;
-    insertToDoc: (itemId: string, docId: string, hPath: string, fills?: Record<string, string>) => Promise<boolean>;
+    insertToDoc: (itemId: string, docId: string, hPath: string, fills?: Record<string, string>, mode?: "insert" | "insert-ref" | "insert-embed") => Promise<boolean>;
     duplicateItem: (itemId: string) => Promise<void>;
     /** AI 变换结果存为新条目（来源=原条目；原条目不被修改） */
     saveTransformed: (itemId: string, transformLabel: string, text: string) => Promise<void>;
@@ -59,13 +59,15 @@ export interface DialogDeps {
     /** 手动新建条目（移动端「＋ 新建」入口） */
     newItem: (titleCandidate?: string) => void;
     /** AI 语义找（? 前缀触发；仅元数据出域；候选先按当前筛选过滤） */
-    aiSemantic: (desc: string, filters: {itemType: string; tag: string; scope: "all" | "favorites" | "recent"}) => Promise<{ok: true; entries: SearchEntry[]} | {ok: false; message: string}>;
+    aiSemantic: (desc: string, filters: {itemType: string; tag: string; category: string; scope: "all" | "favorites" | "recent"}) => Promise<{ok: true; entries: SearchEntry[]} | {ok: false; message: string}>;
     /** AI 变换（需正文出域权限） */
     aiTransform: (itemId: string, kind: TransformKind) => Promise<{ok: true; text: string} | {ok: false; message: string}>;
     /** 自定义 AI 变换（F7）：与内置并列出现在菜单 ✦ 区 */
     listCustomTransforms: () => Array<{id: string; name: string}>;
     aiTransformCustom: (itemId: string, customId: string) => Promise<{ok: true; text: string} | {ok: false; message: string}>;
     aiEnabled: () => boolean;
+    /** 当前是否存在可直接写入的活动编辑器；没有时主动作会降级为复制。 */
+    hasActiveEditor?: () => boolean;
     /** 插入前询问变量（F1；设置可关） */
     promptVariables: () => boolean;
     isSourceMissing: (entry: SearchEntry) => boolean;
@@ -103,6 +105,7 @@ export class CommonSearchDialog {
     private longPressCancel: (() => void) | null = null;
     /** IME 组合输入中（中文输入法组词期间跳过刷新，compositionend 后统一刷新） */
     private isComposing = false;
+    private filterOptionsSeq = 0;
 
     constructor(private readonly deps: DialogDeps) {}
 
@@ -110,8 +113,7 @@ export class CommonSearchDialog {
     insertTarget?: {docId: string; hPath: string} | null;
     open(): void {
         const isMobile = this.deps.isMobile();
-        const content = this.buildDom(isMobile);
-        this.dialog = new Dialog({
+        const dialog = new Dialog({
             title: this.deps.t("pluginName"),
             content: "",
             width: isMobile ? "100vw" : "min(760px, 94vw)",
@@ -121,10 +123,15 @@ export class CommonSearchDialog {
                 this.deps.close();
             },
         });
-        const body = getDialogBody(this.dialog.element);
+        this.dialog = dialog;
+        const content = this.buildDom(isMobile);
+        const body = getDialogBody(dialog.element);
         if (body) {
             body.innerHTML = "";
             body.appendChild(content);
+            void this.refreshFilterOptions().then((changed) => {
+                if (changed) void this.refresh();
+            });
         }
         const container = this.dialog.element.querySelector(".b3-dialog__container");
         if (container) container.classList.add(isMobile ? "xlc-sheet" : "xlc-dialog-host");
@@ -135,6 +142,7 @@ export class CommonSearchDialog {
             if (last) {
                 input.value = last;
                 this.currentScope = "all";
+                input.dispatchEvent(new Event("input", {bubbles: true}));
             }
             input.focus();
         }
@@ -145,15 +153,18 @@ export class CommonSearchDialog {
         const root = document.createElement("div");
         root.className = "xlc-dialog" + (isMobile ? " xlc-dialog--mobile" : "");
 
-        // 顶部：搜索框（? 前缀 = AI 语义找）
+        // 顶部：搜索框。把普通搜索与 ? 语义搜索拆成可读提示，避免用户只看到一个神秘符号。
         const top = document.createElement("div");
         top.className = "xlc-top";
+        const topMain = document.createElement("div");
+        topMain.className = "xlc-top-main";
+        const searchBlock = document.createElement("div");
+        searchBlock.className = "xlc-search-block";
         const search = document.createElement("div");
         search.className = "xlc-search";
         const qMark = document.createElement("span");
-        qMark.className = "xlc-search-q";
-        qMark.textContent = "?";
-        qMark.title = this.deps.t("aiSemanticHint");
+        qMark.className = "xlc-search-icon";
+        qMark.setAttribute("aria-hidden", "true");
         const input = document.createElement("input");
         input.className = "b3-text-field xlc-search-input";
         input.placeholder = this.deps.t("searchPlaceholder");
@@ -166,9 +177,8 @@ export class CommonSearchDialog {
         input.setAttribute("role", "combobox");
         input.setAttribute("aria-expanded", "true");
         input.setAttribute("aria-label", this.deps.t("searchPlaceholder"));
-        // 输入以 ? 开头时隐藏装饰性 ? 提示（避免「??」双写；功能前缀仍在输入框内）
+        // 输入以 ? 开头时，搜索前缀保留在文本中；左侧始终显示搜索图标。
         const syncQMark = (): void => {
-            qMark.classList.toggle("xlc-search-q--off", input.value.startsWith("?"));
             clearBtn.classList.toggle("xlc-search-clear--on", input.value.length > 0);
         };
         // 清空按钮（通用输入细节）：有输入时出现，一键清空并回焦
@@ -211,26 +221,42 @@ export class CommonSearchDialog {
         search.appendChild(qMark);
         search.appendChild(input);
         search.appendChild(clearBtn);
-        top.appendChild(search);
-        // 头部快捷键提示（桌面；原型头部右侧 kbd chips；⌃/⌘ 随平台）
+        searchBlock.appendChild(search);
+        const searchHint = document.createElement("div");
+        searchHint.className = "xlc-search-hint";
+        searchHint.textContent = this.deps.t("searchHint");
+        searchBlock.appendChild(searchHint);
+        topMain.appendChild(searchBlock);
+        let kbdRow: HTMLDivElement | null = null;
+        // 头部快捷键提示（桌面；每项都写清按键对应动作，避免只显示符号）
         if (!isMobile) {
             const isApple = /Mac|iPhone|iPad/i.test(navigator.platform || "");
-            const kbdRow = document.createElement("div");
+            kbdRow = document.createElement("div");
             kbdRow.className = "xlc-kbdrow";
+            kbdRow.setAttribute("aria-label", this.deps.t("keyboardHelp"));
+            const kbdLabel = document.createElement("span");
+            kbdLabel.className = "xlc-kbdrow-label";
+            kbdLabel.textContent = this.deps.t("shortcutLabel");
+            kbdRow.appendChild(kbdLabel);
             for (const hint of [
-                "↑↓",
-                this.deps.t("kbdEnter"),
-                this.deps.t("kbdCopy", isApple ? "⌘" : "⌃"),
-                this.deps.t("kbdAltDirect"),
-                "Esc",
+                {key: "↑ ↓", action: this.deps.t("kbdNav")},
+                {key: "Enter", action: this.deps.t("kbdEnter")},
+                {key: `${isApple ? "⌘" : "Ctrl"} + Enter`, action: this.deps.t("kbdCopy")},
+                {key: `${isApple ? "⌥" : "Alt"} + 1-9`, action: this.deps.t("kbdQuickInsert")},
+                {key: "Esc", action: this.deps.t("kbdClose")},
             ]) {
                 const kbd = document.createElement("span");
-                kbd.className = "xlc-kbd";
-                kbd.textContent = hint;
+                kbd.className = "xlc-kbd xlc-kbd-hint";
+                kbd.title = `${hint.key}：${hint.action}`;
+                const key = document.createElement("span");
+                key.className = "xlc-kbd-key";
+                key.textContent = hint.key;
+                const action = document.createElement("span");
+                action.className = "xlc-kbd-label";
+                action.textContent = hint.action;
+                kbd.append(key, action);
                 kbdRow.appendChild(kbd);
             }
-            top.appendChild(kbdRow);
-
             // 常驻新建入口（截图②）：搜索时无需先清空或离开弹窗即可添加条目。
             // 移动端在底栏保留同一动作，避免窄屏顶栏拥挤。
             const topActions = document.createElement("div");
@@ -242,11 +268,13 @@ export class CommonSearchDialog {
             topNew.setAttribute("aria-label", this.deps.t("newItem"));
             topNew.addEventListener("click", () => this.deps.newItem());
             topActions.appendChild(topNew);
-            top.appendChild(topActions);
+            topMain.appendChild(topActions);
         }
+        top.appendChild(topMain);
+        if (kbdRow) top.appendChild(kbdRow);
         root.appendChild(top);
 
-        // 筛选 chips 行
+        // 筛选 chips 行：每个控件的首项都带上语义前缀，避免「标签/分类」被误解成当前值。
         const filters = document.createElement("div");
         filters.className = "xlc-filters";
         const typeSelect = document.createElement("select");
@@ -254,7 +282,7 @@ export class CommonSearchDialog {
         typeSelect.setAttribute("aria-label", this.deps.t("type"));
         const allOpt = document.createElement("option");
         allOpt.value = "";
-        allOpt.textContent = this.deps.t("filterAll");
+        allOpt.textContent = this.deps.t("filterAllType");
         typeSelect.appendChild(allOpt);
         for (const t of ITEM_TYPES) {
             const opt = document.createElement("option");
@@ -278,29 +306,7 @@ export class CommonSearchDialog {
         const tagSelect = document.createElement("select");
         tagSelect.className = "b3-select xlc-tag-select";
         tagSelect.setAttribute("aria-label", this.deps.t("tags"));
-        if (savedFilters.tag) tagSelect.value = savedFilters.tag;
-        void this.deps.getTags().then((tags) => {
-            const first = document.createElement("option");
-            first.value = "";
-            first.textContent = this.deps.t("tags");
-            tagSelect.appendChild(first);
-            for (const tag of tags) {
-                const opt = document.createElement("option");
-                opt.value = tag;
-                opt.textContent = tag;
-                tagSelect.appendChild(opt);
-            }
-            if (savedFilters.tag && tags.includes(savedFilters.tag)) {
-                // 跨会话回填：选项异步补齐后才挂得上值，此时首查已按未筛选发出——
-                // 回填后重查一次，消除「筛选框已选、结果未筛」的状态错位（R118）
-                tagSelect.value = savedFilters.tag;
-                void this.refresh();
-            } else if (savedFilters.tag) {
-                // 持久化的标签已失效（改名/删除）：清理筛选而不是留着假选中态（R139）
-                this.deps.setFilters({type: typeSelect.value, tag: "", category: categorySelect?.value ?? ""});
-                void this.refresh();
-            }
-        }).catch(() => undefined); // 辅助筛选数据失败静默降级（下拉保留默认项，R123）
+        tagSelect.disabled = true;
         tagSelect.addEventListener("change", () => {
             this.deps.setFilters({
                 type: typeSelect.value,
@@ -315,30 +321,7 @@ export class CommonSearchDialog {
         const categorySelect = document.createElement("select");
         categorySelect.className = "b3-select xlc-category-select";
         categorySelect.setAttribute("aria-label", this.deps.t("category"));
-        if (savedFilters.category) categorySelect.value = savedFilters.category;
-        void this.deps.getCategories().then((categories) => {
-            // 默认「全部分类」选项无条件挂载：分类为空时下拉也不能是空白小框（R138）
-            const first = document.createElement("option");
-            first.value = "";
-            first.textContent = this.deps.t("category");
-            categorySelect.appendChild(first);
-            if (categories.length === 0) return;
-            for (const category of categories) {
-                const opt = document.createElement("option");
-                opt.value = category;
-                opt.textContent = category;
-                categorySelect.appendChild(opt);
-            }
-            if (savedFilters.category && categories.includes(savedFilters.category)) {
-                // 同标签筛选：异步回填后重查（R118）
-                categorySelect.value = savedFilters.category;
-                void this.refresh();
-            } else if (savedFilters.category) {
-                // 失效分类同标签：清理假选中态（R139）
-                this.deps.setFilters({type: typeSelect.value, tag: tagSelect?.value ?? "", category: ""});
-                void this.refresh();
-            }
-        }).catch(() => undefined); // 辅助筛选数据失败静默降级（R123）
+        categorySelect.disabled = true;
         categorySelect.addEventListener("change", () => {
             this.deps.setFilters({type: typeSelect.value, tag: tagSelect.value, category: categorySelect.value});
             void this.refresh();
@@ -367,7 +350,9 @@ export class CommonSearchDialog {
         sortChip.className = "xlc-chip xlc-sort-chip";
         const paintSort = (): void => {
             const sort = this.deps.getSort();
-            sortChip.textContent = "⇅ " + this.deps.t(`sort.${sort}`);
+            sortChip.textContent = "⇅ " + this.deps.t("sort") + "：" + this.deps.t(`sort.${sort}`);
+            sortChip.title = this.deps.t(`sortHint.${sort}`);
+            sortChip.setAttribute("aria-label", `${this.deps.t("sort")}：${this.deps.t(`sort.${sort}`)}。${this.deps.t(`sortHint.${sort}`)}`);
             // 非默认档高亮（原型屏 1：⇅常用 为选中态）
             sortChip.classList.toggle("xlc-chip--on", sort !== "manual");
         };
@@ -459,6 +444,7 @@ export class CommonSearchDialog {
         footer.className = "xlc-footer";
         const count = document.createElement("span");
         count.className = "xlc-footer-count";
+        count.setAttribute("aria-live", "polite");
         if (isMobile) {
             // 操作钮行（原型屏 7：＋新建 / 插入选中；44px 命中）
             const footBtns = document.createElement("div");
@@ -469,8 +455,9 @@ export class CommonSearchDialog {
             newBtn.addEventListener("click", () => this.deps.newItem());
             footBtns.appendChild(newBtn);
             const insertBtn = document.createElement("button");
-            insertBtn.className = "b3-button xlc-btn-primary";
+            insertBtn.className = "b3-button xlc-btn-primary xlc-mobile-insert";
             insertBtn.textContent = this.deps.t("quickInsertSelected");
+            insertBtn.disabled = true;
             insertBtn.addEventListener("click", () => {
                 const entry = this.results[this.activeIndex];
                 if (entry) void this.runPrimary(entry);
@@ -484,8 +471,12 @@ export class CommonSearchDialog {
         footer.appendChild(count);
         if (!isMobile) {
             const claim = document.createElement("span");
-            claim.className = "xlc-footer-claim";
+            // 这是保存位置的静态状态说明，不应与可点击胶囊混淆。
+            claim.className = "xlc-footer-claim xlc-footer-claim--static";
             claim.textContent = this.deps.t("dataTruth");
+            claim.title = this.deps.t("dataTruthHint");
+            claim.setAttribute("role", "note");
+            claim.setAttribute("aria-label", this.deps.t("dataTruthHint"));
             footer.appendChild(claim);
         }
         // 使用说明双端可达：把常见的捕获、搜索、插入与整理路径放在弹窗内，降低首次上手成本。
@@ -636,6 +627,75 @@ export class CommonSearchDialog {
         return foot;
     }
 
+    /** 重新加载标签/分类选项；成功时清理已经不存在的持久化筛选，失败时保留当前筛选并给出提示。 */
+    private async refreshFilterOptions(): Promise<boolean> {
+        const tagSelect = this.dialog?.element.querySelector<HTMLSelectElement>(".xlc-tag-select");
+        const categorySelect = this.dialog?.element.querySelector<HTMLSelectElement>(".xlc-category-select");
+        if (!tagSelect || !categorySelect) return false;
+        const seq = ++this.filterOptionsSeq;
+        const current = this.deps.getFilters();
+        tagSelect.disabled = true;
+        categorySelect.disabled = true;
+        tagSelect.title = "";
+        categorySelect.title = "";
+        tagSelect.replaceChildren();
+        categorySelect.replaceChildren();
+        const tagAll = document.createElement("option");
+        tagAll.value = "";
+        tagAll.textContent = this.deps.t("filterAllTags");
+        tagSelect.appendChild(tagAll);
+        const categoryAll = document.createElement("option");
+        categoryAll.value = "";
+        categoryAll.textContent = this.deps.t("filterAllCategories");
+        categorySelect.appendChild(categoryAll);
+        const [tagsResult, categoriesResult] = await Promise.allSettled([this.deps.getTags(), this.deps.getCategories()]);
+        if (seq !== this.filterOptionsSeq || !this.dialog) return false;
+        const tags = tagsResult.status === "fulfilled" ? Array.from(new Set(tagsResult.value.filter(Boolean))) : [];
+        const categories = categoriesResult.status === "fulfilled" ? Array.from(new Set(categoriesResult.value.filter(Boolean))) : [];
+        for (const tag of tags) {
+            const option = document.createElement("option");
+            option.value = tag;
+            option.textContent = tag;
+            tagSelect.appendChild(option);
+        }
+        for (const category of categories) {
+            const option = document.createElement("option");
+            option.value = category;
+            option.textContent = category;
+            categorySelect.appendChild(option);
+        }
+        if (tagsResult.status === "rejected") {
+            tagSelect.title = this.deps.t("kernelError", this.deps.t("tags"));
+            if (current.tag) {
+                const option = document.createElement("option");
+                option.value = current.tag;
+                option.textContent = current.tag;
+                tagSelect.appendChild(option);
+            }
+        }
+        if (categoriesResult.status === "rejected") {
+            categorySelect.title = this.deps.t("kernelError", this.deps.t("category"));
+            if (current.category) {
+                const option = document.createElement("option");
+                option.value = current.category;
+                option.textContent = current.category;
+                categorySelect.appendChild(option);
+            }
+        }
+        const nextTag = tagsResult.status === "fulfilled" ? (current.tag && tags.includes(current.tag) ? current.tag : "") : current.tag;
+        const nextCategory = categoriesResult.status === "fulfilled" ? (current.category && categories.includes(current.category) ? current.category : "") : current.category;
+        tagSelect.value = nextTag;
+        categorySelect.value = nextCategory;
+        tagSelect.disabled = false;
+        categorySelect.disabled = false;
+        const changed = (tagsResult.status === "fulfilled" && nextTag !== current.tag)
+            || (categoriesResult.status === "fulfilled" && nextCategory !== current.category);
+        if (changed) {
+            this.deps.setFilters({type: current.type, tag: nextTag, category: nextCategory});
+        }
+        return changed;
+    }
+
     private attachLongPress(list: HTMLElement, isMobile: boolean): void {
         let pressTimer: ReturnType<typeof setTimeout> | undefined;
         let startY = 0;
@@ -701,6 +761,8 @@ export class CommonSearchDialog {
         const footer = this.dialog?.element.querySelector<HTMLElement>(".xlc-footer");
         const aiBanner = this.dialog?.element.querySelector<HTMLElement>(".xlc-ai-banner");
         if (!list) return;
+        const mobileInsert = this.dialog?.element.querySelector<HTMLButtonElement>(".xlc-mobile-insert");
+        if (mobileInsert) mobileInsert.disabled = true;
         this.lastPreviewId = null;
         // 搜索刷新中的轻量反馈：列表半透明 + aria-busy（R106）
         list.classList.add("xlc-list--loading");
@@ -714,7 +776,7 @@ export class CommonSearchDialog {
             const text = query.text.trim();
             if (text.startsWith("?") && text.length > 1) {
                 // AI 语义找（仅元数据出域；未启用/失败诚实提示）
-                const aiResult = await this.deps.aiSemantic(text.slice(1), {itemType: query.itemType ?? "", tag: query.tag ?? "", scope: this.currentScope});
+                const aiResult = await this.deps.aiSemantic(text.slice(1), {itemType: query.itemType ?? "", tag: query.tag ?? "", category: query.category ?? "", scope: this.currentScope});
                 if (seq !== this.searchSeq) return;
                 if (aiResult.ok) {
                     this.results = aiResult.entries;
@@ -727,7 +789,9 @@ export class CommonSearchDialog {
                     directError = aiResult.message;
                 }
                 if (aiBanner) aiBanner.style.display = this.aiResults && this.results.length ? "" : "none";
-                if (aiBanner && this.aiResults) aiBanner.textContent = `✦ ${this.deps.t("aiFound")} · ${this.results.length}`;
+                if (aiBanner && this.aiResults) {
+                    aiBanner.textContent = `✦ ${this.deps.t("aiResultCount", String(this.results.length))}`;
+                }
             } else {
                 const result = await this.deps.search(query);
                 if (seq !== this.searchSeq) return;
@@ -770,10 +834,11 @@ export class CommonSearchDialog {
             status.classList.toggle("xlc-status--error", isError);
             if (directError) {
                 status.textContent = directError;
+            } else if (loadError) {
+                // 索引部分成功时也要说明结果可能不完整，不能用“有结果”掩盖失败。
+                status.textContent = this.deps.t("kernelError", loadError);
             } else if (this.results.length) {
                 status.textContent = "";
-            } else if (loadError) {
-                status.textContent = this.deps.t("kernelError", loadError);
             } else if (loading) {
                 status.textContent = this.deps.t("indexing");
             } else {
@@ -803,8 +868,16 @@ export class CommonSearchDialog {
                 // 原型屏 1：常用排序时计数带排序名
                 const sortSuffix = this.deps.getSort() === "frequent" ? ` · ${this.deps.t("sort.frequent")}` : "";
                 // 截断标记带可读说明（悬停可见），不再是裸 ⚠（R138）
-                count.textContent = this.deps.t("totalItems", String(total)) + sortSuffix + (truncated ? " ⚠" : "");
-                count.title = truncated ? this.deps.t("truncatedHint") : "";
+                if (directError) {
+                    count.textContent = "";
+                    count.title = "";
+                } else {
+                    const countLabel = this.aiResults
+                        ? this.deps.t("aiResultCount", String(total))
+                        : this.deps.t("totalItems", String(total));
+                    count.textContent = countLabel + (!this.aiResults ? sortSuffix : "") + (truncated ? " ⚠" : "");
+                    count.title = truncated ? this.deps.t("truncatedHint") : "";
+                }
             }
         }
         // 提供方分区（有查询词且注册了可执行 provider 时；pv: 虚拟行不进键盘导航/执行器）
@@ -866,10 +939,24 @@ export class CommonSearchDialog {
             text.className = "xlc-empty-text";
             text.textContent = this.emptyMessage;
             empty.appendChild(text);
-            if (this.emptyMessage === this.deps.t("semanticSuggestion")) {
+            // 普通关键词无结果且 AI 已开启时，补充明确的语义搜索入口；
+            // 不依赖空态主文案做分支，避免中英文文案相同导致空库/筛选态误显示 AI 提示。
+            const queryText = this.lastQueryText.trim();
+            if (queryText && !queryText.startsWith("?")) {
+                const titleHint = document.createElement("div");
+                titleHint.className = "xlc-empty-hint";
+                titleHint.textContent = this.deps.t("emptyQueryHint");
+                empty.appendChild(titleHint);
+                if (this.deps.aiEnabled()) {
+                    const hint = document.createElement("div");
+                    hint.className = "xlc-empty-hint";
+                    hint.textContent = this.deps.t("aiSemanticHint");
+                    empty.appendChild(hint);
+                }
+            } else if (queryText.startsWith("?")) {
                 const hint = document.createElement("div");
                 hint.className = "xlc-empty-hint";
-                hint.textContent = this.deps.t("aiSemanticHint");
+                hint.textContent = this.deps.t("semanticEmptyHint");
                 empty.appendChild(hint);
             } else if (this.emptyMessage === this.deps.t("emptyFavorites")) {
                 const hint = document.createElement("div");
@@ -882,11 +969,21 @@ export class CommonSearchDialog {
                 hint.className = "xlc-empty-hint";
                 hint.textContent = this.deps.t("emptyLibrarySub");
                 empty.appendChild(hint);
+
+                // 空库是新用户最常遇到的页面，保留一条随时可回看的使用路径。
+                const guide = document.createElement("button");
+                guide.type = "button";
+                guide.className = "b3-button xlc-btn-ghost xlc-empty-action";
+                guide.dataset.xlcAction = "help";
+                guide.textContent = "ⓘ " + this.deps.t("usageGuideBtn");
+                guide.addEventListener("click", () => this.openUsageGuide());
+                empty.appendChild(guide);
             }
             if (this.emptyMessage === this.deps.t("emptyFiltered")) {
                 const clear = document.createElement("button");
                 clear.type = "button";
                 clear.className = "b3-button xlc-btn-ghost xlc-empty-action";
+                clear.dataset.xlcAction = "clear-filters";
                 clear.textContent = this.deps.t("clearFilters");
                 clear.addEventListener("click", () => {
                     this.deps.setFilters({type: "", tag: "", category: ""});
@@ -904,11 +1001,22 @@ export class CommonSearchDialog {
                 const create = document.createElement("button");
                 create.type = "button";
                 create.className = "b3-button xlc-btn-primary xlc-empty-action";
-                create.textContent = this.deps.t("newItemAction");
+                create.dataset.xlcAction = "new-item";
+                const query = this.lastQueryText.trim();
+                const fullTitleCandidate = query && !query.startsWith("?") ? query.slice(0, 120) : "";
+        const buttonTitle = fullTitleCandidate.length > 24
+                    ? `${fullTitleCandidate.slice(0, 24)}…`
+                    : fullTitleCandidate;
+                create.textContent = buttonTitle
+                    ? this.deps.t("newItemActionWithQuery", buttonTitle)
+                    : this.deps.t("newItemAction");
+                const accessibleLabel = fullTitleCandidate
+                    ? this.deps.t("newItemWithTitle", fullTitleCandidate)
+                    : this.deps.t("newItemAction");
+                create.setAttribute("aria-label", accessibleLabel);
+                create.title = accessibleLabel;
                 create.addEventListener("click", () => {
-                    const query = this.lastQueryText.trim();
-                    const titleCandidate = query && !query.startsWith("?") ? query.slice(0, 120) : undefined;
-                    this.deps.newItem(titleCandidate);
+                    this.deps.newItem(fullTitleCandidate || undefined);
                 });
                 empty.appendChild(create);
             }
@@ -943,7 +1051,7 @@ export class CommonSearchDialog {
             const catKeys = Array.from(byCat.keys()).sort((a, b) => a.localeCompare(b, "zh-Hans-CN"));
             const ordered: SearchEntry[] = [];
             if (isManual && favs.length > 0) {
-                groupLabels.push({label: "📌 " + this.deps.t("groupPinned"), count: favs.length});
+                groupLabels.push({label: "★ " + this.deps.t("groupFavorites"), count: favs.length});
                 ordered.push(...favs);
             }
             for (const key of catKeys) {
@@ -1005,9 +1113,11 @@ export class CommonSearchDialog {
                 ordinal.title = this.deps.t("usageHint");
                 title.appendChild(ordinal);
             }
-            const badge = document.createElement("span");
+        const badge = document.createElement("span");
             badge.className = `xlc-badge xlc-badge--${entry.itemType}`;
             badge.textContent = TYPE_BADGES[entry.itemType] ?? "TXT";
+        badge.title = this.deps.t(`type.${entry.itemType}`);
+        badge.setAttribute("aria-label", this.deps.t(`type.${entry.itemType}`));
             title.appendChild(badge);
             const titleText = document.createElement("span");
             titleText.className = "xlc-row-titletext";
@@ -1108,8 +1218,11 @@ export class CommonSearchDialog {
             }
         }
         this.paintActive();
-        // 空结果时动作钮全部禁用：按钮不再「看起来能点、点了没反应」（R106）；
-        // 提供方行激活时仅插入/复制可用（对 payload 生效），库条目专属动作禁用（R138）
+        this.syncPaneActions();
+    }
+
+    /** 预览区动作随当前选中行同步；键盘切换/来源预检也必须更新按钮状态。 */
+    private syncPaneActions(): void {
         const actionable = this.results.length > 0;
         const scope = this.dialog?.element ?? document;
         scope.querySelectorAll<HTMLButtonElement>(".xlc-pane-foot .b3-button")
@@ -1117,10 +1230,24 @@ export class CommonSearchDialog {
                 if (this.activeProvider >= 0) {
                     const act = btn.dataset.xlcPaneAct ?? "";
                     btn.disabled = !(act === "insert" || act === "copy");
-                } else {
-                    btn.disabled = !actionable;
+                    return;
                 }
+                const entry = this.results[this.activeIndex];
+                const act = btn.dataset.xlcPaneAct ?? "";
+                const unavailable = !entry
+                    || (act === "ai" && !this.deps.aiEnabled())
+                    || (act === "source" && this.deps.isSourceMissing(entry));
+                btn.disabled = !actionable || unavailable;
+                btn.removeAttribute("title");
+                if (act === "ai" && !this.deps.aiEnabled()) btn.title = this.deps.t("aiDisabled");
+                if (act === "source" && entry && this.deps.isSourceMissing(entry)) btn.title = this.deps.t("sourceGone");
             });
+        const insertBtn = scope.querySelector<HTMLButtonElement>('[data-xlc-pane-act="insert"]');
+        if (insertBtn && this.activeProvider < 0) {
+            const directInsert = this.deps.hasActiveEditor?.() ?? true;
+            insertBtn.textContent = directInsert ? this.deps.t("insert") : this.deps.t("insertNoEditorAction");
+            insertBtn.title = directInsert ? "" : this.deps.t("insertNoEditor");
+        }
         const mobileInsert = scope.querySelector<HTMLButtonElement>(".xlc-mobile-foot .xlc-btn-primary");
         if (mobileInsert) mobileInsert.disabled = !actionable;
     }
@@ -1183,26 +1310,20 @@ export class CommonSearchDialog {
         void this.refreshPreservingPosition();
     }
 
-    private async refreshPreservingPosition(): Promise<void> {        const seq = ++this.searchSeq;
-        const query = this.buildQuery();
-        this.lastQueryText = query.text.trim();
-        try {
-            const {entries} = await this.deps.search(query);
-            if (seq !== this.searchSeq) return;
-            this.results = entries;
-            this.activeProvider = -1;
-            this.activeIndex = Math.min(this.activeIndex, Math.max(0, this.results.length - 1));
-        } catch (err) {
-            // 静默失败会让「星标已翻转、列表却没变」无解释——状态行诚实报错（R138）
-            const status = this.dialog?.element.querySelector<HTMLElement>(".xlc-status");
-            if (status) {
-                status.textContent = this.deps.t("kernelError", (err as Error)?.message ?? "unknown");
-                status.classList.add("xlc-status--error");
-            }
-            return;
-        }
+    private async refreshPreservingPosition(): Promise<void> {
         const list = this.dialog?.element.querySelector<HTMLElement>(".xlc-list");
-        if (list) this.renderList(list);
+        const scrollTop = list?.scrollTop ?? 0;
+        const selectedId = this.results[this.activeIndex]?.id;
+        await this.refreshFilterOptions();
+        await this.refresh();
+        if (selectedId) {
+            const next = this.results.findIndex((entry) => entry.id === selectedId);
+            if (next >= 0) this.activeIndex = next;
+        }
+        if (list) {
+            this.renderList(list);
+            list.scrollTop = scrollTop;
+        }
         this.updatePreview();
     }
 
@@ -1298,7 +1419,7 @@ export class CommonSearchDialog {
         const sec = document.createElement("div");
         sec.className = "xlc-menu-sec";
         for (const mode of modes) {
-            sec.appendChild(this.menuButton(mode === current ? "✓" : " ", this.deps.t(`sort.${mode}`), "xlc-menu-item" + (mode === current ? " xlc-menu-item--on" : ""), async () => {
+            const option = this.menuButton(mode === current ? "✓" : " ", this.deps.t(`sort.${mode}`), "xlc-menu-item" + (mode === current ? " xlc-menu-item--on" : ""), async () => {
                 this.sortMenuClosedAt = Date.now();
                 this.menuDismiss?.();
                 this.menuDismiss = null;
@@ -1306,7 +1427,9 @@ export class CommonSearchDialog {
                 paintSort();
                 this.restoreFocusToSearch();
                 void this.refresh();
-            }));
+            });
+            option.title = this.deps.t(`sortHint.${mode}`);
+            sec.appendChild(option);
         }
         menu.appendChild(sec);
         const host = (this.dialog?.element.querySelector(".xlc-dialog")) ?? this.dialog?.element ?? document.body;
@@ -1416,6 +1539,7 @@ export class CommonSearchDialog {
         const paneAi = this.dialog?.element.querySelector<HTMLElement>(".xlc-pane-ai");
         const paneUsage = this.dialog?.element.querySelector<HTMLElement>(".xlc-pane-usage");
         if (!paneBody || !paneTitle || !paneWarn || !paneAi || !paneUsage) return;
+        this.syncPaneActions();
         const paintUsageBadge = (entry: SearchEntry | undefined): void => {
             const count = entry ? (this.usageCounts.get(entry.id) ?? 0) : 0;
             // AI 徽标优先（原型：AI 结果态只显示 AI 找到的）
@@ -1527,7 +1651,7 @@ export class CommonSearchDialog {
 
     /** F1：插入前询问变量（设置可关；无 ask 字段零打扰；code 条目不询问）。
      *  perform 收到 fills（undefined=未触发询问，走原路径）。 */
-    private async insertEntryWithVars(entry: SearchEntry, perform: (fills?: Record<string, string>) => Promise<unknown>): Promise<void> {
+    private async insertEntryWithVars(entry: SearchEntry, perform: (fills?: Record<string, string>) => Promise<unknown>, options?: {beforePerform?: () => void}): Promise<void> {
         if (!this.deps.promptVariables()) {
             await perform();
             return;
@@ -1550,6 +1674,7 @@ export class CommonSearchDialog {
                     status.classList.add("xlc-status--error");
                 }
             }
+            options?.beforePerform?.();
             await perform();
             return;
         }
@@ -1563,7 +1688,9 @@ export class CommonSearchDialog {
             fields,
             onConfirm: (fills) => {
                 this.varFormOpen = false;
-                this.destroy();
+                // 主列表保留原行为；动作菜单传入 beforePerform，让取消填写时搜索上下文仍在。
+                if (options?.beforePerform) options.beforePerform();
+                else this.destroy();
                 void perform(fills);
             },
             // 取消/关闭（Esc/scrim/取消钮）后焦点回搜索框，与浮层菜单一致（R128）
@@ -1622,21 +1749,27 @@ export class CommonSearchDialog {
 
             const sec1 = document.createElement("div");
             sec1.className = "xlc-menu-sec";
-            const addAction = (icon: string, label: string, run: () => Promise<unknown>, cls = "xlc-menu-item"): void => {
+            const addAction = (icon: string, label: string, run: () => Promise<unknown>, cls = "xlc-menu-item", destroyBeforeRun = true): void => {
                 sec1.appendChild(this.menuButton(icon, label, cls, async () => {
-                    this.destroy();
+                    if (destroyBeforeRun) this.destroy();
+                    else {
+                        this.menuDismiss?.();
+                        this.menuDismiss = null;
+                    }
                     await run();
                 }));
             };
             if (entry.itemType === "blockref") {
-                addAction("＋", this.deps.t("insertRef"), () => this.deps.runAction(entry.id, "insert-ref"));
-                addAction("⊞", this.deps.t("insertEmbed"), () => this.deps.runAction(entry.id, "insert-embed"));
+                addAction("＋", this.deps.t("insertRef"), () => this.deps.insertTarget
+                    ? this.deps.insertToDoc(entry.id, this.deps.insertTarget.docId, this.deps.insertTarget.hPath, undefined, "insert-ref")
+                    : this.deps.runAction(entry.id, "insert-ref"));
+                addAction("⊞", this.deps.t("insertEmbed"), () => this.deps.insertTarget
+                    ? this.deps.insertToDoc(entry.id, this.deps.insertTarget.docId, this.deps.insertTarget.hPath, undefined, "insert-embed")
+                    : this.deps.runAction(entry.id, "insert-embed"));
                 addAction("⧉", this.deps.t("insertCopy"), () => this.deps.runAction(entry.id, "copy-content"));
             } else {
                 // 插入含变量条目同样先弹填充卡（F1）；复制保持模板原样
-                addAction("＋", this.deps.t("insert"), () => this.insertEntryWithVars(entry, (fills) => fills
-                    ? this.deps.runActionWithFills(entry.id, "insert", fills)
-                    : this.deps.runAction(entry.id, "insert")));
+                addAction("＋", this.deps.t("insert"), () => this.insertEntryWithVars(entry, (fills) => this.runActionFor(entry, fills), {beforePerform: () => this.destroy()}), "xlc-menu-item", false);
                 addAction("⧉", this.deps.t("copy"), () => this.deps.runAction(entry.id, "copy"));
             }
             menu.appendChild(sec1);

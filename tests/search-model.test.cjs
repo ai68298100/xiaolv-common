@@ -64,9 +64,23 @@ test("收藏/最近 scope 与置顶顺序", () => {
     assert.deepEqual(favs.map((e) => e.id), ["xlc-fav"]);
     const recents = search.listByScope(entries, "recent", ctx);
     assert.deepEqual(recents.map((e) => e.id), ["xlc-recent"]);
+    const recentSearch = search.searchEntries(entries, {text: "", scope: "recent"}, ctx);
+    assert.deepEqual(recentSearch.map((r) => r.entry.id), ["xlc-recent"]);
     // 置顶项在混合搜索里排最前
     const ranked = search.searchEntries(entries, {text: "", scope: "all"}, ctx);
     assert.equal(ranked[0].entry.id, "xlc-pinned");
+});
+
+test("最近排序只改变浏览顺序，关键词搜索仍优先匹配度", () => {
+    const entries = [
+        entry({id: "xlc-old", title: "客服延期回复", updatedAt: 1}),
+        entry({id: "xlc-new", title: "其他模板", summary: "客服相关", updatedAt: 2}),
+    ];
+    const ctx = {favorites: new Set(), recents: new Map([["xlc-old", 10], ["xlc-new", 20]]), sort: "recent", now: 1000};
+    const browse = search.searchEntries(entries, {text: "", scope: "all"}, ctx);
+    assert.deepEqual(browse.map((r) => r.entry.id), ["xlc-new", "xlc-old"]);
+    const query = search.searchEntries(entries, {text: "客服", scope: "all"}, ctx);
+    assert.deepEqual(query.map((r) => r.entry.id), ["xlc-old", "xlc-new"]);
 });
 
 test("拼音适配层：默认实现原样返回；自定义实现参与匹配", () => {
