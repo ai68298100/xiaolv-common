@@ -10,23 +10,24 @@
 
 支持插入前填写变量、日期与随机占位符、片段嵌套、模板包分享、Espanso 配置导入、拼音搜索和 AI 辅助。插件可独立使用，也提供 `xiaolv-common/v1` 公开协议供小驴系列插件接入。
 
-> **已发布版本：v0.4.0（2026-10-11）** · [下载最新版](https://github.com/ai68298100/xiaolv-common/releases/latest) · 当前工作区正在开发「专用库 + 按需发现」下一阶段能力。
+> **已发布版本：v0.4.0（2026-10-11）** · [下载最新版](https://github.com/ai68298100/xiaolv-common/releases/latest) · 当前工作区含尚未发布的「专用库 + 按需发现」阶段三实现。
 
-## 下一版本开发中
+## 工作区未发布更新
 
-整体：在保留专用内容库作为默认工作集的前提下，可以从当前文档主动发现已有内容，挑选后复制进库。
+整体：专用内容库仍是默认工作集；用户可按需从文档、文档树或笔记本发现已有内容，确认后复制进库。
 
 新增：
 
-- 编辑器右键和命令面板增加「从当前文档发现常用语」，扫描当前文档顶层块，不修改原文。
-- 发现面板支持候选筛选、来源路径、正文预览、单条/批量收录、内容相同确认和逐项回执。
+- 编辑器右键和命令面板提供当前文档、当前笔记本发现入口；发现面板还可选择指定文档树、指定笔记本或经二次确认的全部笔记本。
+- 发现面板支持筛选、来源路径、正文预览、多选收录、内容相同确认、逐项回执和安全撤销。
 
 优化：
 
 - 捕获表单保留选区、当前块、剪贴板和手工新建的来源类型与触发时文档，避免切换页面后来源漂移。
-- 发现候选只在当前会话内存中存在；收录后保留来源回链，并刷新已打开的搜索面板。
+- 发现候选只在当前会话内存中存在；收录前重验来源范围，收录后保留来源回链并刷新已打开的搜索面板。
+- 发现扫描单独限额：最多 20 个笔记本、200 篇文档、8 层目录、2000 个块、500 个候选和 60 秒；每页最多 100 条。部分错误会保留可用结果，手动停止会等待已发出的内核请求完成、不再发起新请求。
 
-限制：当前只实现当前文档发现；当前笔记本、指定文档树/笔记本、批量撤销及思源 Electron/Android 现场验收仍在后续阶段。
+限制：发现不会自动加入常用库或修改原文；全部笔记本扫描必须由用户确认。思源 Electron 插件运行时与 Android 真机仍待现场验收，自动化测试不代表宿主验收。
 
 ## 本次更新（v0.3.9）
 
@@ -242,7 +243,7 @@ common.protocolCommands["xiaolv.common.open"]();          // 稳定命令 ID
 ```
 
 - 服务接口：`getCapabilities / search / get / save / update / remove / insert / copy / openSource / reindex / getRecent / getFavorites`
-- 命令 ID：`xiaolv.common.open / saveSelection / insert / copy / openSource`；按需发现另有 `discoverCurrentDocument / previewDiscoveryCandidate / addDiscoveryCandidate / closeDiscoverySession`；插件命令另有保存当前块（`⌥⇧B`）和从当前文档发现；接入示例见 [docs/provider-guide.md](docs/provider-guide.md)
+- 命令 ID：`xiaolv.common.open / saveSelection / insert / copy / openSource`；发现协议另有 `discoverCurrentDocument / discoverCurrentNotebook / previewDiscoveryCandidate / addDiscoveryCandidate / closeDiscoverySession / beginDiscoveryBatch / finishDiscoveryBatch / undoDiscoveryBatch`；指定树、指定笔记本和全部笔记本可从发现面板选择；接入示例见 [docs/provider-guide.md](docs/provider-guide.md)
 - 事件（window CustomEvent，detail 带 protocolVersion）：`xiaolv:common:item-created / item-updated / item-deleted / item-inserted`
 - 兼容行为：未知字段保留透传；未知能力忽略；更高主版本明确拒绝（不静默降级）。
 

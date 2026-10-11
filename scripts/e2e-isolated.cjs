@@ -1,13 +1,14 @@
 // 独立后台 E2E（B-001 解除方案，R136）：用本机思源自带内核起一个隔离实例——
 // 独立工作区 + 独立端口（默认 16806），令牌直接从测试工作区 conf 读出，不触碰正在运行的
-// 主思源实例，无需用户授权令牌。跑完 scripts/e2e-acceptance.cjs 后自动关闭内核。
+// 主思源实例，无需用户授权令牌。默认跑 acceptance，可用 --discovery-only 跑发现验收。
 // 零依赖（Node 18+ 原生 fetch / child_process）。
 //
-// 用法：node scripts/e2e-isolated.cjs [--keep] [--port 16806] [--kernel <内核exe路径>]
-//   --keep    跑完后保留内核运行（可直接复跑 node scripts/e2e-acceptance.cjs）
+// 用法：node scripts/e2e-isolated.cjs [--discovery-only] [--keep] [--port 16806] [--kernel <内核exe路径>]
+//   --discovery-only 运行 scripts/e2e-discovery.cjs
+//   --keep            跑完后保留本次启动的隔离内核供检查
 // 环境变量：SIYUAN_KERNEL（内核路径）、SIYUAN_E2E_PORT（默认 16806）、SIYUAN_E2E_WS（工作区目录，默认系统临时目录）
 //
-// 本脚本只做进程编排与令牌读取；验收断言全部在 e2e-acceptance.cjs。
+// 本脚本只做进程编排与令牌读取；验收断言位于对应的 e2e-*.cjs 脚本。
 "use strict";
 
 const {spawn} = require("child_process");
@@ -21,7 +22,13 @@ const flag = (name) => {
     return i >= 0 ? (args[i + 1] && !args[i + 1].startsWith("--") ? args[i + 1] : "") : null;
 };
 const KEEP = args.includes("--keep");
-const PORT = String(flag("--port") || process.env.SIYUAN_E2E_PORT || 16806);
+const DISCOVERY_ONLY = args.includes("--discovery-only");
+const rawPort = String(flag("--port") || process.env.SIYUAN_E2E_PORT || 16806);
+if (!/^\d+$/.test(rawPort) || Number(rawPort) < 1 || Number(rawPort) > 65535) {
+    console.error("[isolated] 端口必须是 1 到 65535 之间的数字");
+    process.exit(1);
+}
+const PORT = String(Number(rawPort));
 const ORIGIN = `http://127.0.0.1:${PORT}`;
 
 function resolveKernel() {
@@ -83,36 +90,36 @@ async function main() {
     const ws = process.env.SIYUAN_E2E_WS || path.join(os.tmpdir(), "xiaolv-e2e-ws");
     fs.mkdirSync(ws, {recursive: true});
 
-    // 端口上已有内核则复用（前次 --keep 或并发调用），否则启动隔离实例
-    let reused = await probe(ORIGIN);
-    let child = null;
-    if (reused) {
-        console.log(`[isolated] 端口 ${PORT} 已有内核在运行，直接复用`);
-    } else {
-        const logPath = path.join(ws, ".kernel.log");
-        console.log(`[isolated] 启动隔离内核：${kernel}`);
-        console.log(`[isolated]   工作区 ${ws}`);
-        console.log(`[isolated]   端口   ${PORT}（日志 ${logPath}）`);
-        child = spawn(kernel, ["serve", "-w", ws, "--port", PORT], {
-            stdio: ["ignore", fs.openSync(logPath, "a"), fs.openSync(logPath, "a")],
-        });
-        child.on("error", (err) => {
-            console.error(`[isolated] 内核启动失败：${err.message}`);
-            process.exit(1);
-        });
-        const deadline = Date.now() + 30_000;
-        while (Date.now() < deadline) {
-            await new Promise((r) => setTimeout(r, 800));
-            reused = await probe(ORIGIN);
-            if (reused) break;
-        }
-        if (!reused) {
-            console.error("[isolated] 内核 30s 未就绪，查看工作区 .kernel.log");
-            if (child && child.pid) killTree(child.pid);
-            process.exit(1);
-        }
+    // Never send test writes to an instance whose workspace identity is unknown.
+    if (await probe(ORIGIN)) {
+        console.error(`[isolated] 端口 ${PORT} 已有内核；为避免写入非隔离工作区，请换一个空闲端口`);
+        process.exit(1);
     }
-    console.log(`[isolated] 内核就绪 v${reused?.data ?? reused}`);
+    let child = null;
+    const logPath = path.join(ws, ".kernel.log");
+    console.log(`[isolated] 启动隔离内核：${kernel}`);
+    console.log(`[isolated]   工作区 ${ws}`);
+    console.log(`[isolated]   端口   ${PORT}（日志 ${logPath}）`);
+    child = spawn(kernel, ["serve", "-w", ws, "--port", PORT], {
+        stdio: ["ignore", fs.openSync(logPath, "a"), fs.openSync(logPath, "a")],
+    });
+    child.on("error", (err) => {
+        console.error(`[isolated] 内核启动失败：${err.message}`);
+        process.exit(1);
+    });
+    const deadline = Date.now() + 30_000;
+    let ready = null;
+    while (Date.now() < deadline) {
+        await new Promise((r) => setTimeout(r, 800));
+        ready = await probe(ORIGIN);
+        if (ready) break;
+    }
+    if (!ready) {
+        console.error("[isolated] 内核 30s 未就绪，查看工作区 .kernel.log");
+        if (child && child.pid) killTree(child.pid);
+        process.exit(1);
+    }
+    console.log(`[isolated] 内核就绪 v${ready?.data ?? ready}`);
 
     const token = readToken(ws);
     if (!token) {
@@ -135,8 +142,9 @@ async function main() {
         process.exit(1);
     }
 
-    const acceptance = path.join(__dirname, "e2e-acceptance.cjs");
-    console.log("[isolated] 运行验收 scripts/e2e-acceptance.cjs ——\n");
+    const acceptanceName = DISCOVERY_ONLY ? "e2e-discovery.cjs" : "e2e-acceptance.cjs";
+    const acceptance = path.join(__dirname, acceptanceName);
+    console.log(`[isolated] 运行验收 scripts/${acceptanceName} ——\n`);
     const exitCode = await new Promise((resolve) => {
         const proc = spawn(process.execPath, [acceptance], {
             stdio: "inherit",
@@ -149,7 +157,7 @@ async function main() {
         console.log("\n[isolated] 关闭隔离内核");
         killTree(child.pid);
     } else if (KEEP) {
-        console.log(`\n[isolated] --keep：内核保留在 ${ORIGIN}（工作区 ${ws}），可直接复跑 scripts/e2e-acceptance.cjs`);
+        console.log(`\n[isolated] --keep：内核保留在 ${ORIGIN}（工作区 ${ws}），可直接复跑 scripts/${acceptanceName}`);
     }
     process.exit(exitCode);
 }

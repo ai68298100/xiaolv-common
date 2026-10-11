@@ -46,6 +46,7 @@
           root.style.zIndex = "100";
           const container = document.createElement("div");
           container.className = "b3-dialog__container";
+          container.dataset.disableClose = String(this.options.disableClose === true);
           if (this.options.width) container.style.width = this.options.width;
           if (this.options.height) container.style.height = this.options.height;
           container.style.margin = "40px auto";
@@ -7740,8 +7741,65 @@ ${exception.mark.snippet}`;
   var import_siyuan5 = __toESM(require_stub_dom());
   var FALLBACKS = {
     discoveryTitle: "\u4ECE\u5F53\u524D\u6587\u6863\u53D1\u73B0",
+    discoveryTitleNotebook: "\u4ECE\u5F53\u524D\u7B14\u8BB0\u672C\u53D1\u73B0",
+    discoveryTitleGeneral: "\u53D1\u73B0\u5DF2\u6709\u5185\u5BB9",
     discoveryScope: "\u626B\u63CF\u8303\u56F4",
-    discoveryScopeHint: "\u53EA\u8BFB\u53D6\u5F53\u524D\u6587\u6863\u7684\u9876\u5C42\u5757\uFF0C\u4E0D\u4E0A\u4F20\u5185\u5BB9\uFF0C\u4E5F\u4E0D\u4F1A\u4FEE\u6539\u539F\u6587\u3002",
+    discoveryStartDocument: "\u5165\u53E3\u6587\u6863",
+    discoveryScopeDocument: "\u5F53\u524D\u6587\u6863",
+    discoveryScopeNotebook: "\u5F53\u524D\u7B14\u8BB0\u672C",
+    discoveryScopeTree: "\u6307\u5B9A\u6587\u6863\u6811",
+    discoveryScopeSelectedNotebook: "\u6307\u5B9A\u7B14\u8BB0\u672C",
+    discoveryScopeAllNotebooks: "\u5168\u90E8\u7B14\u8BB0\u672C\uFF08\u9AD8\u7EA7\uFF09",
+    discoveryScopeTreeHint: "\u626B\u63CF\u6240\u9009\u6839\u6587\u6863\u53CA\u5176\u4E0B\u7EA7\u6587\u6863\u9876\u5C42\u5757\uFF1B\u52A0\u5165\u5185\u5BB9\u53EA\u590D\u5236\u5230\u4E13\u7528\u5E93\u3002",
+    discoveryScopeSelectedNotebookHint: "\u626B\u63CF\u6240\u9009\u7B14\u8BB0\u672C\u7684\u6587\u6863\u9876\u5C42\u5757\uFF1B\u52A0\u5165\u5185\u5BB9\u53EA\u590D\u5236\u5230\u4E13\u7528\u5E93\u3002",
+    discoverySelectTree: "\u8F93\u5165\u5173\u952E\u8BCD\u67E5\u627E\u6587\u6863\u6811\u6839\u6587\u6863",
+    discoverySelectNotebook: "\u9009\u62E9\u8981\u626B\u63CF\u7684\u7B14\u8BB0\u672C",
+    discoverySearch: "\u641C\u7D22",
+    discoveryAllWarning: "\u4E0A\u9650\uFF1A%s \u4E2A\u7B14\u8BB0\u672C\u3001%s \u7BC7\u6587\u6863\u3001%s \u5C42\u76EE\u5F55\u3001%s \u4E2A\u5757\u3001%s \u4E2A\u5019\u9009\u3001\u5355\u5757 %s \u5B57\u7B26\u3001\u5019\u9009\u6587\u672C\u7D2F\u8BA1 %s \u5B57\u7B26\u3001%s \u79D2\u3002\u6587\u6863\u548C\u5757\u6309\u987A\u5E8F\u8BFB\u53D6\uFF1B\u8DEF\u5F84\u67E5\u8BE2\u4E0E\u91CD\u590D\u6838\u9A8C\u6700\u591A 4 \u8DEF\u5E76\u53D1\u3002\u53EA\u8BFB\u626B\u63CF\uFF0C\u4E0D\u4F1A\u81EA\u52A8\u6536\u5F55\u3002",
+    discoveryConfirmAll: "\u6211\u786E\u8BA4\u5F00\u59CB\u626B\u63CF\u6240\u6709\u53EF\u641C\u7D22\u7B14\u8BB0\u672C",
+    discoveryTargetRequired: "\u8BF7\u5148\u9009\u62E9\u626B\u63CF\u8303\u56F4",
+    discoverySearchFailed: "\u6587\u6863\u641C\u7D22\u5931\u8D25\uFF1A%s",
+    discoveryNotebookLoadFailed: "\u7B14\u8BB0\u672C\u5217\u8868\u52A0\u8F7D\u5931\u8D25\uFF1A%s",
+    discoveryErrors: "\u626B\u63CF\u6216\u5185\u5BB9\u5E93\u91CD\u590D\u6838\u9A8C\u5931\u8D25 %s \u5904\uFF0C\u5DF2\u4FDD\u7559\u5176\u4ED6\u7ED3\u679C",
+    discoverySkippedLong: "\u8DF3\u8FC7\u8D85\u957F\u5757 %s \u4E2A",
+    discoveryLimitScope: "\u8303\u56F4/\u6DF1\u5EA6\u4E0A\u9650",
+    discoveryLimitNotebooks: "\u7B14\u8BB0\u672C\u6570\u4E0A\u9650",
+    discoveryLimitDocuments: "\u6587\u6863\u6570\u4E0A\u9650",
+    discoveryLimitBlocks: "\u5757\u6570\u4E0A\u9650",
+    discoveryLimitCandidates: "\u5019\u9009\u6570\u4E0A\u9650",
+    discoveryLimitCharacters: "\u6587\u672C\u5B57\u7B26\u4E0A\u9650",
+    discoveryLimitTime: "\u626B\u63CF\u65F6\u95F4\u4E0A\u9650",
+    discoveryResultsPage: "\u7B2C %s / %s \u9875",
+    discoveryPreviousPage: "\u4E0A\u4E00\u9875",
+    discoveryNextPage: "\u4E0B\u4E00\u9875",
+    discoveryAddAll: "\u52A0\u5165\u672C\u9875\u9009\u4E2D\u9879",
+    discoveryRescanKeepsUndo: "\u8BF7\u5148\u64A4\u9500\u6216\u5173\u95ED\u672C\u6279\u6B21\uFF0C\u518D\u91CD\u65B0\u626B\u63CF\u3002",
+    discoveryCloseKeepsUndo: "\u672C\u6B21\u53D1\u73B0\u4ECD\u6709\u53EF\u64A4\u9500\u7684\u6536\u5F55\u6279\u6B21\u3002\u5173\u95ED\u4F1A\u4E22\u5931\u64A4\u9500\u5165\u53E3\uFF1B\u4ECD\u8981\u5173\u95ED\u5417\uFF1F",
+    discoveryScopeHintDocument: "\u53EA\u8BFB\u53D6\u5F53\u524D\u6587\u6863\u7684\u9876\u5C42\u5757\uFF1B\u6536\u5F55\u524D\u53EF\u9884\u89C8\uFF0C\u539F\u6587\u4E0D\u4F1A\u88AB\u4FEE\u6539\u3002",
+    discoveryScopeHintNotebook: "\u626B\u63CF\u5F53\u524D\u6587\u6863\u6240\u5C5E\u7B14\u8BB0\u672C\u7684\u9876\u5C42\u5757\uFF1B\u5019\u9009\u4F1A\u663E\u793A\u5404\u81EA\u6765\u6E90\uFF0C\u6536\u5F55\u53EA\u590D\u5236\u5230\u4E13\u7528\u5E93\u3002",
+    discoveryNotebookUnavailable: "\u5F53\u524D\u7248\u672C\u6682\u4E0D\u652F\u6301\u7B14\u8BB0\u672C\u8303\u56F4\u53D1\u73B0",
+    discoveryScanningDocument: "\u6B63\u5728\u626B\u63CF\u5F53\u524D\u6587\u6863\u2026",
+    discoveryScanningNotebook: "\u6B63\u5728\u626B\u63CF\u5F53\u524D\u7B14\u8BB0\u672C\u2026",
+    discoveryScanningTree: "\u6B63\u5728\u626B\u63CF\u6240\u9009\u6587\u6863\u6811\u2026",
+    discoveryScanningSelectedNotebook: "\u6B63\u5728\u626B\u63CF\u6240\u9009\u7B14\u8BB0\u672C\u2026",
+    discoveryScanningAllNotebooks: "\u6B63\u5728\u626B\u63CF\u5168\u90E8\u7B14\u8BB0\u672C\u2026",
+    discoveryNotebookEnumerating: "\u6B63\u5728\u67E5\u627E\u6587\u6863\uFF0C\u5DF2\u53D1\u73B0 %s \u4E2A\u2026",
+    discoveryNotebookProgress: "\u626B\u63CF\u6587\u6863 %s / %s\uFF0C\u5DF2\u8BFB\u53D6 %s \u4E2A\u5757\u2026",
+    discoveryScannedNotebooks: "\u81F3\u5C11\u6709\u4E00\u6B21\u76EE\u5F55\u8BFB\u53D6\u6210\u529F\u7684\u7B14\u8BB0\u672C %s \u4E2A",
+    discoveryCancelPending: "\u5DF2\u8BF7\u6C42\u505C\u6B62\uFF1B\u5F53\u524D\u5DF2\u53D1\u51FA\u7684\u5185\u6838\u8BF7\u6C42\u7ED3\u675F\u540E\u4E0D\u518D\u542F\u52A8\u540E\u7EED\u8BF7\u6C42\uFF0C\u5E76\u4FDD\u7559\u5DF2\u5B8C\u6210\u90E8\u5206\u4F9B\u4F60\u9009\u62E9\u6536\u5F55\u3002",
+    discoveryStopping: "\u6B63\u5728\u7B49\u5F85\u5F53\u524D\u8BF7\u6C42\u7ED3\u675F\u2026",
+    discoveryStopped: "\u5DF2\u505C\u6B62\u626B\u63CF\uFF0C\u4FDD\u7559 %s \u6761\u5019\u9009\uFF1B\u6CA1\u6709\u81EA\u52A8\u6536\u5F55\uFF0C\u5F85\u786E\u8BA4\u91CD\u590D\u72B6\u6001\u7684\u5019\u9009\u4F1A\u5728\u6536\u5F55\u524D\u590D\u67E5\u3002",
+    discoveryStoppedNoResults: "\u5DF2\u505C\u6B62\u3002\u4E13\u7528\u5E93\u8FB9\u754C\u5C1A\u672A\u6838\u5B9E\uFF0C\u56E0\u6B64\u6CA1\u6709\u7EE7\u7EED\u626B\u63CF\u6216\u4FDD\u7559\u5019\u9009\uFF1B\u53EF\u4EE5\u91CD\u65B0\u5F00\u59CB\u3002",
+    discoveryUndoBatch: "\u64A4\u9500\u672C\u6279\u65B0\u589E",
+    discoveryUndoing: "\u6B63\u5728\u5B89\u5168\u68C0\u67E5\u5E76\u64A4\u9500\u2026",
+    discoveryUndoReceiptTitle: "\u64A4\u9500\u56DE\u6267",
+    discoveryUndoDone: "\u5DF2\u64A4\u9500\u65B0\u589E %s \u6761\uFF1B\u5DF2\u8DF3\u8FC7 %s \u6761\uFF0C\u5931\u8D25 %s \u6761\u3002\u91CD\u65B0\u626B\u63CF\u53EF\u5237\u65B0\u5019\u9009\u72B6\u6001\u3002",
+    discoveryUndoAlreadyDone: "\u8FD9\u6279\u65B0\u589E\u5DF2\u64A4\u9500\u3002\u91CD\u65B0\u626B\u63CF\u53EF\u5237\u65B0\u5019\u9009\u72B6\u6001\u3002",
+    discoveryUndoSkipNotFound: "\u6761\u76EE\u5DF2\u5220\u9664",
+    discoveryUndoSkipIdentityChanged: "\u6761\u76EE\u8EAB\u4EFD\u6216\u5185\u5BB9\u5E93\u8303\u56F4\u5DF2\u53D8\u5316",
+    discoveryUndoSkipEdited: "\u6761\u76EE\u5DF2\u88AB\u7F16\u8F91",
+    discoveryUndoSkipLibraryUnverified: "\u5185\u5BB9\u5E93\u7D22\u5F15\u4E0D\u5B8C\u6574\uFF0C\u65E0\u6CD5\u5B89\u5168\u6838\u5BF9",
+    discoveryUndoDeleteFailed: "\u5220\u9664\u5931\u8D25\uFF1A%s",
     discoveryScanning: "\u6B63\u5728\u626B\u63CF\u5F53\u524D\u6587\u6863\u2026",
     discoveryScanned: "\u5DF2\u626B\u63CF %s \u4E2A\u5757\uFF0C\u53D1\u73B0 %s \u4E2A\u5019\u9009",
     discoverySkipped: "\u8DF3\u8FC7\u7A7A\u5757 %s \u4E2A",
@@ -7766,6 +7824,7 @@ ${exception.mark.snippet}`;
     discoveryForceSameContent: "\u5141\u8BB8\u6536\u5F55\u5185\u5BB9\u76F8\u540C\u7684\u5019\u9009",
     discoverySelected: "\u5DF2\u9009 %s \u9879",
     discoveryClose: "\u5173\u95ED",
+    discoveryClosePendingWrites: "\u6709\u6536\u5F55\u6B63\u5728\u5199\u5165\u5185\u5BB9\u5E93\u3002\u8BF7\u7B49\u5F85\u6536\u5F55\u56DE\u6267\uFF0C\u5FC5\u8981\u65F6\u5148\u64A4\u9500\u672C\u6279\u65B0\u589E\uFF0C\u518D\u5173\u95ED\u6B64\u7A97\u53E3\u3002",
     discoveryReceiptTitle: "\u6536\u5F55\u56DE\u6267",
     discoveryReceiptAdded: "\u5DF2\u590D\u5236\u5230\u5E38\u7528\u5E93\uFF1A%s\uFF1B\u539F\u7B14\u8BB0\u672A\u4FEE\u6539\uFF0C\u4E4B\u540E\u4E0D\u4F1A\u81EA\u52A8\u540C\u6B65\u3002",
     discoveryReceiptSameContent: "\u5185\u5BB9\u4E0E\u300C%s\u300D\u76F8\u540C\uFF0C\u672A\u81EA\u52A8\u6536\u5F55\uFF1B\u5982\u4ECD\u8981\u6536\u5F55\uFF0C\u8BF7\u660E\u786E\u786E\u8BA4\u3002",
@@ -7814,9 +7873,20 @@ ${exception.mark.snippet}`;
       this.preview = null;
       this.status = null;
       this.receipt = null;
+      this.closeButton = null;
       this.addSelectedButton = null;
       this.selectedLabel = null;
       this.scanButton = null;
+      this.scopeSelect = null;
+      this.scopeHint = null;
+      this.scopeTarget = null;
+      this.targetDocId = "";
+      this.targetNotebookId = "";
+      this.allConfirmed = false;
+      this.scopeLoadSeq = 0;
+      this.page = 0;
+      this.pageSize = 100;
+      this.undoableBatchIds = /* @__PURE__ */ new Set();
       this.filterStatus = null;
       this.filterType = null;
       this.filterText = null;
@@ -7831,11 +7901,13 @@ ${exception.mark.snippet}`;
       this.previewSeq = 0;
       this.actionBusy = false;
       this.closed = false;
+      this.cancelRequested = false;
       this.filter = {
         status: "all",
         type: "all",
         text: ""
       };
+      this.scope = options.scope === "notebook" && deps.service.discoverCurrentNotebook ? "notebook" : "document";
     }
     tx(key, ...args) {
       var _a;
@@ -7848,20 +7920,24 @@ ${exception.mark.snippet}`;
       if (this.dialog) return;
       this.closed = false;
       const dialog = new import_siyuan5.Dialog({
-        title: (_a = this.options.title) != null ? _a : this.tx("discoveryTitle"),
+        title: (_a = this.options.title) != null ? _a : this.tx(this.scope === "notebook" ? "discoveryTitleNotebook" : "discoveryTitleGeneral"),
         content: "",
         width: "min(820px, 94vw)",
         height: "min(700px, 88vh)",
+        disableClose: true,
         destroyCallback: () => {
-          var _a2, _b2, _c;
+          var _a2, _b2, _c, _d, _e;
           if (this.closed) return;
           this.closed = true;
-          this.deps.service.closeSession((_a2 = this.sessionId) != null ? _a2 : void 0);
+          const closed = this.deps.service.closeSession((_a2 = this.sessionId) != null ? _a2 : void 0);
+          if (!closed.ok) {
+            (_c = (_b2 = this.deps).notify) == null ? void 0 : _c.call(_b2, "error", closed.reason === "conflict" ? this.tx("discoveryClosePendingWrites") : closed.message);
+          }
           this.session = null;
           this.sessionId = null;
           this.dialog = null;
           this.root = null;
-          (_c = (_b2 = this.deps).notify) == null ? void 0 : _c.call(_b2, "info", this.tx("discoveryClose"));
+          (_e = (_d = this.deps).notify) == null ? void 0 : _e.call(_d, "info", this.tx("discoveryClose"));
         }
       });
       this.dialog = dialog;
@@ -7876,18 +7952,28 @@ ${exception.mark.snippet}`;
       this.renderShell();
       void this.scan();
     }
-    close() {
-      var _a;
-      if (!this.dialog) return;
+    close(force = false) {
+      var _a, _b, _c;
+      if (!this.dialog) return true;
+      if (!force) {
+        if (this.undoableBatchIds.size && !window.confirm(this.tx("discoveryCloseKeepsUndo"))) return false;
+        const closed = this.deps.service.closeSession((_a = this.sessionId) != null ? _a : void 0);
+        if (!closed.ok) {
+          const message = closed.reason === "conflict" ? this.tx("discoveryClosePendingWrites") : closed.message;
+          this.setReceipt(message, true);
+          (_c = (_b = this.deps).notify) == null ? void 0 : _c.call(_b, "error", message);
+          return false;
+        }
+      }
       this.closed = true;
       this.scanSeq++;
       this.previewSeq++;
-      this.deps.service.closeSession((_a = this.sessionId) != null ? _a : void 0);
       this.session = null;
       this.sessionId = null;
       const dialog = this.dialog;
       this.dialog = null;
       dialog.destroy();
+      return true;
     }
     renderShell() {
       const root = this.root;
@@ -7898,26 +7984,82 @@ ${exception.mark.snippet}`;
       heading.className = "xlc-discovery-heading";
       const title = document.createElement("h2");
       title.className = "xlc-form-title";
-      title.textContent = this.tx("discoveryTitle");
+      title.textContent = this.tx(this.scope === "notebook" ? "discoveryTitleNotebook" : "discoveryTitle");
       heading.appendChild(title);
-      const scope = document.createElement("div");
-      scope.className = "xlc-form-hint xlc-discovery-scope";
-      scope.textContent = `${this.tx("discoveryScope")}\uFF1A${this.options.sourcePath || this.options.docId}`;
-      heading.appendChild(scope);
+      const scopeRow = document.createElement("div");
+      scopeRow.className = "xlc-discovery-scope-row";
+      const scopeLabel = document.createElement("label");
+      scopeLabel.className = "xlc-form-hint";
+      scopeLabel.textContent = `${this.tx("discoveryScope")}\uFF1A`;
+      this.scopeSelect = document.createElement("select");
+      this.scopeSelect.className = "b3-select xlc-discovery-scope-select";
+      this.scopeSelect.setAttribute("aria-label", this.tx("discoveryScope"));
+      const documentOption = document.createElement("option");
+      documentOption.value = "document";
+      documentOption.textContent = this.tx("discoveryScopeDocument");
+      this.scopeSelect.appendChild(documentOption);
+      const notebookOption = document.createElement("option");
+      notebookOption.value = "notebook";
+      notebookOption.textContent = this.tx("discoveryScopeNotebook");
+      notebookOption.disabled = !this.deps.service.discoverCurrentNotebook;
+      if (notebookOption.disabled) notebookOption.title = this.tx("discoveryNotebookUnavailable");
+      this.scopeSelect.appendChild(notebookOption);
+      for (const [value, key, enabled] of [
+        ["tree", "discoveryScopeTree", !!this.deps.service.discoverTree && !!this.deps.searchDocs],
+        ["selected-notebook", "discoveryScopeSelectedNotebook", !!this.deps.service.discoverNotebook && !!this.deps.listNotebooks],
+        ["all-notebooks", "discoveryScopeAllNotebooks", !!this.deps.service.discoverAllNotebooks]
+      ]) {
+        const option = document.createElement("option");
+        option.value = value;
+        option.textContent = this.tx(key);
+        option.disabled = !enabled;
+        if (!enabled) option.title = this.tx("discoveryNotebookUnavailable");
+        this.scopeSelect.appendChild(option);
+      }
+      this.scopeSelect.value = this.scope;
+      this.scopeSelect.addEventListener("change", () => {
+        var _a;
+        const nextScope = (_a = this.scopeSelect) == null ? void 0 : _a.value;
+        if (nextScope === this.scope) return;
+        this.scope = nextScope;
+        title.textContent = this.tx(this.scope === "document" ? "discoveryTitle" : this.scope === "notebook" ? "discoveryTitleNotebook" : "discoveryTitleGeneral");
+        if (this.scopeHint) this.scopeHint.textContent = this.scopeHintText();
+        this.targetDocId = "";
+        this.targetNotebookId = "";
+        this.allConfirmed = false;
+        this.renderScopeTarget();
+        if (this.scope === "document" || this.scope === "notebook") void this.scan();
+        else {
+          this.setStatus(this.tx("discoveryTargetRequired"));
+          this.scanButton && (this.scanButton.disabled = true);
+        }
+      });
+      scopeLabel.appendChild(this.scopeSelect);
+      scopeRow.appendChild(scopeLabel);
+      this.scopeTarget = document.createElement("div");
+      this.scopeTarget.className = "xlc-discovery-scope-target";
+      scopeRow.appendChild(this.scopeTarget);
+      const sourcePath = document.createElement("span");
+      sourcePath.className = "xlc-form-hint xlc-discovery-scope";
+      sourcePath.textContent = `${this.tx("discoveryStartDocument")}\uFF1A${this.options.sourcePath || this.options.docId}`;
+      scopeRow.appendChild(sourcePath);
+      heading.appendChild(scopeRow);
       head.appendChild(heading);
-      const close = document.createElement("button");
-      close.type = "button";
-      close.className = "b3-button xlc-btn-ghost";
-      close.textContent = this.tx("discoveryClose");
-      close.dataset.xlcDiscoveryAction = "close";
-      close.addEventListener("click", () => this.close());
-      head.appendChild(close);
+      this.closeButton = document.createElement("button");
+      this.closeButton.type = "button";
+      this.closeButton.className = "b3-button xlc-btn-ghost";
+      this.closeButton.textContent = this.tx("discoveryClose");
+      this.closeButton.dataset.xlcDiscoveryAction = "close";
+      this.closeButton.addEventListener("click", () => this.close());
+      head.appendChild(this.closeButton);
       root.appendChild(head);
       const notice = document.createElement("div");
       notice.className = "xlc-discovery-notice xlc-form-hint";
       notice.setAttribute("role", "note");
-      notice.textContent = this.tx("discoveryScopeHint");
+      this.scopeHint = notice;
+      notice.textContent = this.scopeHintText();
       root.appendChild(notice);
+      this.renderScopeTarget();
       const statusRow = document.createElement("div");
       statusRow.className = "xlc-discovery-status-row";
       this.status = document.createElement("div");
@@ -7931,8 +8073,9 @@ ${exception.mark.snippet}`;
       this.scanButton.textContent = this.tx("discoveryCancelScan");
       this.scanButton.dataset.xlcDiscoveryAction = "cancel-scan";
       this.scanButton.addEventListener("click", () => {
-        if (this.session) void this.scan();
-        else this.cancelScan();
+        var _a;
+        if (((_a = this.root) == null ? void 0 : _a.getAttribute("aria-busy")) === "true") this.cancelScan();
+        else void this.scan();
       });
       statusRow.appendChild(this.scanButton);
       root.appendChild(statusRow);
@@ -7954,6 +8097,7 @@ ${exception.mark.snippet}`;
       this.filterStatus.addEventListener("change", () => {
         var _a;
         this.filter.status = (_a = this.filterStatus) == null ? void 0 : _a.value;
+        this.page = 0;
         this.renderList();
       });
       filters.appendChild(this.filterStatus);
@@ -7973,6 +8117,7 @@ ${exception.mark.snippet}`;
       this.filterType.addEventListener("change", () => {
         var _a;
         this.filter.type = (_a = this.filterType) == null ? void 0 : _a.value;
+        this.page = 0;
         this.renderList();
       });
       filters.appendChild(this.filterType);
@@ -7983,6 +8128,7 @@ ${exception.mark.snippet}`;
       this.filterText.addEventListener("input", () => {
         var _a, _b;
         this.filter.text = (_b = (_a = this.filterText) == null ? void 0 : _a.value.trim().toLocaleLowerCase()) != null ? _b : "";
+        this.page = 0;
         this.renderList();
       });
       filters.appendChild(this.filterText);
@@ -8046,20 +8192,143 @@ ${exception.mark.snippet}`;
     }
     setScanningState(scanning) {
       var _a;
+      if (!scanning) this.cancelRequested = false;
       (_a = this.root) == null ? void 0 : _a.setAttribute("aria-busy", String(scanning));
       if (this.scanButton) {
-        this.scanButton.disabled = this.actionBusy;
-        this.scanButton.textContent = scanning ? this.tx("discoveryCancelScan") : this.tx("discoveryRetry");
+        this.scanButton.disabled = this.actionBusy || (scanning ? this.cancelRequested : this.missingScopeTarget());
+        this.scanButton.textContent = scanning ? this.tx(this.cancelRequested ? "discoveryStopping" : "discoveryCancelScan") : this.tx("discoveryRetry");
         this.scanButton.dataset.xlcDiscoveryAction = scanning ? "cancel-scan" : "retry-scan";
       }
       if (this.filterStatus) this.filterStatus.disabled = scanning;
       if (this.filterType) this.filterType.disabled = scanning;
       if (this.filterText) this.filterText.disabled = scanning;
+      if (this.scopeSelect) this.scopeSelect.disabled = scanning || this.actionBusy;
+      if (this.scopeTarget) this.scopeTarget.querySelectorAll("input, select, button").forEach((control) => {
+        control.disabled = scanning || this.actionBusy;
+      });
+    }
+    scopeHintText() {
+      if (this.scope === "document") return this.tx("discoveryScopeHintDocument");
+      if (this.scope === "notebook") return this.tx("discoveryScopeHintNotebook");
+      if (this.scope === "tree") return this.tx("discoveryScopeTreeHint");
+      if (this.scope === "selected-notebook") return this.tx("discoveryScopeSelectedNotebookHint");
+      if (this.scope === "all-notebooks") return this.tx("discoveryAllWarning", "20", "200", "8", "2,000", "500", "100,000", "2,000,000", "60");
+      return this.tx("discoveryScopeHintDocument");
+    }
+    renderScopeTarget() {
+      const target = this.scopeTarget;
+      if (!target) return;
+      const seq = ++this.scopeLoadSeq;
+      target.textContent = "";
+      if (this.scope === "tree") {
+        const input = document.createElement("input");
+        input.type = "search";
+        input.className = "b3-text-field";
+        input.placeholder = this.tx("discoverySelectTree");
+        input.setAttribute("aria-label", this.tx("discoverySelectTree"));
+        const search = document.createElement("button");
+        search.type = "button";
+        search.className = "b3-button xlc-btn-ghost";
+        search.textContent = this.tx("discoverySearch");
+        const results = document.createElement("select");
+        results.className = "b3-select";
+        results.setAttribute("aria-label", this.tx("discoverySelectTree"));
+        results.addEventListener("change", () => {
+          this.targetDocId = results.value;
+          if (this.scanButton) this.scanButton.disabled = !this.targetDocId;
+          if (this.targetDocId) void this.scan();
+        });
+        search.addEventListener("click", () => {
+          const keyword = input.value.trim();
+          if (!keyword || !this.deps.searchDocs) return;
+          search.disabled = true;
+          void this.deps.searchDocs(keyword).then((docs) => {
+            if (seq !== this.scopeLoadSeq || this.closed) return;
+            results.textContent = "";
+            for (const doc of docs) {
+              const option = document.createElement("option");
+              option.value = doc.id;
+              option.textContent = doc.hPath || doc.name || doc.id;
+              results.appendChild(option);
+            }
+            results.hidden = docs.length === 0;
+            this.setStatus(docs.length ? this.tx("discoveryTargetRequired") : this.tx("discoveryNoCandidates"));
+          }).catch((error) => {
+            if (seq === this.scopeLoadSeq) this.setStatus(this.tx("discoverySearchFailed", error instanceof Error ? error.message : String(error)), true);
+          }).finally(() => {
+            search.disabled = false;
+          });
+        });
+        results.hidden = true;
+        target.append(input, search, results);
+        return;
+      }
+      if (this.scope === "selected-notebook") {
+        const select = document.createElement("select");
+        select.className = "b3-select";
+        select.setAttribute("aria-label", this.tx("discoverySelectNotebook"));
+        select.disabled = true;
+        const placeholder = document.createElement("option");
+        placeholder.value = "";
+        placeholder.textContent = this.tx("discoverySelectNotebook");
+        select.appendChild(placeholder);
+        target.appendChild(select);
+        if (!this.deps.listNotebooks) return;
+        void this.deps.listNotebooks().then((notebooks) => {
+          if (seq !== this.scopeLoadSeq || this.closed) return;
+          for (const notebook of notebooks) {
+            const option = document.createElement("option");
+            option.value = notebook.id;
+            option.textContent = notebook.name;
+            select.appendChild(option);
+          }
+          select.disabled = notebooks.length === 0;
+          this.setStatus(notebooks.length ? this.tx("discoveryTargetRequired") : this.tx("discoveryNoCandidates"));
+        }).catch((error) => {
+          if (seq === this.scopeLoadSeq) this.setStatus(this.tx("discoveryNotebookLoadFailed", error instanceof Error ? error.message : String(error)), true);
+        });
+        select.addEventListener("change", () => {
+          this.targetNotebookId = select.value;
+          if (this.scanButton) this.scanButton.disabled = !this.targetNotebookId;
+          if (this.targetNotebookId) void this.scan();
+        });
+        return;
+      }
+      if (this.scope === "all-notebooks") {
+        const label = document.createElement("label");
+        label.className = "xlc-discovery-all-confirm";
+        const checkbox = document.createElement("input");
+        checkbox.type = "checkbox";
+        const text = document.createElement("span");
+        text.textContent = this.tx("discoveryConfirmAll");
+        checkbox.addEventListener("change", () => {
+          this.allConfirmed = checkbox.checked;
+          if (this.scanButton) this.scanButton.disabled = !this.allConfirmed;
+        });
+        label.append(checkbox, text);
+        target.appendChild(label);
+        if (this.scanButton) this.scanButton.disabled = true;
+      }
     }
     async scan() {
+      var _a, _b;
       if (this.actionBusy) return;
+      if (this.undoableBatchIds.size) {
+        this.setReceipt(this.tx("discoveryRescanKeepsUndo"), true, Array.from(this.undoableBatchIds));
+        return;
+      }
+      if (this.scope === "tree" && !this.targetDocId || this.scope === "selected-notebook" && !this.targetNotebookId || this.scope === "all-notebooks" && !this.allConfirmed) return;
+      this.cancelRequested = false;
       const seq = ++this.scanSeq;
-      if (this.sessionId) this.deps.service.closeSession(this.sessionId);
+      if (this.sessionId) {
+        const closed = this.deps.service.closeSession(this.sessionId);
+        if (!closed.ok) {
+          const message = closed.reason === "conflict" ? this.tx("discoveryClosePendingWrites") : closed.message;
+          this.setReceipt(message, true);
+          (_b = (_a = this.deps).notify) == null ? void 0 : _b.call(_a, "error", message);
+          return;
+        }
+      }
       this.session = null;
       this.sessionId = null;
       this.candidates.clear();
@@ -8067,11 +8336,52 @@ ${exception.mark.snippet}`;
       this.previewed.clear();
       this.activeKey = null;
       this.setScanningState(true);
-      this.setStatus(this.tx("discoveryScanning"));
+      const scanningKey = this.scope === "document" ? "discoveryScanningDocument" : this.scope === "notebook" ? "discoveryScanningNotebook" : this.scope === "tree" ? "discoveryScanningTree" : this.scope === "selected-notebook" ? "discoveryScanningSelectedNotebook" : "discoveryScanningAllNotebooks";
+      this.setStatus(this.tx(scanningKey));
+      this.setReceipt("");
       if (this.preview) this.preview.textContent = this.tx("discoveryPreviewEmpty");
       this.renderList();
-      const result = await this.deps.service.discoverCurrentDocument(this.options.docId);
-      if (this.closed || seq !== this.scanSeq) return;
+      let result;
+      try {
+        const progress = {
+          onProgress: (progress2) => {
+            if (this.closed || seq !== this.scanSeq) return;
+            if (progress2.phase === "enumerating") {
+              this.setStatus(this.tx("discoveryNotebookEnumerating", String(progress2.discoveredDocs)));
+              return;
+            }
+            const total = typeof progress2.totalDocs === "number" ? String(progress2.totalDocs) : "\u2026";
+            this.setStatus(this.tx("discoveryNotebookProgress", String(progress2.scannedDocs), total, String(progress2.scannedBlocks)));
+          }
+        };
+        if (this.scope === "notebook" && this.deps.service.discoverCurrentNotebook) {
+          result = await this.deps.service.discoverCurrentNotebook(this.options.docId, progress);
+        } else if (this.scope === "tree" && this.deps.service.discoverTree) {
+          result = await this.deps.service.discoverTree(this.targetDocId, progress);
+        } else if (this.scope === "selected-notebook" && this.deps.service.discoverNotebook) {
+          result = await this.deps.service.discoverNotebook(this.targetNotebookId, progress);
+        } else if (this.scope === "all-notebooks" && this.deps.service.discoverAllNotebooks) {
+          result = await this.deps.service.discoverAllNotebooks({ ...progress, confirmed: this.allConfirmed });
+        } else {
+          result = await this.deps.service.discoverCurrentDocument(this.options.docId);
+        }
+      } catch (error) {
+        result = { ok: false, reason: "kernel-error", message: error instanceof Error ? error.message : String(error) };
+      }
+      if (this.closed) return;
+      if (seq !== this.scanSeq) return;
+      if (!result.ok && result.reason === "cancelled") {
+        this.setScanningState(false);
+        if (this.cancelRequested) {
+          const message = this.tx("discoveryStoppedNoResults");
+          this.setStatus(message);
+          this.showRetryReceipt(message);
+        } else {
+          this.setStatus(this.tx("discoveryRetry"));
+          this.showRetryReceipt(this.tx("discoveryRetry"));
+        }
+        return;
+      }
       if (!result.ok) {
         this.setScanningState(false);
         this.setStatus(this.failureMessage(result), true);
@@ -8081,24 +8391,41 @@ ${exception.mark.snippet}`;
       this.session = result.data;
       this.sessionId = result.data.id;
       this.candidates = new Map(result.data.candidates.map((candidate) => [candidate.key, candidate]));
+      this.page = 0;
       this.setScanningState(false);
-      const suffix = result.data.truncated ? ` \xB7 ${this.tx("discoveryTruncated")}` : "";
-      this.setStatus(`${this.tx("discoveryScanned", String(result.data.scannedBlocks), String(result.data.candidates.length))} \xB7 ${this.tx("discoverySkipped", String(result.data.skippedEmpty))}${suffix}`);
+      const suffix = result.data.truncated && !result.data.stopped ? ` \xB7 ${this.tx("discoveryTruncated")}` : "";
+      const stoppedSuffix = result.data.stopped ? ` \xB7 ${this.tx("discoveryStopped", String(result.data.candidates.length))}` : "";
+      const scannedDocs = result.data.scannedDocs;
+      const docsSuffix = this.scope !== "document" && typeof scannedDocs === "number" ? ` \xB7 ${this.tx("discoveryScannedDocs", String(scannedDocs))}` : "";
+      const scannedNotebooks = result.data.scannedNotebooks;
+      const notebooksSuffix = this.scope === "all-notebooks" && typeof scannedNotebooks === "number" ? ` \xB7 ${this.tx("discoveryScannedNotebooks", String(scannedNotebooks))}` : "";
+      const skippedLong = result.data.skippedLong ? ` \xB7 ${this.tx("discoverySkippedLong", String(result.data.skippedLong))}` : "";
+      const errorSuffix = result.data.errors.length ? ` \xB7 ${this.tx("discoveryErrors", String(result.data.errors.length))}` : "";
+      const limitKeys = {
+        "scope-document-depth": "discoveryLimitScope",
+        notebooks: "discoveryLimitNotebooks",
+        documents: "discoveryLimitDocuments",
+        blocks: "discoveryLimitBlocks",
+        candidates: "discoveryLimitCandidates",
+        characters: "discoveryLimitCharacters",
+        time: "discoveryLimitTime"
+      };
+      const reasons = result.data.truncationReasons.filter((reason) => reason !== "cancelled").length ? ` \xB7 ${result.data.truncationReasons.filter((reason) => reason !== "cancelled").map((reason) => {
+        var _a2;
+        return this.tx((_a2 = limitKeys[reason]) != null ? _a2 : "discoveryTruncated");
+      }).join("\u3001")}` : "";
+      this.setStatus(`${this.tx("discoveryScanned", String(result.data.scannedBlocks), String(result.data.candidates.length))}${docsSuffix}${notebooksSuffix} \xB7 ${this.tx("discoverySkipped", String(result.data.skippedEmpty))}${skippedLong}${suffix}${reasons}${stoppedSuffix}${errorSuffix}`);
+      if (result.data.errors.length) this.setReceipt(result.data.errors.map((error) => `${error.sourcePath || "\u626B\u63CF\u8303\u56F4"}\uFF1A${error.message}`).join("\n"), true);
       this.renderList();
     }
+    missingScopeTarget() {
+      return this.scope === "tree" && !this.targetDocId || this.scope === "selected-notebook" && !this.targetNotebookId || this.scope === "all-notebooks" && !this.allConfirmed;
+    }
     cancelScan() {
-      this.scanSeq++;
-      this.previewSeq++;
-      this.deps.service.closeSession();
-      this.session = null;
-      this.sessionId = null;
-      this.candidates.clear();
-      this.selected.clear();
-      this.activeKey = null;
-      this.setScanningState(false);
-      this.setStatus(this.tx("discoveryRetry"));
-      this.showRetryReceipt(this.tx("discoveryRetry"));
-      this.renderList();
+      if (this.cancelRequested || !this.deps.service.requestScanStop()) return;
+      this.cancelRequested = true;
+      this.setScanningState(true);
+      this.setStatus(this.tx("discoveryCancelPending"));
     }
     showRetryReceipt(message = this.tx("discoverySessionExpired")) {
       if (!this.receipt || !this.scanButton) return;
@@ -8124,13 +8451,16 @@ ${exception.mark.snippet}`;
       if (!list) return;
       list.textContent = "";
       const visible = Array.from(this.candidates.values()).filter((candidate) => this.matches(candidate));
+      const pages = Math.max(1, Math.ceil(visible.length / this.pageSize));
+      this.page = Math.max(0, Math.min(this.page, pages - 1));
+      const pageItems = visible.slice(this.page * this.pageSize, (this.page + 1) * this.pageSize);
       if (!visible.length) {
         const empty = document.createElement("div");
         empty.className = "xlc-discovery-empty";
         empty.textContent = this.tx("discoveryNoCandidates");
         list.appendChild(empty);
       }
-      for (const candidate of visible) {
+      for (const candidate of pageItems) {
         const row = document.createElement("div");
         row.className = "xlc-discovery-row";
         row.dataset.xlcDiscoveryKey = candidate.key;
@@ -8186,11 +8516,40 @@ ${exception.mark.snippet}`;
         row.appendChild(side);
         list.appendChild(row);
       }
+      if (visible.length > this.pageSize) {
+        const pager = document.createElement("div");
+        pager.className = "xlc-discovery-pager";
+        const previous = document.createElement("button");
+        previous.type = "button";
+        previous.className = "b3-button xlc-btn-ghost";
+        previous.textContent = this.tx("discoveryPreviousPage");
+        previous.disabled = this.page === 0 || this.actionBusy;
+        previous.addEventListener("click", () => {
+          this.page--;
+          this.renderList();
+        });
+        const label = document.createElement("span");
+        label.textContent = this.tx("discoveryResultsPage", String(this.page + 1), String(pages));
+        const next = document.createElement("button");
+        next.type = "button";
+        next.className = "b3-button xlc-btn-ghost";
+        next.textContent = this.tx("discoveryNextPage");
+        next.disabled = this.page >= pages - 1 || this.actionBusy;
+        next.addEventListener("click", () => {
+          this.page++;
+          this.renderList();
+        });
+        pager.append(previous, label, next);
+        list.appendChild(pager);
+      }
       this.updateSelectionState();
     }
     updateSelectionState() {
+      var _a;
       const count = this.selected.size;
+      if (this.closeButton) this.closeButton.disabled = this.actionBusy;
       if (this.selectedLabel) this.selectedLabel.textContent = this.tx("discoverySelected", String(count));
+      if (this.scopeSelect) this.scopeSelect.disabled = this.actionBusy || ((_a = this.root) == null ? void 0 : _a.getAttribute("aria-busy")) === "true";
       if (this.addSelectedButton) {
         this.addSelectedButton.disabled = this.actionBusy || !this.sessionId || count === 0;
       }
@@ -8247,6 +8606,13 @@ ${exception.mark.snippet}`;
     async addSelected() {
       var _a;
       if (!this.sessionId || this.actionBusy || this.selected.size === 0) return;
+      const sessionId = this.sessionId;
+      const batchStart = this.deps.service.beginAddBatch(sessionId);
+      if (!batchStart.ok) {
+        this.handleFailure(batchStart);
+        return;
+      }
+      const batchId = batchStart.data.batchId;
       this.actionBusy = true;
       this.updateSelectionState();
       this.renderList();
@@ -8257,19 +8623,20 @@ ${exception.mark.snippet}`;
       const details = [];
       try {
         for (const key of keys) {
-          if (!this.sessionId) break;
+          if (!this.sessionId || this.sessionId !== sessionId) break;
           const candidate = this.candidates.get(key);
           if (!candidate || !this.canAdd(candidate)) {
             skipped++;
             continue;
           }
-          if (!await this.ensurePreview(key) || !this.sessionId) {
+          if (!await this.ensurePreview(key) || !this.sessionId || this.sessionId !== sessionId) {
             failed++;
             details.push(`${candidate.title}\uFF1A${this.tx("discoveryReceiptFailed", this.tx("discoveryPreviewEmpty"))}`);
             continue;
           }
           const result = await this.deps.service.addCandidate(this.sessionId, key, {
-            allowSameContent: ((_a = this.forceSameContent) == null ? void 0 : _a.checked) === true
+            allowSameContent: ((_a = this.forceSameContent) == null ? void 0 : _a.checked) === true,
+            batchId
           });
           if (!result.ok) {
             if (result.reason === "session-expired") {
@@ -8289,25 +8656,36 @@ ${exception.mark.snippet}`;
             this.handleAddResult(key, result.data, false);
           }
         }
-        this.setReceipt(`${this.tx("discoveryReceiptBatch", String(added), String(skipped), String(failed))}${details.length ? `
-${details.join("\n")}` : ""}`);
+      } catch (error) {
+        failed++;
+        details.push(error instanceof Error ? error.message : String(error));
       } finally {
+        const finish = this.deps.service.finishAddBatch(sessionId, batchId);
+        if (!finish.ok) {
+          failed++;
+          details.push(finish.message);
+        }
         this.actionBusy = false;
         this.renderList();
       }
+      const summary = `${this.tx("discoveryReceiptBatch", String(added), String(skipped), String(failed))}${details.length ? `
+${details.join("\n")}` : ""}`;
+      if (added > 0) this.undoableBatchIds.add(batchId);
+      this.setReceipt(summary, failed > 0, added > 0 ? [batchId] : []);
     }
     handleAddResult(key, result, showReceipt = true) {
       var _a, _b, _c, _d;
       const candidate = this.candidates.get(key);
       if (!candidate) return;
       if (result.status === "added") {
+        this.undoableBatchIds.add(result.batchId);
         candidate.status = "added";
         candidate.match = { itemId: result.item.id, title: result.item.title };
         this.previewed.add(key);
         this.selected.delete(key);
         (_b = (_a = this.deps).onAdded) == null ? void 0 : _b.call(_a, result.item.id, result.item.title);
         if (showReceipt) {
-          this.setReceipt(this.tx("discoveryReceiptAdded", result.item.title));
+          this.setReceipt(this.tx("discoveryReceiptAdded", result.item.title), false, [result.batchId]);
           (_d = (_c = this.deps).notify) == null ? void 0 : _d.call(_c, "info", this.tx("discoveryReceiptAdded", result.item.title));
         }
         return;
@@ -8359,18 +8737,85 @@ ${details.join("\n")}` : ""}`);
       if (result.reason === "session-expired") return this.tx("discoverySessionExpired");
       return this.tx("discoveryScanFailed", result.message || this.tx("discoveryUnknown"));
     }
-    setReceipt(message, error = false) {
+    async undoBatch(batchId) {
+      var _a, _b, _c, _d, _e;
+      if (!this.sessionId || this.actionBusy) return;
+      const sessionId = this.sessionId;
+      this.actionBusy = true;
+      this.updateSelectionState();
+      this.renderList();
+      this.setReceipt(this.tx("discoveryUndoing"), false, [], "discoveryUndoReceiptTitle");
+      try {
+        const result = await this.deps.service.undoBatch(sessionId, batchId);
+        if (!result.ok) {
+          this.setReceipt(result.message || this.tx("discoveryUnknown"), true, [batchId], "discoveryUndoReceiptTitle");
+          (_b = (_a = this.deps).notify) == null ? void 0 : _b.call(_a, "error", result.message || this.tx("discoveryUnknown"));
+          return;
+        }
+        this.showUndoResult(result.data);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        this.setReceipt(message, true, [batchId], "discoveryUndoReceiptTitle");
+        (_d = (_c = this.deps).notify) == null ? void 0 : _d.call(_c, "error", message);
+      } finally {
+        this.actionBusy = false;
+        this.renderList();
+        if ((_e = this.receipt) == null ? void 0 : _e.querySelector("[data-xlc-discovery-action='undo-batch']")) {
+          this.receipt.querySelector("[data-xlc-discovery-action='undo-batch']").disabled = false;
+        }
+      }
+    }
+    showUndoResult(result) {
+      var _a, _b, _c, _d, _e;
+      const deletedItems = (_a = result.deletedItems) != null ? _a : [];
+      const absentItems = [
+        ...deletedItems,
+        ...result.skipped.filter((item) => item.reason === "not-found").map(({ itemId, title }) => ({ itemId, title }))
+      ];
+      for (const { itemId } of absentItems) {
+        for (const candidate of this.candidates.values()) {
+          if (candidate.status === "added" && ((_b = candidate.match) == null ? void 0 : _b.itemId) === itemId) {
+            candidate.status = "candidate";
+            delete candidate.match;
+          }
+        }
+      }
+      for (const item of absentItems) (_d = (_c = this.deps).onAdded) == null ? void 0 : _d.call(_c, item.itemId, item.title);
+      const skipKey = {
+        "not-found": "discoveryUndoSkipNotFound",
+        "identity-changed": "discoveryUndoSkipIdentityChanged",
+        edited: "discoveryUndoSkipEdited",
+        "library-unverified": "discoveryUndoSkipLibraryUnverified"
+      };
+      const lines = [this.tx("discoveryUndoDone", String(result.deleted), String(result.skipped.length), String(result.failed.length))];
+      for (const item of result.skipped) lines.push(`${item.title}\uFF1A${this.tx((_e = skipKey[item.reason]) != null ? _e : "discoveryUnknown")}`);
+      for (const item of result.failed) lines.push(`${item.title}\uFF1A${this.tx("discoveryUndoDeleteFailed", item.message)}`);
+      const retryable = result.skipped.some((item) => item.reason !== "not-found") || result.failed.length > 0;
+      if (!retryable) this.undoableBatchIds.delete(result.batchId);
+      this.setReceipt(result.alreadyUndone ? this.tx("discoveryUndoAlreadyDone") : lines.join("\n"), false, retryable ? [result.batchId] : [], "discoveryUndoReceiptTitle");
+    }
+    setReceipt(message, error = false, undoBatchIds = [], titleKey = "discoveryReceiptTitle") {
       if (!this.receipt) return;
       this.receipt.style.display = message ? "block" : "none";
       this.receipt.textContent = "";
       if (!message) return;
       const title = document.createElement("strong");
-      title.textContent = this.tx("discoveryReceiptTitle");
+      title.textContent = this.tx(titleKey);
       this.receipt.appendChild(title);
       const body = document.createElement("div");
       body.className = error ? "xlc-status--error" : "";
       body.textContent = message;
       this.receipt.appendChild(body);
+      for (const batchId of /* @__PURE__ */ new Set([...this.undoableBatchIds, ...undoBatchIds])) {
+        const undo = document.createElement("button");
+        undo.type = "button";
+        undo.className = "b3-button xlc-btn-ghost";
+        undo.textContent = this.tx("discoveryUndoBatch");
+        undo.disabled = this.actionBusy;
+        undo.dataset.xlcDiscoveryAction = "undo-batch";
+        undo.addEventListener("click", () => void this.undoBatch(batchId));
+        this.receipt.appendChild(undo);
+      }
     }
   };
   function openDiscoveryDialog(deps, options) {
@@ -8394,10 +8839,112 @@ ${details.join("\n")}` : ""}`);
     "xlc-demo0000004": "\uFF08\u5F15\u7528\u8BED\u6CD5\u9884\u89C8\uFF09((20240101120002-bbbbbbb '\u4EA7\u54C1\u9700\u6C42\u6A21\u677F'))",
     "xlc-demo0000005": "https://wiki.example.com/sla"
   };
+  var discoveryController = null;
   var T = (key, ...args) => {
     var _a;
     const map = {
       pluginName: "\u5C0F\u9A74\u5E38\u7528\uFF08\u5185\u6D4B\u7248\uFF09",
+      discoveryTitle: "\u4ECE\u5F53\u524D\u6587\u6863\u53D1\u73B0",
+      discoveryTitleNotebook: "\u4ECE\u5F53\u524D\u7B14\u8BB0\u672C\u53D1\u73B0",
+      discoveryTitleGeneral: "\u53D1\u73B0\u5DF2\u6709\u5185\u5BB9",
+      discoveryScope: "\u626B\u63CF\u8303\u56F4",
+      discoveryScopeDocument: "\u5F53\u524D\u6587\u6863",
+      discoveryScopeNotebook: "\u5F53\u524D\u7B14\u8BB0\u672C",
+      discoveryScopeTree: "\u6307\u5B9A\u6587\u6863\u6811",
+      discoveryScopeSelectedNotebook: "\u6307\u5B9A\u7B14\u8BB0\u672C",
+      discoveryScopeAllNotebooks: "\u5168\u90E8\u7B14\u8BB0\u672C\uFF08\u9AD8\u7EA7\uFF09",
+      discoveryScopeTreeHint: "\u626B\u63CF\u6240\u9009\u6839\u6587\u6863\u53CA\u5176\u4E0B\u7EA7\u6587\u6863\u9876\u5C42\u5757\uFF1B\u52A0\u5165\u5185\u5BB9\u53EA\u590D\u5236\u5230\u4E13\u7528\u5E93\u3002",
+      discoveryScopeSelectedNotebookHint: "\u626B\u63CF\u6240\u9009\u7B14\u8BB0\u672C\u7684\u6587\u6863\u9876\u5C42\u5757\uFF1B\u52A0\u5165\u5185\u5BB9\u53EA\u590D\u5236\u5230\u4E13\u7528\u5E93\u3002",
+      discoverySelectTree: "\u8F93\u5165\u5173\u952E\u8BCD\u67E5\u627E\u6587\u6863\u6811\u6839\u6587\u6863",
+      discoverySelectNotebook: "\u9009\u62E9\u8981\u626B\u63CF\u7684\u7B14\u8BB0\u672C",
+      discoverySearch: "\u641C\u7D22",
+      discoveryAllWarning: "\u4E0A\u9650\uFF1A%s \u4E2A\u7B14\u8BB0\u672C\u3001%s \u7BC7\u6587\u6863\u3001%s \u5C42\u76EE\u5F55\u3001%s \u4E2A\u5757\u3001%s \u4E2A\u5019\u9009\u3001\u5355\u5757 %s \u5B57\u7B26\u3001\u5019\u9009\u6587\u672C\u7D2F\u8BA1 %s \u5B57\u7B26\u3001%s \u79D2\u3002\u6587\u6863\u548C\u5757\u6309\u987A\u5E8F\u8BFB\u53D6\uFF1B\u8DEF\u5F84\u67E5\u8BE2\u4E0E\u91CD\u590D\u6838\u9A8C\u6700\u591A 4 \u8DEF\u5E76\u53D1\u3002\u53EA\u8BFB\u626B\u63CF\uFF0C\u4E0D\u4F1A\u81EA\u52A8\u6536\u5F55\u3002",
+      discoveryConfirmAll: "\u6211\u786E\u8BA4\u5F00\u59CB\u626B\u63CF\u6240\u6709\u53EF\u641C\u7D22\u7B14\u8BB0\u672C",
+      discoveryTargetRequired: "\u8BF7\u5148\u9009\u62E9\u626B\u63CF\u8303\u56F4",
+      discoverySearchFailed: "\u6587\u6863\u641C\u7D22\u5931\u8D25\uFF1A%s",
+      discoveryNotebookLoadFailed: "\u7B14\u8BB0\u672C\u5217\u8868\u52A0\u8F7D\u5931\u8D25\uFF1A%s",
+      discoveryErrors: "\u626B\u63CF\u6216\u5185\u5BB9\u5E93\u91CD\u590D\u6838\u9A8C\u5931\u8D25 %s \u5904\uFF0C\u5DF2\u4FDD\u7559\u5176\u4ED6\u7ED3\u679C",
+      discoverySkippedLong: "\u8DF3\u8FC7\u8D85\u957F\u5757 %s \u4E2A",
+      discoveryLimitScope: "\u8303\u56F4/\u6DF1\u5EA6\u4E0A\u9650",
+      discoveryLimitNotebooks: "\u7B14\u8BB0\u672C\u6570\u4E0A\u9650",
+      discoveryLimitDocuments: "\u6587\u6863\u6570\u4E0A\u9650",
+      discoveryLimitBlocks: "\u5757\u6570\u4E0A\u9650",
+      discoveryLimitCandidates: "\u5019\u9009\u6570\u4E0A\u9650",
+      discoveryLimitCharacters: "\u6587\u672C\u5B57\u7B26\u4E0A\u9650",
+      discoveryLimitTime: "\u626B\u63CF\u65F6\u95F4\u4E0A\u9650",
+      discoveryResultsPage: "\u7B2C %s / %s \u9875",
+      discoveryPreviousPage: "\u4E0A\u4E00\u9875",
+      discoveryNextPage: "\u4E0B\u4E00\u9875",
+      discoveryRescanKeepsUndo: "\u8BF7\u5148\u64A4\u9500\u6216\u5173\u95ED\u672C\u6279\u6B21\uFF0C\u518D\u91CD\u65B0\u626B\u63CF\u3002",
+      discoveryCloseKeepsUndo: "\u5173\u95ED\u4F1A\u4E22\u5931\u64A4\u9500\u5165\u53E3\uFF1B\u4ECD\u8981\u5173\u95ED\u5417\uFF1F",
+      discoveryScopeHintDocument: "\u53EA\u8BFB\u53D6\u5F53\u524D\u6587\u6863\u7684\u9876\u5C42\u5757\uFF1B\u6536\u5F55\u524D\u53EF\u9884\u89C8\uFF0C\u539F\u6587\u4E0D\u4F1A\u88AB\u4FEE\u6539\u3002",
+      discoveryScopeHintNotebook: "\u626B\u63CF\u5F53\u524D\u6587\u6863\u6240\u5C5E\u7B14\u8BB0\u672C\u7684\u6587\u6863\u9876\u5C42\u5757\uFF1B\u5019\u9009\u663E\u793A\u5404\u81EA\u6765\u6E90\uFF0C\u6536\u5F55\u53EA\u590D\u5236\u5230\u4E13\u7528\u5E93\u3002",
+      discoveryNotebookUnavailable: "\u5F53\u524D\u7248\u672C\u6682\u4E0D\u652F\u6301\u7B14\u8BB0\u672C\u8303\u56F4\u53D1\u73B0",
+      discoveryScanningDocument: "\u6B63\u5728\u626B\u63CF\u5F53\u524D\u6587\u6863\u2026",
+      discoveryScanningNotebook: "\u6B63\u5728\u626B\u63CF\u5F53\u524D\u7B14\u8BB0\u672C\u2026",
+      discoveryScanningTree: "\u6B63\u5728\u626B\u63CF\u6240\u9009\u6587\u6863\u6811\u2026",
+      discoveryScanningSelectedNotebook: "\u6B63\u5728\u626B\u63CF\u6240\u9009\u7B14\u8BB0\u672C\u2026",
+      discoveryScanningAllNotebooks: "\u6B63\u5728\u626B\u63CF\u5168\u90E8\u7B14\u8BB0\u672C\u2026",
+      discoveryCancelPending: "\u5DF2\u8BF7\u6C42\u505C\u6B62\uFF1B\u5F53\u524D\u5DF2\u53D1\u51FA\u7684\u5185\u6838\u8BF7\u6C42\u7ED3\u675F\u540E\u4E0D\u518D\u542F\u52A8\u540E\u7EED\u8BF7\u6C42\uFF0C\u5E76\u4FDD\u7559\u5DF2\u5B8C\u6210\u90E8\u5206\u4F9B\u4F60\u9009\u62E9\u6536\u5F55\u3002",
+      discoveryStopping: "\u6B63\u5728\u7B49\u5F85\u5DF2\u53D1\u51FA\u7684\u5185\u6838\u8BF7\u6C42\u7ED3\u675F\u2026",
+      discoveryStopped: "\u5DF2\u505C\u6B62\u626B\u63CF\uFF0C\u4FDD\u7559 %s \u6761\u5019\u9009\uFF1B\u6CA1\u6709\u81EA\u52A8\u6536\u5F55\uFF0C\u5F85\u786E\u8BA4\u91CD\u590D\u72B6\u6001\u7684\u5019\u9009\u4F1A\u5728\u6536\u5F55\u524D\u590D\u67E5\u3002",
+      discoveryStoppedNoResults: "\u5DF2\u505C\u6B62\u3002\u4E13\u7528\u5E93\u8FB9\u754C\u5C1A\u672A\u6838\u5B9E\uFF0C\u56E0\u6B64\u6CA1\u6709\u7EE7\u7EED\u626B\u63CF\u6216\u4FDD\u7559\u5019\u9009\uFF1B\u53EF\u4EE5\u91CD\u65B0\u5F00\u59CB\u3002",
+      discoveryNotebookProgress: "\u626B\u63CF\u6587\u6863 %s / %s\uFF0C\u5DF2\u8BFB\u53D6 %s \u4E2A\u5757\u2026",
+      discoveryNotebookEnumerating: "\u6B63\u5728\u67E5\u627E\u6587\u6863\uFF0C\u5DF2\u53D1\u73B0 %s \u4E2A\u2026",
+      discoveryUndoBatch: "\u64A4\u9500\u672C\u6279\u65B0\u589E",
+      discoveryUndoing: "\u6B63\u5728\u5B89\u5168\u68C0\u67E5\u5E76\u64A4\u9500\u2026",
+      discoveryUndoReceiptTitle: "\u64A4\u9500\u56DE\u6267",
+      discoveryUndoDone: "\u5DF2\u64A4\u9500\u65B0\u589E %s \u6761\uFF1B\u5DF2\u8DF3\u8FC7 %s \u6761\uFF0C\u5931\u8D25 %s \u6761\u3002\u91CD\u65B0\u626B\u63CF\u53EF\u5237\u65B0\u5019\u9009\u72B6\u6001\u3002",
+      discoveryUndoAlreadyDone: "\u8FD9\u6279\u65B0\u589E\u5DF2\u64A4\u9500\u3002\u91CD\u65B0\u626B\u63CF\u53EF\u5237\u65B0\u5019\u9009\u72B6\u6001\u3002",
+      discoveryUndoSkipNotFound: "\u6761\u76EE\u5DF2\u5220\u9664",
+      discoveryUndoSkipIdentityChanged: "\u6761\u76EE\u8EAB\u4EFD\u6216\u5185\u5BB9\u5E93\u8303\u56F4\u5DF2\u53D8\u5316",
+      discoveryUndoSkipEdited: "\u6761\u76EE\u5DF2\u88AB\u7F16\u8F91",
+      discoveryUndoSkipLibraryUnverified: "\u5185\u5BB9\u5E93\u7D22\u5F15\u4E0D\u5B8C\u6574\uFF0C\u65E0\u6CD5\u5B89\u5168\u6838\u5BF9",
+      discoveryUndoDeleteFailed: "\u5220\u9664\u5931\u8D25\uFF1A%s",
+      discoveryScanned: "\u5DF2\u626B\u63CF %s \u4E2A\u5757\uFF0C\u53D1\u73B0 %s \u4E2A\u5019\u9009",
+      discoveryScannedDocs: "\u626B\u63CF\u6587\u6863 %s \u4E2A",
+      discoveryScannedNotebooks: "\u81F3\u5C11\u6709\u4E00\u6B21\u76EE\u5F55\u8BFB\u53D6\u6210\u529F\u7684\u7B14\u8BB0\u672C %s \u4E2A",
+      discoverySkipped: "\u8DF3\u8FC7\u7A7A\u5757 %s \u4E2A",
+      discoveryTruncated: "\u5DF2\u8FBE\u5230\u626B\u63CF\u4E0A\u9650\uFF0C\u7ED3\u679C\u53EF\u80FD\u4E0D\u5B8C\u6574",
+      discoveryCancelScan: "\u505C\u6B62\u626B\u63CF",
+      discoveryRetry: "\u91CD\u65B0\u626B\u63CF",
+      discoveryFilter: "\u7B5B\u9009",
+      discoveryFilterAll: "\u5168\u90E8\u72B6\u6001",
+      discoveryFilterCandidate: "\u5F85\u6536\u5F55",
+      discoveryFilterUnverified: "\u91CD\u590D\u5F85\u786E\u8BA4",
+      discoveryFilterSameContent: "\u5185\u5BB9\u76F8\u540C",
+      discoveryFilterAlready: "\u5DF2\u5728\u5E93\u4E2D",
+      discoveryFilterAdded: "\u5DF2\u6536\u5F55",
+      discoveryTypeAll: "\u5168\u90E8\u7C7B\u578B",
+      discoverySearchPlaceholder: "\u7B5B\u9009\u6807\u9898\u3001\u6458\u8981\u6216\u6765\u6E90",
+      discoveryNoCandidates: "\u6CA1\u6709\u7B26\u5408\u6761\u4EF6\u7684\u5019\u9009",
+      discoveryPreviewTitle: "\u5019\u9009\u9884\u89C8",
+      discoveryPreviewEmpty: "\u9009\u62E9\u5DE6\u4FA7\u5019\u9009\u540E\u67E5\u770B\u6B63\u6587\uFF1B\u6536\u5F55\u524D\u4F1A\u518D\u6B21\u6821\u9A8C\u6765\u6E90\u3002",
+      discoveryPreviewLoading: "\u6B63\u5728\u8BFB\u53D6\u5019\u9009\u6B63\u6587\u2026",
+      discoveryAdd: "\u52A0\u5165\u5E38\u7528\u5E93",
+      discoveryAddSelected: "\u52A0\u5165\u9009\u4E2D\u9879",
+      discoveryForceSameContent: "\u5141\u8BB8\u6536\u5F55\u5185\u5BB9\u76F8\u540C\u7684\u5019\u9009",
+      discoverySelected: "\u5DF2\u9009 %s \u9879",
+      discoveryClose: "\u5173\u95ED",
+      discoveryReceiptTitle: "\u6536\u5F55\u56DE\u6267",
+      discoveryClosePendingWrites: "\u6709\u6536\u5F55\u6B63\u5728\u5199\u5165\u5185\u5BB9\u5E93\u3002\u8BF7\u7B49\u5F85\u6536\u5F55\u56DE\u6267\uFF0C\u5FC5\u8981\u65F6\u5148\u64A4\u9500\u672C\u6279\u65B0\u589E\uFF0C\u518D\u5173\u95ED\u6B64\u7A97\u53E3\u3002",
+      discoveryReceiptAdded: "\u5DF2\u590D\u5236\u5230\u5E38\u7528\u5E93\uFF1A%s\uFF1B\u539F\u7B14\u8BB0\u672A\u4FEE\u6539\uFF0C\u4E4B\u540E\u4E0D\u4F1A\u81EA\u52A8\u540C\u6B65\u3002",
+      discoveryReceiptSameContent: "\u5185\u5BB9\u4E0E\u300C%s\u300D\u76F8\u540C\uFF0C\u672A\u81EA\u52A8\u6536\u5F55\uFF1B\u5982\u4ECD\u8981\u6536\u5F55\uFF0C\u8BF7\u660E\u786E\u786E\u8BA4\u3002",
+      discoveryReceiptAlready: "\u5DF2\u5728\u5E38\u7528\u5E93\u4E2D\uFF1A%s",
+      discoveryReceiptFailed: "\u6536\u5F55\u5931\u8D25\uFF1A%s",
+      discoveryReceiptBatch: "\u6279\u91CF\u6536\u5F55\u5B8C\u6210\uFF1A\u65B0\u589E %s\uFF0C\u8DF3\u8FC7 %s\uFF0C\u5931\u8D25 %s",
+      discoverySessionExpired: "\u53D1\u73B0\u4F1A\u8BDD\u5DF2\u5931\u6548\uFF0C\u5019\u9009\u6B63\u6587\u5DF2\u91CA\u653E\uFF0C\u8BF7\u91CD\u65B0\u626B\u63CF\u3002",
+      discoveryScanFailed: "\u626B\u63CF\u5931\u8D25\uFF1A%s",
+      discoveryUnknown: "\u672A\u77E5\u9519\u8BEF",
+      discoveryStatusCandidate: "\u5F85\u6536\u5F55",
+      discoveryStatusAlready: "\u5DF2\u5728\u5E93\u4E2D",
+      discoveryStatusSameContent: "\u5185\u5BB9\u76F8\u540C",
+      discoveryStatusUnverified: "\u91CD\u590D\u5F85\u786E\u8BA4",
+      discoveryStatusAdded: "\u5DF2\u6536\u5F55",
+      discoveryType: "\u7C7B\u578B",
+      discoverySource: "\u6765\u6E90",
+      discoveryStats: "\u7EDF\u8BA1",
+      discoveryNotConfigured: "\u5C1A\u672A\u914D\u7F6E\u5E38\u7528\u5185\u5BB9\u5E93\uFF0C\u65E0\u6CD5\u6536\u5F55\u5019\u9009\u3002",
       searchPlaceholder: "\u641C\u7D22\u6807\u9898\u3001\u522B\u540D\u3001\u6807\u7B7E\u3001\u5206\u7C7B\u548C\u6B63\u6587\u6458\u8981",
       searchHint: "\u8F93\u5165 ? \u52A0\u63CF\u8FF0\uFF0C\u6309\u542B\u4E49\u641C\u7D22\uFF08\u9700\u5728\u672C\u63D2\u4EF6\u8BBE\u7F6E\u4E2D\u542F\u7528 AI\uFF09",
       type: "\u7C7B\u578B",
@@ -8978,35 +9525,86 @@ ${details.join("\n")}` : ""}`);
     },
     openDiscovery() {
       let sessionId = "discovery-harness";
+      let stopRequested = false;
       const candidates = [
         { key: "candidate-1", sourceDocId: "20240101120001-hijklmn", sourceBlockId: "20240101120002-bbbbbbb", sourcePath: "/\u9879\u76EE\u7B14\u8BB0", itemType: "markdown", title: "\u5BA2\u6237\u5EF6\u671F\u56DE\u590D", summary: "\u5173\u4E8E\u4EA4\u4ED8\u5EF6\u671F\u7684\u8BF4\u660E", status: "candidate" },
         { key: "candidate-2", sourceDocId: "20240101120001-hijklmn", sourceBlockId: "20240101120003-ccccccc", sourcePath: "/\u9879\u76EE\u7B14\u8BB0", itemType: "text", title: "\u6536\u4EF6\u5730\u5740", summary: "\u90AE\u5BC4\u5730\u5740\u6A21\u677F", status: "same-content", match: { itemId: "xlc-existing0001", title: "\u5DF2\u6709\u6536\u4EF6\u5730\u5740" } }
       ];
+      const makeView = (scope, stopped = false) => ({ id: sessionId, scope, sourceDocId: "20240101120001-hijklmn", sourcePath: "/\u9879\u76EE\u7B14\u8BB0", candidates: candidates.map((candidate) => ({ ...candidate })), scannedBlocks: 4, scannedDocs: 1, scannedNotebooks: scope === "all-notebooks" ? 2 : 1, skippedEmpty: 1, skippedLong: 0, truncated: stopped, stopped, truncationReasons: stopped ? ["cancelled"] : [], errors: [] });
       const service = {
-        discoverCurrentDocument: async () => ({ ok: true, data: { id: sessionId, sourceDocId: "20240101120001-hijklmn", sourcePath: "/\u9879\u76EE\u7B14\u8BB0", candidates: candidates.map((candidate) => ({ ...candidate })), scannedBlocks: 4, skippedEmpty: 1, truncated: false } }),
+        discoverCurrentDocument: async () => ({ ok: true, data: makeView("document") }),
+        discoverCurrentNotebook: async (_docId, options) => {
+          var _a, _b;
+          stopRequested = false;
+          (_a = options == null ? void 0 : options.onProgress) == null ? void 0 : _a.call(options, { phase: "enumerating", scannedDocs: 0, scannedBlocks: 0, discoveredDocs: 3 });
+          (_b = options == null ? void 0 : options.onProgress) == null ? void 0 : _b.call(options, { phase: "scanning", scannedDocs: 1, scannedBlocks: 4, discoveredDocs: 3, totalDocs: 3 });
+          await new Promise((resolve) => setTimeout(resolve, 80));
+          return { ok: true, data: { ...makeView("notebook", stopRequested), scannedBlocks: 12, scannedDocs: 3, skippedEmpty: 2 } };
+        },
+        discoverTree: async () => {
+          document.body.dataset.xlcDiscoveryScopeUsed = "tree";
+          return { ok: true, data: makeView("tree") };
+        },
+        discoverNotebook: async () => {
+          document.body.dataset.xlcDiscoveryScopeUsed = "selected-notebook";
+          return { ok: true, data: makeView("notebook") };
+        },
+        discoverAllNotebooks: async (options) => {
+          document.body.dataset.xlcDiscoveryScopeUsed = (options == null ? void 0 : options.confirmed) ? "all-confirmed" : "all-unconfirmed";
+          return (options == null ? void 0 : options.confirmed) ? { ok: true, data: makeView("all-notebooks") } : { ok: false, reason: "invalid-input", message: "confirmation required" };
+        },
         previewCandidate: async (_id, key) => {
           var _a;
           const candidate = (_a = candidates.find((item) => item.key === key)) != null ? _a : candidates[0];
           return { ok: true, data: { candidate: { ...candidate }, markdown: key === "candidate-2" ? "\u6536\u4EF6\u4EBA\uFF1A{{xlc:ask:\u6536\u4EF6\u4EBA}}\n\u5730\u5740\uFF1A{{xlc:ask:\u5730\u5740|textarea}}" : "\u60A8\u597D\uFF0C\u5173\u4E8E\u672C\u671F\u4EA4\u4ED8\u5EF6\u671F\uFF0C\u6211\u4EEC\u6DF1\u8868\u6B49\u610F\u3002", contentComparisonComplete: true } };
         },
         addCandidate: async (_id, key, options) => {
-          var _a;
+          var _a, _b;
           const candidate = (_a = candidates.find((item) => item.key === key)) != null ? _a : candidates[0];
           if (candidate.status === "same-content" && !(options == null ? void 0 : options.allowSameContent)) {
             return { ok: true, data: { status: "same-content", itemId: "xlc-existing0001", title: "\u5DF2\u6709\u6536\u4EF6\u5730\u5740" } };
           }
-          return { ok: true, data: { status: "added", item: { id: "xlc-discovered0001", title: candidate.title } } };
+          await new Promise((resolve) => setTimeout(resolve, 120));
+          const id = key === "candidate-2" ? "xlc-discovered0002" : "xlc-discovered0001";
+          return { ok: true, data: { status: "added", item: { id, title: candidate.title }, batchId: (_b = options == null ? void 0 : options.batchId) != null ? _b : "batch-harness" } };
+        },
+        beginAddBatch: () => ({ ok: true, data: { batchId: "batch-harness" } }),
+        finishAddBatch: (_id, batchId) => ({ ok: true, data: { batchId, added: 2, discarded: false } }),
+        undoBatch: async (_id, batchId) => {
+          await new Promise((resolve) => setTimeout(resolve, 120));
+          return { ok: true, data: {
+            batchId,
+            deleted: 1,
+            alreadyUndone: false,
+            deletedItems: [{ itemId: "xlc-discovered0001", title: "\u5BA2\u6237\u5EF6\u671F\u56DE\u590D" }],
+            skipped: [{ itemId: "xlc-discovered0002", title: "\u6536\u4EF6\u5730\u5740", reason: "not-found" }],
+            failed: []
+          } };
         },
         closeSession: () => {
+          document.body.dataset.xlcDiscoverySessionClosed = "true";
+          if (document.body.dataset.xlcDiscoveryCloseConflict === "true") {
+            return { ok: false, reason: "conflict", message: "write pending" };
+          }
+          return { ok: true, data: { closed: true, activeWrites: 0 } };
+        },
+        requestScanStop: () => {
+          stopRequested = true;
+          return true;
         }
       };
-      openDiscoveryDialog({
+      discoveryController = openDiscoveryDialog({
         t: T,
         service,
         notify: (_kind, message) => {
           document.body.dataset.xlcDiscoveryNotice = message;
-        }
+        },
+        listNotebooks: async () => [{ id: "20240101", name: "\u7B14\u8BB0\u672C\u4E00" }, { id: "20240102", name: "\u7B14\u8BB0\u672C\u4E8C" }],
+        searchDocs: async (keyword) => keyword ? [{ id: "20240101120001-hijklmn", hPath: "/\u9879\u76EE\u7B14\u8BB0", box: "20240101", name: "\u9879\u76EE\u7B14\u8BB0" }] : []
       }, { docId: "20240101120001-hijklmn", sourcePath: "/\u9879\u76EE\u7B14\u8BB0" });
+    },
+    closeDiscovery() {
+      if ((discoveryController == null ? void 0 : discoveryController.close()) !== false) discoveryController = null;
     }
   };
 })();

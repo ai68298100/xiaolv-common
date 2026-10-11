@@ -4,6 +4,7 @@ import {CommonSearchDialog} from "../../src/ui/dialog";
 import {openImportPolicyDialog, openSettingsDialog, openSetupDialog, type SettingsUiContext} from "../../src/ui/settings-dialog";
 import {CaptureDialog} from "../../src/ui/capture";
 import {openDiscoveryDialog} from "../../src/ui/discovery-dialog";
+import type {DiscoveryDialogController} from "../../src/ui/discovery-dialog";
 import type {SearchEntry} from "../../src/model/search";
 import type {TransformKind} from "../../src/service/ai";
 
@@ -23,9 +24,56 @@ const PREVIEWS: Record<string, string> = {
     "xlc-demo0000005": "https://wiki.example.com/sla",
 };
 
+let discoveryController: DiscoveryDialogController | null = null;
+
 const T = (key: string, ...args: string[]): string => {
     const map: Record<string, string> = {
         pluginName: "小驴常用（内测版）",
+        discoveryTitle: "从当前文档发现", discoveryTitleNotebook: "从当前笔记本发现", discoveryTitleGeneral: "发现已有内容",
+        discoveryScope: "扫描范围", discoveryScopeDocument: "当前文档", discoveryScopeNotebook: "当前笔记本",
+        discoveryScopeTree: "指定文档树", discoveryScopeSelectedNotebook: "指定笔记本", discoveryScopeAllNotebooks: "全部笔记本（高级）",
+        discoveryScopeTreeHint: "扫描所选根文档及其下级文档顶层块；加入内容只复制到专用库。",
+        discoveryScopeSelectedNotebookHint: "扫描所选笔记本的文档顶层块；加入内容只复制到专用库。",
+        discoverySelectTree: "输入关键词查找文档树根文档", discoverySelectNotebook: "选择要扫描的笔记本", discoverySearch: "搜索",
+        discoveryAllWarning: "上限：%s 个笔记本、%s 篇文档、%s 层目录、%s 个块、%s 个候选、单块 %s 字符、候选文本累计 %s 字符、%s 秒。文档和块按顺序读取；路径查询与重复核验最多 4 路并发。只读扫描，不会自动收录。",
+        discoveryConfirmAll: "我确认开始扫描所有可搜索笔记本", discoveryTargetRequired: "请先选择扫描范围",
+        discoverySearchFailed: "文档搜索失败：%s", discoveryNotebookLoadFailed: "笔记本列表加载失败：%s",
+        discoveryErrors: "扫描或内容库重复核验失败 %s 处，已保留其他结果", discoverySkippedLong: "跳过超长块 %s 个",
+        discoveryLimitScope: "范围/深度上限", discoveryLimitNotebooks: "笔记本数上限", discoveryLimitDocuments: "文档数上限",
+        discoveryLimitBlocks: "块数上限", discoveryLimitCandidates: "候选数上限", discoveryLimitCharacters: "文本字符上限", discoveryLimitTime: "扫描时间上限",
+        discoveryResultsPage: "第 %s / %s 页", discoveryPreviousPage: "上一页", discoveryNextPage: "下一页",
+        discoveryRescanKeepsUndo: "请先撤销或关闭本批次，再重新扫描。", discoveryCloseKeepsUndo: "关闭会丢失撤销入口；仍要关闭吗？",
+        discoveryScopeHintDocument: "只读取当前文档的顶层块；收录前可预览，原文不会被修改。",
+        discoveryScopeHintNotebook: "扫描当前文档所属笔记本的文档顶层块；候选显示各自来源，收录只复制到专用库。",
+        discoveryNotebookUnavailable: "当前版本暂不支持笔记本范围发现",
+        discoveryScanningDocument: "正在扫描当前文档…", discoveryScanningNotebook: "正在扫描当前笔记本…",
+        discoveryScanningTree: "正在扫描所选文档树…", discoveryScanningSelectedNotebook: "正在扫描所选笔记本…",
+        discoveryScanningAllNotebooks: "正在扫描全部笔记本…",
+        discoveryCancelPending: "已请求停止；当前已发出的内核请求结束后不再启动后续请求，并保留已完成部分供你选择收录。",
+        discoveryStopping: "正在等待已发出的内核请求结束…", discoveryStopped: "已停止扫描，保留 %s 条候选；没有自动收录，待确认重复状态的候选会在收录前复查。",
+        discoveryStoppedNoResults: "已停止。专用库边界尚未核实，因此没有继续扫描或保留候选；可以重新开始。",
+        discoveryNotebookProgress: "扫描文档 %s / %s，已读取 %s 个块…",
+        discoveryNotebookEnumerating: "正在查找文档，已发现 %s 个…",
+        discoveryUndoBatch: "撤销本批新增", discoveryUndoing: "正在安全检查并撤销…",
+        discoveryUndoReceiptTitle: "撤销回执", discoveryUndoDone: "已撤销新增 %s 条；已跳过 %s 条，失败 %s 条。重新扫描可刷新候选状态。",
+        discoveryUndoAlreadyDone: "这批新增已撤销。重新扫描可刷新候选状态。",
+        discoveryUndoSkipNotFound: "条目已删除", discoveryUndoSkipIdentityChanged: "条目身份或内容库范围已变化",
+        discoveryUndoSkipEdited: "条目已被编辑", discoveryUndoSkipLibraryUnverified: "内容库索引不完整，无法安全核对",
+        discoveryUndoDeleteFailed: "删除失败：%s",
+        discoveryScanned: "已扫描 %s 个块，发现 %s 个候选", discoveryScannedDocs: "扫描文档 %s 个", discoveryScannedNotebooks: "至少有一次目录读取成功的笔记本 %s 个", discoverySkipped: "跳过空块 %s 个",
+        discoveryTruncated: "已达到扫描上限，结果可能不完整", discoveryCancelScan: "停止扫描", discoveryRetry: "重新扫描",
+        discoveryFilter: "筛选", discoveryFilterAll: "全部状态", discoveryFilterCandidate: "待收录", discoveryFilterUnverified: "重复待确认",
+        discoveryFilterSameContent: "内容相同", discoveryFilterAlready: "已在库中", discoveryFilterAdded: "已收录", discoveryTypeAll: "全部类型",
+        discoverySearchPlaceholder: "筛选标题、摘要或来源", discoveryNoCandidates: "没有符合条件的候选", discoveryPreviewTitle: "候选预览",
+        discoveryPreviewEmpty: "选择左侧候选后查看正文；收录前会再次校验来源。", discoveryPreviewLoading: "正在读取候选正文…",
+        discoveryAdd: "加入常用库", discoveryAddSelected: "加入选中项", discoveryForceSameContent: "允许收录内容相同的候选",
+        discoverySelected: "已选 %s 项", discoveryClose: "关闭", discoveryReceiptTitle: "收录回执",
+        discoveryClosePendingWrites: "有收录正在写入内容库。请等待收录回执，必要时先撤销本批新增，再关闭此窗口。",
+        discoveryReceiptAdded: "已复制到常用库：%s；原笔记未修改，之后不会自动同步。", discoveryReceiptSameContent: "内容与「%s」相同，未自动收录；如仍要收录，请明确确认。",
+        discoveryReceiptAlready: "已在常用库中：%s", discoveryReceiptFailed: "收录失败：%s", discoveryReceiptBatch: "批量收录完成：新增 %s，跳过 %s，失败 %s",
+        discoverySessionExpired: "发现会话已失效，候选正文已释放，请重新扫描。", discoveryScanFailed: "扫描失败：%s", discoveryUnknown: "未知错误",
+        discoveryStatusCandidate: "待收录", discoveryStatusAlready: "已在库中", discoveryStatusSameContent: "内容相同", discoveryStatusUnverified: "重复待确认", discoveryStatusAdded: "已收录",
+        discoveryType: "类型", discoverySource: "来源", discoveryStats: "统计", discoveryNotConfigured: "尚未配置常用内容库，无法收录候选。",
         searchPlaceholder: "搜索标题、别名、标签、分类和正文摘要", searchHint: "输入 ? 加描述，按含义搜索（需在本插件设置中启用 AI）",
         type: "类型", tags: "标签", tagsHint: "逗号分隔", title: "标题", alias: "别名", category: "分类", contentLabel: "内容（Markdown）", filterAll: "全部类型", filterAllType: "类型：全部", filterAllTags: "标签：全部", filterAllCategories: "分类：全部",
         "type.text": "纯文本", "type.markdown": "Markdown", "type.url": "网址", "type.code": "代码", "type.image": "图片", "type.asset": "附件", "type.blockref": "块引用", "type.structure": "块结构", filterFavorites: "只看收藏", filterRecent: "最近使用",
@@ -388,29 +436,73 @@ function makeDeps(overrides: {aiEnabled?: boolean; missing?: boolean; mobile?: b
     },
     openDiscovery(): void {
         let sessionId = "discovery-harness";
+        let stopRequested = false;
         const candidates = [
             {key: "candidate-1", sourceDocId: "20240101120001-hijklmn", sourceBlockId: "20240101120002-bbbbbbb", sourcePath: "/项目笔记", itemType: "markdown", title: "客户延期回复", summary: "关于交付延期的说明", status: "candidate"},
             {key: "candidate-2", sourceDocId: "20240101120001-hijklmn", sourceBlockId: "20240101120003-ccccccc", sourcePath: "/项目笔记", itemType: "text", title: "收件地址", summary: "邮寄地址模板", status: "same-content", match: {itemId: "xlc-existing0001", title: "已有收件地址"}},
         ];
+        const makeView = (scope: "document" | "notebook" | "tree" | "all-notebooks", stopped = false) => ({id: sessionId, scope, sourceDocId: "20240101120001-hijklmn", sourcePath: "/项目笔记", candidates: candidates.map((candidate) => ({...candidate})), scannedBlocks: 4, scannedDocs: 1, scannedNotebooks: scope === "all-notebooks" ? 2 : 1, skippedEmpty: 1, skippedLong: 0, truncated: stopped, stopped, truncationReasons: stopped ? ["cancelled"] : [], errors: []});
         const service = {
-            discoverCurrentDocument: async () => ({ok: true as const, data: {id: sessionId, sourceDocId: "20240101120001-hijklmn", sourcePath: "/项目笔记", candidates: candidates.map((candidate) => ({...candidate})), scannedBlocks: 4, skippedEmpty: 1, truncated: false}}),
+            discoverCurrentDocument: async () => ({ok: true as const, data: makeView("document")}),
+            discoverCurrentNotebook: async (_docId: string, options?: {onProgress?: (progress: {phase: "enumerating" | "scanning"; scannedDocs: number; scannedBlocks: number; discoveredDocs: number; totalDocs?: number}) => void}) => {
+                stopRequested = false;
+                options?.onProgress?.({phase: "enumerating", scannedDocs: 0, scannedBlocks: 0, discoveredDocs: 3});
+                options?.onProgress?.({phase: "scanning", scannedDocs: 1, scannedBlocks: 4, discoveredDocs: 3, totalDocs: 3});
+                await new Promise((resolve) => setTimeout(resolve, 80));
+                return {ok: true as const, data: {...makeView("notebook", stopRequested), scannedBlocks: 12, scannedDocs: 3, skippedEmpty: 2}};
+            },
+            discoverTree: async () => { document.body.dataset.xlcDiscoveryScopeUsed = "tree"; return {ok: true as const, data: makeView("tree")}; },
+            discoverNotebook: async () => { document.body.dataset.xlcDiscoveryScopeUsed = "selected-notebook"; return {ok: true as const, data: makeView("notebook")}; },
+            discoverAllNotebooks: async (options?: {confirmed?: boolean}) => {
+                document.body.dataset.xlcDiscoveryScopeUsed = options?.confirmed ? "all-confirmed" : "all-unconfirmed";
+                return options?.confirmed
+                    ? ({ok: true as const, data: makeView("all-notebooks")})
+                    : ({ok: false as const, reason: "invalid-input" as const, message: "confirmation required"});
+            },
             previewCandidate: async (_id: string, key: string) => {
                 const candidate = candidates.find((item) => item.key === key) ?? candidates[0];
                 return {ok: true as const, data: {candidate: {...candidate}, markdown: key === "candidate-2" ? "收件人：{{xlc:ask:收件人}}\n地址：{{xlc:ask:地址|textarea}}" : "您好，关于本期交付延期，我们深表歉意。", contentComparisonComplete: true}};
             },
-            addCandidate: async (_id: string, key: string, options?: {allowSameContent?: boolean}) => {
+            addCandidate: async (_id: string, key: string, options?: {allowSameContent?: boolean; batchId?: string}) => {
                 const candidate = candidates.find((item) => item.key === key) ?? candidates[0];
                 if (candidate.status === "same-content" && !options?.allowSameContent) {
                     return {ok: true as const, data: {status: "same-content" as const, itemId: "xlc-existing0001", title: "已有收件地址"}};
                 }
-                return {ok: true as const, data: {status: "added" as const, item: {id: "xlc-discovered0001", title: candidate.title} as never}};
+                await new Promise((resolve) => setTimeout(resolve, 120));
+                const id = key === "candidate-2" ? "xlc-discovered0002" : "xlc-discovered0001";
+                return {ok: true as const, data: {status: "added" as const, item: {id, title: candidate.title} as never, batchId: options?.batchId ?? "batch-harness"}};
             },
-            closeSession: () => {},
+            beginAddBatch: () => ({ok: true as const, data: {batchId: "batch-harness"}}),
+            finishAddBatch: (_id: string, batchId: string) => ({ok: true as const, data: {batchId, added: 2, discarded: false}}),
+            undoBatch: async (_id: string, batchId: string) => {
+                await new Promise((resolve) => setTimeout(resolve, 120));
+                return {ok: true as const, data: {
+                    batchId,
+                    deleted: 1,
+                    alreadyUndone: false,
+                    deletedItems: [{itemId: "xlc-discovered0001", title: "客户延期回复"}],
+                    skipped: [{itemId: "xlc-discovered0002", title: "收件地址", reason: "not-found" as const}],
+                    failed: [],
+                }};
+            },
+            closeSession: () => {
+                document.body.dataset.xlcDiscoverySessionClosed = "true";
+                if (document.body.dataset.xlcDiscoveryCloseConflict === "true") {
+                    return {ok: false as const, reason: "conflict" as const, message: "write pending"};
+                }
+                return {ok: true, data: {closed: true, activeWrites: 0}};
+            },
+            requestScanStop: () => { stopRequested = true; return true; },
         };
-        openDiscoveryDialog({
+        discoveryController = openDiscoveryDialog({
             t: T,
             service,
             notify: (_kind, message) => { document.body.dataset.xlcDiscoveryNotice = message; },
+            listNotebooks: async () => [{id: "20240101", name: "笔记本一"}, {id: "20240102", name: "笔记本二"}],
+            searchDocs: async (keyword) => keyword ? [{id: "20240101120001-hijklmn", hPath: "/项目笔记", box: "20240101", name: "项目笔记"}] : [],
         }, {docId: "20240101120001-hijklmn", sourcePath: "/项目笔记"});
+    },
+    closeDiscovery(): void {
+        if (discoveryController?.close() !== false) discoveryController = null;
     },
 };

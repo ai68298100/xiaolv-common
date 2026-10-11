@@ -5,7 +5,8 @@
 // 全程使用带前缀的临时文档，结束即清理（失败时也尽力清理，残留以 RESIDUE 提示）。
 "use strict";
 
-const ORIGIN = (process.env.SIYUAN_ORIGIN || "http://127.0.0.1:6806").replace(/\/$/, "");
+const {resolveLoopbackOrigin} = require("./e2e-origin.cjs");
+const ORIGIN = resolveLoopbackOrigin(process.env.SIYUAN_ORIGIN, "http://127.0.0.1:6806");
 const TOKEN = process.env.SIYUAN_TOKEN || "";
 const STAMP = new Date().toISOString().replace(/[-:T]/g, "").slice(0, 14);
 // 标题带纯 ASCII 唯一标记：searchDocs 对「中文+数字混合长串」分词不稳定（R136 实测），

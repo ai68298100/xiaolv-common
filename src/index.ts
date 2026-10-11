@@ -300,27 +300,48 @@ export default class XiaolvCommonPlugin extends Plugin {
             const itemId = (payload as {itemId?: string})?.itemId ?? "";
             return this.service.openSource(itemId);
         };
-        // 按需发现协议面：发现只读扫描当前文档，预览/收录由调用方显式推进。
+        // 按需发现协议面：提供当前文档/笔记本扫描、候选预览、收录与批次撤销。
         this.protocolCommands["xiaolv.common.discoverCurrentDocument"] = async () => this.discoverCurrentDocument();
+        this.protocolCommands["xiaolv.common.discoverCurrentNotebook"] = async () => this.discoverCurrentNotebook();
         this.protocolCommands["xiaolv.common.previewDiscoveryCandidate"] = async (payload) => {
             const value = payload as {sessionId?: string; candidateKey?: string} | undefined;
             return this.discovery.previewCandidate(value?.sessionId ?? "", value?.candidateKey ?? "");
         };
         this.protocolCommands["xiaolv.common.addDiscoveryCandidate"] = async (payload) => {
-            const value = payload as {sessionId?: string; candidateKey?: string; allowSameContent?: boolean} | undefined;
+            const value = payload as {sessionId?: string; candidateKey?: string; allowSameContent?: boolean; batchId?: string} | undefined;
             return this.discovery.addCandidate(value?.sessionId ?? "", value?.candidateKey ?? "", {
                 allowSameContent: value?.allowSameContent === true,
+                batchId: value?.batchId,
             });
         };
         this.protocolCommands["xiaolv.common.closeDiscoverySession"] = async (payload) => {
             const sessionId = (payload as {sessionId?: string} | undefined)?.sessionId;
-            this.discovery.closeSession(sessionId);
-            return {ok: true};
+            return this.discovery.closeSession(sessionId);
+        };
+        this.protocolCommands["xiaolv.common.beginDiscoveryBatch"] = async (payload) => {
+            const sessionId = (payload as {sessionId?: string} | undefined)?.sessionId ?? "";
+            return this.discovery.beginAddBatch(sessionId);
+        };
+        this.protocolCommands["xiaolv.common.finishDiscoveryBatch"] = async (payload) => {
+            const value = payload as {sessionId?: string; batchId?: string} | undefined;
+            return this.discovery.finishAddBatch(value?.sessionId ?? "", value?.batchId ?? "");
+        };
+        this.protocolCommands["xiaolv.common.undoDiscoveryBatch"] = async (payload) => {
+            const value = payload as {sessionId?: string; batchId?: string} | undefined;
+            return this.discovery.undoBatch(value?.sessionId ?? "", value?.batchId ?? "");
         };
     }
 
     /** 当前文档发现的统一入口，供命令面板、右键菜单和协议调用复用。 */
     private async discoverCurrentDocument(): Promise<DiscoveryReceipt<DiscoverySessionView>> {
+        return this.discoverForScope("document");
+    }
+
+    private async discoverCurrentNotebook(): Promise<DiscoveryReceipt<DiscoverySessionView>> {
+        return this.discoverForScope("notebook");
+    }
+
+    private async discoverForScope(scope: "document" | "notebook"): Promise<DiscoveryReceipt<DiscoverySessionView>> {
         const docId = this.host?.currentDocId();
         if (!docId) {
             const result: DiscoveryReceipt<DiscoverySessionView> = {
@@ -333,7 +354,16 @@ export default class XiaolvCommonPlugin extends Plugin {
         }
         let result: DiscoveryReceipt<DiscoverySessionView>;
         try {
-            result = await this.discovery.discoverCurrentDocument(docId);
+            if (scope === "notebook") {
+                const discoverNotebook = (this.discovery as DiscoveryService & {
+                    discoverCurrentNotebook?: (currentDocId: string) => Promise<DiscoveryReceipt<DiscoverySessionView>>;
+                }).discoverCurrentNotebook;
+                result = discoverNotebook
+                    ? await discoverNotebook.call(this.discovery, docId)
+                    : {ok: false, reason: "invalid-input", message: this.i18nFn()("discoveryNotebookUnavailable")};
+            } else {
+                result = await this.discovery.discoverCurrentDocument(docId);
+            }
         } catch (error) {
             const message = error instanceof Error ? error.message : String(error);
             result = {ok: false, reason: "kernel-error", message};
@@ -343,14 +373,17 @@ export default class XiaolvCommonPlugin extends Plugin {
             return result;
         }
         const count = result.data.candidates.length;
+        const scannedDocs = (result.data as DiscoverySessionView & {scannedDocs?: number}).scannedDocs;
         this.notify("info", count > 0
-            ? this.i18nFn()("discoveryFound", String(count))
-            : this.i18nFn()("discoveryEmpty"));
+            ? scope === "notebook"
+                ? this.i18nFn()("discoveryFoundNotebook", String(scannedDocs ?? 0), String(count))
+                : this.i18nFn()("discoveryFound", String(count))
+            : this.i18nFn()(scope === "notebook" ? "discoveryEmptyNotebook" : "discoveryEmpty"));
         return result;
     }
 
-    /** 用户入口：打开当前文档发现面板。扫描和候选状态由临时会话管理。 */
-    private openDiscoveryForCurrentDocument(): void {
+    /** 用户入口：打开指定范围的发现面板。扫描和候选状态由临时会话管理。 */
+    private openDiscoveryForCurrentDocument(scope: "document" | "notebook" = "document"): void {
         if (!this.sidecarReady) {
             this.notify("info", this.i18nFn()("sidecarLoading"));
             return;
@@ -364,29 +397,42 @@ export default class XiaolvCommonPlugin extends Plugin {
             this.notify("error", this.i18nFn()("discoveryNoDocument"));
             return;
         }
+        if (scope === "notebook" && !(this.discovery as DiscoveryService & {discoverCurrentNotebook?: unknown}).discoverCurrentNotebook) {
+            this.notify("info", this.i18nFn()("discoveryNotebookUnavailable"));
+            return;
+        }
         void this.library.getDocPath(docId).then((sourcePath) => {
             if (this.unloading) return;
-            this.discoveryDialog?.close();
-            this.discoveryDialog = openDiscoveryDialog({
-                t: this.i18nFn(),
-                service: this.discovery,
-                notify: this.notify,
-                onAdded: () => {
-                    this.searchDialog?.refreshAfterExternalChange();
-                },
-            }, {docId, sourcePath});
+            this.showDiscoveryDialog(docId, scope, sourcePath);
         }).catch(() => {
             if (this.unloading) return;
-            this.discoveryDialog?.close();
-            this.discoveryDialog = openDiscoveryDialog({
-                t: this.i18nFn(),
-                service: this.discovery,
-                notify: this.notify,
-                onAdded: () => {
-                    this.searchDialog?.refreshAfterExternalChange();
-                },
-            }, {docId});
+            this.showDiscoveryDialog(docId, scope);
         });
+    }
+
+    private showDiscoveryDialog(docId: string, scope: "document" | "notebook", sourcePath?: string): void {
+        if (this.discoveryDialog) {
+            if (!this.discoveryDialog.close()) return;
+            this.discoveryDialog = null;
+        }
+        this.discoveryDialog = openDiscoveryDialog({
+            t: this.i18nFn(),
+            service: this.discovery,
+            notify: this.notify,
+            listNotebooks: async () => {
+                const result = await this.library.listNotebooks();
+                if (!result.ok) throw new Error(result.message);
+                return result.data;
+            },
+            searchDocs: async (keyword) => {
+                const result = await this.library.searchDocs(keyword);
+                if (!result.ok) throw new Error(result.message);
+                return result.data;
+            },
+            onAdded: () => {
+                this.searchDialog?.refreshAfterExternalChange();
+            },
+        }, {docId, sourcePath, scope});
     }
 
     private discoveryFailureText(result: Extract<DiscoveryReceipt<unknown>, {ok: false}>): string {
@@ -563,6 +609,10 @@ export default class XiaolvCommonPlugin extends Plugin {
             langKey: "discoverCurrentDocument",
             callback: () => this.openDiscoveryForCurrentDocument(),
         });
+        this.addCommand({
+            langKey: "discoverCurrentNotebook",
+            callback: () => this.openDiscoveryForCurrentDocument("notebook"),
+        });
         void t;
     }
 
@@ -641,6 +691,11 @@ export default class XiaolvCommonPlugin extends Plugin {
                     icon: "iconXlcCommon",
                     label: this.i18nFn()("discoverCurrentDocument"),
                     click: () => this.openDiscoveryForCurrentDocument(),
+                });
+                menu.addItem({
+                    icon: "iconXlcCommon",
+                    label: this.i18nFn()("discoverCurrentNotebook"),
+                    click: () => this.openDiscoveryForCurrentDocument("notebook"),
                 });
             };
             this.eventBus.on("open-menu-content", this.menuHandler);
@@ -1511,8 +1566,11 @@ export default class XiaolvCommonPlugin extends Plugin {
             : (result.message ?? "rejected"));
     }
 
-    onunload(): void {
+    async onunload(): Promise<void> {
+        const unloadStartedAt = Date.now();
+        const discoveryWaitBudgetMs = 4000;
         this.unloading = true;
+        const discoveryShutdown = this.discovery?.shutdown(discoveryWaitBudgetMs);
         // 对外窗口桥先行注销（兄弟插件在桥消失后应得到 unsupported，而非悬挂调用）
         try {
             this.bridgeDisposer?.();
@@ -1520,9 +1578,8 @@ export default class XiaolvCommonPlugin extends Plugin {
             // 宿主 window 已销毁：忽略
         }
         this.bridgeDisposer = null;
-        this.discoveryDialog?.close();
+        this.discoveryDialog?.close(true);
         this.discoveryDialog = null;
-        this.discovery?.closeSession();
         // 事件总线/监听全部随 dialog destroy 释放；侧车已节流持久化
         if (this.menuHandler) {
             try {
@@ -1561,6 +1618,35 @@ export default class XiaolvCommonPlugin extends Plugin {
         this.searchDialog?.destroy();
         if (this.saveTimer) clearTimeout(this.saveTimer);
         this.persistSidecar(STORAGE_KEYS.state, this.state, false);
+        if (discoveryShutdown) {
+            let timer: ReturnType<typeof setTimeout> | undefined;
+            const remainingMs = Math.max(0, discoveryWaitBudgetMs - (Date.now() - unloadStartedAt));
+            const timedOut = Symbol("discovery-shutdown-timeout");
+            const result = await Promise.race([
+                discoveryShutdown,
+                new Promise<typeof timedOut>((resolve) => {
+                    timer = setTimeout(() => resolve(timedOut), remainingMs);
+                }),
+            ]);
+            if (timer !== undefined) clearTimeout(timer);
+            if (result === timedOut) {
+                console.warn("[小驴常用] 卸载等待发现收录清理超过 4 秒，当前条目清理结果尚未确认；思源可能继续拆除插件资源");
+                void discoveryShutdown.then((lateResult) => {
+                    if (lateResult.compensatedItemIds.length) {
+                        console.info("[小驴常用] 卸载等待超时后，发现收录条件清理已完成", lateResult.compensatedItemIds);
+                    }
+                    for (const item of lateResult.unresolved) {
+                        console.warn("[小驴常用] 卸载等待超时后仍无法确认发现收录状态", item);
+                    }
+                }).catch((error) => {
+                    console.warn("[小驴常用] 卸载等待超时后发现收录清理仍未完成", error);
+                });
+            } else {
+                for (const item of result.unresolved) {
+                    console.warn("[小驴常用] 发现收录在插件卸载期间未能安全确认", item);
+                }
+            }
+        }
     }
 
     uninstall(): Promise<void> {

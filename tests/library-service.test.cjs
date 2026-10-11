@@ -167,12 +167,202 @@ test("reindex 强制重建（缓存可丢弃）", async () => {
     assert.ok(kernel.calls.filter((c) => c.endpoint === "getChildBlocks").length > first);
 });
 
+test("reindex 收到停止信号后等待当前请求并跳过后续索引请求", async () => {
+    let releaseRead;
+    let readStarted;
+    const readGate = new Promise((resolve) => { releaseRead = resolve; });
+    const started = new Promise((resolve) => { readStarted = resolve; });
+    let shouldStop = false;
+    const {kernel, service} = makeService({
+        getChildBlocks: async () => {
+            readStarted();
+            await readGate;
+            return [{id: B1, type: "p"}];
+        },
+    });
+    const rebuilding = service.reindex({shouldStop: () => shouldStop});
+    await started;
+    shouldStop = true;
+    releaseRead();
+    const index = await rebuilding;
+
+    assert.equal(index.stopped, true);
+    assert.equal(index.truncated, true);
+    assert.equal(index.entries.length, 0);
+    assert.deepEqual(kernel.calls.map(({endpoint}) => endpoint), ["getChildBlocks"]);
+    assert.equal(service.getIndex(), null);
+});
+
 test("无库配置时 CRUD 明确失败（不静默写错地方）", async () => {
     const kernel = makeKernel();
     const service = new LibraryService(kernel);
     const result = await service.createItem({itemType: "text", markdown: "x"});
     assert.equal(result.ok, false);
     assert.equal(result.reason, "invalid-input");
+});
+
+test("removeItemsIfUnchanged 仅删除仍匹配的批次副本，并现场复核属性与正文", async (t) => {
+    const itemId = "xlc-discovery0001";
+    const itemBlock = "20240101120005-eeeeeee";
+    const body = "批次正文";
+    const createCase = (overrides = {}) => {
+        let liveAttrs = {};
+        let liveBody = body;
+        let bodyReads = 0;
+        let failIndex = false;
+        let indexedBlock = itemBlock;
+        const {kernel, service} = makeService({
+            getChildBlocks: () => {
+                if (failIndex) throw new Error("tree unavailable");
+                return [{id: indexedBlock, type: "p"}];
+            },
+            batchGetBlockAttrs: () => ({[indexedBlock]: {...liveAttrs}}),
+            getBlockAttrs: () => ({...liveAttrs}),
+            getBlockKramdown: ({id}) => {
+                bodyReads++;
+                if (overrides.onBodyRead) overrides.onBodyRead({bodyReads, attrs: liveAttrs, setBody: (value) => { liveBody = value; }});
+                return {id, kramdown: liveBody};
+            },
+            appendBlock: () => [{doOperations: [{id: itemBlock}]}],
+            setBlockAttrs: ({attrs}) => { liveAttrs = {...attrs}; },
+            deleteBlock: () => null,
+            ...overrides.kernel,
+        });
+        return {
+            kernel,
+            service,
+            liveAttrs: () => liveAttrs,
+            setFailIndex: (value) => { failIndex = value; },
+            setIndexedBlock: (value) => { indexedBlock = value; },
+            async createSnapshot() {
+                const created = await service.createItem({
+                    itemType: "text",
+                    logicalId: itemId,
+                    markdown: body,
+                    title: "批次内容",
+                    source: {
+                        sourceDocId: "20240101120006-fffffff",
+                        sourceBlockId: "20240101120007-ggggggg",
+                        sourceType: "block",
+                    },
+                }, undefined, {batchToken: "discovery-batch-token-01"});
+                assert.equal(created.ok, true, created.ok ? "" : created.message);
+                return created.data.item;
+            },
+            batchToken: "discovery-batch-token-01",
+        };
+    };
+
+    await t.test("身份、属性和正文都未变时删除精确物理块", async () => {
+        const {kernel, service, createSnapshot, batchToken} = createCase();
+        const item = await createSnapshot();
+        const result = await service.removeItemsIfUnchanged(batchToken, [{item, markdown: body}]);
+        assert.equal(result.ok, true, result.ok ? "" : result.message);
+        assert.deepEqual(result.data, [{status: "deleted", itemId: item.id, blockId: itemBlock}]);
+        assert.equal(kernel.calls.filter((call) => call.endpoint === "getBlockKramdown").length, 3);
+        assert.deepEqual(kernel.calls.filter((call) => call.endpoint === "deleteBlock").map((call) => call.payload.id), [itemBlock]);
+    });
+
+    await t.test("忽略 getBlockKramdown 附带的本块 IAL 属性", async () => {
+        const {service, createSnapshot, batchToken} = createCase({kernel: {
+            getBlockKramdown: ({id}) => ({
+                id,
+                kramdown: `${body}\n{: id="${id}" custom-xlc-id="${itemId}"}`,
+            }),
+        }});
+        const item = await createSnapshot();
+        const result = await service.removeItemsIfUnchanged(batchToken, [{item, markdown: body}]);
+        assert.equal(result.ok, true, result.ok ? "" : result.message);
+        assert.deepEqual(result.data, [{status: "deleted", itemId: item.id, blockId: itemBlock}]);
+    });
+
+    await t.test("正文已编辑时跳过且不删除", async () => {
+        const {kernel, service, createSnapshot, batchToken} = createCase({kernel: {getBlockKramdown: ({id}) => ({id, kramdown: "后续编辑"})}});
+        const item = await createSnapshot();
+        const result = await service.removeItemsIfUnchanged(batchToken, [{item, markdown: body}]);
+        assert.equal(result.data[0].reason, "edited");
+        assert.equal(kernel.calls.some((call) => call.endpoint === "deleteBlock"), false);
+    });
+
+    await t.test("属性已编辑时跳过且不删除", async () => {
+        const {kernel, service, createSnapshot, batchToken, liveAttrs} = createCase();
+        const item = await createSnapshot();
+        liveAttrs()["custom-xlc-title"] = "用户修改过的标题";
+        const result = await service.removeItemsIfUnchanged(batchToken, [{item, markdown: body}]);
+        assert.equal(result.data[0].reason, "edited");
+        assert.equal(kernel.calls.some((call) => call.endpoint === "deleteBlock"), false);
+    });
+
+    await t.test("未知 custom-xlc 扩展属性变化时跳过且不删除", async () => {
+        const {kernel, service, createSnapshot, batchToken, liveAttrs} = createCase();
+        const item = await createSnapshot();
+        liveAttrs()["custom-xlc-future-field"] = "后来添加的扩展值";
+        const result = await service.removeItemsIfUnchanged(batchToken, [{item, markdown: body}]);
+        assert.equal(result.data[0].reason, "edited");
+        assert.equal(kernel.calls.some((call) => call.endpoint === "deleteBlock"), false);
+    });
+
+    await t.test("成功删除后消费授权，同一批次不能重放删除", async () => {
+        const {kernel, service, createSnapshot, batchToken} = createCase();
+        const item = await createSnapshot();
+        const first = await service.removeItemsIfUnchanged(batchToken, [{item, markdown: body}]);
+        assert.equal(first.ok, true);
+        assert.equal(first.data[0].status, "deleted");
+
+        const replay = await service.removeItemsIfUnchanged(batchToken, [{item, markdown: body}]);
+        assert.equal(replay.ok, false);
+        assert.equal(replay.reason, "invalid-input");
+        assert.equal(kernel.calls.filter((call) => call.endpoint === "deleteBlock").length, 1);
+    });
+
+    await t.test("读核验期间正文发生变化时跳过且不删除", async () => {
+        const {kernel, service, createSnapshot, batchToken} = createCase({
+            onBodyRead: ({bodyReads, setBody}) => { if (bodyReads === 3) setBody("并发编辑"); },
+        });
+        const item = await createSnapshot();
+        const result = await service.removeItemsIfUnchanged(batchToken, [{item, markdown: body}]);
+        assert.equal(result.data[0].reason, "edited");
+        assert.equal(kernel.calls.some((call) => call.endpoint === "deleteBlock"), false);
+    });
+
+    await t.test("逻辑 ID 与批次回执不一致时不删除", async () => {
+        const {kernel, service, createSnapshot, batchToken, liveAttrs} = createCase();
+        const item = await createSnapshot();
+        liveAttrs()["custom-xlc-id"] = "xlc-changeditem01";
+        const result = await service.removeItemsIfUnchanged(batchToken, [{item, markdown: body}]);
+        assert.equal(result.data[0].reason, "not-found");
+        assert.equal(kernel.calls.some((call) => call.endpoint === "deleteBlock"), false);
+    });
+
+    await t.test("同逻辑 ID 对应的物理块已变化时不删除", async () => {
+        const {kernel, service, createSnapshot, batchToken, setIndexedBlock} = createCase();
+        const item = await createSnapshot();
+        setIndexedBlock(B2);
+        const result = await service.removeItemsIfUnchanged(batchToken, [{item, markdown: body}]);
+        assert.equal(result.ok, true);
+        assert.equal(result.data[0].reason, "identity-changed");
+        assert.equal(kernel.calls.some((call) => call.endpoint === "deleteBlock"), false);
+    });
+
+    await t.test("非本批 createItem 返回的对象无法伪造批次授权", async () => {
+        const {kernel, service, createSnapshot, batchToken} = createCase();
+        await createSnapshot();
+        const existing = (await service.reindex()).items.get(itemId);
+        const result = await service.removeItemsIfUnchanged(batchToken, [{item: existing, markdown: body}]);
+        assert.equal(result.ok, false);
+        assert.equal(result.reason, "invalid-input");
+        assert.equal(kernel.calls.some((call) => call.endpoint === "deleteBlock"), false);
+    });
+
+    await t.test("索引不完整时全部跳过", async () => {
+        const {kernel, service, createSnapshot, batchToken, setFailIndex} = createCase();
+        const item = await createSnapshot();
+        setFailIndex(true);
+        const result = await service.removeItemsIfUnchanged(batchToken, [{item, markdown: body}]);
+        assert.equal(result.ok, true);
+        assert.equal(result.data[0].reason, "library-unverified");
+        assert.equal(kernel.calls.some((call) => call.endpoint === "deleteBlock"), false);
+    });
 });
 
 test("notebook 模式：从笔记本根解析首个文档作为写入落点", async () => {

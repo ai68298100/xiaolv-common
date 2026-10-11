@@ -13,6 +13,7 @@ class StubDialog {
         root.style.zIndex = "100";
         const container = document.createElement("div");
         container.className = "b3-dialog__container";
+        container.dataset.disableClose = String(this.options.disableClose === true);
         if (this.options.width) container.style.width = this.options.width;
         if (this.options.height) container.style.height = this.options.height;
         container.style.margin = "40px auto";

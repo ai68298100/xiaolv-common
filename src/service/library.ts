@@ -1,6 +1,6 @@
 // 内容库服务：库配置、有界索引构建（getChildBlocks 有序遍历，无 SQL）、条目 CRUD、失效检测。
 // 所有写操作返回回执；失败不产生部分写入（先读后写、逐项确认）。
-import {ATTR, LIMITS} from "../constants";
+import {ATTR, ATTR_PREFIX, LIMITS} from "../constants";
 import {
     IKernelClient,
     parseAttrs,
@@ -17,6 +17,7 @@ import {
     ISourceRef,
     ItemType,
     isBlockId,
+    isLogicalId,
     isSafeHttpUrl,
     isSourceType,
     newLogicalId,
@@ -24,6 +25,7 @@ import {
 } from "../model/item";
 import {LibraryConfig} from "../model/storage";
 import {SearchEntry} from "../model/search";
+import {normalizeKramdownIal} from "../model/kramdown";
 import {getPinyinAdapter} from "../model/pinyin";
 import {countAskFields, SNIPPET_PATTERN} from "../model/variables";
 
@@ -32,10 +34,17 @@ export interface IndexBuildResult {
     /** 逻辑 ID → 条目完整视图（含 blockId 等执行所需字段） */
     items: Map<string, CommonItem>;
     truncated: boolean;
+    /** true when an optional cooperative stop interrupted index construction */
+    stopped?: boolean;
     docsScanned: number;
     errors: string[];
     /** 构建时间（新鲜度判定用；可丢弃缓存语义的一部分） */
     builtAt: number;
+}
+
+export interface IndexBuildOptions {
+    /** Checked between kernel requests; in-flight requests are allowed to finish. */
+    shouldStop?: () => boolean;
 }
 
 export type ReceiptReason = "kernel-error" | "timeout" | "invalid-input" | "not-found" | "conflict";
@@ -44,12 +53,55 @@ export type Receipt<T = undefined> =
     | {ok: true; data: T}
     | {ok: false; reason: ReceiptReason; message: string};
 
+export interface ConditionalDeleteInput {
+    item: CommonItem;
+    markdown: string;
+}
+
+export type ConditionalDeleteOutcome =
+    | {status: "deleted"; itemId: string; blockId: string}
+    | {status: "skipped"; itemId: string; blockId: string; reason: "not-found" | "identity-changed" | "edited" | "library-unverified"}
+    | {status: "failed"; itemId: string; blockId: string; message: string};
+
 function fail<T>(reason: ReceiptReason, message: string): Receipt<T> {
     return {ok: false, reason, message};
 }
 
 function ok<T>(data: T): Receipt<T> {
     return {ok: true, data};
+}
+
+function sameManagedItem(actual: CommonItem, expected: CommonItem): boolean {
+    return actual.id === expected.id
+        && actual.blockId === expected.blockId
+        && actual.libraryDocId === expected.libraryDocId
+        && actual.itemType === expected.itemType
+        && actual.title === expected.title
+        && actual.alias === expected.alias
+        && actual.tags.length === expected.tags.length
+        && actual.tags.every((tag, index) => tag === expected.tags[index])
+        && actual.category === expected.category
+        && actual.varCount === expected.varCount
+        && actual.source.sourceDocId === expected.source.sourceDocId
+        && actual.source.sourceBlockId === expected.source.sourceBlockId
+        && actual.source.sourceType === expected.source.sourceType
+        && actual.url === expected.url
+        && actual.targetBlockId === expected.targetBlockId
+        && actual.createdAt === expected.createdAt
+        && actual.updatedAt === expected.updatedAt
+        && actual.droppedFields.length === expected.droppedFields.length
+        && actual.droppedFields.every((field, index) => field === expected.droppedFields[index]);
+}
+
+function normalizeConditionalMarkdown(markdown: string): string {
+    return normalizeKramdownIal(markdown);
+}
+
+function sameCustomAttrs(actual: Record<string, string>, expected: Record<string, string>): boolean {
+    const actualKeys = Object.keys(actual).filter((key) => key.startsWith(ATTR_PREFIX)).sort();
+    const expectedKeys = Object.keys(expected).filter((key) => key.startsWith(ATTR_PREFIX)).sort();
+    return actualKeys.length === expectedKeys.length
+        && actualKeys.every((key, index) => key === expectedKeys[index] && actual[key] === expected[key]);
 }
 
 function toFailureReceipt(err: unknown): Receipt<never> {
@@ -107,6 +159,12 @@ export class LibraryService {
     private config: LibraryConfig | null = null;
     private index: IndexBuildResult | null = null;
     private readonly options: LibraryServiceOptions;
+    private readonly conditionalDeleteGrants = new WeakMap<CommonItem, {
+        batchToken: string;
+        item: CommonItem;
+        attrs: Record<string, string>;
+        markdown: string;
+    }>();
 
     constructor(private readonly kernel: IKernelClient, options: LibraryServiceOptions = {}) {
         this.options = options;
@@ -161,9 +219,13 @@ export class LibraryService {
         return this.index;
     }
 
-    async reindex(): Promise<IndexBuildResult> {
+    async reindex(options: IndexBuildOptions = {}): Promise<IndexBuildResult> {
         const gen = this.indexGen;
-        const result = await this.buildIndex();
+        const result = await this.buildIndex(LIMITS.maxItems, options);
+        if (result.stopped) {
+            this.index = null;
+            return result;
+        }
         if (gen === this.indexGen) {
             this.index = result;
             return result;
@@ -272,13 +334,14 @@ export class LibraryService {
 
     // ---- 索引构建 ----
 
-    private async resolveDocIds(): Promise<{docIds: string[]; errors: string[]}> {
+    private async resolveDocIds(options: IndexBuildOptions = {}): Promise<{docIds: string[]; errors: string[]; stopped: boolean}> {
         const config = this.config;
-        if (!config) return {docIds: [], errors: ["no-library"]};
+        if (!config) return {docIds: [], errors: ["no-library"], stopped: false};
         if (config.mode === "notebook") {
             const docIds: string[] = [];
             const errors: string[] = [];
             for (const notebookId of config.notebookIds.slice(0, 16)) {
+                if (options.shouldStop?.()) return {docIds, errors, stopped: true};
                 try {
                     const data = await this.kernel.request<{files?: unknown}>("listDocsByPath", {notebook: notebookId, path: "/"});
                     const files = Array.isArray(data?.files) ? data.files : [];
@@ -290,11 +353,11 @@ export class LibraryService {
                     errors.push(`notebook ${notebookId}: ${(err as Error).message}`);
                 }
             }
-            return {docIds, errors};
+            return {docIds, errors, stopped: options.shouldStop?.() === true};
         }
         if (config.mode === "doc") {
             // 去重与 tree 模式口径一致：重复文档 ID 会产生重复条目与双份搜索结果（R139）
-            return {docIds: Array.from(new Set(config.containerDocIds)).slice(0, LIMITS.maxDocs), errors: []};
+            return {docIds: Array.from(new Set(config.containerDocIds)).slice(0, LIMITS.maxDocs), errors: [], stopped: options.shouldStop?.() === true};
         }
         // tree 模式：容器文档 + BFS 展开至多 3 层子文档（有界：总文档数 ≤ maxDocs，超出如实报错）
         const docIds: string[] = [];
@@ -302,6 +365,7 @@ export class LibraryService {
         const treeCap = LIMITS.maxDocs;
         const queue: Array<{box: string; path: string}> = [];
         for (const root of config.containerDocIds.slice(0, treeCap)) {
+            if (options.shouldStop?.()) return {docIds: Array.from(new Set(docIds)), errors, stopped: true};
             docIds.push(root);
             try {
                 const info = await this.kernel.request<{box?: unknown; path?: unknown}>("getBlockInfo", {id: root});
@@ -317,6 +381,7 @@ export class LibraryService {
         while (queue.length > 0 && depth < TREE_MAX_DEPTH && docIds.length < treeCap) {
             const level = queue.splice(0, queue.length);
             for (const node of level) {
+                if (options.shouldStop?.()) return {docIds: Array.from(new Set(docIds)), errors, stopped: true};
                 if (docIds.length >= treeCap) break;
                 try {
                     const data = await this.kernel.request<{files?: unknown}>("listDocsByPath", {notebook: node.box, path: node.path});
@@ -339,14 +404,16 @@ export class LibraryService {
             }
             depth++;
         }
-        return {docIds: Array.from(new Set(docIds)), errors};
+        return {docIds: Array.from(new Set(docIds)), errors, stopped: options.shouldStop?.() === true};
     }
 
-    async buildIndex(maxItems: number = LIMITS.maxItems): Promise<IndexBuildResult> {
-        const {docIds, errors} = await this.resolveDocIds();
+    async buildIndex(maxItems: number = LIMITS.maxItems, options: IndexBuildOptions = {}): Promise<IndexBuildResult> {
+        const resolved = await this.resolveDocIds(options);
+        const {docIds, errors} = resolved;
         const items = new Map<string, CommonItem>();
         const entries: SearchEntry[] = [];
-        let truncated = false;
+        let stopped = resolved.stopped;
+        let truncated = stopped;
         let docsScanned = 0;
 
         // 有界并发扫文档（并发 4，缩短大库索引耗时）；结果按原 doc 顺序落位，保证索引顺序确定
@@ -355,6 +422,7 @@ export class LibraryService {
         const workerCount = Math.min(4, Math.max(1, docIds.length));
         const worker = async (): Promise<void> => {
             while (cursor < docIds.length) {
+                if (options.shouldStop?.()) { stopped = true; truncated = true; return; }
                 const index = cursor++;
                 const docId = docIds[index];
                 docsScanned++;
@@ -365,6 +433,7 @@ export class LibraryService {
                     errors.push(`doc ${docId}: ${(err as Error).message}`);
                     continue;
                 }
+                if (options.shouldStop?.()) { stopped = true; truncated = true; return; }
                 if (children.length === 0) continue;
                 let attrsByBlock: Record<string, Record<string, string>> = {};
                 try {
@@ -378,11 +447,12 @@ export class LibraryService {
                 perDoc[index] = children.map((child) => ({child, attrs: attrsByBlock[child.id] ?? {}}));
             }
         };
-        await Promise.all(Array.from({length: workerCount}, () => worker()));
+        if (!stopped) await Promise.all(Array.from({length: workerCount}, () => worker()));
 
         // 单遍按原 doc 顺序落位；无 custom-xlc-id 的块不是条目（用户普通内容混排安全）
-        outer: for (let d = 0; d < perDoc.length; d++) {
+        outer: for (let d = 0; d < perDoc.length && !stopped; d++) {
             for (const {child, attrs} of perDoc[d] ?? []) {
+                if (options.shouldStop?.()) { stopped = true; truncated = true; break outer; }
                 if (items.size >= maxItems) {
                     truncated = true;
                     break outer;
@@ -397,6 +467,7 @@ export class LibraryService {
                     // 属性仍可用于展示；正文失败要进入诊断，而不是伪造完整摘要。
                     errors.push(`block ${child.id}: ${(err as Error).message}`);
                 }
+                if (options.shouldStop?.()) { stopped = true; truncated = true; break outer; }
                 const item = normalizeCommonItem({
                     blockId: child.id,
                     libraryDocId: docIds[d],
@@ -420,7 +491,7 @@ export class LibraryService {
                 entries.push(searchEntry);
             }
         }
-        return {entries, items, truncated, docsScanned, errors, builtAt: Date.now()};
+        return {entries, items, truncated, ...(stopped ? {stopped: true} : {}), docsScanned, errors, builtAt: Date.now()};
     }
 
     // ---- 单条目读取 ----
@@ -545,7 +616,7 @@ export class LibraryService {
 
     // ---- CRUD ----
 
-    async createItem(input: NewItemInput, libraryDocId?: string): Promise<Receipt<{item: CommonItem}>> {
+    async createItem(input: NewItemInput, libraryDocId?: string, options: {batchToken?: string} = {}): Promise<Receipt<{item: CommonItem}>> {
         const targetDoc = libraryDocId ?? await this.resolveWriteDoc();
         if (!targetDoc || !isBlockId(targetDoc)) return fail("invalid-input", "no library doc");
         const now = Date.now();
@@ -610,6 +681,14 @@ export class LibraryService {
             blockType: input.itemType === "code" ? "c" : input.itemType === "structure" ? "super" : "p",
         });
         if (!item) return fail("kernel-error", "created item failed normalization");
+        if (typeof options.batchToken === "string" && options.batchToken.length >= 16 && options.batchToken.length <= 128) {
+            this.conditionalDeleteGrants.set(item, {
+                batchToken: options.batchToken,
+                item: {...item, tags: [...item.tags], source: {...item.source}, droppedFields: [...item.droppedFields]},
+                attrs: {...attrs},
+                markdown: input.markdown.slice(0, LIMITS.contentChars),
+            });
+        }
         this.invalidateIndex();
         return ok({item});
     }
@@ -705,6 +784,118 @@ export class LibraryService {
         }
         this.invalidateIndex();
         return ok({blockId: got.data.blockId});
+    }
+
+    /**
+     * Undo only blocks that still match the exact item snapshot created by discovery.
+     * The fresh index proves the block remains inside the configured library; live attributes
+     * and body are read twice immediately before deletion to avoid removing later edits.
+     */
+    async removeItemsIfUnchanged(batchToken: string, inputs: ConditionalDeleteInput[]): Promise<Receipt<ConditionalDeleteOutcome[]>> {
+        if (typeof batchToken !== "string" || batchToken.length < 16 || batchToken.length > 128
+            || !Array.isArray(inputs) || inputs.length > LIMITS.maxItems) {
+            return fail("invalid-input", "conditional delete batch exceeds the supported limit");
+        }
+        const unique = new Set<string>();
+        for (const input of inputs) {
+            if (!input || !input.item || !isLogicalId(input.item.id) || !isBlockId(input.item.blockId)
+                || !isBlockId(input.item.libraryDocId) || typeof input.markdown !== "string") {
+                return fail("invalid-input", "conditional delete batch contains an invalid item");
+            }
+            const grant = this.conditionalDeleteGrants.get(input.item);
+            if (!grant || grant.batchToken !== batchToken || !sameManagedItem(input.item, grant.item)
+                || normalizeConditionalMarkdown(input.markdown) !== normalizeConditionalMarkdown(grant.markdown)) {
+                return fail("invalid-input", "conditional delete item was not created in this batch");
+            }
+            if (unique.has(input.item.id) || unique.has(input.item.blockId)) {
+                return fail("invalid-input", "conditional delete batch contains duplicate item identities");
+            }
+            unique.add(input.item.id);
+            unique.add(input.item.blockId);
+        }
+        if (inputs.length === 0) return ok([]);
+
+        let index: IndexBuildResult;
+        try {
+            index = await this.reindex();
+        } catch (err) {
+            return toFailureReceipt(err);
+        }
+        if (index.truncated || index.errors.length > 0) {
+            return ok(inputs.map(({item}) => ({
+                status: "skipped" as const,
+                itemId: item.id,
+                blockId: item.blockId,
+                reason: "library-unverified" as const,
+            })));
+        }
+
+        const outcomes: ConditionalDeleteOutcome[] = [];
+        let deletedAny = false;
+        for (const input of inputs) {
+            const {item, markdown} = input;
+            const indexed = index.items.get(item.id);
+            if (!indexed) {
+                outcomes.push({status: "skipped", itemId: item.id, blockId: item.blockId, reason: "not-found"});
+                continue;
+            }
+            if (indexed.blockId !== item.blockId || indexed.libraryDocId !== item.libraryDocId) {
+                outcomes.push({status: "skipped", itemId: item.id, blockId: item.blockId, reason: "identity-changed"});
+                continue;
+            }
+
+            try {
+                const first = await this.readConditionalDeleteState(item);
+                if (!first) {
+                    outcomes.push({status: "skipped", itemId: item.id, blockId: item.blockId, reason: "identity-changed"});
+                    continue;
+                }
+                if (!sameManagedItem(first.item, item) || !sameCustomAttrs(first.attrs, this.conditionalDeleteGrants.get(item)?.attrs ?? {})
+                    || normalizeConditionalMarkdown(first.markdown)
+                        !== normalizeConditionalMarkdown(markdown)) {
+                    outcomes.push({status: "skipped", itemId: item.id, blockId: item.blockId, reason: "edited"});
+                    continue;
+                }
+
+                const second = await this.readConditionalDeleteState(item);
+                if (!second) {
+                    outcomes.push({status: "skipped", itemId: item.id, blockId: item.blockId, reason: "identity-changed"});
+                    continue;
+                }
+                if (!sameManagedItem(second.item, item) || !sameCustomAttrs(second.attrs, this.conditionalDeleteGrants.get(item)?.attrs ?? {})
+                    || normalizeConditionalMarkdown(second.markdown)
+                        !== normalizeConditionalMarkdown(markdown)) {
+                    outcomes.push({status: "skipped", itemId: item.id, blockId: item.blockId, reason: "edited"});
+                    continue;
+                }
+                await this.kernel.request("deleteBlock", {id: item.blockId});
+                deletedAny = true;
+                this.conditionalDeleteGrants.delete(item);
+                outcomes.push({status: "deleted", itemId: item.id, blockId: item.blockId});
+            } catch (err) {
+                outcomes.push({
+                    status: "failed",
+                    itemId: item.id,
+                    blockId: item.blockId,
+                    message: (err as Error)?.message || String(err),
+                });
+            }
+        }
+        if (deletedAny) this.invalidateIndex();
+        return ok(outcomes);
+    }
+
+    private async readConditionalDeleteState(expected: CommonItem): Promise<{item: CommonItem; attrs: Record<string, string>; markdown: string} | null> {
+        const attrs = parseAttrs(await this.kernel.request("getBlockAttrs", {id: expected.blockId}));
+        const body = parseKramdown(await this.kernel.request("getBlockKramdown", {id: expected.blockId}));
+        if (!body || body.id !== expected.blockId) return null;
+        const item = normalizeCommonItem({
+            blockId: expected.blockId,
+            libraryDocId: expected.libraryDocId,
+            attrs,
+            kramdown: body.kramdown,
+        });
+        return item ? {item, attrs, markdown: body.kramdown} : null;
     }
 
     /** 清除来源引用（用户显式操作；空串删除自定义属性，条目本体不受影响） */

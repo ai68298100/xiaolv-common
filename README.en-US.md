@@ -10,23 +10,24 @@ A quick-recall content launcher for SiYuan Notes: turn frequently used content �
 
 > Runs fully standalone (no dependency on other Lv plugins), and exposes the `xiaolv-common/v1` protocol for sibling plugins.
 
-> **Released: v0.4.0 (2026-10-11)** · [Download the latest release](https://github.com/ai68298100/xiaolv-common/releases/latest) · The next iteration is developing the “dedicated library + on-demand discovery” workflow.
+> **Released: v0.4.0 (2026-10-11)** · [Download the latest release](https://github.com/ai68298100/xiaolv-common/releases/latest) · The current workspace contains unreleased phase-three work for “dedicated library + on-demand discovery.”
 
-## Next iteration in development
+## Unreleased workspace changes
 
-Overall: keep the dedicated library as the default work set while letting users discover existing content from the current document and copy selected blocks into the library.
+Overall: keep the dedicated library as the default work set while letting users discover existing content from documents, trees, or notebooks and copy selected items into the library.
 
 Added:
 
-- Editor context menu and command palette entry “Discover common phrases from current document”; scans top-level blocks without changing the source note.
-- Discovery panel with candidate filters, source paths, previews, single/batch add, explicit same-content confirmation, and per-item receipts.
+- Editor context menu and command palette entries for the current document and notebook; the discovery panel also supports a selected document tree, notebook, or all notebooks after explicit confirmation.
+- Discovery panel with candidate filters, source paths, previews, multi-select add, same-content confirmation, per-item receipts, and safe batch undo.
 
 Improved:
 
 - Capture forms preserve the source type and document captured at invocation time for selections, blocks, clipboard captures, and manual items.
-- Candidates live only in the current session; added items retain source backlinks and refresh an open search panel.
+- Candidates live only in the current session; their scope is revalidated before adding, and added items retain source backlinks and refresh an open search panel.
+- Discovery has independent limits: 20 notebooks, 200 documents, depth 8, 2,000 blocks, 500 candidates, and 60 seconds; pages show at most 100 candidates. Partial errors preserve usable results. Stop waits for issued kernel requests to finish and starts no new requests.
 
-Limits: only current-document discovery is implemented. Current-notebook, selected-tree/notebook, batch undo, and SiYuan Electron/Android acceptance remain future work.
+Limits: discovery never adds items automatically or changes source notes; scanning all notebooks requires confirmation. SiYuan Electron plugin runtime and Android device acceptance remain pending; automated tests do not count as host acceptance.
 
 ## Scope
 
@@ -112,7 +113,7 @@ common.registerProvider({protocol: "xiaolv-common", protocolVersion: 1, pluginId
 common.protocolCommands["xiaolv.common.open"]();
 ```
 
-Interfaces: `getCapabilities / search / get / save / update / remove / insert / copy / openSource / reindex / getRecent / getFavorites`. Command ids: `xiaolv.common.open / saveSelection / insert / copy / openSource`; discovery commands are `discoverCurrentDocument / previewDiscoveryCandidate / addDiscoveryCandidate / closeDiscoverySession`. Events: `xiaolv:common:item-created / updated / deleted / inserted`. Full integration guide: [docs/provider-guide.md](docs/provider-guide.md).
+Interfaces: `getCapabilities / search / get / save / update / remove / insert / copy / openSource / reindex / getRecent / getFavorites`. Command ids: `xiaolv.common.open / saveSelection / insert / copy / openSource`; discovery commands are `discoverCurrentDocument / discoverCurrentNotebook / previewDiscoveryCandidate / addDiscoveryCandidate / closeDiscoverySession / beginDiscoveryBatch / finishDiscoveryBatch / undoDiscoveryBatch`. Selected-tree, selected-notebook, and all-notebook scopes are available in the discovery panel. Events: `xiaolv:common:item-created / updated / deleted / inserted`. Full integration guide: [docs/provider-guide.md](docs/provider-guide.md).
 
 ## Install / upgrade / backup
 

@@ -1063,24 +1063,171 @@ fs.writeFileSync(path.join(OUT, "harness.html"), html);
         const root = document.querySelector(".xlc-discovery");
         const rows = Array.from(document.querySelectorAll(".xlc-discovery-row"));
         const batch = document.querySelector("[data-xlc-discovery-action='add-selected']");
+        const scope = document.querySelector(".xlc-discovery-scope-select");
+        const filters = root?.querySelector(".xlc-discovery-filters");
+        const close = document.querySelector("[data-xlc-discovery-action='close']");
+        const dialogContainer = document.querySelector(".b3-dialog__container");
+        const dialogHeader = document.querySelector(".xlc-discovery-host .b3-dialog__header");
+        const rootRect = root?.getBoundingClientRect();
+        const titleRect = root?.querySelector(".xlc-discovery-heading .xlc-form-title")?.getBoundingClientRect();
+        const scopeRect = root?.querySelector(".xlc-discovery-scope-row")?.getBoundingClientRect();
         return {
             root: !!root,
             rows: rows.length === 2,
             addDisabledWithoutSelection: !!batch && (batch instanceof HTMLButtonElement) && batch.disabled,
+            customCloseAvailable: close instanceof HTMLButtonElement && !close.disabled,
+            hostCloseDisabled: dialogContainer instanceof HTMLElement && dialogContainer.dataset.disableClose === "true",
+            duplicateHostHeaderHidden: !dialogHeader || getComputedStyle(dialogHeader).display === "none",
+            headingAndScopeDoNotOverlap: !!titleRect && !!scopeRect && titleRect.bottom <= scopeRect.top + 1,
+            headingAndScopeVisible: !!rootRect && !!titleRect && !!scopeRect
+                && titleRect.width > 0 && titleRect.height > 0
+                && scopeRect.width > 0 && scopeRect.height > 0
+                && titleRect.top >= rootRect.top - 1 && titleRect.bottom <= rootRect.bottom + 1
+                && scopeRect.top >= rootRect.top - 1 && scopeRect.bottom <= rootRect.bottom + 1,
+            discoveryRootDoesNotScroll: root instanceof HTMLElement && root.scrollTop === 0,
+            desktopFiltersStayCompact: filters instanceof HTMLElement && filters.getBoundingClientRect().height <= 50,
             statuses: rows.map((row) => row.textContent ?? "").some((text) => text.includes("待收录")) && rows.map((row) => row.textContent ?? "").some((text) => text.includes("内容相同")),
+            scopeOptions: scope instanceof HTMLSelectElement
+                && scope.options.length === 5
+                && Array.from(scope.options).slice(1).every((option) => !option.disabled),
         };
     });
     if (Object.values(discoveryAssertions).some((v) => !v)) {
         throw new Error("discovery smoke failed: " + JSON.stringify(discoveryAssertions));
     }
+    await page.locator(".xlc-discovery-scope-select").selectOption("notebook");
+    await page.waitForTimeout(20);
+    const notebookProgressAssertion = await page.locator(".xlc-discovery-status-row").textContent();
+    if (!notebookProgressAssertion?.includes("扫描文档 1 / 3，已读取 4 个块")) {
+        throw new Error("notebook discovery progress smoke failed: " + notebookProgressAssertion);
+    }
+    await page.locator("[data-xlc-discovery-action='cancel-scan']").click();
+    const stopPending = await page.evaluate(() => ({
+        busy: document.querySelector(".xlc-discovery")?.getAttribute("aria-busy") === "true",
+        disabled: document.querySelector("[data-xlc-discovery-action='cancel-scan']")?.hasAttribute("disabled") === true,
+        status: document.querySelector(".xlc-discovery-status-row")?.textContent ?? "",
+    }));
+    if (!stopPending.busy || !stopPending.disabled || !stopPending.status.includes("当前已发出的内核请求结束后")) {
+        throw new Error("discovery stop should wait for the current request: " + JSON.stringify(stopPending));
+    }
+    const closeDuringScan = await page.locator("[data-xlc-discovery-action='close']").isDisabled();
+    if (closeDuringScan) throw new Error("discovery close should remain available during scanning");
+    await page.waitForFunction(() => document.querySelector(".xlc-discovery-status-row")?.textContent?.includes("已停止扫描，保留 2 条候选") === true);
+    const notebookScopeAssertion = await page.evaluate(() => {
+        const root = document.querySelector(".xlc-discovery");
+        const text = root?.textContent ?? "";
+        return {
+            pass: text.includes("从当前笔记本发现")
+                && text.includes("扫描文档 3 个")
+                && text.includes("扫描当前文档所属笔记本")
+                && !!root?.querySelector(".xlc-discovery-row[data-xlc-discovery-key='candidate-1']"),
+            text,
+        };
+    });
+    if (!notebookScopeAssertion.pass) throw new Error("notebook discovery scope smoke failed: " + JSON.stringify(notebookScopeAssertion));
+    await page.locator(".xlc-discovery-scope-select").selectOption("tree");
+    await page.locator(".xlc-discovery-scope-target input").fill("项目");
+    await page.locator(".xlc-discovery-scope-target button").click();
+    await page.locator(".xlc-discovery-scope-target select").selectOption("20240101120001-hijklmn");
+    await page.waitForFunction(() => document.body.dataset.xlcDiscoveryScopeUsed === "tree");
+    await page.locator(".xlc-discovery-scope-select").selectOption("selected-notebook");
+    await page.locator(".xlc-discovery-scope-target select").selectOption("20240102");
+    await page.waitForFunction(() => document.body.dataset.xlcDiscoveryScopeUsed === "selected-notebook");
+    await page.locator(".xlc-discovery-scope-select").selectOption("all-notebooks");
+    const allNotebookWarning = await page.locator(".xlc-discovery-notice").textContent();
+    if (!allNotebookWarning?.includes("候选文本累计")
+        || !allNotebookWarning.includes("文档和块按顺序读取")
+        || !allNotebookWarning.includes("最多 4 路并发")) {
+        throw new Error("all-notebooks budget warning is inaccurate: " + allNotebookWarning);
+    }
+    const allScanInitiallyDisabled = await page.locator("[data-xlc-discovery-action='retry-scan']").isDisabled();
+    if (!allScanInitiallyDisabled) throw new Error("all-notebooks scan must require confirmation");
+    await page.locator(".xlc-discovery-all-confirm input").check();
+    await page.locator("[data-xlc-discovery-action='retry-scan']").click();
+    await page.waitForFunction(() => document.body.dataset.xlcDiscoveryScopeUsed === "all-confirmed");
+    await page.locator(".xlc-discovery-scope-select").selectOption("document");
+    await page.waitForTimeout(100);
     await page.locator(".xlc-discovery-row[data-xlc-discovery-key='candidate-1']").click();
     await page.waitForTimeout(100);
     const discoveryPreview = await page.locator(".xlc-discovery-preview-body").textContent();
     if (!discoveryPreview || !discoveryPreview.includes("交付延期")) {
         throw new Error("discovery preview smoke failed");
     }
-    console.log("  smoke ✓ on-demand discovery: 5 assertions");
+    await page.locator(".xlc-discovery-row[data-xlc-discovery-key='candidate-1'] input[type='checkbox']").check();
+    await page.locator(".xlc-discovery-row[data-xlc-discovery-key='candidate-2'] input[type='checkbox']").check();
+    await page.locator(".xlc-discovery-force input[type='checkbox']").check();
+    await page.locator("[data-xlc-discovery-action='add-selected']").click();
+    await page.waitForFunction(() => document.querySelector("[data-xlc-discovery-action='close']")?.disabled === true);
+    const closeDuringAdd = await page.locator("[data-xlc-discovery-action='close']").isDisabled();
+    if (!closeDuringAdd) throw new Error("discovery close should be disabled while adding candidates");
+    await page.locator("[data-xlc-discovery-action='undo-batch']").waitFor({state: "visible"});
+    if (await page.locator("[data-xlc-discovery-action='close']").isDisabled()) {
+        throw new Error("discovery close should be available after adding candidates");
+    }
+    await page.locator("[data-xlc-discovery-action='undo-batch']").click();
+    await page.waitForFunction(() => document.querySelector("[data-xlc-discovery-action='close']")?.disabled === true);
+    const closeDuringUndo = await page.locator("[data-xlc-discovery-action='close']").isDisabled();
+    if (!closeDuringUndo) throw new Error("discovery close should be disabled while undoing candidates");
+    await page.waitForFunction(() => document.querySelector(".xlc-discovery-receipt")?.textContent?.includes("已撤销新增 1 条；已跳过 1 条"));
+    const discoveryUndoAssertion = await page.evaluate(() => {
+        const deletedRow = document.querySelector(".xlc-discovery-row[data-xlc-discovery-key='candidate-1']");
+        const missingRow = document.querySelector(".xlc-discovery-row[data-xlc-discovery-key='candidate-2']");
+        return !!deletedRow && deletedRow.textContent?.includes("待收录") === true
+            && !!missingRow && missingRow.textContent?.includes("待收录") === true
+            && document.querySelector("[data-xlc-discovery-action='close']")?.disabled === false
+            && !document.querySelector("[data-xlc-discovery-action='undo-batch']");
+    });
+    if (!discoveryUndoAssertion) throw new Error("discovery batch undo smoke failed");
+    const finalDiscoveryGeometry = await page.evaluate(() => {
+        const root = document.querySelector(".xlc-discovery");
+        const list = root?.querySelector(".xlc-discovery-list");
+        const rows = Array.from(root?.querySelectorAll(".xlc-discovery-row") ?? []);
+        const selectors = [".xlc-discovery-heading .xlc-form-title", ".xlc-discovery-scope-row"];
+        const rect = (element) => {
+            if (!(element instanceof HTMLElement)) return null;
+            const {top, right, bottom, left} = element.getBoundingClientRect();
+            return {top, right, bottom, left};
+        };
+        return {
+            root: rect(root), rootScrollTop: root?.scrollTop,
+            rootOverflow: root ? getComputedStyle(root).overflowY : null,
+            title: rect(root?.querySelector(selectors[0])), scope: rect(root?.querySelector(selectors[1])),
+            list: rect(list), lastCandidate: rect(rows.at(-1)),
+            lastCandidateFullyVisible: !!list && !!rows.at(-1)
+                && rows.at(-1).getBoundingClientRect().bottom <= list.getBoundingClientRect().bottom - 1,
+            body: rect(document.querySelector(".xlc-discovery-host .b3-dialog__body")),
+            bodyScrollTop: document.querySelector(".xlc-discovery-host .b3-dialog__body")?.scrollTop,
+            content: rect(document.querySelector(".xlc-discovery-host .b3-dialog__content")),
+            contentScrollTop: document.querySelector(".xlc-discovery-host .b3-dialog__content")?.scrollTop,
+        };
+    });
+    const geometryRoot = finalDiscoveryGeometry.root;
+    const geometryTitle = finalDiscoveryGeometry.title;
+    const geometryScope = finalDiscoveryGeometry.scope;
+    if (!geometryRoot || !geometryTitle || !geometryScope
+        || geometryTitle.top < geometryRoot.top - 1 || geometryTitle.bottom > geometryRoot.bottom + 1
+        || geometryScope.top < geometryRoot.top - 1 || geometryScope.bottom > geometryRoot.bottom + 1
+        || !finalDiscoveryGeometry.lastCandidateFullyVisible
+        || finalDiscoveryGeometry.rootScrollTop !== 0) {
+        throw new Error("discovery heading clipped after add/undo: " + JSON.stringify(finalDiscoveryGeometry));
+    }
     await page.screenshot({path: path.join(OUT, "production-discovery-light.png")});
+    await page.evaluate(() => { document.body.dataset.xlcDiscoveryCloseConflict = "true"; });
+    await page.locator("[data-xlc-discovery-action='close']").click();
+    const closeConflictPreservesDialog = await page.evaluate(() =>
+        !!document.querySelector(".xlc-discovery")
+            && document.querySelector(".xlc-discovery-receipt")?.textContent?.includes("有收录正在写入内容库") === true,
+    );
+    if (!closeConflictPreservesDialog) throw new Error("discovery close conflict should keep the current dialog and show guidance");
+    await page.evaluate(() => {
+        document.body.dataset.xlcDiscoveryCloseConflict = "false";
+        window.XlcHarness.closeDiscovery();
+    });
+    const discoveryProgrammaticClose = await page.evaluate(() =>
+        !document.querySelector(".xlc-discovery") && document.body.dataset.xlcDiscoverySessionClosed === "true",
+    );
+    if (!discoveryProgrammaticClose) throw new Error("programmatic discovery close failed with disableClose enabled");
+    console.log("  smoke ✓ on-demand discovery: 16 assertions");
     // 导入策略卡（R69，原型屏 8：三选 + 推荐档 + 逐项回执提示）
     await page.evaluate(() => {
         const stage = document.getElementById("stage");
