@@ -30,7 +30,9 @@ import {ActionExecutor, HostBridge} from "./service/commands";
 import {AiAssistant, AiUnavailableError, SearchMetaEntry, type AiEndpointName} from "./service/ai";
 import {ProviderRegistry} from "./service/providers";
 import {XiaolvCommonService} from "./service/service";
+import {DiscoveryService, type DiscoveryReceipt, type DiscoverySessionView} from "./service/discovery";
 import {CommonSearchDialog} from "./ui/dialog";
+import {openDiscoveryDialog, type DiscoveryDialogController} from "./ui/discovery-dialog";
 import {CaptureDialog, confirmDelete, classifyLinkTarget} from "./ui/capture";
 import {ICONS} from "./ui/icons";
 import {openSetupDialog, openSettingsDialog, type SettingsUiContext} from "./ui/settings-dialog";
@@ -64,6 +66,7 @@ export default class XiaolvCommonPlugin extends Plugin {
     private registry!: ProviderRegistry;
     private ai!: AiAssistant;
     private service!: XiaolvCommonService;
+    private discovery!: DiscoveryService;
     private capture!: CaptureDialog;
     private state!: PluginState;
     private config!: LibraryConfig | null;
@@ -82,8 +85,11 @@ export default class XiaolvCommonPlugin extends Plugin {
     public readonly protocolCommands: Record<string, (payload?: unknown) => Promise<unknown>> = {};
     /** 对外窗口桥卸载器（T-0031 · ADR-0013；onunload 注销 window.xiaolvCommon） */
     private bridgeDisposer: (() => void) | null = null;
+    private discoveryDialog: DiscoveryDialogController | null = null;
+    private unloading = false;
 
     async onload(): Promise<void> {
+        this.unloading = false;
         try {
             this.addIcons(ICONS);
         } catch (err) {
@@ -140,7 +146,8 @@ export default class XiaolvCommonPlugin extends Plugin {
             probeAsset: async (path) => (await this.fetchAssetBytes(path)) !== null,
         });
         if (this.config) this.library.setConfig(this.config);
-        this.host = new HostBridge(this.app);
+        this.discovery = new DiscoveryService(kernel, this.library);
+        this.host = new HostBridge(this.app, this);
         this.registry = new ProviderRegistry();
         this.registry.restore(this.state.providers);
         const aiTransport = {
@@ -293,6 +300,105 @@ export default class XiaolvCommonPlugin extends Plugin {
             const itemId = (payload as {itemId?: string})?.itemId ?? "";
             return this.service.openSource(itemId);
         };
+        // 按需发现协议面：发现只读扫描当前文档，预览/收录由调用方显式推进。
+        this.protocolCommands["xiaolv.common.discoverCurrentDocument"] = async () => this.discoverCurrentDocument();
+        this.protocolCommands["xiaolv.common.previewDiscoveryCandidate"] = async (payload) => {
+            const value = payload as {sessionId?: string; candidateKey?: string} | undefined;
+            return this.discovery.previewCandidate(value?.sessionId ?? "", value?.candidateKey ?? "");
+        };
+        this.protocolCommands["xiaolv.common.addDiscoveryCandidate"] = async (payload) => {
+            const value = payload as {sessionId?: string; candidateKey?: string; allowSameContent?: boolean} | undefined;
+            return this.discovery.addCandidate(value?.sessionId ?? "", value?.candidateKey ?? "", {
+                allowSameContent: value?.allowSameContent === true,
+            });
+        };
+        this.protocolCommands["xiaolv.common.closeDiscoverySession"] = async (payload) => {
+            const sessionId = (payload as {sessionId?: string} | undefined)?.sessionId;
+            this.discovery.closeSession(sessionId);
+            return {ok: true};
+        };
+    }
+
+    /** 当前文档发现的统一入口，供命令面板、右键菜单和协议调用复用。 */
+    private async discoverCurrentDocument(): Promise<DiscoveryReceipt<DiscoverySessionView>> {
+        const docId = this.host?.currentDocId();
+        if (!docId) {
+            const result: DiscoveryReceipt<DiscoverySessionView> = {
+                ok: false,
+                reason: "invalid-input",
+                message: this.i18nFn()("discoveryNoDocument"),
+            };
+            this.notify("error", result.message);
+            return result;
+        }
+        let result: DiscoveryReceipt<DiscoverySessionView>;
+        try {
+            result = await this.discovery.discoverCurrentDocument(docId);
+        } catch (error) {
+            const message = error instanceof Error ? error.message : String(error);
+            result = {ok: false, reason: "kernel-error", message};
+        }
+        if (!result.ok) {
+            this.notify("error", this.discoveryFailureText(result));
+            return result;
+        }
+        const count = result.data.candidates.length;
+        this.notify("info", count > 0
+            ? this.i18nFn()("discoveryFound", String(count))
+            : this.i18nFn()("discoveryEmpty"));
+        return result;
+    }
+
+    /** 用户入口：打开当前文档发现面板。扫描和候选状态由临时会话管理。 */
+    private openDiscoveryForCurrentDocument(): void {
+        if (!this.sidecarReady) {
+            this.notify("info", this.i18nFn()("sidecarLoading"));
+            return;
+        }
+        if (!this.config) {
+            this.openSetup();
+            return;
+        }
+        const docId = this.host?.currentDocId();
+        if (!docId) {
+            this.notify("error", this.i18nFn()("discoveryNoDocument"));
+            return;
+        }
+        void this.library.getDocPath(docId).then((sourcePath) => {
+            if (this.unloading) return;
+            this.discoveryDialog?.close();
+            this.discoveryDialog = openDiscoveryDialog({
+                t: this.i18nFn(),
+                service: this.discovery,
+                notify: this.notify,
+                onAdded: () => {
+                    this.searchDialog?.refreshAfterExternalChange();
+                },
+            }, {docId, sourcePath});
+        }).catch(() => {
+            if (this.unloading) return;
+            this.discoveryDialog?.close();
+            this.discoveryDialog = openDiscoveryDialog({
+                t: this.i18nFn(),
+                service: this.discovery,
+                notify: this.notify,
+                onAdded: () => {
+                    this.searchDialog?.refreshAfterExternalChange();
+                },
+            }, {docId});
+        });
+    }
+
+    private discoveryFailureText(result: Extract<DiscoveryReceipt<unknown>, {ok: false}>): string {
+        const t = this.i18nFn();
+        switch (result.reason) {
+            case "not-configured": return t("discoveryNotConfigured");
+            case "library-document": return t("discoveryLibraryDocument");
+            case "library-boundary-unknown": return t("discoveryBoundaryUnknown");
+            case "invalid-response": return t("discoveryInvalidResponse");
+            case "timeout": return t("timeout");
+            default: return t("discoveryFailed");
+        }
     }
 
     private i18nFn(): TFn {
@@ -453,6 +559,10 @@ export default class XiaolvCommonPlugin extends Plugin {
             langKey: "openSourceCmd",
             callback: () => this.openSearch(),
         });
+        this.addCommand({
+            langKey: "discoverCurrentDocument",
+            callback: () => this.openDiscoveryForCurrentDocument(),
+        });
         void t;
     }
 
@@ -526,6 +636,11 @@ export default class XiaolvCommonPlugin extends Plugin {
                     icon: "iconXlcCommon",
                     label: this.i18nFn()("captureBlock"),
                     click: () => void this.capture?.captureCurrentBlock(),
+                });
+                menu.addItem({
+                    icon: "iconXlcCommon",
+                    label: this.i18nFn()("discoverCurrentDocument"),
+                    click: () => this.openDiscoveryForCurrentDocument(),
                 });
             };
             this.eventBus.on("open-menu-content", this.menuHandler);
@@ -656,6 +771,32 @@ export default class XiaolvCommonPlugin extends Plugin {
             this.openSetup();
             return;
         }
+        const editorTarget = insertTarget ? null : this.host.captureInsertTarget();
+        let targetRuns = 0;
+        let dialogClosed = false;
+        let targetReleased = false;
+        const releaseTargetIfIdle = (): void => {
+            if (editorTarget && dialogClosed && targetRuns === 0 && !targetReleased) {
+                targetReleased = true;
+                this.host.releaseInsertTarget(editorTarget);
+            }
+        };
+        const withEditorTarget = <T>(mode: string, action: () => Promise<T>): Promise<T> => {
+            if (!editorTarget || !mode.startsWith("insert")) return action();
+            targetRuns += 1;
+            let result: Promise<T>;
+            try {
+                result = action();
+            } catch (err) {
+                targetRuns -= 1;
+                releaseTargetIfIdle();
+                throw err;
+            }
+            return result.finally(() => {
+                targetRuns -= 1;
+                releaseTargetIfIdle();
+            });
+        };
         this.searchDialog?.destroy();
         this.searchDialog = new CommonSearchDialog({
             t: this.i18nFn(),
@@ -795,7 +936,7 @@ export default class XiaolvCommonPlugin extends Plugin {
                 }
                 return buildProviderRows(rows);
             },
-            insertProviderPayload: async (payload, target) => {
+            insertProviderPayload: (payload, target) => withEditorTarget("insert", async () => {
                 const trimmed = (payload ?? "").trim();
                 if (!trimmed) return false;
                 // 与库条目一致的占位符语义（R24 定案）：插入前渲染 {{xlc:…}}
@@ -812,16 +953,22 @@ export default class XiaolvCommonPlugin extends Plugin {
                         return false;
                     }
                 }
-                if (this.host.hasActiveEditor()) {
-                    const inserted = this.host.insertMarkdown(rendered);
+                const insertTargetAvailable = editorTarget
+                    ? this.host.canInsertAtTarget(editorTarget)
+                    : this.host.hasActiveEditor();
+                if (insertTargetAvailable && !this.host.isMobile()) {
+                    const inserted = this.host.insertMarkdown(rendered, editorTarget ?? undefined);
                     if (inserted) this.notify("info", this.i18nFn()("providerInserted"));
                     else this.notify("error", this.i18nFn()("insertFailed"));
                     return inserted;
                 }
                 const copied = await this.host.writeClipboard(rendered);
-                this.notify(copied ? "info" : "error", copied ? this.i18nFn()("insertNoEditor") : this.i18nFn()("copyFailed"));
+                const message = this.host.isMobile()
+                    ? this.i18nFn()("insertPendingMobile")
+                    : editorTarget?.editor ? this.i18nFn()("insertTargetUnavailableCopied") : this.i18nFn()("insertNoEditor");
+                this.notify(copied ? "info" : "error", copied ? message : this.i18nFn()("copyFailed"));
                 return copied;
-            },
+            }),
             copyProviderPayload: async (payload) => {
                 const ok = await this.host.writeClipboard((payload ?? "").trim());
                 if (!ok) this.notify("error", this.i18nFn()("copyFailed"));
@@ -867,32 +1014,32 @@ export default class XiaolvCommonPlugin extends Plugin {
                 this.state.sort = sort;
                 this.persistSoon();
             },
-            runAction: async (itemId, mode) => {
+            runAction: (itemId, mode) => withEditorTarget(mode, async () => {
                 const got = await this.library.getItem(itemId);
                 if (!got.ok) {
                     this.notify("error", got.message);
                     return {ok: false, message: got.message};
                 }
-                const receipt = await this.executor.run(got.data, mode);
+                const receipt = await this.executor.run(got.data, mode, editorTarget ? {editorTarget} : undefined);
                 const msg = receipt.ok
                     ? this.receiptText(receipt.message, got.data.title, receipt.pendingVerification)
-                    : this.i18nFn()("kernelError", receipt.message);
+                    : this.receiptText(receipt.message, got.data.title, receipt.pendingVerification) || this.i18nFn()("kernelError", receipt.message);
                 this.notify(receipt.ok ? "info" : "error", msg);
                 return {ok: receipt.ok, message: msg};
-            },
-            runActionWithFills: async (itemId, mode, fills) => {
+            }),
+            runActionWithFills: (itemId, mode, fills) => withEditorTarget(mode, async () => {
                 const got = await this.library.getItem(itemId);
                 if (!got.ok) {
                     this.notify("error", got.message);
                     return {ok: false, message: got.message};
                 }
-                const receipt = await this.executor.run(got.data, mode, {fills});
+                const receipt = await this.executor.run(got.data, mode, editorTarget ? {fills, editorTarget} : {fills});
                 const msg = receipt.ok
                     ? this.receiptText(receipt.message, got.data.title, receipt.pendingVerification)
-                    : this.i18nFn()("kernelError", receipt.message);
+                    : this.receiptText(receipt.message, got.data.title, receipt.pendingVerification) || this.i18nFn()("kernelError", receipt.message);
                 this.notify(receipt.ok ? "info" : "error", msg);
                 return {ok: receipt.ok, message: msg};
-            },
+            }),
             promptVariables: () => this.state.insert.promptVariables,
             getUsage: () => this.state.usage,
             newItem: (titleCandidate?: string) => this.capture.newManual(titleCandidate),
@@ -915,18 +1062,31 @@ export default class XiaolvCommonPlugin extends Plugin {
                 this.notify("info", this.i18nFn()("sourceOpened"));
                 return {ok: true, message: "opened"};
             },
-            insertRaw: async (markdown) => {
+            insertRaw: (markdown, target) => withEditorTarget("insert", async () => {
                 const trimmed = (markdown ?? "").trim();
                 if (!trimmed) return false;
-                if (this.host.hasActiveEditor()) {
-                    const inserted = this.host.insertMarkdown(trimmed);
+                if (target?.docId) {
+                    const inserted = await this.library.appendToDoc(trimmed, target.docId);
+                    this.notify(inserted ? "info" : "error", inserted
+                        ? this.i18nFn()("insertToDocDone", shortTitle(target.hPath || target.docId))
+                        : this.i18nFn()("insertToDocFailed"));
+                    return inserted;
+                }
+                const insertTargetAvailable = editorTarget
+                    ? this.host.canInsertAtTarget(editorTarget)
+                    : this.host.hasActiveEditor();
+                if (insertTargetAvailable && !this.host.isMobile()) {
+                    const inserted = this.host.insertMarkdown(trimmed, editorTarget ?? undefined);
                     this.notify(inserted ? "info" : "error", inserted ? this.i18nFn()("aiOriginalPreserved") : this.i18nFn()("insertFailed"));
                     return inserted;
                 }
                 const copied = await this.host.writeClipboard(trimmed);
-                this.notify(copied ? "info" : "error", copied ? this.i18nFn()("insertNoEditor") : this.i18nFn()("copyFailed"));
+                const message = this.host.isMobile()
+                    ? this.i18nFn()("insertPendingMobile")
+                    : editorTarget?.editor ? this.i18nFn()("insertTargetUnavailableCopied") : this.i18nFn()("insertNoEditor");
+                this.notify(copied ? "info" : "error", copied ? message : this.i18nFn()("copyFailed"));
                 return copied;
-            },
+            }),
             copyText: async (text) => {
                 const ok = await this.host.writeClipboard(text);
                 // 剪贴板写入失败不得静默（系统拒绝/权限受限时用户必须知道，R138）
@@ -934,7 +1094,8 @@ export default class XiaolvCommonPlugin extends Plugin {
                 return ok;
             },
             aiEnabled: () => this.state.ai.enabled,
-            hasActiveEditor: () => this.host.hasActiveEditor(),
+            hasActiveEditor: () => editorTarget ? !!editorTarget.editor : this.host.hasActiveEditor(),
+            hasInsertTarget: () => editorTarget ? this.host.canInsertAtTarget(editorTarget) : this.host.hasActiveEditor(),
             aiSemantic: async (desc, filters) => {
                 try {
                     const idx = await this.library.ensureIndex();
@@ -1026,7 +1187,9 @@ export default class XiaolvCommonPlugin extends Plugin {
             toggleFavorite: (itemId) => this.service.toggleFavorite(itemId),
             isFavorite: (itemId) => this.state.favorites.includes(itemId),
             close: () => {
+                dialogClosed = true;
                 this.searchDialog = null;
+                releaseTargetIfIdle();
             },
             isMobile: () => this.host.isMobile(),
         });
@@ -1038,10 +1201,13 @@ export default class XiaolvCommonPlugin extends Plugin {
         const t = this.i18nFn();
         if (pending.includes("mobile-insert-unverified")) return t("insertPendingMobile");
         if (code === "no-editor-copied") return t("insertNoEditor");
+        if (code === "target-unavailable-copied") return t("insertTargetUnavailableCopied");
+        if (code === "no-editor-copy-failed" || code === "copy-failed") return t("copyFailed");
+        if (code === "insert-failed") return t("insertFailed");
         if (code === "copied") return t("copied", shortTitle(title));
         if (code === "inserted") return t("inserted", shortTitle(title));
         if (pending.includes("bitmap-clipboard-unverified")) return t("copiedRichPending");
-        return code;
+        return "";
     }
 
     // ---- 编辑 ----
@@ -1346,6 +1512,7 @@ export default class XiaolvCommonPlugin extends Plugin {
     }
 
     onunload(): void {
+        this.unloading = true;
         // 对外窗口桥先行注销（兄弟插件在桥消失后应得到 unsupported，而非悬挂调用）
         try {
             this.bridgeDisposer?.();
@@ -1353,6 +1520,9 @@ export default class XiaolvCommonPlugin extends Plugin {
             // 宿主 window 已销毁：忽略
         }
         this.bridgeDisposer = null;
+        this.discoveryDialog?.close();
+        this.discoveryDialog = null;
+        this.discovery?.closeSession();
         // 事件总线/监听全部随 dialog destroy 释放；侧车已节流持久化
         if (this.menuHandler) {
             try {

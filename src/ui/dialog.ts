@@ -43,7 +43,7 @@ export interface DialogDeps {
     insertTarget?: {docId: string; hPath: string} | null;
     toggleFavorite: (itemId: string) => boolean;
     isFavorite: (itemId: string) => boolean;
-    insertRaw: (markdown: string) => Promise<boolean>;
+    insertRaw: (markdown: string, target?: {docId: string; hPath: string}) => Promise<boolean>;
     /** 写剪贴板（复制变换结果用，区别于条目原始内容的 runAction copy） */
     copyText: (text: string) => Promise<boolean>;
     getSort: () => "manual" | "recent" | "frequent" | "title";
@@ -68,6 +68,8 @@ export interface DialogDeps {
     aiEnabled: () => boolean;
     /** 当前是否存在可直接写入的活动编辑器；没有时主动作会降级为复制。 */
     hasActiveEditor?: () => boolean;
+    /** 当前编辑器快照的位置仍有效；失效时不能改写到另一个活动编辑器。 */
+    hasInsertTarget?: () => boolean;
     /** 插入前询问变量（F1；设置可关） */
     promptVariables: () => boolean;
     isSourceMissing: (entry: SearchEntry) => boolean;
@@ -106,6 +108,8 @@ export class CommonSearchDialog {
     /** IME 组合输入中（中文输入法组词期间跳过刷新，compositionend 后统一刷新） */
     private isComposing = false;
     private filterOptionsSeq = 0;
+    private primaryBusy = false;
+    private varFormOpen = false;
 
     constructor(private readonly deps: DialogDeps) {}
 
@@ -369,6 +373,18 @@ export class CommonSearchDialog {
             targetBanner.className = "xlc-chip xlc-target-banner";
             targetBanner.textContent = "⤓ " + this.deps.t("insertTargetBanner", this.insertTarget.hPath || this.insertTarget.docId);
             filters.insertBefore(targetBanner, filters.firstChild);
+        } else {
+            const targetBanner = document.createElement("span");
+            targetBanner.className = "xlc-chip xlc-target-banner";
+            const hasEditor = this.deps.hasActiveEditor?.() ?? true;
+            const hasTarget = this.deps.hasInsertTarget?.() ?? hasEditor;
+            const fallbackKey = this.deps.isMobile()
+                ? "insertMobileActionHint"
+                : hasTarget ? "insertCurrentEditorBanner" : hasEditor ? "insertTargetUnavailableBanner" : "insertNoEditorBanner";
+            targetBanner.textContent = "⤓ " + this.deps.t(fallbackKey);
+            targetBanner.setAttribute("role", "note");
+            targetBanner.setAttribute("aria-label", this.deps.t(fallbackKey));
+            filters.insertBefore(targetBanner, filters.firstChild);
         }
         root.appendChild(filters);
 
@@ -456,8 +472,12 @@ export class CommonSearchDialog {
             footBtns.appendChild(newBtn);
             const insertBtn = document.createElement("button");
             insertBtn.className = "b3-button xlc-btn-primary xlc-mobile-insert";
-            insertBtn.textContent = this.deps.t("quickInsertSelected");
+            insertBtn.textContent = this.deps.t(this.mobilePrimaryIsCopy() ? "copy" : "quickInsertSelected");
             insertBtn.disabled = true;
+            if (this.mobilePrimaryIsCopy()) {
+                insertBtn.title = this.deps.t("insertMobileActionHint");
+                insertBtn.setAttribute("aria-label", this.deps.t("insertMobileActionHint"));
+            }
             insertBtn.addEventListener("click", () => {
                 const entry = this.results[this.activeIndex];
                 if (entry) void this.runPrimary(entry);
@@ -1225,11 +1245,21 @@ export class CommonSearchDialog {
     private syncPaneActions(): void {
         const actionable = this.results.length > 0;
         const scope = this.dialog?.element ?? document;
+        const targetBanner = scope.querySelector<HTMLElement>(".xlc-target-banner");
+        if (targetBanner && !this.insertTarget) {
+            const hasEditor = this.deps.hasActiveEditor?.() ?? true;
+            const hasTarget = this.deps.hasInsertTarget?.() ?? hasEditor;
+            const fallbackKey = this.deps.isMobile()
+                ? "insertMobileActionHint"
+                : hasTarget ? "insertCurrentEditorBanner" : hasEditor ? "insertTargetUnavailableBanner" : "insertNoEditorBanner";
+            targetBanner.textContent = "⤓ " + this.deps.t(fallbackKey);
+            targetBanner.setAttribute("aria-label", this.deps.t(fallbackKey));
+        }
         scope.querySelectorAll<HTMLButtonElement>(".xlc-pane-foot .b3-button")
             .forEach((btn) => {
                 if (this.activeProvider >= 0) {
                     const act = btn.dataset.xlcPaneAct ?? "";
-                    btn.disabled = !(act === "insert" || act === "copy");
+                    btn.disabled = this.primaryBusy || !(act === "insert" || act === "copy");
                     return;
                 }
                 const entry = this.results[this.activeIndex];
@@ -1237,19 +1267,41 @@ export class CommonSearchDialog {
                 const unavailable = !entry
                     || (act === "ai" && !this.deps.aiEnabled())
                     || (act === "source" && this.deps.isSourceMissing(entry));
-                btn.disabled = !actionable || unavailable;
+                btn.disabled = !actionable || unavailable || this.primaryBusy || this.varFormOpen;
                 btn.removeAttribute("title");
                 if (act === "ai" && !this.deps.aiEnabled()) btn.title = this.deps.t("aiDisabled");
                 if (act === "source" && entry && this.deps.isSourceMissing(entry)) btn.title = this.deps.t("sourceGone");
             });
         const insertBtn = scope.querySelector<HTMLButtonElement>('[data-xlc-pane-act="insert"]');
-        if (insertBtn && this.activeProvider < 0) {
-            const directInsert = this.deps.hasActiveEditor?.() ?? true;
-            insertBtn.textContent = directInsert ? this.deps.t("insert") : this.deps.t("insertNoEditorAction");
-            insertBtn.title = directInsert ? "" : this.deps.t("insertNoEditor");
+        if (insertBtn) {
+            const copyFallback = this.activeProvider >= 0
+                ? !this.insertTarget && (this.deps.isMobile() || !(this.deps.hasInsertTarget?.() ?? this.deps.hasActiveEditor?.() ?? true))
+                : this.mobilePrimaryIsCopy() || (!this.insertTarget && !(this.deps.hasInsertTarget?.() ?? this.deps.hasActiveEditor?.() ?? true));
+            insertBtn.textContent = copyFallback ? this.deps.t("copy") : this.deps.t("insert");
+            const hint = this.deps.isMobile() && !this.insertTarget
+                ? this.deps.t("insertMobileActionHint")
+                : !this.insertTarget && !(this.deps.hasInsertTarget?.() ?? this.deps.hasActiveEditor?.() ?? true)
+                    ? this.deps.t((this.deps.hasActiveEditor?.() ?? true) ? "insertTargetUnavailableCopied" : "insertNoEditor")
+                    : "";
+            insertBtn.title = hint;
+            if (hint) insertBtn.setAttribute("aria-label", hint);
+            else insertBtn.removeAttribute("aria-label");
+            insertBtn.setAttribute("aria-busy", this.primaryBusy ? "true" : "false");
         }
         const mobileInsert = scope.querySelector<HTMLButtonElement>(".xlc-mobile-foot .xlc-btn-primary");
-        if (mobileInsert) mobileInsert.disabled = !actionable;
+        if (mobileInsert) {
+            mobileInsert.disabled = !actionable || this.primaryBusy || this.varFormOpen;
+            mobileInsert.textContent = this.deps.t(this.mobilePrimaryIsCopy() ? "copy" : "quickInsertSelected");
+            const hint = this.mobilePrimaryIsCopy() ? this.deps.t("insertMobileActionHint") : "";
+            mobileInsert.title = hint;
+            if (hint) mobileInsert.setAttribute("aria-label", hint);
+            else mobileInsert.removeAttribute("aria-label");
+            mobileInsert.setAttribute("aria-busy", this.primaryBusy ? "true" : "false");
+        }
+    }
+
+    private mobilePrimaryIsCopy(): boolean {
+        return this.deps.isMobile() && !this.insertTarget;
     }
 
     private async showProviderMenu(row: ProviderRow, anchor: HTMLElement): Promise<void> {
@@ -1266,8 +1318,9 @@ export class CommonSearchDialog {
         const sec = document.createElement("div");
         sec.className = "xlc-menu-sec";
         sec.appendChild(this.menuButton("＋", this.deps.t("providerInsert"), "xlc-menu-item", async () => {
+            const execution = this.deps.insertProviderPayload(row.payload, this.insertTarget ?? undefined);
             this.destroy();
-            await this.deps.insertProviderPayload(row.payload, this.insertTarget ?? undefined);
+            await execution;
         }));
         sec.appendChild(this.menuButton("⧉", this.deps.t("providerCopy"), "xlc-menu-item", async () => {
             this.destroy();
@@ -1621,20 +1674,13 @@ export class CommonSearchDialog {
 
     /** 普通点击 = 主动作（insert；blockref = 插入引用）。含变量时先弹填充卡片（F1）。
      *  执行期防重入（R138）：双击行/按住 Enter 不得重复插入同一块。 */
-    private primaryBusy = false;
-    private varFormOpen = false;
     /** AI 变换代次：连点两个变换时丢弃慢的旧结果（R138） */
     private transformSeq = 0;
     /** 排序菜单关闭时刻：chip 的 click 在 pointerdown 关闭之后到达，不得立刻重开（R138 toggle） */
     private sortMenuClosedAt = 0;
     private async runPrimary(entry: SearchEntry): Promise<void> {
         if (this.primaryBusy || this.varFormOpen) return;
-        this.primaryBusy = true;
-        try {
-            await this.insertEntryWithVars(entry, (fills) => this.runActionFor(entry, fills));
-        } finally {
-            this.primaryBusy = false;
-        }
+        await this.insertEntryWithVars(entry, (fills) => this.runActionFor(entry, fills));
     }
 
     private runActionFor(entry: SearchEntry, fills?: Record<string, string>): Promise<unknown> {
@@ -1652,8 +1698,19 @@ export class CommonSearchDialog {
     /** F1：插入前询问变量（设置可关；无 ask 字段零打扰；code 条目不询问）。
      *  perform 收到 fills（undefined=未触发询问，走原路径）。 */
     private async insertEntryWithVars(entry: SearchEntry, perform: (fills?: Record<string, string>) => Promise<unknown>, options?: {beforePerform?: () => void}): Promise<void> {
+        if (this.varFormOpen || this.primaryBusy) return;
+        this.primaryBusy = true;
+        this.syncPaneActions();
+        const releaseBusy = (): void => {
+            this.primaryBusy = false;
+            this.syncPaneActions();
+        };
         if (!this.deps.promptVariables()) {
-            await perform();
+            try {
+                await perform();
+            } finally {
+                releaseBusy();
+            }
             return;
         }
         let fields: AskField[] = [];
@@ -1674,13 +1731,22 @@ export class CommonSearchDialog {
                     status.classList.add("xlc-status--error");
                 }
             }
-            options?.beforePerform?.();
-            await perform();
+            try {
+                const execution = perform();
+                options?.beforePerform?.();
+                await execution;
+            } finally {
+                releaseBusy();
+            }
             return;
         }
         // 填充卡已在屏上时不得叠开第二张（双击行会走到这里，R138）
-        if (this.varFormOpen) return;
+        if (this.varFormOpen) {
+            releaseBusy();
+            return;
+        }
         this.varFormOpen = true;
+        this.syncPaneActions();
         openVariableFillCard({
             t: this.deps.t,
             itemType: entry.itemType,
@@ -1688,14 +1754,19 @@ export class CommonSearchDialog {
             fields,
             onConfirm: (fills) => {
                 this.varFormOpen = false;
+                this.syncPaneActions();
                 // 主列表保留原行为；动作菜单传入 beforePerform，让取消填写时搜索上下文仍在。
+                const execution = perform(fills);
                 if (options?.beforePerform) options.beforePerform();
                 else this.destroy();
-                void perform(fills);
+                void execution.finally(() => {
+                    releaseBusy();
+                });
             },
             // 取消/关闭（Esc/scrim/取消钮）后焦点回搜索框，与浮层菜单一致（R128）
             onCancel: () => {
                 this.varFormOpen = false;
+                releaseBusy();
                 this.restoreFocusToSearch();
             },
         });
@@ -1751,12 +1822,13 @@ export class CommonSearchDialog {
             sec1.className = "xlc-menu-sec";
             const addAction = (icon: string, label: string, run: () => Promise<unknown>, cls = "xlc-menu-item", destroyBeforeRun = true): void => {
                 sec1.appendChild(this.menuButton(icon, label, cls, async () => {
+                    const execution = run();
                     if (destroyBeforeRun) this.destroy();
                     else {
                         this.menuDismiss?.();
                         this.menuDismiss = null;
                     }
-                    await run();
+                    await execution;
                 }));
             };
             if (entry.itemType === "blockref") {
@@ -1902,8 +1974,9 @@ export class CommonSearchDialog {
             const insertBtn = this.menuButton("＋", this.deps.t("aiInsertTransformed"), "xlc-menu-item", async () => {
                 const transformed = box.dataset.transformed ?? "";
                 if (!transformed) return;
+                const execution = this.deps.insertRaw(transformed, this.insertTarget ?? undefined);
                 this.destroy();
-                await this.deps.insertRaw(transformed);
+                await execution;
             });
             const copyBtn = this.menuButton("⧉", this.deps.t("aiCopyTransformed"), "xlc-menu-item", async () => {
                 // 复制的是「变换结果」本体（此前误复制条目原文，R77 修正）
@@ -1918,8 +1991,9 @@ export class CommonSearchDialog {
             (menu as HTMLElement & {syncTransformReady?: () => void}).syncTransformReady = syncReady;
             sec.appendChild(this.menuButton("↩", this.deps.t("aiInsertOriginal"), "xlc-menu-item", async () => {
                 // 与「插入变换结果」「存为新条目」一致：执行即关弹窗，防菜单残留导致重复插入（R137）
+                const execution = this.runActionFor(entry);
                 this.destroy();
-                await this.deps.runAction(entry.id, entry.itemType === "blockref" ? "insert-ref" : "insert");
+                await execution;
             }));
             const saveBtn = this.menuButton("🗎", this.deps.t("saveTransformed"), "xlc-menu-item", async () => {
                 const transformed = box.dataset.transformed ?? "";
@@ -2039,9 +2113,10 @@ export class CommonSearchDialog {
             if (this.activeProvider >= 0) {
                 const row = this.providerRows[this.activeProvider];
                 if (row) {
-                    this.destroy();
                     // 定向模式一致性（R50）：provider payload 同样插入目标文档
-                    await this.deps.insertProviderPayload(row.payload, this.insertTarget ?? undefined);
+                    const execution = this.deps.insertProviderPayload(row.payload, this.insertTarget ?? undefined);
+                    this.destroy();
+                    await execution;
                 }
                 return;
             }

@@ -10,6 +10,24 @@ A quick-recall content launcher for SiYuan Notes: turn frequently used content �
 
 > Runs fully standalone (no dependency on other Lv plugins), and exposes the `xiaolv-common/v1` protocol for sibling plugins.
 
+> **Released: v0.4.0 (2026-10-11)** · [Download the latest release](https://github.com/ai68298100/xiaolv-common/releases/latest) · The next iteration is developing the “dedicated library + on-demand discovery” workflow.
+
+## Next iteration in development
+
+Overall: keep the dedicated library as the default work set while letting users discover existing content from the current document and copy selected blocks into the library.
+
+Added:
+
+- Editor context menu and command palette entry “Discover common phrases from current document”; scans top-level blocks without changing the source note.
+- Discovery panel with candidate filters, source paths, previews, single/batch add, explicit same-content confirmation, and per-item receipts.
+
+Improved:
+
+- Capture forms preserve the source type and document captured at invocation time for selections, blocks, clipboard captures, and manual items.
+- Candidates live only in the current session; added items retain source backlinks and refresh an open search panel.
+
+Limits: only current-document discovery is implemented. Current-notebook, selected-tree/notebook, batch undo, and SiYuan Electron/Android acceptance remain future work.
+
 ## Scope
 
 **Is**: search → preview → insert / copy / open-source for your reusable content, plus AI tidy & transform.
@@ -77,7 +95,7 @@ Missing assets: insert/open fail honestly, copy-link still works. Deleted source
 
 After choosing a library, build it in this order:
 
-1. **Capture**: save a selection from the context menu, use Quick capture for the clipboard, or click **＋ New** in the panel. Add a clear title, tags, and category so later searches can find it.
+1. **Capture**: save a selection from the context menu, use Quick capture for the clipboard, or click **＋ New** in the panel. To reuse existing notes, choose **Discover common phrases from current document** from the editor context menu or command palette, preview candidates, then add the ones you want. Add a clear title, tags, and category so later searches can find it.
 2. **Reuse**: open the top-bar panel, press `Enter` to insert and `Ctrl/⌘+Enter` to copy. On mobile, tap to insert and long-press for more actions. Favorites and Frequent sort keep high-use items close.
 3. **Template**: write `{{xlc:ask:field}}` for a value requested on insert and `{{xlc:ask:field|A,B}}` for a dropdown. Date and clipboard placeholders expand only when called; the stored template stays unchanged.
 4. **Organize**: start with categories such as support, email, address, contacts, prompts, writing, and development. Settings → AI assistant → **Import prompt scene pack** provides 16 editable examples, including a usage guide, email signature, address, and contact card. Import is explicit and goes through the duplicate policy; it never writes silently.
@@ -94,7 +112,7 @@ common.registerProvider({protocol: "xiaolv-common", protocolVersion: 1, pluginId
 common.protocolCommands["xiaolv.common.open"]();
 ```
 
-Interfaces: `getCapabilities / search / get / save / update / remove / insert / copy / openSource / reindex / getRecent / getFavorites`. Command ids: `xiaolv.common.open / saveSelection / insert / copy / openSource`. Events: `xiaolv:common:item-created / updated / deleted / inserted`. Full integration guide: [docs/provider-guide.md](docs/provider-guide.md).
+Interfaces: `getCapabilities / search / get / save / update / remove / insert / copy / openSource / reindex / getRecent / getFavorites`. Command ids: `xiaolv.common.open / saveSelection / insert / copy / openSource`; discovery commands are `discoverCurrentDocument / previewDiscoveryCandidate / addDiscoveryCandidate / closeDiscoverySession`. Events: `xiaolv:common:item-created / updated / deleted / inserted`. Full integration guide: [docs/provider-guide.md](docs/provider-guide.md).
 
 ## Install / upgrade / backup
 

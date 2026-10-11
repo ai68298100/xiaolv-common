@@ -58,8 +58,9 @@ export function inferTypeFromText(text: string): ItemType {
 }
 
 export class CaptureDialog {
-    /** 快速捕获并发锁（⌥⇧V 连按防重入） */
-    private quickCapturing = false;
+    /** 命令面板入口没有可禁用的按钮，用操作锁防止重复读取和重复落库。 */
+    private readonly activeCaptures = new Set<string>();
+    private formOpen = false;
 
     constructor(private readonly deps: CaptureDeps) {}
 
@@ -70,64 +71,98 @@ export class CaptureDialog {
         return false;
     }
 
-    /** 保存当前选区（命令/顶栏入口） */
-    async saveSelection(): Promise<void> {
-        if (!this.ensureConfigured()) return;
-        const sel = this.deps.getSelectionText();
-        const text = sel.text.trim();
-        if (!text) {
-            void this.captureFromClipboard();
+    private async withCaptureLock(key: string, action: () => Promise<void>): Promise<void> {
+        if (this.activeCaptures.has(key)) {
+            this.deps.notify("info", this.deps.t("captureBusy"));
             return;
         }
-        // 超大选区截断进表单（与剪贴板/当前块路径一致；落库另有 LIMITS.contentChars，R138）
-        this.openForm(text.slice(0, 100_000), inferTypeFromText(text), sel.blockId);
+        this.activeCaptures.add(key);
+        try {
+            await action();
+        } catch (err) {
+            this.deps.notify("error", this.deps.t("kernelError", err instanceof Error ? err.message : String(err)));
+        } finally {
+            this.activeCaptures.delete(key);
+        }
+    }
+
+    private notifyIfTruncated(text: string): string {
+        if (text.length <= 100_000) return text;
+        this.deps.notify("info", this.deps.t("captureTruncated", "100000"));
+        return text.slice(0, 100_000);
+    }
+
+    /** 保存当前选中内容（命令面板/正文右键入口） */
+    async saveSelection(): Promise<void> {
+        if (!this.ensureConfigured()) return;
+        let sel: {text: string; blockId: string | null};
+        try {
+            sel = this.deps.getSelectionText();
+        } catch (err) {
+            this.deps.notify("error", this.deps.t("kernelError", err instanceof Error ? err.message : String(err)));
+            return;
+        }
+        const text = sel.text.trim();
+        if (!text) {
+            this.deps.notify("error", this.deps.t("captureSelectionEmpty"));
+            return;
+        }
+        const content = this.notifyIfTruncated(text);
+        this.openForm(content, inferTypeFromText(content), sel.blockId, {
+            docId: this.deps.currentDocId() ?? undefined,
+            sourceType: "selection",
+        });
     }
 
     /** 从剪贴板捕获（失败诚实回执） */
     async captureFromClipboard(): Promise<void> {
         if (!this.ensureConfigured()) return;
-        try {
-            const text = (await this.deps.readClipboardText()).trim();
-            if (!text) {
+        await this.withCaptureLock("clipboard", async () => {
+            try {
+                const text = (await this.deps.readClipboardText()).trim();
+                if (!text) {
+                    this.deps.notify("error", this.deps.t("clipboardEmpty"));
+                    this.openForm("", "text", null, {
+                        sourceType: "clipboard",
+                    });
+                    return;
+                }
+                const content = this.notifyIfTruncated(text);
+                this.openForm(content, inferTypeFromText(content), null, {
+                    sourceType: "clipboard",
+                });
+            } catch {
                 this.deps.notify("error", this.deps.t("clipboardReadFailed"));
-                this.openForm("", "text", null);
-                return;
+                this.openForm("", "text", null, {
+                    sourceType: "clipboard",
+                });
             }
-            this.openForm(text.slice(0, 100_000), inferTypeFromText(text), null);
-        } catch {
-            this.deps.notify("error", this.deps.t("clipboardReadFailed"));
-            this.openForm("", "text", null);
-        }
+        });
     }
 
     /** 快速捕获剪贴板（F8）：无表单一步入库——类型推断 + 首行作标题；
      *  同文已存在则诚实提示不重复写入（不打断）；⌥⇧V 连按防重入。 */
     async quickCaptureFromClipboard(): Promise<void> {
-        if (this.quickCapturing) return;
         if (this.deps.isConfigured && !this.deps.isConfigured()) {
             this.deps.onNotConfigured?.();
             return;
         }
-        this.quickCapturing = true;
-        try {
-            await this.doQuickCapture();
-        } finally {
-            this.quickCapturing = false;
-        }
+        await this.withCaptureLock("clipboard", () => this.doQuickCapture());
     }
 
     private async doQuickCapture(): Promise<void> {
         let text = "";
+        let readFailed = false;
         try {
             text = (await this.deps.readClipboardText()).trim();
         } catch {
-            text = "";
+            readFailed = true;
         }
         if (!text) {
-            this.deps.notify("error", this.deps.t("clipboardReadFailed"));
+            this.deps.notify("error", this.deps.t(readFailed ? "clipboardReadFailed" : "clipboardEmpty"));
             return;
         }
-        const content = text.slice(0, 100_000);
+        const content = this.notifyIfTruncated(text);
         let dup: {id: string; title: string} | null;
         try {
             dup = await this.deps.findDuplicate(content);
@@ -146,6 +181,7 @@ export class CaptureDialog {
                 itemType: inferTypeFromText(content),
                 markdown: content,
                 title: firstLine.slice(0, 512),
+                source: {sourceType: "clipboard"},
             });
         } catch (err) {
             this.deps.notify("error", this.deps.t("kernelError", err instanceof Error ? err.message : String(err)));
@@ -161,7 +197,11 @@ export class CaptureDialog {
     /** 手动新建（空表单） */
     newManual(titleCandidate?: string): void {
         if (!this.ensureConfigured()) return;
-        this.openForm("", "text", null, titleCandidate ? {title: titleCandidate} : undefined);
+        this.openForm("", "text", null, {
+            ...(titleCandidate ? {title: titleCandidate} : {}),
+            docId: this.deps.currentDocId() ?? undefined,
+            sourceType: "manual",
+        });
     }
 
     /** 右键块引用捕获：把被引用块存为 blockref 条目（目标块=引用目标） */
@@ -206,56 +246,63 @@ export class CaptureDialog {
         }
     }
 
-    /** 捕获当前块：光标所在块整体作为条目（选区文本优先级低于整块语义） */
+    /** 保存当前块：光标所在块整体作为条目，独立于选区保存语义。 */
     async captureCurrentBlock(): Promise<void> {
         if (!this.ensureConfigured()) return;
-        const blockId = this.deps.getSelectionText().blockId;
-        if (!blockId) {
-            this.deps.notify("error", this.deps.t("captureBlockNone"));
-            return;
-        }
-        let kramdown: string | null;
-        try {
-            kramdown = await this.deps.getBlockKramdown(blockId);
-        } catch (err) {
-            this.deps.notify("error", this.deps.t("kernelError", err instanceof Error ? err.message : String(err)));
-            return;
-        }
-        if (kramdown === null || !kramdown.trim()) {
-            this.deps.notify("error", this.deps.t("captureBlockFailed"));
-            return;
-        }
-        this.openForm(kramdown.slice(0, 100_000), inferTypeFromText(kramdown), blockId);
+        const sourceDocId = this.deps.currentDocId() ?? undefined;
+        await this.withCaptureLock("block", async () => {
+            const blockId = this.deps.getSelectionText().blockId;
+            if (!blockId) {
+                this.deps.notify("error", this.deps.t("captureBlockNone"));
+                return;
+            }
+            const kramdown = await this.deps.getBlockKramdown(blockId);
+            if (kramdown === null || !kramdown.trim()) {
+                this.deps.notify("error", this.deps.t("captureBlockFailed"));
+                return;
+            }
+            const content = this.notifyIfTruncated(kramdown);
+            this.openForm(content, inferTypeFromText(content), blockId, {
+                docId: sourceDocId,
+                sourceType: "block",
+            });
+        });
     }
 
-    /** 捕获当前文档：整文档 Markdown 作为结构条目（来源 = 该文档） */
+    /** 保存整篇文档为单个 Markdown 条目；不等同于发现文档中的多个候选。 */
     async captureCurrentDoc(): Promise<void> {
         if (!this.ensureConfigured()) return;
-        const docId = this.deps.currentDocId();
-        if (!docId) {
-            this.deps.notify("error", this.deps.t("relinkNoDoc"));
-            return;
-        }
-        let doc: {hPath: string; content: string} | null;
-        try {
-            doc = await this.deps.exportDocContent(docId);
-        } catch (err) {
-            this.deps.notify("error", this.deps.t("kernelError", err instanceof Error ? err.message : String(err)));
-            return;
-        }
-        if (!doc) {
-            this.deps.notify("error", this.deps.t("captureDocFailed"));
-            return;
-        }
-        const title = doc.hPath.split("/").filter(Boolean).pop() ?? doc.hPath;
-        this.openForm(doc.content.slice(0, 100_000), "markdown", null, {title, docId, sourceType: "doc-fragment"});
+        await this.withCaptureLock("document", async () => {
+            const docId = this.deps.currentDocId();
+            if (!docId) {
+                this.deps.notify("error", this.deps.t("relinkNoDoc"));
+                return;
+            }
+            const doc = await this.deps.exportDocContent(docId);
+            if (!doc) {
+                this.deps.notify("error", this.deps.t("captureDocFailed"));
+                return;
+            }
+            if (!doc.content.trim()) {
+                this.deps.notify("error", this.deps.t("captureDocEmpty"));
+                return;
+            }
+            const title = doc.hPath.split("/").filter(Boolean).pop() ?? doc.hPath;
+            const content = this.notifyIfTruncated(doc.content);
+            this.openForm(content, "markdown", null, {title, docId, sourceType: "doc-fragment"});
+        });
     }
 
-    openForm(defaultText: string, defaultType: ItemType, sourceBlockId: string | null, overrides?: {title?: string; docId?: string; targetBlockId?: string; sourceType?: "block" | "doc-fragment" | "resource"}): void {
+    openForm(defaultText: string, defaultType: ItemType, sourceBlockId: string | null, overrides?: {title?: string; docId?: string; targetBlockId?: string; sourceType?: "selection" | "block" | "doc-fragment" | "clipboard" | "manual" | "resource"}): void {
         if (this.deps.isConfigured && !this.deps.isConfigured()) {
             this.deps.onNotConfigured?.();
             return;
         }
+        if (this.formOpen) {
+            this.deps.notify("info", this.deps.t("captureBusy"));
+            return;
+        }
+        this.formOpen = true;
         const t = this.deps.t;
         let closed = false;
         let saving = false;
@@ -268,13 +315,18 @@ export class CaptureDialog {
             height: "min(720px, 90vh)",
             destroyCallback: () => {
                 closed = true;
+                this.formOpen = false;
                 ++tidySeq;
                 ++draftSeq;
             },
         });
         dialog.element.querySelector(".b3-dialog__container")?.classList.add("xlc-form-host");
         const body = getDialogBody(dialog.element);
-        if (!body) return;
+        if (!body) {
+            this.formOpen = false;
+            dialog.destroy();
+            return;
+        }
         body.innerHTML = "";
         const form = document.createElement("div");
         form.className = "xlc-form";
@@ -574,7 +626,11 @@ export class CaptureDialog {
                 saveBtn.disabled = true;
                 saveBtn.textContent = t("saving");
                 cancelBtn.disabled = true;
-                const docId = this.deps.currentDocId();
+                // Presence of overrides.docId means the capture source was frozen at entry time;
+                // preserve an explicit undefined so switching tabs cannot attach another document.
+                const docId = overrides && "docId" in overrides
+                    ? overrides.docId
+                    : overrides?.sourceType === "clipboard" ? undefined : this.deps.currentDocId();
                 void this.deps.createItem({
                     itemType: type,
                     markdown,
@@ -584,7 +640,13 @@ export class CaptureDialog {
                     category: (categoryEl as HTMLInputElement).value || undefined,
                     url: type === "url" ? markdown : undefined,
                     targetBlockId: overrides?.targetBlockId,
-                    source: docId ? {sourceDocId: docId, sourceBlockId: sourceBlockId ?? undefined, sourceType: overrides?.sourceType ?? (sourceBlockId ? "selection" : "manual")} : undefined,
+                    source: (docId || sourceBlockId || overrides?.sourceType)
+                        ? {
+                            sourceDocId: docId ?? "",
+                            sourceBlockId: sourceBlockId ?? "",
+                            sourceType: overrides?.sourceType ?? (sourceBlockId ? "selection" : "manual"),
+                        }
+                        : undefined,
                 }).then((result) => {
                     saving = false;
                     if (result.ok) {

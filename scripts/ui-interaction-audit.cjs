@@ -248,6 +248,48 @@ const check = (name, ok, detail = "") => {
     const banner = await page.evaluate(() => (document.querySelector(".xlc-dialog")?.textContent ?? "").includes("插入到：/常用内容库"));
     check("H1 定向插入横幅显示落点", banner);
 
+    // ── H2. 当前落点与无编辑器降级：面板必须说明实际主动作 ──
+    await open({activeEditor: false, query: "延期"});
+    await sleep(300);
+    const noEditor = await page.evaluate(() => {
+        const root = document.querySelector(".xlc-dialog");
+        const insert = root?.querySelector('[data-xlc-pane-act="insert"]');
+        const target = root?.querySelector(".xlc-target-banner");
+        return {
+            banner: target?.textContent ?? "",
+            action: insert?.textContent ?? "",
+            hint: insert?.getAttribute("title") ?? "",
+            enabled: Boolean(insert && !insert.disabled),
+        };
+    });
+    check("H2 无活动编辑器时显示复制降级语义", noEditor.banner.includes("没有活动编辑器") && noEditor.action.includes("复制") && noEditor.hint.includes("复制") && noEditor.enabled, JSON.stringify(noEditor));
+
+    await open({activeEditor: true, insertTargetAvailable: false, query: "延期"});
+    await sleep(300);
+    const staleTarget = await page.evaluate(() => {
+        const root = document.querySelector(".xlc-dialog");
+        const insert = root?.querySelector('[data-xlc-pane-act="insert"]');
+        const target = root?.querySelector(".xlc-target-banner");
+        return {banner: target?.textContent ?? "", action: insert?.textContent ?? "", hint: insert?.getAttribute("title") ?? "", enabled: Boolean(insert && !insert.disabled)};
+    });
+    check("H2b 插入位置失效时不改投其他编辑器", staleTarget.banner.includes("原插入位置不可用") && staleTarget.action.includes("复制") && staleTarget.hint.includes("原插入位置已失效") && staleTarget.enabled, JSON.stringify(staleTarget));
+
+    // 执行期间锁住主动作，避免双击/重复 Enter 产生两次写入。
+    await open({actionDelayMs: 300, query: "SLA"});
+    await sleep(300);
+    const busy = await page.evaluate(() => {
+        const btn = document.querySelector('[data-xlc-pane-act="insert"]');
+        btn?.dispatchEvent(new MouseEvent("click", {bubbles: true}));
+        return {disabled: Boolean(btn?.disabled), busy: btn?.getAttribute("aria-busy")};
+    });
+    check("H3 执行期间禁用主动作并标记忙态", busy.disabled && busy.busy === "true", JSON.stringify(busy));
+    await sleep(400);
+    const readyAfterBusy = await page.evaluate(() => {
+        const btn = document.querySelector('[data-xlc-pane-act="insert"]');
+        return {disabled: Boolean(btn?.disabled), busy: btn?.getAttribute("aria-busy")};
+    });
+    check("H4 主动作完成后恢复可用", !readyAfterBusy.disabled && readyAfterBusy.busy === "false", JSON.stringify(readyAfterBusy));
+
     // ── I. 设置交互：AI 总开关联动禁用正文开关；展开库选择器即聚焦；添加变换即聚焦 ──
     await page.evaluate(() => {
         document.querySelectorAll(".b3-dialog, .xlc-dialog").forEach((el) => el.remove());
@@ -331,12 +373,13 @@ const check = (name, ok, detail = "") => {
     await sleep(350);
     const mobile = await page.evaluate(() => {
         const sheet = document.querySelector(".xlc-sheet");
-        const btn = Array.from(document.querySelectorAll("button")).find((b) => (b.textContent ?? "").includes("插入选中"));
+        const btn = document.querySelector(".xlc-mobile-insert");
         const row = document.querySelector(".xlc-list .xlc-row");
+        const enabledBeforeAction = Boolean(btn && !btn.disabled);
         row?.dispatchEvent(new MouseEvent("click", {bubbles: true}));
-        return {sheet: Boolean(sheet), btnEnabled: Boolean(btn && !btn.disabled), newRowActive: Boolean(document.querySelector(".xlc-row--active"))};
+        return {sheet: Boolean(sheet), enabledBeforeAction, disabledWhileBusy: Boolean(btn?.disabled), copyFallback: (btn?.textContent ?? "").includes("复制"), newRowActive: Boolean(document.querySelector(".xlc-row--active"))};
     });
-    check("J1 移动端 sheet：插入选中可用 + 点行选中", mobile.sheet && mobile.btnEnabled && mobile.newRowActive, JSON.stringify(mobile));
+    check("J1 移动端 sheet：主动作明确为复制，忙态锁定按钮", mobile.sheet && mobile.enabledBeforeAction && mobile.disabledWhileBusy && mobile.copyFallback && mobile.newRowActive, JSON.stringify(mobile));
 
     await open({mobile: true, empty: true, query: "不存在的条目"});
     await sleep(200);

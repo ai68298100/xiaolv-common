@@ -1,6 +1,6 @@
 // 宿主执行层：把 planAction 的纯计划执行到思源（protyle.insert / clipboard / openTab）。
 // 每个动作返回诚实回执；降级路径明示；不伪造成功。
-import type {App} from "siyuan";
+import type {App, ITrackedRangeHandle, Plugin, Protyle} from "siyuan";
 import {getActiveEditor, openTab} from "siyuan";
 import {EVENTS, PROTOCOL_VERSION} from "../constants";
 import {ActionContext, InsertMode, InsertPlan, OpenTarget, planAction, planOpenSource} from "../model/actions";
@@ -23,7 +23,10 @@ export interface IHostBridge {
     /** 桌面端活动编辑器是否存在（getActiveEditor 官方 API） */
     hasActiveEditor(): boolean;
     /** 在活动编辑器光标处插入 markdown 块 */
-    insertMarkdown(markdown: string): boolean;
+    insertMarkdown(markdown: string, target?: EditorInsertTargetSnapshot | null): boolean;
+    captureInsertTarget(): EditorInsertTargetSnapshot;
+    canInsertAtTarget(target: EditorInsertTargetSnapshot | null): boolean;
+    releaseInsertTarget(target: EditorInsertTargetSnapshot | null): void;
     /** 系统剪贴板写文本 */
     writeClipboard(text: string): Promise<boolean>;
     /** 打开文档/块（openTab） */
@@ -37,8 +40,15 @@ export interface IHostBridge {
     isMobile(): boolean;
 }
 
+/** A search dialog keeps the editor and tracked range it was opened from. */
+export interface EditorInsertTargetSnapshot {
+    editor: Protyle | null;
+    handle: ITrackedRangeHandle | null;
+    docId: string | null;
+}
+
 export class HostBridge implements IHostBridge {
-    constructor(private readonly app: App) {}
+    constructor(private readonly app: App, private readonly owner: Plugin) {}
 
     isMobile(): boolean {
         return (window.siyuan?.mobile as unknown) === true || document.body.classList.contains("body--mobile");
@@ -52,10 +62,59 @@ export class HostBridge implements IHostBridge {
         }
     }
 
-    insertMarkdown(markdown: string): boolean {
+    captureInsertTarget(): EditorInsertTargetSnapshot {
+        let editor: Protyle | null = null;
+        let docId: string | null = null;
         try {
-            const editor = getActiveEditor();
+            editor = getActiveEditor() ?? null;
+            if (!editor) return {editor: null, handle: null, docId: null};
+            docId = editor.protyle.block.rootID ?? null;
+            const selection = window.getSelection();
+            if (!selection || selection.rangeCount === 0) return {editor, handle: null, docId};
+            const range = selection.getRangeAt(0);
+            if (!editor.protyle.element.contains(range.commonAncestorContainer)) return {editor, handle: null, docId};
+            const handle = editor.protyle.trackRange(range, {owner: this.owner, affinity: "after"});
+            return {editor, handle, docId};
+        } catch {
+            return {editor, handle: null, docId};
+        }
+    }
+
+    canInsertAtTarget(target: EditorInsertTargetSnapshot | null): boolean {
+        if (!target?.editor || !target.handle) return false;
+        try {
+            const resolved = target.editor.protyle.resolveTrackedRange(target.handle);
+            return resolved.status === "resolved"
+                && target.editor.protyle.element.isConnected
+                && target.editor.protyle.element.contains(resolved.range.commonAncestorContainer);
+        } catch {
+            return false;
+        }
+    }
+
+    releaseInsertTarget(target: EditorInsertTargetSnapshot | null): void {
+        if (!target?.editor || !target.handle) return;
+        try {
+            target.editor.protyle.releaseTrackedRange(target.handle);
+        } catch {
+            // The editor may already have been disposed.
+        }
+    }
+
+    insertMarkdown(markdown: string, target?: EditorInsertTargetSnapshot | null): boolean {
+        try {
+            const editor = target === undefined ? getActiveEditor() : target?.editor;
             if (!editor) return false;
+            if (target !== undefined) {
+                if (!this.canInsertAtTarget(target) || !target?.handle) return false;
+                const resolved = editor.protyle.resolveTrackedRange(target.handle);
+                if (resolved.status !== "resolved") return false;
+                const selection = window.getSelection();
+                if (!selection) return false;
+                editor.focus();
+                selection.removeAllRanges();
+                selection.addRange(resolved.range);
+            }
             editor.insert(markdown, true, false);
             return true;
         } catch {
@@ -247,21 +306,23 @@ export class ActionExecutor {
         return content;
     }
 
-    async run(item: CommonItem, mode: InsertMode, opts?: {fills?: Record<string, string>}): Promise<ExecutionReceipt> {
+    async run(item: CommonItem, mode: InsertMode, opts?: {fills?: Record<string, string>; editorTarget?: EditorInsertTargetSnapshot | null}): Promise<ExecutionReceipt> {
         const content = await this.resolveWithFills(item, opts?.fills);
         if (!content) {
             return {ok: false, mode, message: "kernel-error:content", downgraded: false, pendingVerification: []};
         }
         const ctx: ActionContext = {
             surface: this.host.isMobile() ? "mobile" : "desktop",
-            hasActiveEditor: this.host.hasActiveEditor(),
+            hasActiveEditor: opts?.editorTarget !== undefined
+                ? this.host.canInsertAtTarget(opts.editorTarget)
+                : this.host.hasActiveEditor(),
             content,
         };
         const plan: InsertPlan = planAction(item, mode, ctx);
-        return this.execute(item, plan);
+        return this.execute(item, plan, opts?.editorTarget);
     }
 
-    private async execute(item: CommonItem, plan: InsertPlan): Promise<ExecutionReceipt> {
+    private async execute(item: CommonItem, plan: InsertPlan, editorTarget?: EditorInsertTargetSnapshot | null): Promise<ExecutionReceipt> {
         // 插入语义输出：未填充 ask 兜底为 __名称__（可见可改），光标标记移除；复制路径保持模板原样
         const insertRender = (text: string | undefined): Promise<string | undefined> => {
             if (text === undefined) return Promise.resolve(undefined);
@@ -269,7 +330,7 @@ export class ActionExecutor {
             return this.applyOutput(applyAskDefaults(stripCursorToken(text)), item);
         };
         // 移动端插入未验证：诚实降级为复制（B-002 解除后复核）
-        if (plan.mode === "insert" && this.host.isMobile()) {
+        if ((plan.mode === "insert" || plan.mode === "insert-ref" || plan.mode === "insert-embed") && this.host.isMobile()) {
             const text = (await insertRender(plan.markdown)) ?? "";
             const copied = text ? await this.host.writeClipboard(text) : false;
             if (copied) {
@@ -288,20 +349,25 @@ export class ActionExecutor {
             if (!md) {
                 return {ok: false, mode: plan.mode, message: "empty-plan", downgraded: plan.downgraded, pendingVerification: plan.pendingVerification};
             }
-            if (!this.host.hasActiveEditor()) {
+            const targetAvailable = editorTarget !== undefined
+                ? this.host.canInsertAtTarget(editorTarget)
+                : this.host.hasActiveEditor();
+            if (!targetAvailable) {
                 const copied = await this.host.writeClipboard(md);
                 if (copied) {
                     this.noteUsed(item);
                 }
                 return {
-                    ok: true,
+                    ok: copied,
                     mode: plan.mode,
-                    message: copied ? "no-editor-copied" : "no-editor-copy-failed",
+                    message: copied
+                        ? editorTarget?.editor ? "target-unavailable-copied" : "no-editor-copied"
+                        : "no-editor-copy-failed",
                     downgraded: true,
                     pendingVerification: plan.pendingVerification,
                 };
             }
-            const inserted = this.host.insertMarkdown(md);
+            const inserted = this.host.insertMarkdown(md, editorTarget);
             if (inserted) {
                 this.emitEvent(EVENTS.itemInserted, item, {insertMode: plan.mode});
                 this.noteUsed(item);

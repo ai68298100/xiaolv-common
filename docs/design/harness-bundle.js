@@ -442,10 +442,10 @@
       /** IME 组合输入中（中文输入法组词期间跳过刷新，compositionend 后统一刷新） */
       this.isComposing = false;
       this.filterOptionsSeq = 0;
-      /** 普通点击 = 主动作（insert；blockref = 插入引用）。含变量时先弹填充卡片（F1）。
-       *  执行期防重入（R138）：双击行/按住 Enter 不得重复插入同一块。 */
       this.primaryBusy = false;
       this.varFormOpen = false;
+      /** 普通点击 = 主动作（insert；blockref = 插入引用）。含变量时先弹填充卡片（F1）。
+       *  执行期防重入（R138）：双击行/按住 Enter 不得重复插入同一块。 */
       /** AI 变换代次：连点两个变换时丢弃慢的旧结果（R138） */
       this.transformSeq = 0;
       /** 排序菜单关闭时刻：chip 的 click 在 pointerdown 关闭之后到达，不得立刻重开（R138 toggle） */
@@ -488,6 +488,7 @@
       void this.refresh();
     }
     buildDom(isMobile) {
+      var _a, _b, _c, _d, _e, _f;
       const root = document.createElement("div");
       root.className = "xlc-dialog" + (isMobile ? " xlc-dialog--mobile" : "");
       const top = document.createElement("div");
@@ -617,11 +618,11 @@
       const savedFilters = this.deps.getFilters();
       if (savedFilters.type) typeSelect.value = savedFilters.type;
       typeSelect.addEventListener("change", () => {
-        var _a, _b;
+        var _a2, _b2;
         this.deps.setFilters({
           type: typeSelect.value,
-          tag: (_a = tagSelect == null ? void 0 : tagSelect.value) != null ? _a : "",
-          category: (_b = categorySelect == null ? void 0 : categorySelect.value) != null ? _b : ""
+          tag: (_a2 = tagSelect == null ? void 0 : tagSelect.value) != null ? _a2 : "",
+          category: (_b2 = categorySelect == null ? void 0 : categorySelect.value) != null ? _b2 : ""
         });
         void this.refresh();
       });
@@ -631,11 +632,11 @@
       tagSelect.setAttribute("aria-label", this.deps.t("tags"));
       tagSelect.disabled = true;
       tagSelect.addEventListener("change", () => {
-        var _a;
+        var _a2;
         this.deps.setFilters({
           type: typeSelect.value,
           tag: tagSelect.value,
-          category: (_a = categorySelect == null ? void 0 : categorySelect.value) != null ? _a : ""
+          category: (_a2 = categorySelect == null ? void 0 : categorySelect.value) != null ? _a2 : ""
         });
         void this.refresh();
       });
@@ -684,6 +685,16 @@
         const targetBanner = document.createElement("span");
         targetBanner.className = "xlc-chip xlc-target-banner";
         targetBanner.textContent = "\u2913 " + this.deps.t("insertTargetBanner", this.insertTarget.hPath || this.insertTarget.docId);
+        filters.insertBefore(targetBanner, filters.firstChild);
+      } else {
+        const targetBanner = document.createElement("span");
+        targetBanner.className = "xlc-chip xlc-target-banner";
+        const hasEditor = (_c = (_b = (_a = this.deps).hasActiveEditor) == null ? void 0 : _b.call(_a)) != null ? _c : true;
+        const hasTarget = (_f = (_e = (_d = this.deps).hasInsertTarget) == null ? void 0 : _e.call(_d)) != null ? _f : hasEditor;
+        const fallbackKey = this.deps.isMobile() ? "insertMobileActionHint" : hasTarget ? "insertCurrentEditorBanner" : hasEditor ? "insertTargetUnavailableBanner" : "insertNoEditorBanner";
+        targetBanner.textContent = "\u2913 " + this.deps.t(fallbackKey);
+        targetBanner.setAttribute("role", "note");
+        targetBanner.setAttribute("aria-label", this.deps.t(fallbackKey));
         filters.insertBefore(targetBanner, filters.firstChild);
       }
       root.appendChild(filters);
@@ -761,8 +772,12 @@
         footBtns.appendChild(newBtn);
         const insertBtn = document.createElement("button");
         insertBtn.className = "b3-button xlc-btn-primary xlc-mobile-insert";
-        insertBtn.textContent = this.deps.t("quickInsertSelected");
+        insertBtn.textContent = this.deps.t(this.mobilePrimaryIsCopy() ? "copy" : "quickInsertSelected");
         insertBtn.disabled = true;
+        if (this.mobilePrimaryIsCopy()) {
+          insertBtn.title = this.deps.t("insertMobileActionHint");
+          insertBtn.setAttribute("aria-label", this.deps.t("insertMobileActionHint"));
+        }
         insertBtn.addEventListener("click", () => {
           const entry = this.results[this.activeIndex];
           if (entry) void this.runPrimary(entry);
@@ -1468,32 +1483,55 @@
     }
     /** 预览区动作随当前选中行同步；键盘切换/来源预检也必须更新按钮状态。 */
     syncPaneActions() {
-      var _a, _b, _c, _d, _e;
+      var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k, _l, _m, _n, _o, _p, _q, _r, _s, _t, _u, _v, _w, _x, _y, _z, _A, _B, _C;
       const actionable = this.results.length > 0;
       const scope = (_b = (_a = this.dialog) == null ? void 0 : _a.element) != null ? _b : document;
+      const targetBanner = scope.querySelector(".xlc-target-banner");
+      if (targetBanner && !this.insertTarget) {
+        const hasEditor = (_e = (_d = (_c = this.deps).hasActiveEditor) == null ? void 0 : _d.call(_c)) != null ? _e : true;
+        const hasTarget = (_h = (_g = (_f = this.deps).hasInsertTarget) == null ? void 0 : _g.call(_f)) != null ? _h : hasEditor;
+        const fallbackKey = this.deps.isMobile() ? "insertMobileActionHint" : hasTarget ? "insertCurrentEditorBanner" : hasEditor ? "insertTargetUnavailableBanner" : "insertNoEditorBanner";
+        targetBanner.textContent = "\u2913 " + this.deps.t(fallbackKey);
+        targetBanner.setAttribute("aria-label", this.deps.t(fallbackKey));
+      }
       scope.querySelectorAll(".xlc-pane-foot .b3-button").forEach((btn) => {
         var _a2, _b2;
         if (this.activeProvider >= 0) {
           const act2 = (_a2 = btn.dataset.xlcPaneAct) != null ? _a2 : "";
-          btn.disabled = !(act2 === "insert" || act2 === "copy");
+          btn.disabled = this.primaryBusy || !(act2 === "insert" || act2 === "copy");
           return;
         }
         const entry = this.results[this.activeIndex];
         const act = (_b2 = btn.dataset.xlcPaneAct) != null ? _b2 : "";
         const unavailable = !entry || act === "ai" && !this.deps.aiEnabled() || act === "source" && this.deps.isSourceMissing(entry);
-        btn.disabled = !actionable || unavailable;
+        btn.disabled = !actionable || unavailable || this.primaryBusy || this.varFormOpen;
         btn.removeAttribute("title");
         if (act === "ai" && !this.deps.aiEnabled()) btn.title = this.deps.t("aiDisabled");
         if (act === "source" && entry && this.deps.isSourceMissing(entry)) btn.title = this.deps.t("sourceGone");
       });
       const insertBtn = scope.querySelector('[data-xlc-pane-act="insert"]');
-      if (insertBtn && this.activeProvider < 0) {
-        const directInsert = (_e = (_d = (_c = this.deps).hasActiveEditor) == null ? void 0 : _d.call(_c)) != null ? _e : true;
-        insertBtn.textContent = directInsert ? this.deps.t("insert") : this.deps.t("insertNoEditorAction");
-        insertBtn.title = directInsert ? "" : this.deps.t("insertNoEditor");
+      if (insertBtn) {
+        const copyFallback = this.activeProvider >= 0 ? !this.insertTarget && (this.deps.isMobile() || !((_n = (_m = (_j = (_i = this.deps).hasInsertTarget) == null ? void 0 : _j.call(_i)) != null ? _m : (_l = (_k = this.deps).hasActiveEditor) == null ? void 0 : _l.call(_k)) != null ? _n : true)) : this.mobilePrimaryIsCopy() || !this.insertTarget && !((_t = (_s = (_p = (_o = this.deps).hasInsertTarget) == null ? void 0 : _p.call(_o)) != null ? _s : (_r = (_q = this.deps).hasActiveEditor) == null ? void 0 : _r.call(_q)) != null ? _t : true);
+        insertBtn.textContent = copyFallback ? this.deps.t("copy") : this.deps.t("insert");
+        const hint = this.deps.isMobile() && !this.insertTarget ? this.deps.t("insertMobileActionHint") : !this.insertTarget && !((_z = (_y = (_v = (_u = this.deps).hasInsertTarget) == null ? void 0 : _v.call(_u)) != null ? _y : (_x = (_w = this.deps).hasActiveEditor) == null ? void 0 : _x.call(_w)) != null ? _z : true) ? this.deps.t(((_C = (_B = (_A = this.deps).hasActiveEditor) == null ? void 0 : _B.call(_A)) != null ? _C : true) ? "insertTargetUnavailableCopied" : "insertNoEditor") : "";
+        insertBtn.title = hint;
+        if (hint) insertBtn.setAttribute("aria-label", hint);
+        else insertBtn.removeAttribute("aria-label");
+        insertBtn.setAttribute("aria-busy", this.primaryBusy ? "true" : "false");
       }
       const mobileInsert = scope.querySelector(".xlc-mobile-foot .xlc-btn-primary");
-      if (mobileInsert) mobileInsert.disabled = !actionable;
+      if (mobileInsert) {
+        mobileInsert.disabled = !actionable || this.primaryBusy || this.varFormOpen;
+        mobileInsert.textContent = this.deps.t(this.mobilePrimaryIsCopy() ? "copy" : "quickInsertSelected");
+        const hint = this.mobilePrimaryIsCopy() ? this.deps.t("insertMobileActionHint") : "";
+        mobileInsert.title = hint;
+        if (hint) mobileInsert.setAttribute("aria-label", hint);
+        else mobileInsert.removeAttribute("aria-label");
+        mobileInsert.setAttribute("aria-busy", this.primaryBusy ? "true" : "false");
+      }
+    }
+    mobilePrimaryIsCopy() {
+      return this.deps.isMobile() && !this.insertTarget;
     }
     async showProviderMenu(row, anchor) {
       var _a, _b, _c, _d, _e, _f;
@@ -1511,8 +1549,9 @@
       sec.className = "xlc-menu-sec";
       sec.appendChild(this.menuButton("\uFF0B", this.deps.t("providerInsert"), "xlc-menu-item", async () => {
         var _a2;
+        const execution = this.deps.insertProviderPayload(row.payload, (_a2 = this.insertTarget) != null ? _a2 : void 0);
         this.destroy();
-        await this.deps.insertProviderPayload(row.payload, (_a2 = this.insertTarget) != null ? _a2 : void 0);
+        await execution;
       }));
       sec.appendChild(this.menuButton("\u29C9", this.deps.t("providerCopy"), "xlc-menu-item", async () => {
         this.destroy();
@@ -1846,12 +1885,7 @@
     }
     async runPrimary(entry) {
       if (this.primaryBusy || this.varFormOpen) return;
-      this.primaryBusy = true;
-      try {
-        await this.insertEntryWithVars(entry, (fills) => this.runActionFor(entry, fills));
-      } finally {
-        this.primaryBusy = false;
-      }
+      await this.insertEntryWithVars(entry, (fills) => this.runActionFor(entry, fills));
     }
     runActionFor(entry, fills) {
       if (this.deps.insertTarget) {
@@ -1865,8 +1899,19 @@
      *  perform 收到 fills（undefined=未触发询问，走原路径）。 */
     async insertEntryWithVars(entry, perform, options) {
       var _a, _b, _c;
+      if (this.varFormOpen || this.primaryBusy) return;
+      this.primaryBusy = true;
+      this.syncPaneActions();
+      const releaseBusy = () => {
+        this.primaryBusy = false;
+        this.syncPaneActions();
+      };
       if (!this.deps.promptVariables()) {
-        await perform();
+        try {
+          await perform();
+        } finally {
+          releaseBusy();
+        }
         return;
       }
       let fields = [];
@@ -1886,12 +1931,21 @@
             status.classList.add("xlc-status--error");
           }
         }
-        (_c = options == null ? void 0 : options.beforePerform) == null ? void 0 : _c.call(options);
-        await perform();
+        try {
+          const execution = perform();
+          (_c = options == null ? void 0 : options.beforePerform) == null ? void 0 : _c.call(options);
+          await execution;
+        } finally {
+          releaseBusy();
+        }
         return;
       }
-      if (this.varFormOpen) return;
+      if (this.varFormOpen) {
+        releaseBusy();
+        return;
+      }
       this.varFormOpen = true;
+      this.syncPaneActions();
       openVariableFillCard({
         t: this.deps.t,
         itemType: entry.itemType,
@@ -1899,13 +1953,18 @@
         fields,
         onConfirm: (fills) => {
           this.varFormOpen = false;
+          this.syncPaneActions();
+          const execution = perform(fills);
           if (options == null ? void 0 : options.beforePerform) options.beforePerform();
           else this.destroy();
-          void perform(fills);
+          void execution.finally(() => {
+            releaseBusy();
+          });
         },
         // 取消/关闭（Esc/scrim/取消钮）后焦点回搜索框，与浮层菜单一致（R128）
         onCancel: () => {
           this.varFormOpen = false;
+          releaseBusy();
           this.restoreFocusToSearch();
         }
       });
@@ -1957,12 +2016,13 @@
         const addAction = (icon, label, run, cls = "xlc-menu-item", destroyBeforeRun = true) => {
           sec1.appendChild(this.menuButton(icon, label, cls, async () => {
             var _a2;
+            const execution = run();
             if (destroyBeforeRun) this.destroy();
             else {
               (_a2 = this.menuDismiss) == null ? void 0 : _a2.call(this);
               this.menuDismiss = null;
             }
-            await run();
+            await execution;
           }));
         };
         if (entry.itemType === "blockref") {
@@ -2089,11 +2149,12 @@
           for (const b of resultButtons) b.disabled = !ready;
         };
         const insertBtn = this.menuButton("\uFF0B", this.deps.t("aiInsertTransformed"), "xlc-menu-item", async () => {
-          var _a2;
+          var _a2, _b2;
           const transformed = (_a2 = box.dataset.transformed) != null ? _a2 : "";
           if (!transformed) return;
+          const execution = this.deps.insertRaw(transformed, (_b2 = this.insertTarget) != null ? _b2 : void 0);
           this.destroy();
-          await this.deps.insertRaw(transformed);
+          await execution;
         });
         const copyBtn = this.menuButton("\u29C9", this.deps.t("aiCopyTransformed"), "xlc-menu-item", async () => {
           var _a2;
@@ -2107,8 +2168,9 @@
         syncReady();
         menu.syncTransformReady = syncReady;
         sec.appendChild(this.menuButton("\u21A9", this.deps.t("aiInsertOriginal"), "xlc-menu-item", async () => {
+          const execution = this.runActionFor(entry);
           this.destroy();
-          await this.deps.runAction(entry.id, entry.itemType === "blockref" ? "insert-ref" : "insert");
+          await execution;
         }));
         const saveBtn = this.menuButton("\u{1F5CE}", this.deps.t("saveTransformed"), "xlc-menu-item", async () => {
           var _a2;
@@ -2220,8 +2282,9 @@
         if (this.activeProvider >= 0) {
           const row = this.providerRows[this.activeProvider];
           if (row) {
+            const execution = this.deps.insertProviderPayload(row.payload, (_d = this.insertTarget) != null ? _d : void 0);
             this.destroy();
-            await this.deps.insertProviderPayload(row.payload, (_d = this.insertTarget) != null ? _d : void 0);
+            await execution;
           }
           return;
         }
@@ -7066,8 +7129,9 @@ ${exception.mark.snippet}`;
   var CaptureDialog = class {
     constructor(deps) {
       this.deps = deps;
-      /** 快速捕获并发锁（⌥⇧V 连按防重入） */
-      this.quickCapturing = false;
+      /** 命令面板入口没有可禁用的按钮，用操作锁防止重复读取和重复落库。 */
+      this.activeCaptures = /* @__PURE__ */ new Set();
+      this.formOpen = false;
     }
     /** 保存前的共同前置条件：没有内容库时直接回到首次设置，避免先访问宿主再报错。 */
     ensureConfigured() {
@@ -7076,62 +7140,96 @@ ${exception.mark.snippet}`;
       (_b = (_a = this.deps).onNotConfigured) == null ? void 0 : _b.call(_a);
       return false;
     }
-    /** 保存当前选区（命令/顶栏入口） */
-    async saveSelection() {
-      if (!this.ensureConfigured()) return;
-      const sel = this.deps.getSelectionText();
-      const text = sel.text.trim();
-      if (!text) {
-        void this.captureFromClipboard();
+    async withCaptureLock(key, action) {
+      if (this.activeCaptures.has(key)) {
+        this.deps.notify("info", this.deps.t("captureBusy"));
         return;
       }
-      this.openForm(text.slice(0, 1e5), inferTypeFromText(text), sel.blockId);
+      this.activeCaptures.add(key);
+      try {
+        await action();
+      } catch (err) {
+        this.deps.notify("error", this.deps.t("kernelError", err instanceof Error ? err.message : String(err)));
+      } finally {
+        this.activeCaptures.delete(key);
+      }
+    }
+    notifyIfTruncated(text) {
+      if (text.length <= 1e5) return text;
+      this.deps.notify("info", this.deps.t("captureTruncated", "100000"));
+      return text.slice(0, 1e5);
+    }
+    /** 保存当前选中内容（命令面板/正文右键入口） */
+    async saveSelection() {
+      var _a;
+      if (!this.ensureConfigured()) return;
+      let sel;
+      try {
+        sel = this.deps.getSelectionText();
+      } catch (err) {
+        this.deps.notify("error", this.deps.t("kernelError", err instanceof Error ? err.message : String(err)));
+        return;
+      }
+      const text = sel.text.trim();
+      if (!text) {
+        this.deps.notify("error", this.deps.t("captureSelectionEmpty"));
+        return;
+      }
+      const content = this.notifyIfTruncated(text);
+      this.openForm(content, inferTypeFromText(content), sel.blockId, {
+        docId: (_a = this.deps.currentDocId()) != null ? _a : void 0,
+        sourceType: "selection"
+      });
     }
     /** 从剪贴板捕获（失败诚实回执） */
     async captureFromClipboard() {
       if (!this.ensureConfigured()) return;
-      try {
-        const text = (await this.deps.readClipboardText()).trim();
-        if (!text) {
+      await this.withCaptureLock("clipboard", async () => {
+        try {
+          const text = (await this.deps.readClipboardText()).trim();
+          if (!text) {
+            this.deps.notify("error", this.deps.t("clipboardEmpty"));
+            this.openForm("", "text", null, {
+              sourceType: "clipboard"
+            });
+            return;
+          }
+          const content = this.notifyIfTruncated(text);
+          this.openForm(content, inferTypeFromText(content), null, {
+            sourceType: "clipboard"
+          });
+        } catch {
           this.deps.notify("error", this.deps.t("clipboardReadFailed"));
-          this.openForm("", "text", null);
-          return;
+          this.openForm("", "text", null, {
+            sourceType: "clipboard"
+          });
         }
-        this.openForm(text.slice(0, 1e5), inferTypeFromText(text), null);
-      } catch {
-        this.deps.notify("error", this.deps.t("clipboardReadFailed"));
-        this.openForm("", "text", null);
-      }
+      });
     }
     /** 快速捕获剪贴板（F8）：无表单一步入库——类型推断 + 首行作标题；
      *  同文已存在则诚实提示不重复写入（不打断）；⌥⇧V 连按防重入。 */
     async quickCaptureFromClipboard() {
       var _a, _b;
-      if (this.quickCapturing) return;
       if (this.deps.isConfigured && !this.deps.isConfigured()) {
         (_b = (_a = this.deps).onNotConfigured) == null ? void 0 : _b.call(_a);
         return;
       }
-      this.quickCapturing = true;
-      try {
-        await this.doQuickCapture();
-      } finally {
-        this.quickCapturing = false;
-      }
+      await this.withCaptureLock("clipboard", () => this.doQuickCapture());
     }
     async doQuickCapture() {
       var _a;
       let text = "";
+      let readFailed = false;
       try {
         text = (await this.deps.readClipboardText()).trim();
       } catch {
-        text = "";
+        readFailed = true;
       }
       if (!text) {
-        this.deps.notify("error", this.deps.t("clipboardReadFailed"));
+        this.deps.notify("error", this.deps.t(readFailed ? "clipboardReadFailed" : "clipboardEmpty"));
         return;
       }
-      const content = text.slice(0, 1e5);
+      const content = this.notifyIfTruncated(text);
       let dup;
       try {
         dup = await this.deps.findDuplicate(content);
@@ -7149,7 +7247,8 @@ ${exception.mark.snippet}`;
         created = await this.deps.createItem({
           itemType: inferTypeFromText(content),
           markdown: content,
-          title: firstLine.slice(0, 512)
+          title: firstLine.slice(0, 512),
+          source: { sourceType: "clipboard" }
         });
       } catch (err) {
         this.deps.notify("error", this.deps.t("kernelError", err instanceof Error ? err.message : String(err)));
@@ -7162,8 +7261,13 @@ ${exception.mark.snippet}`;
     }
     /** 手动新建（空表单） */
     newManual(titleCandidate) {
+      var _a;
       if (!this.ensureConfigured()) return;
-      this.openForm("", "text", null, titleCandidate ? { title: titleCandidate } : void 0);
+      this.openForm("", "text", null, {
+        ...titleCandidate ? { title: titleCandidate } : {},
+        docId: (_a = this.deps.currentDocId()) != null ? _a : void 0,
+        sourceType: "manual"
+      });
     }
     /** 右键块引用捕获：把被引用块存为 blockref 条目（目标块=引用目标） */
     captureBlockRef(blockId, refText) {
@@ -7207,49 +7311,52 @@ ${exception.mark.snippet}`;
         this.openForm(`[${text || this.deps.t("resourceFallback")}](${target.value})`, "asset", null, { title: (text || target.value).slice(0, 120), docId: (_b = this.deps.currentDocId()) != null ? _b : void 0, sourceType: "resource" });
       }
     }
-    /** 捕获当前块：光标所在块整体作为条目（选区文本优先级低于整块语义） */
+    /** 保存当前块：光标所在块整体作为条目，独立于选区保存语义。 */
     async captureCurrentBlock() {
-      if (!this.ensureConfigured()) return;
-      const blockId = this.deps.getSelectionText().blockId;
-      if (!blockId) {
-        this.deps.notify("error", this.deps.t("captureBlockNone"));
-        return;
-      }
-      let kramdown;
-      try {
-        kramdown = await this.deps.getBlockKramdown(blockId);
-      } catch (err) {
-        this.deps.notify("error", this.deps.t("kernelError", err instanceof Error ? err.message : String(err)));
-        return;
-      }
-      if (kramdown === null || !kramdown.trim()) {
-        this.deps.notify("error", this.deps.t("captureBlockFailed"));
-        return;
-      }
-      this.openForm(kramdown.slice(0, 1e5), inferTypeFromText(kramdown), blockId);
-    }
-    /** 捕获当前文档：整文档 Markdown 作为结构条目（来源 = 该文档） */
-    async captureCurrentDoc() {
       var _a;
       if (!this.ensureConfigured()) return;
-      const docId = this.deps.currentDocId();
-      if (!docId) {
-        this.deps.notify("error", this.deps.t("relinkNoDoc"));
-        return;
-      }
-      let doc;
-      try {
-        doc = await this.deps.exportDocContent(docId);
-      } catch (err) {
-        this.deps.notify("error", this.deps.t("kernelError", err instanceof Error ? err.message : String(err)));
-        return;
-      }
-      if (!doc) {
-        this.deps.notify("error", this.deps.t("captureDocFailed"));
-        return;
-      }
-      const title = (_a = doc.hPath.split("/").filter(Boolean).pop()) != null ? _a : doc.hPath;
-      this.openForm(doc.content.slice(0, 1e5), "markdown", null, { title, docId, sourceType: "doc-fragment" });
+      const sourceDocId = (_a = this.deps.currentDocId()) != null ? _a : void 0;
+      await this.withCaptureLock("block", async () => {
+        const blockId = this.deps.getSelectionText().blockId;
+        if (!blockId) {
+          this.deps.notify("error", this.deps.t("captureBlockNone"));
+          return;
+        }
+        const kramdown = await this.deps.getBlockKramdown(blockId);
+        if (kramdown === null || !kramdown.trim()) {
+          this.deps.notify("error", this.deps.t("captureBlockFailed"));
+          return;
+        }
+        const content = this.notifyIfTruncated(kramdown);
+        this.openForm(content, inferTypeFromText(content), blockId, {
+          docId: sourceDocId,
+          sourceType: "block"
+        });
+      });
+    }
+    /** 保存整篇文档为单个 Markdown 条目；不等同于发现文档中的多个候选。 */
+    async captureCurrentDoc() {
+      if (!this.ensureConfigured()) return;
+      await this.withCaptureLock("document", async () => {
+        var _a;
+        const docId = this.deps.currentDocId();
+        if (!docId) {
+          this.deps.notify("error", this.deps.t("relinkNoDoc"));
+          return;
+        }
+        const doc = await this.deps.exportDocContent(docId);
+        if (!doc) {
+          this.deps.notify("error", this.deps.t("captureDocFailed"));
+          return;
+        }
+        if (!doc.content.trim()) {
+          this.deps.notify("error", this.deps.t("captureDocEmpty"));
+          return;
+        }
+        const title = (_a = doc.hPath.split("/").filter(Boolean).pop()) != null ? _a : doc.hPath;
+        const content = this.notifyIfTruncated(doc.content);
+        this.openForm(content, "markdown", null, { title, docId, sourceType: "doc-fragment" });
+      });
     }
     openForm(defaultText, defaultType, sourceBlockId, overrides) {
       var _a, _b, _c, _d;
@@ -7257,6 +7364,11 @@ ${exception.mark.snippet}`;
         (_b = (_a = this.deps).onNotConfigured) == null ? void 0 : _b.call(_a);
         return;
       }
+      if (this.formOpen) {
+        this.deps.notify("info", this.deps.t("captureBusy"));
+        return;
+      }
+      this.formOpen = true;
       const t = this.deps.t;
       let closed = false;
       let saving = false;
@@ -7269,13 +7381,18 @@ ${exception.mark.snippet}`;
         height: "min(720px, 90vh)",
         destroyCallback: () => {
           closed = true;
+          this.formOpen = false;
           ++tidySeq;
           ++draftSeq;
         }
       });
       (_c = dialog.element.querySelector(".b3-dialog__container")) == null ? void 0 : _c.classList.add("xlc-form-host");
       const body = getDialogBody(dialog.element);
-      if (!body) return;
+      if (!body) {
+        this.formOpen = false;
+        dialog.destroy();
+        return;
+      }
       body.innerHTML = "";
       const form = document.createElement("div");
       form.className = "xlc-form";
@@ -7300,10 +7417,10 @@ ${exception.mark.snippet}`;
       metaRow.className = "xlc-form-row";
       const typeWrap = document.createElement("label");
       typeWrap.className = "xlc-form-field xlc-form-field--fixed";
-      const typeLabel = document.createElement("span");
-      typeLabel.className = "xlc-form-label";
-      typeLabel.textContent = t("type");
-      typeWrap.appendChild(typeLabel);
+      const typeLabel2 = document.createElement("span");
+      typeLabel2.className = "xlc-form-label";
+      typeLabel2.textContent = t("type");
+      typeWrap.appendChild(typeLabel2);
       const typeSelect = document.createElement("select");
       typeSelect.className = "b3-select xlc-form-type";
       for (const it of ["text", "markdown", "url", "code", "image", "asset", "blockref", "structure"]) {
@@ -7553,7 +7670,7 @@ ${exception.mark.snippet}`;
           saveBtn.disabled = true;
           saveBtn.textContent = t("saving");
           cancelBtn.disabled = true;
-          const docId = this.deps.currentDocId();
+          const docId = overrides && "docId" in overrides ? overrides.docId : (overrides == null ? void 0 : overrides.sourceType) === "clipboard" ? void 0 : this.deps.currentDocId();
           void this.deps.createItem({
             itemType: type,
             markdown,
@@ -7563,7 +7680,11 @@ ${exception.mark.snippet}`;
             category: categoryEl.value || void 0,
             url: type === "url" ? markdown : void 0,
             targetBlockId: overrides == null ? void 0 : overrides.targetBlockId,
-            source: docId ? { sourceDocId: docId, sourceBlockId: sourceBlockId != null ? sourceBlockId : void 0, sourceType: (_a2 = overrides == null ? void 0 : overrides.sourceType) != null ? _a2 : sourceBlockId ? "selection" : "manual" } : void 0
+            source: docId || sourceBlockId || (overrides == null ? void 0 : overrides.sourceType) ? {
+              sourceDocId: docId != null ? docId : "",
+              sourceBlockId: sourceBlockId != null ? sourceBlockId : "",
+              sourceType: (_a2 = overrides == null ? void 0 : overrides.sourceType) != null ? _a2 : sourceBlockId ? "selection" : "manual"
+            } : void 0
           }).then((result) => {
             saving = false;
             if (result.ok) {
@@ -7614,6 +7735,649 @@ ${exception.mark.snippet}`;
       contentEl.focus();
     }
   };
+
+  // src/ui/discovery-dialog.ts
+  var import_siyuan5 = __toESM(require_stub_dom());
+  var FALLBACKS = {
+    discoveryTitle: "\u4ECE\u5F53\u524D\u6587\u6863\u53D1\u73B0",
+    discoveryScope: "\u626B\u63CF\u8303\u56F4",
+    discoveryScopeHint: "\u53EA\u8BFB\u53D6\u5F53\u524D\u6587\u6863\u7684\u9876\u5C42\u5757\uFF0C\u4E0D\u4E0A\u4F20\u5185\u5BB9\uFF0C\u4E5F\u4E0D\u4F1A\u4FEE\u6539\u539F\u6587\u3002",
+    discoveryScanning: "\u6B63\u5728\u626B\u63CF\u5F53\u524D\u6587\u6863\u2026",
+    discoveryScanned: "\u5DF2\u626B\u63CF %s \u4E2A\u5757\uFF0C\u53D1\u73B0 %s \u4E2A\u5019\u9009",
+    discoverySkipped: "\u8DF3\u8FC7\u7A7A\u5757 %s \u4E2A",
+    discoveryTruncated: "\u5DF2\u8FBE\u5230\u626B\u63CF\u4E0A\u9650\uFF0C\u7ED3\u679C\u53EF\u80FD\u4E0D\u5B8C\u6574",
+    discoveryCancelScan: "\u505C\u6B62\u626B\u63CF",
+    discoveryRetry: "\u91CD\u65B0\u626B\u63CF",
+    discoveryFilter: "\u7B5B\u9009",
+    discoveryFilterAll: "\u5168\u90E8\u72B6\u6001",
+    discoveryFilterCandidate: "\u5F85\u6536\u5F55",
+    discoveryFilterUnverified: "\u5F85\u786E\u8BA4\u91CD\u590D",
+    discoveryFilterSameContent: "\u5185\u5BB9\u76F8\u540C",
+    discoveryFilterAlready: "\u5DF2\u5728\u5E93\u4E2D",
+    discoveryFilterAdded: "\u5DF2\u6536\u5F55",
+    discoveryTypeAll: "\u5168\u90E8\u7C7B\u578B",
+    discoverySearchPlaceholder: "\u7B5B\u9009\u6807\u9898\u3001\u6458\u8981\u6216\u6765\u6E90",
+    discoveryNoCandidates: "\u6CA1\u6709\u7B26\u5408\u6761\u4EF6\u7684\u5019\u9009",
+    discoveryPreviewTitle: "\u5019\u9009\u9884\u89C8",
+    discoveryPreviewEmpty: "\u9009\u62E9\u5DE6\u4FA7\u5019\u9009\u540E\u67E5\u770B\u6B63\u6587\uFF1B\u6536\u5F55\u524D\u4F1A\u518D\u6B21\u6821\u9A8C\u6765\u6E90\u3002",
+    discoveryPreviewLoading: "\u6B63\u5728\u8BFB\u53D6\u5019\u9009\u6B63\u6587\u2026",
+    discoveryAdd: "\u52A0\u5165\u5E38\u7528\u5E93",
+    discoveryAddSelected: "\u52A0\u5165\u9009\u4E2D\u9879",
+    discoveryForceSameContent: "\u5141\u8BB8\u6536\u5F55\u5185\u5BB9\u76F8\u540C\u7684\u5019\u9009",
+    discoverySelected: "\u5DF2\u9009 %s \u9879",
+    discoveryClose: "\u5173\u95ED",
+    discoveryReceiptTitle: "\u6536\u5F55\u56DE\u6267",
+    discoveryReceiptAdded: "\u5DF2\u590D\u5236\u5230\u5E38\u7528\u5E93\uFF1A%s\uFF1B\u539F\u7B14\u8BB0\u672A\u4FEE\u6539\uFF0C\u4E4B\u540E\u4E0D\u4F1A\u81EA\u52A8\u540C\u6B65\u3002",
+    discoveryReceiptSameContent: "\u5185\u5BB9\u4E0E\u300C%s\u300D\u76F8\u540C\uFF0C\u672A\u81EA\u52A8\u6536\u5F55\uFF1B\u5982\u4ECD\u8981\u6536\u5F55\uFF0C\u8BF7\u660E\u786E\u786E\u8BA4\u3002",
+    discoveryReceiptAlready: "\u5DF2\u5728\u5E38\u7528\u5E93\u4E2D\uFF1A%s",
+    discoveryReceiptFailed: "\u6536\u5F55\u5931\u8D25\uFF1A%s",
+    discoveryReceiptBatch: "\u6279\u91CF\u6536\u5F55\u5B8C\u6210\uFF1A\u65B0\u589E %s\uFF0C\u8DF3\u8FC7 %s\uFF0C\u5931\u8D25 %s",
+    discoverySessionExpired: "\u53D1\u73B0\u4F1A\u8BDD\u5DF2\u5931\u6548\uFF0C\u5019\u9009\u6B63\u6587\u5DF2\u91CA\u653E\uFF0C\u8BF7\u91CD\u65B0\u626B\u63CF\u3002",
+    discoveryScanFailed: "\u626B\u63CF\u5931\u8D25\uFF1A%s",
+    discoveryUnknown: "\u672A\u77E5\u9519\u8BEF",
+    discoveryStatusCandidate: "\u5F85\u6536\u5F55",
+    discoveryStatusAlready: "\u5DF2\u5728\u5E93\u4E2D",
+    discoveryStatusSameContent: "\u5185\u5BB9\u76F8\u540C",
+    discoveryStatusUnverified: "\u91CD\u590D\u5F85\u786E\u8BA4",
+    discoveryStatusAdded: "\u5DF2\u6536\u5F55",
+    discoveryType: "\u7C7B\u578B",
+    discoverySource: "\u6765\u6E90",
+    discoveryStats: "\u7EDF\u8BA1",
+    discoveryNotConfigured: "\u5C1A\u672A\u914D\u7F6E\u5E38\u7528\u5185\u5BB9\u5E93\uFF0C\u65E0\u6CD5\u6536\u5F55\u5019\u9009\u3002"
+  };
+  var STATUS_KEYS = [
+    "all",
+    "candidate",
+    "library-unverified",
+    "same-content",
+    "already-in-library",
+    "added"
+  ];
+  var typeLabel = (t, itemType) => {
+    const value = t(`type.${itemType}`);
+    return value && value !== `type.${itemType}` ? value : itemType;
+  };
+  function replaceArgs(value, args) {
+    let index = 0;
+    return value.replace(/%s/g, () => {
+      var _a;
+      return (_a = args[index++]) != null ? _a : "";
+    });
+  }
+  var DiscoveryDialog = class {
+    constructor(deps, options) {
+      this.deps = deps;
+      this.options = options;
+      this.dialog = null;
+      this.root = null;
+      this.list = null;
+      this.preview = null;
+      this.status = null;
+      this.receipt = null;
+      this.addSelectedButton = null;
+      this.selectedLabel = null;
+      this.scanButton = null;
+      this.filterStatus = null;
+      this.filterType = null;
+      this.filterText = null;
+      this.forceSameContent = null;
+      this.session = null;
+      this.sessionId = null;
+      this.candidates = /* @__PURE__ */ new Map();
+      this.selected = /* @__PURE__ */ new Set();
+      this.previewed = /* @__PURE__ */ new Set();
+      this.activeKey = null;
+      this.scanSeq = 0;
+      this.previewSeq = 0;
+      this.actionBusy = false;
+      this.closed = false;
+      this.filter = {
+        status: "all",
+        type: "all",
+        text: ""
+      };
+    }
+    tx(key, ...args) {
+      var _a;
+      const result = this.deps.t(key, ...args);
+      const value = result && result !== key ? result : (_a = FALLBACKS[key]) != null ? _a : key;
+      return replaceArgs(value, args);
+    }
+    open() {
+      var _a, _b;
+      if (this.dialog) return;
+      this.closed = false;
+      const dialog = new import_siyuan5.Dialog({
+        title: (_a = this.options.title) != null ? _a : this.tx("discoveryTitle"),
+        content: "",
+        width: "min(820px, 94vw)",
+        height: "min(700px, 88vh)",
+        destroyCallback: () => {
+          var _a2, _b2, _c;
+          if (this.closed) return;
+          this.closed = true;
+          this.deps.service.closeSession((_a2 = this.sessionId) != null ? _a2 : void 0);
+          this.session = null;
+          this.sessionId = null;
+          this.dialog = null;
+          this.root = null;
+          (_c = (_b2 = this.deps).notify) == null ? void 0 : _c.call(_b2, "info", this.tx("discoveryClose"));
+        }
+      });
+      this.dialog = dialog;
+      (_b = dialog.element.querySelector(".b3-dialog__container")) == null ? void 0 : _b.classList.add("xlc-form-host", "xlc-discovery-host");
+      const body = getDialogBody(dialog.element);
+      if (!body) return;
+      body.innerHTML = "";
+      this.root = document.createElement("div");
+      this.root.className = "xlc-form xlc-discovery";
+      this.root.dataset.xlcDiscovery = "dialog";
+      body.appendChild(this.root);
+      this.renderShell();
+      void this.scan();
+    }
+    close() {
+      var _a;
+      if (!this.dialog) return;
+      this.closed = true;
+      this.scanSeq++;
+      this.previewSeq++;
+      this.deps.service.closeSession((_a = this.sessionId) != null ? _a : void 0);
+      this.session = null;
+      this.sessionId = null;
+      const dialog = this.dialog;
+      this.dialog = null;
+      dialog.destroy();
+    }
+    renderShell() {
+      const root = this.root;
+      if (!root) return;
+      const head = document.createElement("div");
+      head.className = "xlc-discovery-head";
+      const heading = document.createElement("div");
+      heading.className = "xlc-discovery-heading";
+      const title = document.createElement("h2");
+      title.className = "xlc-form-title";
+      title.textContent = this.tx("discoveryTitle");
+      heading.appendChild(title);
+      const scope = document.createElement("div");
+      scope.className = "xlc-form-hint xlc-discovery-scope";
+      scope.textContent = `${this.tx("discoveryScope")}\uFF1A${this.options.sourcePath || this.options.docId}`;
+      heading.appendChild(scope);
+      head.appendChild(heading);
+      const close = document.createElement("button");
+      close.type = "button";
+      close.className = "b3-button xlc-btn-ghost";
+      close.textContent = this.tx("discoveryClose");
+      close.dataset.xlcDiscoveryAction = "close";
+      close.addEventListener("click", () => this.close());
+      head.appendChild(close);
+      root.appendChild(head);
+      const notice = document.createElement("div");
+      notice.className = "xlc-discovery-notice xlc-form-hint";
+      notice.setAttribute("role", "note");
+      notice.textContent = this.tx("discoveryScopeHint");
+      root.appendChild(notice);
+      const statusRow = document.createElement("div");
+      statusRow.className = "xlc-discovery-status-row";
+      this.status = document.createElement("div");
+      this.status.className = "xlc-status";
+      this.status.setAttribute("role", "status");
+      this.status.setAttribute("aria-live", "polite");
+      statusRow.appendChild(this.status);
+      this.scanButton = document.createElement("button");
+      this.scanButton.type = "button";
+      this.scanButton.className = "b3-button xlc-btn-ghost";
+      this.scanButton.textContent = this.tx("discoveryCancelScan");
+      this.scanButton.dataset.xlcDiscoveryAction = "cancel-scan";
+      this.scanButton.addEventListener("click", () => {
+        if (this.session) void this.scan();
+        else this.cancelScan();
+      });
+      statusRow.appendChild(this.scanButton);
+      root.appendChild(statusRow);
+      const filters = document.createElement("div");
+      filters.className = "xlc-discovery-filters";
+      const filterLabel = document.createElement("span");
+      filterLabel.className = "xlc-form-label";
+      filterLabel.textContent = this.tx("discoveryFilter");
+      filters.appendChild(filterLabel);
+      this.filterStatus = document.createElement("select");
+      this.filterStatus.className = "b3-select";
+      this.filterStatus.setAttribute("aria-label", this.tx("discoveryFilter"));
+      for (const status of STATUS_KEYS) {
+        const option = document.createElement("option");
+        option.value = status;
+        option.textContent = status === "all" ? this.tx("discoveryFilterAll") : this.statusLabel(status);
+        this.filterStatus.appendChild(option);
+      }
+      this.filterStatus.addEventListener("change", () => {
+        var _a;
+        this.filter.status = (_a = this.filterStatus) == null ? void 0 : _a.value;
+        this.renderList();
+      });
+      filters.appendChild(this.filterStatus);
+      this.filterType = document.createElement("select");
+      this.filterType.className = "b3-select";
+      this.filterType.setAttribute("aria-label", this.tx("discoveryType"));
+      const typeAll = document.createElement("option");
+      typeAll.value = "all";
+      typeAll.textContent = this.tx("discoveryTypeAll");
+      this.filterType.appendChild(typeAll);
+      for (const itemType of ITEM_TYPES) {
+        const option = document.createElement("option");
+        option.value = itemType;
+        option.textContent = typeLabel(this.deps.t, itemType);
+        this.filterType.appendChild(option);
+      }
+      this.filterType.addEventListener("change", () => {
+        var _a;
+        this.filter.type = (_a = this.filterType) == null ? void 0 : _a.value;
+        this.renderList();
+      });
+      filters.appendChild(this.filterType);
+      this.filterText = document.createElement("input");
+      this.filterText.className = "b3-text-field";
+      this.filterText.placeholder = this.tx("discoverySearchPlaceholder");
+      this.filterText.setAttribute("aria-label", this.tx("discoverySearchPlaceholder"));
+      this.filterText.addEventListener("input", () => {
+        var _a, _b;
+        this.filter.text = (_b = (_a = this.filterText) == null ? void 0 : _a.value.trim().toLocaleLowerCase()) != null ? _b : "";
+        this.renderList();
+      });
+      filters.appendChild(this.filterText);
+      root.appendChild(filters);
+      const content = document.createElement("div");
+      content.className = "xlc-discovery-content";
+      this.list = document.createElement("div");
+      this.list.className = "xlc-discovery-list";
+      this.list.setAttribute("role", "listbox");
+      this.list.setAttribute("aria-label", this.tx("discoveryTitle"));
+      content.appendChild(this.list);
+      const pane = document.createElement("section");
+      pane.className = "xlc-discovery-preview";
+      const paneTitle = document.createElement("h3");
+      paneTitle.textContent = this.tx("discoveryPreviewTitle");
+      pane.appendChild(paneTitle);
+      this.preview = document.createElement("pre");
+      this.preview.className = "xlc-discovery-preview-body";
+      this.preview.textContent = this.tx("discoveryPreviewEmpty");
+      pane.appendChild(this.preview);
+      content.appendChild(pane);
+      root.appendChild(content);
+      const footer = document.createElement("div");
+      footer.className = "xlc-discovery-footer";
+      this.selectedLabel = document.createElement("span");
+      this.selectedLabel.className = "xlc-form-hint";
+      footer.appendChild(this.selectedLabel);
+      const forceLabel = document.createElement("label");
+      forceLabel.className = "xlc-discovery-force";
+      this.forceSameContent = document.createElement("input");
+      this.forceSameContent.type = "checkbox";
+      this.forceSameContent.addEventListener("change", () => this.renderList());
+      forceLabel.appendChild(this.forceSameContent);
+      const forceText = document.createElement("span");
+      forceText.textContent = this.tx("discoveryForceSameContent");
+      forceLabel.appendChild(forceText);
+      footer.appendChild(forceLabel);
+      this.addSelectedButton = document.createElement("button");
+      this.addSelectedButton.type = "button";
+      this.addSelectedButton.className = "b3-button xlc-btn-primary";
+      this.addSelectedButton.textContent = this.tx("discoveryAddSelected");
+      this.addSelectedButton.dataset.xlcDiscoveryAction = "add-selected";
+      this.addSelectedButton.addEventListener("click", () => void this.addSelected());
+      footer.appendChild(this.addSelectedButton);
+      root.appendChild(footer);
+      this.receipt = document.createElement("div");
+      this.receipt.className = "xlc-discovery-receipt";
+      this.receipt.style.display = "none";
+      root.appendChild(this.receipt);
+      this.setScanningState(true);
+      this.renderList();
+    }
+    statusLabel(status) {
+      const key = status === "already-in-library" ? "discoveryStatusAlready" : status === "library-unverified" ? "discoveryStatusUnverified" : status === "same-content" ? "discoveryStatusSameContent" : status === "added" ? "discoveryStatusAdded" : "discoveryStatusCandidate";
+      return this.tx(key);
+    }
+    setStatus(message, isError = false) {
+      if (!this.status) return;
+      this.status.textContent = message;
+      this.status.classList.toggle("xlc-status--error", isError);
+    }
+    setScanningState(scanning) {
+      var _a;
+      (_a = this.root) == null ? void 0 : _a.setAttribute("aria-busy", String(scanning));
+      if (this.scanButton) {
+        this.scanButton.disabled = this.actionBusy;
+        this.scanButton.textContent = scanning ? this.tx("discoveryCancelScan") : this.tx("discoveryRetry");
+        this.scanButton.dataset.xlcDiscoveryAction = scanning ? "cancel-scan" : "retry-scan";
+      }
+      if (this.filterStatus) this.filterStatus.disabled = scanning;
+      if (this.filterType) this.filterType.disabled = scanning;
+      if (this.filterText) this.filterText.disabled = scanning;
+    }
+    async scan() {
+      if (this.actionBusy) return;
+      const seq = ++this.scanSeq;
+      if (this.sessionId) this.deps.service.closeSession(this.sessionId);
+      this.session = null;
+      this.sessionId = null;
+      this.candidates.clear();
+      this.selected.clear();
+      this.previewed.clear();
+      this.activeKey = null;
+      this.setScanningState(true);
+      this.setStatus(this.tx("discoveryScanning"));
+      if (this.preview) this.preview.textContent = this.tx("discoveryPreviewEmpty");
+      this.renderList();
+      const result = await this.deps.service.discoverCurrentDocument(this.options.docId);
+      if (this.closed || seq !== this.scanSeq) return;
+      if (!result.ok) {
+        this.setScanningState(false);
+        this.setStatus(this.failureMessage(result), true);
+        this.showRetryReceipt(this.tx("discoveryScanFailed", result.message || this.tx("discoveryUnknown")));
+        return;
+      }
+      this.session = result.data;
+      this.sessionId = result.data.id;
+      this.candidates = new Map(result.data.candidates.map((candidate) => [candidate.key, candidate]));
+      this.setScanningState(false);
+      const suffix = result.data.truncated ? ` \xB7 ${this.tx("discoveryTruncated")}` : "";
+      this.setStatus(`${this.tx("discoveryScanned", String(result.data.scannedBlocks), String(result.data.candidates.length))} \xB7 ${this.tx("discoverySkipped", String(result.data.skippedEmpty))}${suffix}`);
+      this.renderList();
+    }
+    cancelScan() {
+      this.scanSeq++;
+      this.previewSeq++;
+      this.deps.service.closeSession();
+      this.session = null;
+      this.sessionId = null;
+      this.candidates.clear();
+      this.selected.clear();
+      this.activeKey = null;
+      this.setScanningState(false);
+      this.setStatus(this.tx("discoveryRetry"));
+      this.showRetryReceipt(this.tx("discoveryRetry"));
+      this.renderList();
+    }
+    showRetryReceipt(message = this.tx("discoverySessionExpired")) {
+      if (!this.receipt || !this.scanButton) return;
+      this.receipt.style.display = "block";
+      this.receipt.textContent = "";
+      const text = document.createElement("span");
+      text.textContent = message;
+      this.receipt.appendChild(text);
+      this.scanButton.disabled = false;
+    }
+    matches(candidate) {
+      if (this.filter.status !== "all" && candidate.status !== this.filter.status) return false;
+      if (this.filter.type !== "all" && candidate.itemType !== this.filter.type) return false;
+      if (!this.filter.text) return true;
+      const haystack = `${candidate.title} ${candidate.summary} ${candidate.sourcePath}`.toLocaleLowerCase();
+      return haystack.includes(this.filter.text);
+    }
+    canAdd(candidate) {
+      return candidate.status === "candidate" || candidate.status === "same-content" || candidate.status === "library-unverified";
+    }
+    renderList() {
+      const list = this.list;
+      if (!list) return;
+      list.textContent = "";
+      const visible = Array.from(this.candidates.values()).filter((candidate) => this.matches(candidate));
+      if (!visible.length) {
+        const empty = document.createElement("div");
+        empty.className = "xlc-discovery-empty";
+        empty.textContent = this.tx("discoveryNoCandidates");
+        list.appendChild(empty);
+      }
+      for (const candidate of visible) {
+        const row = document.createElement("div");
+        row.className = "xlc-discovery-row";
+        row.dataset.xlcDiscoveryKey = candidate.key;
+        row.setAttribute("role", "option");
+        row.setAttribute("aria-selected", String(this.activeKey === candidate.key));
+        row.classList.toggle("xlc-discovery-row--active", this.activeKey === candidate.key);
+        row.classList.toggle("xlc-discovery-row--disabled", !this.canAdd(candidate));
+        row.addEventListener("click", (event) => {
+          const target = event.target;
+          if (target.closest("button, input")) return;
+          void this.selectCandidate(candidate.key);
+        });
+        const checkbox = document.createElement("input");
+        checkbox.type = "checkbox";
+        checkbox.checked = this.selected.has(candidate.key);
+        checkbox.disabled = this.actionBusy || !this.canAdd(candidate);
+        checkbox.setAttribute("aria-label", `${this.tx("discoveryAdd")}\uFF1A${candidate.title}`);
+        checkbox.addEventListener("change", () => {
+          if (checkbox.checked) this.selected.add(candidate.key);
+          else this.selected.delete(candidate.key);
+          this.updateSelectionState();
+        });
+        row.appendChild(checkbox);
+        const body = document.createElement("div");
+        body.className = "xlc-discovery-row-body";
+        const title = document.createElement("div");
+        title.className = "xlc-discovery-row-title";
+        title.textContent = candidate.title;
+        body.appendChild(title);
+        const meta = document.createElement("div");
+        meta.className = "xlc-discovery-row-meta";
+        meta.textContent = `${typeLabel(this.deps.t, candidate.itemType)} \xB7 ${candidate.sourcePath}`;
+        body.appendChild(meta);
+        const summary = document.createElement("div");
+        summary.className = "xlc-discovery-row-summary";
+        summary.textContent = candidate.summary;
+        body.appendChild(summary);
+        row.appendChild(body);
+        const side = document.createElement("div");
+        side.className = "xlc-discovery-row-side";
+        const badge = document.createElement("span");
+        badge.className = "xlc-badge";
+        badge.textContent = this.statusLabel(candidate.status);
+        side.appendChild(badge);
+        const add = document.createElement("button");
+        add.type = "button";
+        add.className = "b3-button xlc-btn-primary";
+        add.textContent = candidate.status === "added" ? this.tx("discoveryStatusAdded") : this.tx("discoveryAdd");
+        add.disabled = this.actionBusy || !this.canAdd(candidate);
+        add.dataset.xlcDiscoveryAction = "add-one";
+        add.addEventListener("click", () => void this.addOne(candidate.key, false));
+        side.appendChild(add);
+        row.appendChild(side);
+        list.appendChild(row);
+      }
+      this.updateSelectionState();
+    }
+    updateSelectionState() {
+      const count = this.selected.size;
+      if (this.selectedLabel) this.selectedLabel.textContent = this.tx("discoverySelected", String(count));
+      if (this.addSelectedButton) {
+        this.addSelectedButton.disabled = this.actionBusy || !this.sessionId || count === 0;
+      }
+    }
+    async selectCandidate(key, allowBusy = false) {
+      const candidate = this.candidates.get(key);
+      if (!candidate || !this.sessionId || this.actionBusy && !allowBusy) return;
+      this.activeKey = key;
+      this.renderList();
+      if (this.preview) this.preview.textContent = this.tx("discoveryPreviewLoading");
+      const seq = ++this.previewSeq;
+      const result = await this.deps.service.previewCandidate(this.sessionId, key);
+      if (this.closed || seq !== this.previewSeq) return;
+      if (!result.ok) {
+        this.handleFailure(result);
+        return;
+      }
+      this.applyPreview(result.data);
+    }
+    applyPreview(data) {
+      var _a;
+      this.previewed.add(data.candidate.key);
+      this.candidates.set(data.candidate.key, data.candidate);
+      (_a = this.session) == null ? void 0 : _a.candidates.splice(0, this.session.candidates.length, ...this.candidates.values());
+      if (this.preview && this.activeKey === data.candidate.key) this.preview.textContent = data.markdown;
+      this.renderList();
+      this.setReceipt(data.contentComparisonComplete ? "" : this.tx("discoveryStatusUnverified"));
+    }
+    async ensurePreview(key) {
+      if (this.previewed.has(key)) return true;
+      await this.selectCandidate(key, true);
+      return this.previewed.has(key);
+    }
+    async addOne(key, allowSameContent) {
+      if (!this.sessionId || this.actionBusy) return;
+      const candidate = this.candidates.get(key);
+      if (!candidate || !this.canAdd(candidate)) return;
+      this.actionBusy = true;
+      this.updateSelectionState();
+      this.renderList();
+      try {
+        if (!await this.ensurePreview(key) || !this.sessionId) return;
+        const result = await this.deps.service.addCandidate(this.sessionId, key, { allowSameContent });
+        if (!result.ok) {
+          this.handleFailure(result);
+          return;
+        }
+        this.handleAddResult(key, result.data);
+      } finally {
+        this.actionBusy = false;
+        this.renderList();
+      }
+    }
+    async addSelected() {
+      var _a;
+      if (!this.sessionId || this.actionBusy || this.selected.size === 0) return;
+      this.actionBusy = true;
+      this.updateSelectionState();
+      this.renderList();
+      const keys = Array.from(this.selected);
+      let added = 0;
+      let skipped = 0;
+      let failed = 0;
+      const details = [];
+      try {
+        for (const key of keys) {
+          if (!this.sessionId) break;
+          const candidate = this.candidates.get(key);
+          if (!candidate || !this.canAdd(candidate)) {
+            skipped++;
+            continue;
+          }
+          if (!await this.ensurePreview(key) || !this.sessionId) {
+            failed++;
+            details.push(`${candidate.title}\uFF1A${this.tx("discoveryReceiptFailed", this.tx("discoveryPreviewEmpty"))}`);
+            continue;
+          }
+          const result = await this.deps.service.addCandidate(this.sessionId, key, {
+            allowSameContent: ((_a = this.forceSameContent) == null ? void 0 : _a.checked) === true
+          });
+          if (!result.ok) {
+            if (result.reason === "session-expired") {
+              this.handleFailure(result);
+              failed++;
+              break;
+            }
+            failed++;
+            details.push(`${candidate.title}\uFF1A${result.message}`);
+            continue;
+          }
+          if (result.data.status === "added") {
+            added++;
+            this.handleAddResult(key, result.data, false);
+          } else {
+            skipped++;
+            this.handleAddResult(key, result.data, false);
+          }
+        }
+        this.setReceipt(`${this.tx("discoveryReceiptBatch", String(added), String(skipped), String(failed))}${details.length ? `
+${details.join("\n")}` : ""}`);
+      } finally {
+        this.actionBusy = false;
+        this.renderList();
+      }
+    }
+    handleAddResult(key, result, showReceipt = true) {
+      var _a, _b, _c, _d;
+      const candidate = this.candidates.get(key);
+      if (!candidate) return;
+      if (result.status === "added") {
+        candidate.status = "added";
+        candidate.match = { itemId: result.item.id, title: result.item.title };
+        this.previewed.add(key);
+        this.selected.delete(key);
+        (_b = (_a = this.deps).onAdded) == null ? void 0 : _b.call(_a, result.item.id, result.item.title);
+        if (showReceipt) {
+          this.setReceipt(this.tx("discoveryReceiptAdded", result.item.title));
+          (_d = (_c = this.deps).notify) == null ? void 0 : _d.call(_c, "info", this.tx("discoveryReceiptAdded", result.item.title));
+        }
+        return;
+      }
+      if (result.status === "already-in-library") {
+        candidate.status = "already-in-library";
+        candidate.match = { itemId: result.itemId, title: result.title };
+        this.selected.delete(key);
+        if (showReceipt) this.setReceipt(this.tx("discoveryReceiptAlready", result.title));
+        return;
+      }
+      candidate.status = "same-content";
+      candidate.match = { itemId: result.itemId, title: result.title };
+      if (showReceipt) {
+        this.setReceipt(this.tx("discoveryReceiptSameContent", result.title), true);
+        this.renderForceAction(key, result.title);
+      }
+    }
+    renderForceAction(key, title) {
+      if (!this.receipt) return;
+      const force = document.createElement("button");
+      force.type = "button";
+      force.className = "b3-button xlc-btn-primary";
+      force.textContent = `${this.tx("discoveryAdd")}\uFF08${title}\uFF09`;
+      force.dataset.xlcDiscoveryAction = "force-same-content";
+      force.addEventListener("click", () => {
+        if (this.forceSameContent) this.forceSameContent.checked = true;
+        void this.addOne(key, true);
+      });
+      this.receipt.appendChild(document.createTextNode(" "));
+      this.receipt.appendChild(force);
+    }
+    handleFailure(result) {
+      var _a, _b;
+      if (result.reason === "session-expired") {
+        this.session = null;
+        this.sessionId = null;
+        this.selected.clear();
+        this.setStatus(this.tx("discoverySessionExpired"), true);
+        this.showRetryReceipt();
+        this.renderList();
+        return;
+      }
+      this.setReceipt(result.message || this.tx("discoveryUnknown"), true);
+      (_b = (_a = this.deps).notify) == null ? void 0 : _b.call(_a, "error", result.message || this.tx("discoveryUnknown"));
+    }
+    failureMessage(result) {
+      if (result.reason === "not-configured") return this.tx("discoveryNotConfigured");
+      if (result.reason === "session-expired") return this.tx("discoverySessionExpired");
+      return this.tx("discoveryScanFailed", result.message || this.tx("discoveryUnknown"));
+    }
+    setReceipt(message, error = false) {
+      if (!this.receipt) return;
+      this.receipt.style.display = message ? "block" : "none";
+      this.receipt.textContent = "";
+      if (!message) return;
+      const title = document.createElement("strong");
+      title.textContent = this.tx("discoveryReceiptTitle");
+      this.receipt.appendChild(title);
+      const body = document.createElement("div");
+      body.className = error ? "xlc-status--error" : "";
+      body.textContent = message;
+      this.receipt.appendChild(body);
+    }
+  };
+  function openDiscoveryDialog(deps, options) {
+    const dialog = new DiscoveryDialog(deps, options);
+    dialog.open();
+    return dialog;
+  }
 
   // scripts/harness/entry.ts
   var ENTRIES = [
@@ -7689,6 +8453,11 @@ ${exception.mark.snippet}`;
       insertNoEditor: "\u5F53\u524D\u6CA1\u6709\u6D3B\u52A8\u7F16\u8F91\u5668\uFF0C\u5DF2\u590D\u5236\u5230\u526A\u8D34\u677F\uFF0C\u53EF\u624B\u52A8\u7C98\u8D34",
       insertFailed: "\u63D2\u5165\u5931\u8D25",
       insertToDocFailed: "\u76EE\u6807\u6587\u6863\u63D2\u5165\u5931\u8D25",
+      insertNoEditorBanner: "\u5F53\u524D\u6CA1\u6709\u6D3B\u52A8\u7F16\u8F91\u5668\uFF0C\u4E3B\u64CD\u4F5C\u4F1A\u590D\u5236\u5230\u526A\u8D34\u677F",
+      insertCurrentEditorBanner: "\u63D2\u5165\u5230\u6253\u5F00\u5F39\u7A97\u65F6\u7684\u5149\u6807\u4F4D\u7F6E",
+      insertTargetUnavailableBanner: "\u539F\u63D2\u5165\u4F4D\u7F6E\u4E0D\u53EF\u7528\uFF0C\u4E3B\u64CD\u4F5C\u4F1A\u590D\u5236\u5230\u526A\u8D34\u677F",
+      insertTargetUnavailableCopied: "\u539F\u63D2\u5165\u4F4D\u7F6E\u5DF2\u5931\u6548\uFF0C\u5185\u5BB9\u5DF2\u590D\u5236\u5230\u526A\u8D34\u677F\uFF1B\u8BF7\u624B\u52A8\u7C98\u8D34",
+      insertMobileActionHint: "\u79FB\u52A8\u7AEF\u76F4\u63A5\u63D2\u5165\u5C1A\u672A\u9A8C\u8BC1\uFF0C\u5F53\u524D\u64CD\u4F5C\u4F1A\u590D\u5236\u5230\u526A\u8D34\u677F",
       kernelError: "\u601D\u6E90\u63A5\u53E3\u8C03\u7528\u5931\u8D25\uFF1A%s",
       "tf.polish": "\u6DA6\u8272",
       "tf.shorten": "\u7F29\u77ED",
@@ -7957,6 +8726,7 @@ ${exception.mark.snippet}`;
         var _a2;
         const w = window;
         ((_a2 = w.__xlcActions) != null ? _a2 : w.__xlcActions = []).push({ id: itemId, mode });
+        if (overrides.actionDelayMs) await new Promise((resolve) => setTimeout(resolve, overrides.actionDelayMs));
         return { ok: true, message: "inserted" };
       },
       runActionWithFills: async (_itemId, _mode, fills) => {
@@ -8022,6 +8792,11 @@ ${exception.mark.snippet}`;
       listCustomTransforms: () => [{ id: "xltf-demo00001", name: "\u5BA2\u670D\u8BDD\u672F" }],
       aiTransformCustom: async () => ({ ok: true, text: "\u5BA2\u670D\u8BDD\u672F\u7ED3\u679C\u793A\u4F8B" }),
       aiEnabled: () => aiOn,
+      hasActiveEditor: () => overrides.activeEditor !== false,
+      hasInsertTarget: () => {
+        var _a2;
+        return (_a2 = overrides.insertTargetAvailable) != null ? _a2 : overrides.activeEditor !== false;
+      },
       isSourceMissing: (entry) => overrides.missing === true && entry.id === "xlc-demo0000001",
       close: () => {
       },
@@ -8200,6 +8975,38 @@ ${exception.mark.snippet}`;
       const parsed = { items: Array.from({ length: 18 }, (_, i) => ({ id: `xlc-demo${i}`, title: `\u6761\u76EE ${i + 1}` })) };
       const issues = [{ line: 3, reason: "bad shape" }, { line: 7, reason: "bad shape" }, { line: 11, reason: "bad shape" }];
       openImportPolicyDialog(ctx, parsed, issues, { kind: "json", text: "{}" });
+    },
+    openDiscovery() {
+      let sessionId = "discovery-harness";
+      const candidates = [
+        { key: "candidate-1", sourceDocId: "20240101120001-hijklmn", sourceBlockId: "20240101120002-bbbbbbb", sourcePath: "/\u9879\u76EE\u7B14\u8BB0", itemType: "markdown", title: "\u5BA2\u6237\u5EF6\u671F\u56DE\u590D", summary: "\u5173\u4E8E\u4EA4\u4ED8\u5EF6\u671F\u7684\u8BF4\u660E", status: "candidate" },
+        { key: "candidate-2", sourceDocId: "20240101120001-hijklmn", sourceBlockId: "20240101120003-ccccccc", sourcePath: "/\u9879\u76EE\u7B14\u8BB0", itemType: "text", title: "\u6536\u4EF6\u5730\u5740", summary: "\u90AE\u5BC4\u5730\u5740\u6A21\u677F", status: "same-content", match: { itemId: "xlc-existing0001", title: "\u5DF2\u6709\u6536\u4EF6\u5730\u5740" } }
+      ];
+      const service = {
+        discoverCurrentDocument: async () => ({ ok: true, data: { id: sessionId, sourceDocId: "20240101120001-hijklmn", sourcePath: "/\u9879\u76EE\u7B14\u8BB0", candidates: candidates.map((candidate) => ({ ...candidate })), scannedBlocks: 4, skippedEmpty: 1, truncated: false } }),
+        previewCandidate: async (_id, key) => {
+          var _a;
+          const candidate = (_a = candidates.find((item) => item.key === key)) != null ? _a : candidates[0];
+          return { ok: true, data: { candidate: { ...candidate }, markdown: key === "candidate-2" ? "\u6536\u4EF6\u4EBA\uFF1A{{xlc:ask:\u6536\u4EF6\u4EBA}}\n\u5730\u5740\uFF1A{{xlc:ask:\u5730\u5740|textarea}}" : "\u60A8\u597D\uFF0C\u5173\u4E8E\u672C\u671F\u4EA4\u4ED8\u5EF6\u671F\uFF0C\u6211\u4EEC\u6DF1\u8868\u6B49\u610F\u3002", contentComparisonComplete: true } };
+        },
+        addCandidate: async (_id, key, options) => {
+          var _a;
+          const candidate = (_a = candidates.find((item) => item.key === key)) != null ? _a : candidates[0];
+          if (candidate.status === "same-content" && !(options == null ? void 0 : options.allowSameContent)) {
+            return { ok: true, data: { status: "same-content", itemId: "xlc-existing0001", title: "\u5DF2\u6709\u6536\u4EF6\u5730\u5740" } };
+          }
+          return { ok: true, data: { status: "added", item: { id: "xlc-discovered0001", title: candidate.title } } };
+        },
+        closeSession: () => {
+        }
+      };
+      openDiscoveryDialog({
+        t: T,
+        service,
+        notify: (_kind, message) => {
+          document.body.dataset.xlcDiscoveryNotice = message;
+        }
+      }, { docId: "20240101120001-hijklmn", sourcePath: "/\u9879\u76EE\u7B14\u8BB0" });
     }
   };
 })();

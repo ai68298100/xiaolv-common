@@ -74,12 +74,12 @@ test("使用计数：复制失败不计", async () => {
     assert.deepStrictEqual(used, []);
 });
 
-test("使用计数：插入失败不计（无编辑器且复制失败 → ok=true 但 message=fail，计次为空）", async () => {
+test("使用计数：无编辑器且降级复制失败不计并返回失败", async () => {
     const used = [];
     const host = {...baseHost, hasActiveEditor: () => false, writeClipboard: async () => false};
     const executor = makeExecutor(host, used);
     const r = await executor.run(makeItem(), "insert");
-    assert.strictEqual(r.ok, true);
+    assert.strictEqual(r.ok, false);
     assert.strictEqual(r.message, "no-editor-copy-failed");
     assert.deepStrictEqual(used, []);
 });

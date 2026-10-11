@@ -10,7 +10,23 @@
 
 支持插入前填写变量、日期与随机占位符、片段嵌套、模板包分享、Espanso 配置导入、拼音搜索和 AI 辅助。插件可独立使用，也提供 `xiaolv-common/v1` 公开协议供小驴系列插件接入。
 
-> **最新版本：v0.3.9（2026-10-10）** · [下载最新版](https://github.com/ai68298100/xiaolv-common/releases/latest)
+> **已发布版本：v0.4.0（2026-10-11）** · [下载最新版](https://github.com/ai68298100/xiaolv-common/releases/latest) · 当前工作区正在开发「专用库 + 按需发现」下一阶段能力。
+
+## 下一版本开发中
+
+整体：在保留专用内容库作为默认工作集的前提下，可以从当前文档主动发现已有内容，挑选后复制进库。
+
+新增：
+
+- 编辑器右键和命令面板增加「从当前文档发现常用语」，扫描当前文档顶层块，不修改原文。
+- 发现面板支持候选筛选、来源路径、正文预览、单条/批量收录、内容相同确认和逐项回执。
+
+优化：
+
+- 捕获表单保留选区、当前块、剪贴板和手工新建的来源类型与触发时文档，避免切换页面后来源漂移。
+- 发现候选只在当前会话内存中存在；收录后保留来源回链，并刷新已打开的搜索面板。
+
+限制：当前只实现当前文档发现；当前笔记本、指定文档树/笔记本、批量撤销及思源 Electron/Android 现场验收仍在后续阶段。
 
 ## 本次更新（v0.3.9）
 
@@ -70,7 +86,7 @@
 
 1. **安装并启用**：从 [GitHub Releases](https://github.com/ai68298100/xiaolv-common/releases/latest) 下载 `package.zip`，按[安装说明](#install)启用插件。
 2. **设置内容库**：首次打开默认推荐在现有笔记本中新建「常用内容库」文档。也可选择已有文档、文档树或按笔记本；配置完成后可在设置中更改。
-3. **添加内容**：在搜索面板点「＋新建」，或从选中文字、当前块、右键菜单和剪贴板捕获。保存时填写用途清楚的标题，并按需要添加标签和分类。
+3. **添加内容**：在搜索面板点「＋新建」，或从选中文字、当前块、右键菜单和剪贴板捕获。也可以在正文右键或命令面板选择「从当前文档发现常用语」，先预览候选再收录。
 4. **搜索和调用**：搜索标题、正文、标签或分类，选中后插入或复制。桌面可用 `Enter` 插入、`Ctrl/⌘+Enter` 复制；移动端点按条目插入、长按打开更多动作。
 5. **建立模板**：在正文中写 `{{xlc:ask:字段}}`，调用时会要求填写；邮箱、地址和联系方式示例可在设置 → 数据与模板中查看并确认导入。导入内容保存在当前库文档，分类记录在条目属性中，不会自动建立笔记本或分类文档。
 
@@ -226,7 +242,7 @@ common.protocolCommands["xiaolv.common.open"]();          // 稳定命令 ID
 ```
 
 - 服务接口：`getCapabilities / search / get / save / update / remove / insert / copy / openSource / reindex / getRecent / getFavorites`
-- 命令 ID：`xiaolv.common.open / saveSelection / insert / copy / openSource`；插件命令另有 捕获当前块(⌥⇧B)/捕获当前文档；接入示例见 [docs/provider-guide.md](docs/provider-guide.md)
+- 命令 ID：`xiaolv.common.open / saveSelection / insert / copy / openSource`；按需发现另有 `discoverCurrentDocument / previewDiscoveryCandidate / addDiscoveryCandidate / closeDiscoverySession`；插件命令另有保存当前块（`⌥⇧B`）和从当前文档发现；接入示例见 [docs/provider-guide.md](docs/provider-guide.md)
 - 事件（window CustomEvent，detail 带 protocolVersion）：`xiaolv:common:item-created / item-updated / item-deleted / item-inserted`
 - 兼容行为：未知字段保留透传；未知能力忽略；更高主版本明确拒绝（不静默降级）。
 

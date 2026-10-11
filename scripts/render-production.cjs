@@ -1036,10 +1036,10 @@ fs.writeFileSync(path.join(OUT, "harness.html"), html);
             rows: document.querySelectorAll(".xlc-row[data-xlc-index]").length >= 3,
             cardRows: !!document.querySelector(".xlc-dialog--mobile .xlc-row"),
             kbdHidden: !document.querySelector(".xlc-kbdrow") || document.querySelector(".xlc-kbdrow").offsetParent === null,
-            // R68：移动端操作钮行（＋新建 / 插入选中）
+            // 移动端直接插入尚未在真实客户端验证，主操作按产品约束降级为复制。
             footButtons: footBtns.length === 2
                 && (footBtns[0].textContent ?? "").includes("新建")
-                && (footBtns[1].textContent ?? "").includes("插入选中"),
+                && (footBtns[1].textContent ?? "").includes("复制"),
         };
     });
     if (Object.values(mobileAssertions).some((v) => !v)) {
@@ -1048,6 +1048,39 @@ fs.writeFileSync(path.join(OUT, "harness.html"), html);
     console.log("  smoke ✓ mobile: 5 assertions");
     await page.screenshot({path: path.join(OUT, "production-mobile-light.png")});
     await page.setViewportSize({width: 1280, height: 720});
+    // 按需发现：扫描状态、候选预览、筛选和收录按钮禁用语义
+    await page.evaluate(() => {
+        const stage = document.getElementById("stage");
+        stage.className = "b3-scope light";
+        document.querySelectorAll(".b3-dialog").forEach((el) => el.remove());
+        stage.innerHTML = "";
+        window.XlcHarness.openDiscovery();
+        const dialogRoot = document.querySelector(".b3-dialog");
+        if (dialogRoot) stage.appendChild(dialogRoot);
+    });
+    await page.waitForTimeout(500);
+    const discoveryAssertions = await page.evaluate(() => {
+        const root = document.querySelector(".xlc-discovery");
+        const rows = Array.from(document.querySelectorAll(".xlc-discovery-row"));
+        const batch = document.querySelector("[data-xlc-discovery-action='add-selected']");
+        return {
+            root: !!root,
+            rows: rows.length === 2,
+            addDisabledWithoutSelection: !!batch && (batch instanceof HTMLButtonElement) && batch.disabled,
+            statuses: rows.map((row) => row.textContent ?? "").some((text) => text.includes("待收录")) && rows.map((row) => row.textContent ?? "").some((text) => text.includes("内容相同")),
+        };
+    });
+    if (Object.values(discoveryAssertions).some((v) => !v)) {
+        throw new Error("discovery smoke failed: " + JSON.stringify(discoveryAssertions));
+    }
+    await page.locator(".xlc-discovery-row[data-xlc-discovery-key='candidate-1']").click();
+    await page.waitForTimeout(100);
+    const discoveryPreview = await page.locator(".xlc-discovery-preview-body").textContent();
+    if (!discoveryPreview || !discoveryPreview.includes("交付延期")) {
+        throw new Error("discovery preview smoke failed");
+    }
+    console.log("  smoke ✓ on-demand discovery: 5 assertions");
+    await page.screenshot({path: path.join(OUT, "production-discovery-light.png")});
     // 导入策略卡（R69，原型屏 8：三选 + 推荐档 + 逐项回执提示）
     await page.evaluate(() => {
         const stage = document.getElementById("stage");

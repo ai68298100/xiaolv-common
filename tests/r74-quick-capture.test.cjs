@@ -71,6 +71,123 @@ test("快速捕获：同文已存在 → 诚实提示不重复写入（不弹确
     assert.ok(info && info.message.includes("已有条目"));
 });
 
+test("保存选中内容：空选区明确提示，不偷偷读取剪贴板", async () => {
+    let clipboardReads = 0;
+    const {dialog, calls} = makeCapture({
+        getSelectionText: () => ({text: "", blockId: null}),
+        readClipboardText: async () => {
+            clipboardReads += 1;
+            return "clipboard";
+        },
+        t: (key, ...args) => {
+            const map = {captureSelectionEmpty: "当前没有选中内容"};
+            let text = map[key] ?? key;
+            for (const a of args) text = text.replace("%s", a);
+            return text;
+        },
+    });
+    await dialog.saveSelection();
+    assert.equal(clipboardReads, 0);
+    assert.ok(calls.notified.some((n) => n.message.includes("没有选中内容")));
+});
+
+test("保存整篇文档：空文档明确提示，不打开空表单", async () => {
+    const {dialog, calls} = makeCapture({
+        currentDocId: () => "20240101000000-abcdefg",
+        exportDocContent: async () => ({hPath: "/笔记本/空文档", content: "  "}),
+        t: (key, ...args) => {
+            const map = {captureDocEmpty: "当前文档没有可保存内容"};
+            let text = map[key] ?? key;
+            for (const a of args) text = text.replace("%s", a);
+            return text;
+        },
+    });
+    await dialog.captureCurrentDoc();
+    assert.ok(calls.notified.some((n) => n.message.includes("没有可保存内容")));
+});
+
+test("未配置内容库：保存入口先打开设置，不读取剪贴板或当前块", async () => {
+    let reads = 0;
+    let setupOpens = 0;
+    const {dialog} = makeCapture({
+        isConfigured: () => false,
+        onNotConfigured: () => { setupOpens += 1; },
+        readClipboardText: async () => { reads += 1; return "text"; },
+        getSelectionText: () => { reads += 1; return {text: "", blockId: "20240101000000-abcdefg"}; },
+    });
+    await dialog.captureFromClipboard();
+    await dialog.quickCaptureFromClipboard();
+    await dialog.captureCurrentBlock();
+    await dialog.captureCurrentDoc();
+    assert.equal(setupOpens, 4);
+    assert.equal(reads, 0);
+});
+
+test("保存当前块：异步读取异常转换为可见错误回执", async () => {
+    const {dialog, calls} = makeCapture({
+        getSelectionText: () => ({text: "", blockId: "20240101000000-abcdefg"}),
+        getBlockKramdown: async () => { throw new Error("block unavailable"); },
+        t: (key, ...args) => {
+            const map = {kernelError: "读取失败：%s"};
+            let text = map[key] ?? key;
+            for (const a of args) text = text.replace("%s", a);
+            return text;
+        },
+    });
+    await dialog.captureCurrentBlock();
+    assert.ok(calls.notified.some((n) => n.kind === "error" && n.message.includes("block unavailable")));
+});
+
+test("快速捕获：剪贴板来源不错误绑定当前活动文档", async () => {
+    let savedSource;
+    const {dialog} = makeCapture({
+        currentDocId: () => "20240101000000-abcdefg",
+        readClipboardText: async () => {
+            return "clipboard content";
+        },
+        createItem: async (input) => {
+            savedSource = input.source;
+            return {ok: true, message: "saved"};
+        },
+    });
+    await dialog.quickCaptureFromClipboard();
+    assert.deepEqual(savedSource, {sourceType: "clipboard"});
+});
+
+test("选区、当前块和整篇文档均冻结触发时来源文档", async () => {
+    let activeDoc = "20240101000000-abcdefg";
+    const openedForms = [];
+    const deps = {
+        t: (key) => key,
+        getSelectionText: () => ({text: "选区内容", blockId: "20240101000001-hijklmn"}),
+        currentDocId: () => activeDoc,
+        readClipboardText: async () => "clipboard",
+        createItem: async () => ({ok: true, message: "saved"}),
+        notify: () => {},
+        getBlockKramdown: async () => "块内容",
+        exportDocContent: async () => ({hPath: "/笔记本/文档", content: "文档内容"}),
+        aiEnabled: () => false,
+        aiTidy: async () => ({ok: false, message: "disabled"}),
+        aiDraft: async () => ({ok: false, message: "disabled"}),
+        findDuplicate: async () => null,
+        isConfigured: () => true,
+    };
+    const dialog = new CaptureDialog(deps);
+    dialog.openForm = (...args) => openedForms.push(args);
+
+    await dialog.saveSelection();
+    activeDoc = "20240101000002-opqrstu";
+    await dialog.captureCurrentBlock();
+    activeDoc = "20240101000003-vwxyz12";
+    await dialog.captureCurrentDoc();
+
+    assert.deepEqual(openedForms.map((args) => args[3]), [
+        {docId: "20240101000000-abcdefg", sourceType: "selection"},
+        {docId: "20240101000002-opqrstu", sourceType: "block"},
+        {title: "文档", docId: "20240101000003-vwxyz12", sourceType: "doc-fragment"},
+    ]);
+});
+
 // ---- 提示词场景包 ----
 
 test("场景包：16 个条目全部可解析（ID/类型合法），清单与包名正确", () => {

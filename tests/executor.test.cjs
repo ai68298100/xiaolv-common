@@ -78,11 +78,63 @@ test("无活动编辑器：降级为复制且回执明示（不假装插入成�
     assert.deepEqual(clipboard, ["正文内容"]);
 });
 
+test("无活动编辑器：剪贴板拒绝写入时失败回执为 ok=false", async () => {
+    const executor = makeExecutor(makeHost({hasActiveEditor: () => false, writeClipboard: async () => false}));
+    const receipt = await executor.run(makeItem(), "insert");
+    assert.equal(receipt.ok, false);
+    assert.equal(receipt.downgraded, true);
+    assert.equal(receipt.message, "no-editor-copy-failed");
+});
+
+test("弹窗打开时的插入位置失效：复制降级并给出专属回执", async () => {
+    const clipboard = [];
+    const target = {editor: {}, handle: {id: "tracked"}, docId: DOC};
+    const executor = makeExecutor(makeHost({
+        canInsertAtTarget: () => false,
+        writeClipboard: async (text) => { clipboard.push(text); return true; },
+    }));
+    const receipt = await executor.run(makeItem(), "insert", {editorTarget: target});
+    assert.equal(receipt.ok, true);
+    assert.equal(receipt.downgraded, true);
+    assert.equal(receipt.message, "target-unavailable-copied");
+    assert.deepEqual(clipboard, ["正文内容"]);
+});
+
+test("弹窗打开时的插入位置有效：使用快照目标而非重新读取活动编辑器", async () => {
+    const target = {editor: {}, handle: {id: "tracked"}, docId: DOC};
+    let insertedTarget = null;
+    const executor = makeExecutor(makeHost({
+        hasActiveEditor: () => false,
+        canInsertAtTarget: (actual) => actual === target,
+        insertMarkdown: (_text, actual) => { insertedTarget = actual; return true; },
+    }));
+    const receipt = await executor.run(makeItem(), "insert", {editorTarget: target});
+    assert.equal(receipt.ok, true);
+    assert.equal(receipt.message, "inserted");
+    assert.equal(insertedTarget, target);
+});
+
 test("门禁：移动端插入未验证 → 诚实降级为复制并标注 pendingVerification", async () => {
     const executor = makeExecutor(makeHost({isMobile: () => true}));
     const receipt = await executor.run(makeItem(), "insert");
     assert.equal(receipt.downgraded, true);
     assert.ok(receipt.pendingVerification.includes("mobile-insert-unverified"));
+});
+
+test("移动端块引用和嵌入动作也降级为复制，不绕过未验证限制", async () => {
+    const copied = [];
+    const executor = makeExecutor(makeHost({
+        isMobile: () => true,
+        writeClipboard: async (text) => { copied.push(text); return true; },
+    }));
+    const blockRef = makeItem({itemType: "blockref", targetBlockId: BLOCK});
+    for (const mode of ["insert-ref", "insert-embed"]) {
+        const receipt = await executor.run(blockRef, mode);
+        assert.equal(receipt.ok, true);
+        assert.equal(receipt.downgraded, true);
+        assert.ok(receipt.pendingVerification.includes("mobile-insert-unverified"));
+    }
+    assert.equal(copied.length, 2);
 });
 
 test("门禁：复制失败时回执 ok=false（不伪造成功）", async () => {

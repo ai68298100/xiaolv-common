@@ -2232,3 +2232,205 @@ body.b3-theme-dark,
     font-weight: 600;
   }
 }
+
+// ---------- 按需发现面板（候选只存在当前会话） ----------
+.xlc-discovery {
+  min-height: 0;
+  gap: 10px;
+
+  .xlc-discovery-head,
+  .xlc-discovery-status-row,
+  .xlc-discovery-footer {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .xlc-discovery-head {
+    justify-content: space-between;
+    padding-bottom: 2px;
+    border-bottom: 1px solid var(--b3-border-color);
+  }
+
+  .xlc-discovery-heading { min-width: 0; }
+
+  .xlc-discovery-heading .xlc-form-title {
+    margin: 0;
+    font-size: 16px;
+    line-height: 24px;
+  }
+
+  .xlc-discovery-scope {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .xlc-discovery-notice {
+    padding: 8px 10px;
+    border: 1px solid var(--b3-border-color);
+    border-radius: var(--xlc-radius-sm);
+    background: var(--b3-theme-background);
+    line-height: 1.45;
+  }
+
+  .xlc-discovery-status-row { min-height: 30px; }
+  .xlc-discovery-status-row .xlc-status { flex: 1; min-width: 0; }
+
+  .xlc-discovery-filters {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+
+  .xlc-discovery-filters .xlc-form-label {
+    margin-right: 2px;
+    white-space: nowrap;
+  }
+
+  .xlc-discovery-filters .b3-select { min-width: 116px; }
+
+  .xlc-discovery-filters .b3-text-field {
+    flex: 1 1 190px;
+    min-width: 150px;
+  }
+
+  .xlc-discovery-content {
+    display: grid;
+    grid-template-columns: minmax(0, 1.08fr) minmax(0, .92fr);
+    gap: 10px;
+    flex: 1;
+    min-height: 250px;
+  }
+
+  .xlc-discovery-list,
+  .xlc-discovery-preview {
+    min-height: 0;
+    overflow: auto;
+    border: 1px solid var(--b3-border-color);
+    border-radius: var(--xlc-radius-sm);
+    background: var(--b3-theme-background);
+  }
+
+  .xlc-discovery-list { padding: 5px; }
+
+  .xlc-discovery-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    padding: 9px 8px;
+    border-radius: var(--xlc-radius-xs);
+    cursor: pointer;
+    transition: background-color var(--xlc-dur-fast) var(--xlc-ease);
+  }
+
+  .xlc-discovery-row:hover,
+  .xlc-discovery-row--active { background: var(--b3-list-hover); }
+
+  .xlc-discovery-row--disabled { opacity: .72; }
+
+  .xlc-discovery-row > input {
+    flex: 0 0 auto;
+    margin-top: 3px;
+  }
+
+  .xlc-discovery-row-body { flex: 1; min-width: 0; }
+
+  .xlc-discovery-row-title {
+    overflow: hidden;
+    color: var(--b3-theme-on-background);
+    font-weight: 600;
+    line-height: 20px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .xlc-discovery-row-meta,
+  .xlc-discovery-row-summary {
+    overflow: hidden;
+    color: var(--b3-theme-on-surface);
+    font-size: 11px;
+    line-height: 17px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .xlc-discovery-row-side {
+    display: flex;
+    flex: 0 0 auto;
+    align-items: flex-end;
+    flex-direction: column;
+    gap: 5px;
+  }
+
+  .xlc-discovery-row-side .b3-button {
+    min-height: 26px;
+    padding: 3px 8px;
+    font-size: 11px;
+  }
+
+  .xlc-discovery-preview { display: flex; flex-direction: column; }
+
+  .xlc-discovery-preview h3 {
+    flex: 0 0 auto;
+    margin: 0;
+    padding: 10px 12px 8px;
+    border-bottom: 1px solid var(--b3-border-color);
+    font-size: 13px;
+  }
+
+  .xlc-discovery-preview-body {
+    flex: 1;
+    min-height: 0;
+    margin: 0;
+    padding: 11px 12px;
+    overflow: auto;
+    color: var(--b3-theme-on-background);
+    font-family: var(--b3-font-family-code);
+    font-size: 12px;
+    line-height: 1.55;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+  }
+
+  .xlc-discovery-footer {
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    padding-top: 2px;
+  }
+
+  .xlc-discovery-footer > .xlc-form-hint { margin-right: auto; }
+
+  .xlc-discovery-force {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    color: var(--b3-theme-on-surface);
+    font-size: 11px;
+  }
+
+  .xlc-discovery-receipt {
+    max-height: 110px;
+    padding: 8px 10px;
+    overflow: auto;
+    border: 1px solid var(--b3-border-color);
+    border-radius: var(--xlc-radius-sm);
+    color: var(--b3-theme-on-background);
+    font-size: 11px;
+    line-height: 1.5;
+    white-space: pre-wrap;
+  }
+
+  .xlc-discovery-receipt strong {
+    display: block;
+    margin-bottom: 2px;
+    color: var(--b3-theme-on-background);
+  }
+}
+
+@media (max-width: 620px) {
+  .xlc-discovery-content { grid-template-columns: 1fr; }
+  .xlc-discovery-preview { min-height: 180px; }
+  .xlc-discovery-row-side .xlc-badge { max-width: 76px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+}

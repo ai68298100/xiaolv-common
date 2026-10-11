@@ -3,6 +3,7 @@
 import {CommonSearchDialog} from "../../src/ui/dialog";
 import {openImportPolicyDialog, openSettingsDialog, openSetupDialog, type SettingsUiContext} from "../../src/ui/settings-dialog";
 import {CaptureDialog} from "../../src/ui/capture";
+import {openDiscoveryDialog} from "../../src/ui/discovery-dialog";
 import type {SearchEntry} from "../../src/model/search";
 import type {TransformKind} from "../../src/service/ai";
 
@@ -44,6 +45,11 @@ const T = (key: string, ...args: string[]): string => {
         sourceMissing: "来源失效", sourceGone: "原内容块已移动或删除。点击「打开来源」可重新指定位置。", previewUnavailable: "暂无预览", previewNoResult: "选择左侧条目后，这里会显示预览",
         aiFound: "AI 语义搜索", aiWorking: "AI 处理中…", aiOriginalPreserved: "原文未被修改",
         insertNoEditor: "当前没有活动编辑器，已复制到剪贴板，可手动粘贴", insertFailed: "插入失败", insertToDocFailed: "目标文档插入失败",
+        insertNoEditorBanner: "当前没有活动编辑器，主操作会复制到剪贴板",
+        insertCurrentEditorBanner: "插入到打开弹窗时的光标位置",
+        insertTargetUnavailableBanner: "原插入位置不可用，主操作会复制到剪贴板",
+        insertTargetUnavailableCopied: "原插入位置已失效，内容已复制到剪贴板；请手动粘贴",
+        insertMobileActionHint: "移动端直接插入尚未验证，当前操作会复制到剪贴板",
         kernelError: "思源接口调用失败：%s",
         "tf.polish": "润色", "tf.shorten": "缩短", "tf.formal": "正式化", "tf.translate-en": "译为英文", "tf.bulletize": "列表化",
         more: "返回动作",
@@ -121,7 +127,7 @@ const T = (key: string, ...args: string[]): string => {
     return text;
 };
 
-function makeDeps(overrides: {aiEnabled?: boolean; missing?: boolean; mobile?: boolean; empty?: boolean; filters?: {type: string; tag: string; category: string}; newItemAction?: string} = {}) {
+function makeDeps(overrides: {aiEnabled?: boolean; missing?: boolean; mobile?: boolean; empty?: boolean; filters?: {type: string; tag: string; category: string}; newItemAction?: string; activeEditor?: boolean; insertTargetAvailable?: boolean; actionDelayMs?: number} = {}) {
     const aiOn = overrides.aiEnabled ?? true;
     let activeFilters = {...(overrides.filters ?? {type: "", tag: "", category: ""})};
     return {
@@ -156,6 +162,7 @@ function makeDeps(overrides: {aiEnabled?: boolean; missing?: boolean; mobile?: b
         runAction: async (itemId: string, mode: string) => {
             const w = window as unknown as {__xlcActions?: Array<{id: string; mode: string}>};
             (w.__xlcActions ??= []).push({id: itemId, mode});
+            if (overrides.actionDelayMs) await new Promise((resolve) => setTimeout(resolve, overrides.actionDelayMs));
             return {ok: true, message: "inserted"};
         },
         runActionWithFills: async (_itemId: string, _mode: string, fills?: Record<string, string>) => {
@@ -215,6 +222,8 @@ function makeDeps(overrides: {aiEnabled?: boolean; missing?: boolean; mobile?: b
         listCustomTransforms: () => [{id: "xltf-demo00001", name: "客服话术"}],
         aiTransformCustom: async () => ({ok: true as const, text: "客服话术结果示例"}),
         aiEnabled: () => aiOn,
+        hasActiveEditor: () => overrides.activeEditor !== false,
+        hasInsertTarget: () => overrides.insertTargetAvailable ?? overrides.activeEditor !== false,
         isSourceMissing: (entry: SearchEntry) => overrides.missing === true && entry.id === "xlc-demo0000001",
         close: () => {},
         isMobile: () => overrides.mobile === true,
@@ -222,7 +231,7 @@ function makeDeps(overrides: {aiEnabled?: boolean; missing?: boolean; mobile?: b
 }
 
 (window as unknown as {XlcHarness: unknown}).XlcHarness = {
-    openDialog(overrides?: {aiEnabled?: boolean; missing?: boolean; scope?: "all" | "favorites"; query?: string; mobile?: boolean; empty?: boolean; insertTarget?: {docId: string; hPath: string}; filters?: {type: string; tag: string; category: string}; newItemAction?: string}): CommonSearchDialog {
+    openDialog(overrides?: {aiEnabled?: boolean; missing?: boolean; scope?: "all" | "favorites"; query?: string; mobile?: boolean; empty?: boolean; insertTarget?: {docId: string; hPath: string}; filters?: {type: string; tag: string; category: string}; newItemAction?: string; activeEditor?: boolean; insertTargetAvailable?: boolean; actionDelayMs?: number}): CommonSearchDialog {
         const dialog = new CommonSearchDialog(makeDeps(overrides));
         if (overrides?.insertTarget) dialog.insertTarget = overrides.insertTarget;
         dialog.open();
@@ -376,5 +385,32 @@ function makeDeps(overrides: {aiEnabled?: boolean; missing?: boolean; mobile?: b
         const parsed = {items: Array.from({length: 18}, (_, i) => ({id: `xlc-demo${i}`, title: `条目 ${i + 1}`}))};
         const issues = [{line: 3, reason: "bad shape"}, {line: 7, reason: "bad shape"}, {line: 11, reason: "bad shape"}];
         openImportPolicyDialog(ctx, parsed, issues, {kind: "json", text: "{}"});
+    },
+    openDiscovery(): void {
+        let sessionId = "discovery-harness";
+        const candidates = [
+            {key: "candidate-1", sourceDocId: "20240101120001-hijklmn", sourceBlockId: "20240101120002-bbbbbbb", sourcePath: "/项目笔记", itemType: "markdown", title: "客户延期回复", summary: "关于交付延期的说明", status: "candidate"},
+            {key: "candidate-2", sourceDocId: "20240101120001-hijklmn", sourceBlockId: "20240101120003-ccccccc", sourcePath: "/项目笔记", itemType: "text", title: "收件地址", summary: "邮寄地址模板", status: "same-content", match: {itemId: "xlc-existing0001", title: "已有收件地址"}},
+        ];
+        const service = {
+            discoverCurrentDocument: async () => ({ok: true as const, data: {id: sessionId, sourceDocId: "20240101120001-hijklmn", sourcePath: "/项目笔记", candidates: candidates.map((candidate) => ({...candidate})), scannedBlocks: 4, skippedEmpty: 1, truncated: false}}),
+            previewCandidate: async (_id: string, key: string) => {
+                const candidate = candidates.find((item) => item.key === key) ?? candidates[0];
+                return {ok: true as const, data: {candidate: {...candidate}, markdown: key === "candidate-2" ? "收件人：{{xlc:ask:收件人}}\n地址：{{xlc:ask:地址|textarea}}" : "您好，关于本期交付延期，我们深表歉意。", contentComparisonComplete: true}};
+            },
+            addCandidate: async (_id: string, key: string, options?: {allowSameContent?: boolean}) => {
+                const candidate = candidates.find((item) => item.key === key) ?? candidates[0];
+                if (candidate.status === "same-content" && !options?.allowSameContent) {
+                    return {ok: true as const, data: {status: "same-content" as const, itemId: "xlc-existing0001", title: "已有收件地址"}};
+                }
+                return {ok: true as const, data: {status: "added" as const, item: {id: "xlc-discovered0001", title: candidate.title} as never}};
+            },
+            closeSession: () => {},
+        };
+        openDiscoveryDialog({
+            t: T,
+            service,
+            notify: (_kind, message) => { document.body.dataset.xlcDiscoveryNotice = message; },
+        }, {docId: "20240101120001-hijklmn", sourcePath: "/项目笔记"});
     },
 };
