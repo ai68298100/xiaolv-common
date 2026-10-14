@@ -3058,6 +3058,8 @@ ${exception.mark.snippet}`;
       this.transformSeq = 0;
       /** 排序菜单关闭时刻：chip 的 click 在 pointerdown 关闭之后到达，不得立刻重开（R138 toggle） */
       this.sortMenuClosedAt = 0;
+      this.dragOverlay = null;
+      this.dropCleanup = null;
     }
     open() {
       const isMobile = this.deps.isMobile();
@@ -3074,6 +3076,7 @@ ${exception.mark.snippet}`;
       });
       this.dialog = dialog;
       const content = this.buildDom(isMobile);
+      this.setupDragAndPaste(content);
       const body = getDialogBody(dialog.element);
       if (body) {
         body.innerHTML = "";
@@ -3183,6 +3186,8 @@ ${exception.mark.snippet}`;
           { key: "Enter", action: this.deps.t("kbdEnter") },
           { key: `${isApple ? "\u2318" : "Ctrl"} + Enter`, action: this.deps.t("kbdCopy") },
           { key: `${isApple ? "\u2325" : "Alt"} + 1-9`, action: this.deps.t("kbdQuickInsert") },
+          { key: `${isApple ? "\u2325 + \u21E7" : "Alt + Shift"} + 1-9`, action: this.deps.t("kbdQuickCopy") },
+          { key: "Tab", action: this.deps.t("kbdTabActions") },
           { key: "Esc", action: this.deps.t("kbdClose") }
         ]) {
           const kbd = document.createElement("span");
@@ -3844,22 +3849,55 @@ ${exception.mark.snippet}`;
       var _a, _b;
       (_b = (_a = this.dialog) == null ? void 0 : _a.element.querySelector(".xlc-search-input")) == null ? void 0 : _b.focus();
     }
-    /** 命中高亮：按字面子串（大小写不敏感）切分并注入 mark span；文本一律 textContent，绝不 innerHTML。 */
+    /**
+     * 命中高亮：支持多关键词按空格分词高亮，收集匹配区间并合并重叠区域，注入 mark span。
+     * 文本一律 textContent / createTextNode，绝不使用 innerHTML（ADR 0036 / T-0063）。
+     */
     appendHighlighted(parent, text, query) {
+      const tokens = query.toLowerCase().split(/\s+/).map((t) => t.trim()).filter((t) => t.length > 0);
+      if (tokens.length === 0) {
+        parent.appendChild(document.createTextNode(text));
+        return;
+      }
       const lowerText = text.toLowerCase();
-      const lowerQuery = query.toLowerCase();
+      const intervals = [];
+      for (const token of tokens) {
+        let cursor2 = 0;
+        while (cursor2 <= lowerText.length - token.length) {
+          const at = lowerText.indexOf(token, cursor2);
+          if (at < 0) break;
+          intervals.push([at, at + token.length]);
+          cursor2 = at + Math.max(1, token.length);
+        }
+      }
+      if (intervals.length === 0) {
+        parent.appendChild(document.createTextNode(text));
+        return;
+      }
+      intervals.sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+      const merged = [];
+      for (const [start, end] of intervals) {
+        const prev = merged[merged.length - 1];
+        if (prev && start <= prev[1]) {
+          prev[1] = Math.max(prev[1], end);
+        } else {
+          merged.push([start, end]);
+        }
+      }
       let cursor = 0;
-      while (cursor <= text.length - lowerQuery.length) {
-        const at = lowerText.indexOf(lowerQuery, cursor);
-        if (at < 0) break;
-        if (at > cursor) parent.appendChild(document.createTextNode(text.slice(cursor, at)));
+      for (const [start, end] of merged) {
+        if (start > cursor) {
+          parent.appendChild(document.createTextNode(text.slice(cursor, start)));
+        }
         const mark = document.createElement("mark");
         mark.className = "xlc-hit";
-        mark.textContent = text.slice(at, at + query.length);
+        mark.textContent = text.slice(start, end);
         parent.appendChild(mark);
-        cursor = at + query.length;
+        cursor = end;
       }
-      if (cursor < text.length) parent.appendChild(document.createTextNode(text.slice(cursor)));
+      if (cursor < text.length) {
+        parent.appendChild(document.createTextNode(text.slice(cursor)));
+      }
     }
     /** 创建一行真实库条目。抽出后虚拟列表可以复用同一套交互与无障碍属性。 */
     createEntryRow(entry, index) {
@@ -3881,8 +3919,11 @@ ${exception.mark.snippet}`;
       if (index < 9) {
         const ordinal = document.createElement("span");
         ordinal.className = "xlc-row-ordinal";
-        ordinal.textContent = String(index + 1);
-        ordinal.title = this.deps.t("usageHint");
+        const numStr = String(index + 1);
+        ordinal.textContent = numStr;
+        const hint = this.deps.t("ordinalShortcutHint", numStr, numStr);
+        ordinal.title = hint;
+        ordinal.setAttribute("aria-label", hint);
         title.appendChild(ordinal);
       }
       const badge = document.createElement("span");
@@ -5056,7 +5097,7 @@ ${exception.mark.snippet}`;
       (_f = menu.querySelector(".xlc-menu-item")) == null ? void 0 : _f.focus();
     }
     async onKeydown(e) {
-      var _a, _b, _c, _d;
+      var _a, _b, _c, _d, _e;
       if (e.isComposing || e.keyCode === 229) return;
       const list = (_a = this.dialog) == null ? void 0 : _a.element.querySelector(".xlc-list");
       if (!list) return;
@@ -5098,30 +5139,160 @@ ${exception.mark.snippet}`;
       } else if (e.key === "Escape") {
         e.preventDefault();
         this.destroy();
-      } else if (e.altKey && !e.ctrlKey && !e.metaKey && /^[1-9]$/.test(e.key)) {
-        if (e.repeat) return;
-        e.preventDefault();
-        const idx = Number(e.key) - 1;
-        const entry = this.results[idx];
-        if (entry) {
-          await this.runPrimary(entry);
+      } else if (e.altKey && !e.ctrlKey && !e.metaKey) {
+        let num = null;
+        if (/^[1-9]$/.test(e.key)) {
+          num = Number(e.key);
+        } else if (/^Digit[1-9]$/.test(e.code)) {
+          num = Number(e.code.replace("Digit", ""));
+        }
+        if (num !== null) {
+          if (e.repeat) return;
+          e.preventDefault();
+          const idx = num - 1;
+          const entry = this.results[idx];
+          if (entry) {
+            if (e.shiftKey) {
+              await this.deps.runAction(entry.id, "copy");
+            } else {
+              await this.runPrimary(entry);
+            }
+          }
+        }
+      } else if (e.key === "Tab") {
+        const root = (_e = this.dialog) == null ? void 0 : _e.element;
+        if (!root) return;
+        const focusables = Array.from(root.querySelectorAll(
+          'input:not([disabled]):not([type="hidden"]), select:not([disabled]), button:not([disabled]), [tabindex="0"]:not([disabled])'
+        )).filter((el) => {
+          return (el.offsetWidth > 0 || el.offsetHeight > 0 || el.getClientRects().length > 0) && window.getComputedStyle(el).visibility !== "hidden";
+        });
+        if (focusables.length === 0) return;
+        const first = focusables[0];
+        const last = focusables[focusables.length - 1];
+        const active2 = document.activeElement;
+        const input = root.querySelector(".xlc-search-input");
+        if (active2 === input && !e.shiftKey) {
+          const previewAction = root.querySelector(".xlc-pane-foot button:not([disabled])");
+          if (previewAction && focusables.includes(previewAction)) {
+            e.preventDefault();
+            previewAction.focus();
+            return;
+          }
+        }
+        if (e.shiftKey && (active2 === first || active2 === root)) {
+          e.preventDefault();
+          last == null ? void 0 : last.focus();
+        } else if (!e.shiftKey && active2 === last) {
+          e.preventDefault();
+          first == null ? void 0 : first.focus();
         }
       }
     }
     destroy() {
-      var _a, _b, _c;
+      var _a, _b, _c, _d;
       if (this.inputDebounce) clearTimeout(this.inputDebounce);
       (_a = this.virtualListCleanup) == null ? void 0 : _a.call(this);
       this.virtualListCleanup = null;
       this.virtualEnsureIndex = null;
       (_b = this.longPressCancel) == null ? void 0 : _b.call(this);
       this.longPressCancel = null;
+      (_c = this.dropCleanup) == null ? void 0 : _c.call(this);
+      this.dropCleanup = null;
+      if (this.dragOverlay) {
+        this.dragOverlay.remove();
+        this.dragOverlay = null;
+      }
       if (this.menuDismiss) {
         this.menuDismiss();
         this.menuDismiss = null;
       }
-      (_c = this.dialog) == null ? void 0 : _c.destroy();
+      (_d = this.dialog) == null ? void 0 : _d.destroy();
       this.dialog = null;
+    }
+    /** 拖拽放置与面板快捷粘贴治理（ADR 0034 / T-0061） */
+    setupDragAndPaste(root) {
+      let dragDepth = 0;
+      const showOverlay = () => {
+        if (this.dragOverlay) return;
+        const overlay = document.createElement("div");
+        overlay.className = "xlc-drop-overlay";
+        overlay.dataset.xlcControl = "search.drop";
+        const text = document.createElement("span");
+        text.className = "xlc-drop-text";
+        text.textContent = "\u{1F4E5} " + this.deps.t("dropToAdd");
+        overlay.appendChild(text);
+        root.appendChild(overlay);
+        this.dragOverlay = overlay;
+      };
+      const hideOverlay = () => {
+        if (this.dragOverlay) {
+          this.dragOverlay.remove();
+          this.dragOverlay = null;
+        }
+      };
+      const onDragEnter = (e) => {
+        var _a;
+        const types = (_a = e.dataTransfer) == null ? void 0 : _a.types;
+        if (types && (types.includes("text/plain") || types.includes("text/uri-list") || types.includes("Files"))) {
+          e.preventDefault();
+          dragDepth++;
+          showOverlay();
+        }
+      };
+      const onDragOver = (e) => {
+        var _a;
+        const types = (_a = e.dataTransfer) == null ? void 0 : _a.types;
+        if (types && (types.includes("text/plain") || types.includes("text/uri-list") || types.includes("Files"))) {
+          e.preventDefault();
+          if (e.dataTransfer) e.dataTransfer.dropEffect = "copy";
+        }
+      };
+      const onDragLeave = (e) => {
+        e.preventDefault();
+        dragDepth--;
+        if (dragDepth <= 0) {
+          dragDepth = 0;
+          hideOverlay();
+        }
+      };
+      const onDrop = (e) => {
+        var _a, _b;
+        e.preventDefault();
+        dragDepth = 0;
+        hideOverlay();
+        const text = ((_a = e.dataTransfer) == null ? void 0 : _a.getData("text/plain")) || ((_b = e.dataTransfer) == null ? void 0 : _b.getData("text/uri-list"));
+        if (text && text.trim() && this.deps.newWithContent) {
+          this.destroy();
+          this.deps.newWithContent(text.trim());
+        }
+      };
+      const onPaste = (e) => {
+        var _a;
+        const active2 = document.activeElement;
+        if (active2 && (active2.tagName === "INPUT" || active2.tagName === "TEXTAREA" || active2.isContentEditable)) {
+          return;
+        }
+        const text = (_a = e.clipboardData) == null ? void 0 : _a.getData("text/plain");
+        if (text && text.trim() && this.deps.newWithContent) {
+          e.preventDefault();
+          this.destroy();
+          this.deps.newWithContent(text.trim());
+        }
+      };
+      root.addEventListener("dragenter", onDragEnter);
+      root.addEventListener("dragover", onDragOver);
+      root.addEventListener("dragleave", onDragLeave);
+      root.addEventListener("drop", onDrop);
+      root.addEventListener("paste", onPaste);
+      this.dropCleanup = () => {
+        hideOverlay();
+        root.removeEventListener("dragenter", onDragEnter);
+        root.removeEventListener("dragover", onDragOver);
+        root.removeEventListener("dragleave", onDragLeave);
+        root.removeEventListener("drop", onDrop);
+        root.removeEventListener("paste", onPaste);
+      };
     }
   };
   // 搜索服务最多返回 100 条；80 以上即可明显减少首屏 DOM，同时保留小结果集的简单路径。
@@ -5566,12 +5737,13 @@ ${exception.mark.snippet}`;
   var PROMPT_PACK_MD = [
     "<!-- xlc-pack",
     `name: ${PROMPT_PACK_NAME}`,
-    "items: 16",
-    "vars: \u5BA2\u6237\u540D\u79F0,\u8865\u507F\u6BD4\u4F8B,\u5DE5\u5355\u53F7,\u8DDF\u8FDB\u65E5\u671F,\u5BA2\u6237\u6635\u79F0,\u76EE\u6807\u8BFB\u8005,\u7F16\u7A0B\u8BED\u8A00,\u672C\u5468\u4E3B\u9898,\u4F1A\u8BAE\u4E3B\u9898,\u8868\u540D,\u59D3\u540D,\u804C\u4F4D,\u516C\u53F8\u540D\u79F0,\u90AE\u7BB1,\u624B\u673A\u53F7,\u6536\u4EF6\u4EBA,\u4E3B\u9898,\u7701\u5E02\u533A,\u8BE6\u7EC6\u5730\u5740,\u90AE\u7F16,\u5907\u6CE8",
+    "items: 20",
+    "vars: \u5BA2\u6237\u540D\u79F0,\u8865\u507F\u6BD4\u4F8B,\u5DE5\u5355\u53F7,\u8DDF\u8FDB\u65E5\u671F,\u5BA2\u6237\u6635\u79F0,\u76EE\u6807\u8BFB\u8005,\u7F16\u7A0B\u8BED\u8A00,\u672C\u5468\u4E3B\u9898,\u4F1A\u8BAE\u4E3B\u9898,\u8868\u540D,\u59D3\u540D,\u804C\u4F4D,\u516C\u53F8\u540D\u79F0,\u90AE\u7BB1,\u624B\u673A\u53F7,\u6536\u4EF6\u4EBA,\u4E3B\u9898,\u7701\u5E02\u533A,\u8BE6\u7EC6\u5730\u5740,\u90AE\u7F16,\u5907\u6CE8,\u53D1\u7968\u7C7B\u578B,\u4F01\u4E1A\u540D\u79F0,\u7EB3\u7A0E\u4EBA\u8BC6\u522B\u53F7,\u5F00\u6237\u94F6\u884C,\u94F6\u884C\u8D26\u53F7,\u9000\u6362\u7C7B\u578B,\u8BA2\u5355\u7F16\u53F7,\u5BC4\u56DE\u5730\u5740,\u50AC\u529E\u4E8B\u9879,\u539F\u5B9A\u622A\u6B62,\u54A8\u8BE2\u95EE\u9898",
     "-->",
     "# \u63D0\u793A\u8BCD\u573A\u666F\u5305",
     "",
-    "> \u5C0F\u9A74\u5E38\u7528\uFF08\u5185\u6D4B\u7248\uFF09\u5185\u7F6E\u6A21\u677F\u96C6\uFF1A\u4F7F\u7528\u8BF4\u660E / \u5730\u5740 / \u90AE\u7BB1 / \u8054\u7CFB\u65B9\u5F0F / \u5BA2\u670D\u56DE\u590D / AI \u63D0\u793A\u8BCD / \u7814\u53D1\u5199\u4F5C\u3002\u5BFC\u5165\u540E\u5373\u4E3A\u771F\u5B9E\u601D\u6E90\u5757\uFF0C\u53EF\u81EA\u7531\u4FEE\u6539\u3002",
+    "> \u5C0F\u9A74\u5E38\u7528\uFF08\u5185\u6D4B\u7248\uFF09\u5185\u7F6E\u6A21\u677F\u96C6\uFF1A\u4F7F\u7528\u8BF4\u660E / \u5730\u5740 / \u90AE\u7BB1 / \u8054\u7CFB\u65B9\u5F0F / \u5BA2\u670D\u56DE\u590D / AI \u63D0\u793A\u8BCD / \u7814\u53D1\u5199\u4F5C / \u5546\u52A1\u8D44\u6599\u3002\u5BFC\u5165\u540E\u5373\u4E3A\u771F\u5B9E\u601D\u6E90\u5757\uFF0C\u53EF\u81EA\u7531\u4FEE\u6539\u3002",
+    "",
     // ---- 入门与个人信息 ----
     "## \u4F7F\u7528\u8BF4\u660E\uFF1A\u4E09\u6B65\u5F00\u59CB",
     "",
@@ -5588,12 +5760,14 @@ ${exception.mark.snippet}`;
     "2. **\u518D\u8C03\u7528**\uFF1A\u6253\u5F00\u9762\u677F\u641C\u7D22\u6807\u9898\u3001\u6B63\u6587\u3001\u6807\u7B7E\u6216\u5206\u7C7B\uFF0C\u6309 Enter \u63D2\u5165\uFF0C\u6309 Ctrl/\u2318+Enter \u590D\u5236\uFF1B\u6709 `\uFF5B\uFF5Bxlc:ask:\u5B57\u6BB5\uFF5D\uFF5D` \u7684\u6A21\u677F\u4F1A\u5728\u63D2\u5165\u524D\u8BE2\u95EE\u4E00\u6B21\u3002",
     "3. **\u6301\u7EED\u6574\u7406**\uFF1A\u7528\u6807\u7B7E\u548C\u5206\u7C7B\u533A\u5206\u573A\u666F\uFF0C\u6536\u85CF\u9AD8\u9891\u6761\u76EE\uFF1B\u6761\u76EE\u6B63\u6587\u4ECD\u662F\u5E93\u6587\u6863\u4E2D\u7684\u771F\u5B9E\u5757\uFF0C\u53EF\u5728\u601D\u6E90\u4E2D\u76F4\u63A5\u7F16\u8F91\u3002",
     "",
-    "**\u6A21\u677F\u89C4\u5219**",
+    "**\u6A21\u677F\u89C4\u5219\u4E0E\u6CE8\u91CA\u89C4\u8303**",
     "- `\uFF5B\uFF5Bxlc:ask:\u5B57\u6BB5\uFF5D\uFF5D` = \u63D2\u5165\u65F6\u586B\u5199\uFF1B`\uFF5B\uFF5Bxlc:ask:\u5B57\u6BB5|\u9009\u9879A,\u9009\u9879B\uFF5D\uFF5D` = \u4E0B\u62C9\u9009\u62E9\uFF08\u672C\u8BF4\u660E\u7528\u5168\u89D2\u62EC\u53F7\u5C55\u793A\u8BED\u6CD5\uFF0C\u5B9E\u9645\u6A21\u677F\u8BF7\u6539\u4E3A\u534A\u89D2\uFF09\u3002\u586B\u5199\u5185\u5BB9\u53EA\u7528\u4E8E\u672C\u6B21\u63D2\u5165\uFF0C\u4E0D\u4F1A\u56DE\u5199\u6A21\u677F\u3002",
     "- `\uFF5B\uFF5Bxlc:date\uFF5D\uFF5D`\u3001`\uFF5B\uFF5Bxlc:clipboard\uFF5D\uFF5D` \u7B49\u52A8\u6001\u5360\u4F4D\u7B26\u53EA\u5728\u63D2\u5165/\u590D\u5236\u65F6\u5C55\u5F00\uFF0C\u6A21\u677F\u539F\u6587\u59CB\u7EC8\u4FDD\u7559\u3002",
-    "- \u63A8\u8350\u5206\u7C7B\uFF1A\u5BA2\u670D\u3001\u90AE\u7BB1\u3001\u5730\u5740\u3001\u8054\u7CFB\u65B9\u5F0F\u3001\u63D0\u793A\u8BCD\u3001\u5199\u4F5C\u3001\u5F00\u53D1\uFF1B\u5206\u7C7B\u540D\u79F0\u53EF\u4EE5\u6309\u81EA\u5DF1\u7684\u5DE5\u4F5C\u6D41\u4FEE\u6539\u3002",
+    "- **\u6CE8\u91CA\u4E0E\u8BF4\u660E**\uFF1A\u6761\u76EE\u522B\u540D\uFF08alias\uFF09\u4E0E\u5206\u7C7B\u5373\u4E3A\u573A\u666F\u6CE8\u91CA\uFF1B\u6A21\u677F\u6B63\u6587\u5185\u53EF\u7528\u5F15\u7528\u5757 `> \u{1F4A1} \u63D0\u793A\uFF1A...` \u8BB0\u5F55\u6CE8\u610F\u4E8B\u9879\uFF0C\u4E5F\u53EF\u4EE5\u7528 Markdown \u6CE8\u91CA\u8BED\u6CD5 `<!-- \u6CE8\u91CA -->` \u9690\u85CF\u5185\u90E8\u8BF4\u660E\u3002",
+    "- **\u952E\u76D8\u9AD8\u6548\u8C03\u7528**\uFF1A`Alt + 1-9` \u5FEB\u901F\u63D2\u5165\u524D 9 \u9879\uFF0C`Alt + Shift + 1-9` \u5FEB\u901F\u590D\u5236\u524D 9 \u9879\uFF1B\u641C\u7D22\u6846\u6309 `Tab` \u952E\u76F4\u8FBE\u53F3\u4FA7\u64CD\u4F5C\u533A\uFF1B\u914D\u5408\u300C\u5E38\u7528\u300D\u6392\u5E8F\u5B9E\u73B0\u9AD8\u9891\u6761\u76EE\u79D2\u53D1\u3002",
+    "- \u63A8\u8350\u5206\u7C7B\uFF1A\u5546\u52A1\u3001\u5BA2\u670D\u3001\u90AE\u7BB1\u3001\u5730\u5740\u3001\u8054\u7CFB\u65B9\u5F0F\u3001\u63D0\u793A\u8BCD\u3001\u5199\u4F5C\u3001\u5F00\u53D1\uFF1B\u5206\u7C7B\u540D\u79F0\u53EF\u4EE5\u6309\u81EA\u5DF1\u7684\u5DE5\u4F5C\u6D41\u4FEE\u6539\u3002",
     "",
-    "**\u4ECE\u54EA\u91CC\u5F00\u59CB**\uFF1A\u5148\u5BFC\u5165\u672C\u5305\u4E2D\u7684\u300C\u90AE\u7BB1\u7B7E\u540D\u300D\u300C\u6536\u4EF6\u5730\u5740\u300D\u6216\u300C\u8054\u7CFB\u4EBA\u5361\u7247\u300D\uFF0C\u628A\u793A\u4F8B\u5B57\u6BB5\u66FF\u6362\u4E3A\u81EA\u5DF1\u7684\u5B57\u6BB5\uFF0C\u518D\u590D\u5236\u6210\u4E2A\u4EBA\u6761\u76EE\u3002",
+    "**\u4ECE\u54EA\u91CC\u5F00\u59CB**\uFF1A\u5148\u5BFC\u5165\u672C\u5305\u4E2D\u7684\u300C\u90AE\u7BB1\u7B7E\u540D\u300D\u300C\u5F00\u7968\u8D44\u6599\u300D\u6216\u300C\u552E\u540E\u9000\u6362\u6307\u5F15\u300D\uFF0C\u628A\u793A\u4F8B\u5B57\u6BB5\u66FF\u6362\u4E3A\u81EA\u5DF1\u7684\u5B57\u6BB5\uFF0C\u518D\u590D\u5236\u6210\u4E2A\u4EBA\u6761\u76EE\u3002",
     "## \u90AE\u7BB1\u7B7E\u540D",
     "",
     "<!-- xlc-item",
@@ -5810,7 +5984,81 @@ ${exception.mark.snippet}`;
     "WHERE status = 'published'",
     "ORDER BY updated_at DESC",
     "LIMIT 20 OFFSET 40;",
-    "```"
+    "```",
+    "",
+    // ---- 场景④ 商务财务与售后协同 ----
+    "## \u5F00\u7968\u8D44\u6599",
+    "",
+    "<!-- xlc-item",
+    "id: xlc-pack00000017",
+    "type: markdown",
+    "tags: \u8D22\u52A1,\u53D1\u7968,\u5546\u52A1",
+    "category: \u5546\u52A1",
+    "source-type: external",
+    "-->",
+    "> \u{1F4A1} \u63D0\u793A\uFF1A\u4E13\u7968\u9700\u5B8C\u6574\u586B\u5199\u5F00\u6237\u884C\u4E0E\u94F6\u884C\u8D26\u53F7\uFF1B\u666E\u7968\u4EC5\u9700\u62AC\u5934\u4E0E\u7A0E\u53F7\u3002",
+    "",
+    "- \u53D1\u7968\u7C7B\u578B\uFF1A{{xlc:ask:\u53D1\u7968\u7C7B\u578B|\u589E\u503C\u7A0E\u4E13\u7528\u53D1\u7968,\u589E\u503C\u7A0E\u666E\u901A\u53D1\u7968}}",
+    "- \u4F01\u4E1A\u540D\u79F0\uFF1A{{xlc:ask:\u4F01\u4E1A\u540D\u79F0}}",
+    "- \u7EB3\u7A0E\u4EBA\u8BC6\u522B\u53F7\uFF1A{{xlc:ask:\u7EB3\u7A0E\u4EBA\u8BC6\u522B\u53F7}}",
+    "- \u5F00\u6237\u94F6\u884C\uFF1A{{xlc:ask:\u5F00\u6237\u94F6\u884C}}",
+    "- \u94F6\u884C\u8D26\u53F7\uFF1A{{xlc:ask:\u94F6\u884C\u8D26\u53F7}}",
+    "- \u6CE8\u518C\u5730\u5740\u4E0E\u7535\u8BDD\uFF1A{{xlc:ask:\u7701\u5E02\u533A}} {{xlc:ask:\u8BE6\u7EC6\u5730\u5740}} / {{xlc:ask:\u624B\u673A\u53F7}}{{xlc:cursor}}",
+    "",
+    "## \u552E\u540E\u9000\u6362\u6307\u5F15",
+    "",
+    "<!-- xlc-item",
+    "id: xlc-pack00000018",
+    "type: markdown",
+    "tags: \u5BA2\u670D,\u552E\u540E,\u9000\u6362",
+    "category: \u5BA2\u670D",
+    "source-type: external",
+    "-->",
+    "{{xlc:ask:\u5BA2\u6237\u540D\u79F0}} \u60A8\u597D\uFF1A",
+    "",
+    "\u60A8\u7684\u552E\u540E\u7533\u8BF7\u5DF2\u53D7\u7406\uFF08\u5DE5\u5355/\u8BA2\u5355\uFF1A{{xlc:ask:\u8BA2\u5355\u7F16\u53F7}}\uFF0C\u7C7B\u578B\uFF1A{{xlc:ask:\u9000\u6362\u7C7B\u578B|\u6362\u8D27,\u9000\u6B3E,\u8FD4\u5382\u7EF4\u4FEE}}\uFF09\u3002",
+    "",
+    "\u8BF7\u5C06\u5546\u54C1\u5BC4\u56DE\u4EE5\u4E0B\u5730\u5740\uFF1A",
+    "- \u6536\u4EF6\u4EBA\uFF1A{{xlc:ask:\u6536\u4EF6\u4EBA}}\uFF08\u7535\u8BDD\uFF1A{{xlc:ask:\u624B\u673A\u53F7}}\uFF09",
+    "- \u5BC4\u56DE\u5730\u5740\uFF1A{{xlc:ask:\u5BC4\u56DE\u5730\u5740}}",
+    "",
+    "> \u{1F4A1} \u6CE8\u610F\uFF1A\u5BC4\u56DE\u65F6\u8BF7\u4FDD\u7559\u539F\u5305\u88C5\u53CA\u914D\u4EF6\uFF0C\u5305\u88F9\u5185\u9644\u5B57\u6761\u6CE8\u660E\u60A8\u7684\u8BA2\u5355\u53F7\u4E0E\u9000\u6362\u539F\u56E0\uFF1B\u8BF7\u52FF\u5BC4\u9001\u8FD0\u8D39\u5230\u4ED8\u3002\u5BC4\u51FA\u540E\u8BF7\u5C06\u5FEB\u9012\u5355\u53F7\u56DE\u590D\u672C\u5904\uFF0C\u6211\u4EEC\u5C06\u4F18\u5148\u4E3A\u60A8\u8DDF\u8FDB\u3002{{xlc:cursor}}",
+    "",
+    "## \u4E8B\u9879\u50AC\u529E\u63D0\u9192",
+    "",
+    "<!-- xlc-item",
+    "id: xlc-pack00000019",
+    "type: markdown",
+    "tags: \u5199\u4F5C,\u534F\u540C,\u50AC\u529E",
+    "category: \u5199\u4F5C",
+    "source-type: external",
+    "-->",
+    "{{xlc:ask:\u6536\u4EF6\u4EBA}} \u60A8\u597D\uFF1A",
+    "",
+    "\u5173\u4E8E\u4E8B\u9879\u300C{{xlc:ask:\u50AC\u529E\u4E8B\u9879}}\u300D\uFF0C\u539F\u5B9A\u622A\u6B62\u65F6\u95F4\u4E3A {{xlc:ask:\u539F\u5B9A\u622A\u6B62|date}}\u3002",
+    "\u76EE\u524D\u6211\u4EEC\u5DF2\u63A8\u8FDB\u81F3\u9636\u6BB5\uFF1A__\u9636\u6BB5\u8FDB\u5EA6__\uFF1B\u4E3A\u786E\u4FDD\u540E\u7EED\u4EA4\u4ED8\u4E0D\u53D7\u5F71\u54CD\uFF0C\u9700\u8981\u8D35\u65B9\u5728 __\u4ECA\u65E5/\u672C\u5468\u4E94__ \u524D\u534F\u52A9\u786E\u8BA4\uFF1A",
+    "1. __\u5F85\u786E\u8BA4\u70B9 1__",
+    "2. __\u5F85\u786E\u8BA4\u70B9 2__",
+    "",
+    "\u5982\u6709\u4EFB\u4F55\u5361\u70B9\u6216\u9700\u6211\u4EEC\u914D\u5408\u8C03\u6574\u4E4B\u5904\uFF0C\u968F\u65F6\u6C9F\u901A\uFF0C\u611F\u8C22\uFF01{{xlc:cursor}}",
+    "",
+    "## \u5E38\u89C1\u95EE\u9898\u89E3\u7B54 FAQ",
+    "",
+    "<!-- xlc-item",
+    "id: xlc-pack00000020",
+    "type: markdown",
+    "tags: \u5BA2\u670D,\u652F\u6301,FAQ",
+    "category: \u5BA2\u670D",
+    "source-type: external",
+    "-->",
+    "### Q: {{xlc:ask:\u54A8\u8BE2\u95EE\u9898}}",
+    "",
+    "**A:** \u9488\u5BF9\u60A8\u54A8\u8BE2\u7684\u95EE\u9898\uFF0C\u5EFA\u8BAE\u6309\u4EE5\u4E0B\u6B65\u9AA4\u6392\u67E5\u4E0E\u5904\u7406\uFF1A",
+    "1. \u786E\u8BA4\u7CFB\u7EDF\u73AF\u5883\u4E0E\u7248\u672C\u662F\u5426\u7B26\u5408\u8981\u6C42\uFF1B",
+    "2. __\u5904\u7406\u6B65\u9AA4\u6216\u6838\u5FC3\u89E3\u7B54__\uFF1B",
+    "3. \u5982\u4ECD\u672A\u89E3\u51B3\uFF0C\u53EF\u53C2\u8003\u6587\u6863\uFF1A__\u94FE\u63A5__\uFF0C\u6216\u5C06\u9519\u8BEF\u622A\u56FE\u56DE\u590D\u6211\u4EEC\u3002",
+    "",
+    "> \u{1F4A1} \u63D0\u793A\uFF1A\u672C\u7B54\u590D\u9002\u7528\u4E8E\u5E38\u89C1\u6807\u51C6\u6D41\u7A0B\uFF1B\u590D\u6742\u7279\u6B8A\u60C5\u51B5\u8BF7\u8F6C\u4EBA\u5DE5\u4E13\u9879\u5DE5\u5355\u8DDF\u8FDB\u3002{{xlc:cursor}}"
   ].join("\n");
 
   // src/ui/settings-dialog.ts
@@ -7723,6 +7971,25 @@ ${exception.mark.snippet}`;
         ...titleCandidate ? { title: titleCandidate } : {},
         docId: (_a = this.deps.currentDocId()) != null ? _a : void 0,
         sourceType: "manual"
+      });
+    }
+    /** 从外部文本创建草稿（拖拽放置 / 面板快捷粘贴入口，ADR 0034 / T-0061） */
+    newWithContent(content, options) {
+      var _a, _b;
+      if (!this.ensureConfigured()) return;
+      const text = (content != null ? content : "").trim();
+      if (!text) {
+        this.newManual(options == null ? void 0 : options.title);
+        return;
+      }
+      const safeText = this.notifyIfTruncated(text);
+      const inferredType = inferTypeFromText(safeText);
+      const derived = inferredType === "url" ? safeText : (safeText.split("\n")[0] || "").slice(0, 60).trim();
+      const title = (options == null ? void 0 : options.title) || derived || this.deps.t("unknownType");
+      this.openForm(safeText, inferredType, null, {
+        title,
+        docId: (_a = this.deps.currentDocId()) != null ? _a : void 0,
+        sourceType: (_b = options == null ? void 0 : options.sourceType) != null ? _b : "manual"
       });
     }
     /** 右键块引用捕获：把被引用块存为 blockref 条目（目标块=引用目标） */
@@ -9933,18 +10200,19 @@ ${details.join("\n")}` : ""}`;
       filterRecent: "\u6700\u8FD1\u4F7F\u7528",
       empty: "\u6CA1\u6709\u627E\u5230\u5339\u914D\u5185\u5BB9",
       usageHint: "\u2191 \u2193 \u9009\u62E9 \xB7 Enter \u63D2\u5165 \xB7 Ctrl/\u2318 + Enter \u590D\u5236 \xB7 Alt + 1-9 \u5FEB\u901F\u63D2\u5165 \xB7 Esc \u5173\u95ED",
+      ordinalShortcutHint: "Alt+%s \u63D2\u5165 \xB7 Alt+Shift+%s \u590D\u5236",
       usageHintMobile: "\u70B9\u6309\u6761\u76EE\u5C1D\u8BD5\u63D2\u5165\uFF1B\u82E5\u5BBF\u4E3B\u4E0D\u652F\u6301\u4F1A\u590D\u5236\u5230\u526A\u8D34\u677F \xB7 \u957F\u6309\u67E5\u770B\u64CD\u4F5C",
       usageGuideBtn: "\u4F7F\u7528\u5E2E\u52A9",
       usageGuideTitle: "\u5C0F\u9A74\u5E38\u7528\u600E\u4E48\u7528",
       usageGuideIntro: "\u628A\u5E38\u7528\u5185\u5BB9\u4FDD\u5B58\u5728\u601D\u6E90\u6587\u6863\u4E2D\uFF0C\u4E4B\u540E\u641C\u7D22\u3001\u9884\u89C8\uFF0C\u518D\u63D2\u5165\u6216\u590D\u5236\u3002",
       usageGuideAdd: "\u65B0\u589E\uFF1A\u70B9\u300C\uFF0B \u65B0\u5EFA\u6761\u76EE\u300D\uFF0C\u6216\u4ECE\u9009\u533A\u3001\u5F53\u524D\u5757\u3001\u526A\u8D34\u677F\u548C\u53F3\u952E\u83DC\u5355\u4FDD\u5B58\u3002",
       usageGuideSearch: "\u67E5\u627E\uFF1A\u641C\u7D22\u6807\u9898\u3001\u522B\u540D\u3001\u6458\u8981\u3001\u6807\u7B7E\u548C\u5206\u7C7B\uFF1B\u4E5F\u53EF\u4EE5\u7528\u62FC\u97F3\u3001\u6536\u85CF\u3001\u6700\u8FD1\u4F7F\u7528\u548C\u5E38\u7528\u6392\u5E8F\u3002",
-      usageGuideInsert: "\u4F7F\u7528\uFF1AEnter \u63D2\u5165\u5F53\u524D\u6761\u76EE\uFF0CCtrl/\u2318 + Enter \u590D\u5236\u5F53\u524D\u6761\u76EE\uFF0CAlt/\u2325 + 1-9 \u63D2\u5165\u5BF9\u5E94\u6761\u76EE\uFF1B\u957F\u6309\u6761\u76EE\u53EF\u6253\u5F00\u66F4\u591A\u64CD\u4F5C\u3002",
+      usageGuideInsert: "\u4F7F\u7528\uFF1AEnter \u63D2\u5165\uFF0CCtrl/\u2318 + Enter \u590D\u5236\uFF1BAlt/\u2325 + 1-9 \u76F4\u8FBE\u63D2\u5165\uFF0CAlt/\u2325 + Shift + 1-9 \u76F4\u8FBE\u590D\u5236\uFF1BTab \u53EF\u5728\u641C\u7D22\u6846\u4E0E\u64CD\u4F5C\u533A\u6D41\u8F6C\uFF1B\u957F\u6309\u6761\u76EE\u53EF\u6253\u5F00\u66F4\u591A\u64CD\u4F5C\u3002",
       usageGuideInsertMobile: "\u4F7F\u7528\uFF1A\u70B9\u6309\u6761\u76EE\u5C1D\u8BD5\u63D2\u5165\uFF1B\u82E5\u601D\u6E90\u5BA2\u6237\u7AEF\u4E0D\u652F\u6301\uFF0C\u4F1A\u590D\u5236\u5230\u526A\u8D34\u677F\u3002\u79FB\u52A8\u7AEF\u63D2\u5165\u5C1A\u672A\u5728\u771F\u5B9E\u5BA2\u6237\u7AEF\u9A8C\u8BC1\uFF1B\u957F\u6309\u6761\u76EE\u53EF\u6253\u5F00\u66F4\u591A\u64CD\u4F5C\u3002",
       emptyFiltered: "\u5F53\u524D\u7B5B\u9009\u4E0B\u6CA1\u6709\u5339\u914D\u6761\u76EE",
       clearFilters: "\u6E05\u9664\u7B5B\u9009",
-      usageGuideOrganize: "\u6574\u7406\uFF1A\u7ED9\u6761\u76EE\u8865\u4E0A\u6E05\u695A\u7684\u6807\u9898\u3001\u6807\u7B7E\u548C\u5206\u7C7B\uFF1B\u8BBE\u7F6E \u2192 \u6570\u636E\u4E0E\u6A21\u677F\u53EF\u5BFC\u5165\u90AE\u7BB1\u3001\u5730\u5740\u548C\u8054\u7CFB\u65B9\u5F0F\u793A\u4F8B\u3002",
-      usageGuideVariables: "\u6A21\u677F\u89C4\u5219\uFF1A{{xlc:ask:\u5B57\u6BB5}} \u4F1A\u5728\u63D2\u5165\u524D\u8BE2\u95EE\uFF1B{{xlc:date}}\u3001{{xlc:clipboard}} \u7B49\u5360\u4F4D\u7B26\u53EA\u5728\u4F7F\u7528\u65F6\u5C55\u5F00\uFF0C\u4E0D\u4F1A\u6539\u5199\u5E93\u4E2D\u7684\u539F\u6587\u3002AI \u9ED8\u8BA4\u5173\u95ED\u3002",
+      usageGuideOrganize: "\u6574\u7406\uFF1A\u7ED9\u6761\u76EE\u8865\u4E0A\u6E05\u695A\u7684\u6807\u9898\u3001\u6807\u7B7E\u548C\u5206\u7C7B\uFF1B\u8BBE\u7F6E \u2192 \u6570\u636E\u4E0E\u6A21\u677F\u53EF\u5BFC\u5165\u5F00\u7968\u3001\u9000\u6362\u3001\u90AE\u7BB1\u3001\u5730\u5740\u548C\u8054\u7CFB\u65B9\u5F0F\u7B49\u793A\u4F8B\u3002",
+      usageGuideVariables: "\u6A21\u677F\u4E0E\u6CE8\u91CA\u89C4\u5219\uFF1A{{xlc:ask:\u5B57\u6BB5}} \u63D2\u5165\u524D\u8BE2\u95EE\uFF0C\u652F\u6301 {{xlc:ask:\u5B57\u6BB5|\u9009\u9879A,\u9009\u9879B}} \u4E0B\u62C9\u9009\u62E9\uFF1B{{xlc:date}}\u3001{{xlc:clipboard}} \u7B49\u5360\u4F4D\u7B26\u4EC5\u4F7F\u7528\u65F6\u5C55\u5F00\uFF1B\u6761\u76EE\u522B\u540D\u53EF\u4F5C\u573A\u666F\u6CE8\u91CA\uFF0C\u6B63\u6587\u5185\u53EF\u7528\u5F15\u7528\u5757\u300C> \u{1F4A1} \u63D0\u793A\uFF1A...\u300D\u8BB0\u5F55\u586B\u5199\u63D0\u9192\u3002AI \u9ED8\u8BA4\u5173\u95ED\u3002",
       insert: "\u63D2\u5165",
       copy: "\u590D\u5236",
       openSource: "\u6253\u5F00\u6765\u6E90",
@@ -9978,6 +10246,7 @@ ${details.join("\n")}` : ""}`;
       "tf.translate-en": "\u8BD1\u4E3A\u82F1\u6587",
       "tf.bulletize": "\u5217\u8868\u5316",
       more: "\u8FD4\u56DE\u52A8\u4F5C",
+      dropToAdd: "\u677E\u5F00\u9F20\u6807\u4EE5\u6DFB\u52A0\u5E38\u7528\u6761\u76EE",
       newItem: "\u65B0\u5EFA\u6761\u76EE",
       newItemAction: "\uFF0B \u65B0\u5EFA\u6761\u76EE",
       save: "\u4FDD\u5B58",
@@ -10176,6 +10445,8 @@ ${details.join("\n")}` : ""}`;
       kbdAltDirect: "%s + 1-9 \u5FEB\u901F\u63D2\u5165",
       kbdEsc: "\u5173\u95ED",
       kbdQuickInsert: "\u5FEB\u901F\u63D2\u5165\u5BF9\u5E94\u6761\u76EE",
+      kbdQuickCopy: "\u5FEB\u901F\u590D\u5236\u5BF9\u5E94\u6761\u76EE",
+      kbdTabActions: "\u5207\u6362\u5230\u64CD\u4F5C\u533A",
       kbdClose: "\u5173\u95ED\u9762\u677F",
       loading: "\u52A0\u8F7D\u4E2D\u2026",
       truncatedHint: "\u6761\u76EE\u8D85\u51FA\u7D22\u5F15\u4E0A\u9650\uFF0C\u5DF2\u622A\u65AD\u663E\u793A\uFF1B\u6570\u636E\u4ECD\u5B89\u5168\u5728\u5E93\u4E2D",
@@ -10320,6 +10591,14 @@ ${details.join("\n")}` : ""}`;
         var _a2;
         document.body.dataset.xlcNewItemTitle = titleCandidate != null ? titleCandidate : "";
         document.body.dataset.xlcNewItemCalls = String(Number((_a2 = document.body.dataset.xlcNewItemCalls) != null ? _a2 : 0) + 1);
+        window.XlcHarness.openCapture();
+      },
+      newWithContent: (content, options) => {
+        var _a2, _b2, _c;
+        const w = window;
+        ((_a2 = w.__xlcNewWithContentCalls) != null ? _a2 : w.__xlcNewWithContentCalls = []).push({ content, title: options == null ? void 0 : options.title });
+        document.body.dataset.xlcNewItemTitle = (_b2 = options == null ? void 0 : options.title) != null ? _b2 : "";
+        document.body.dataset.xlcNewWithContentCalls = String(Number((_c = document.body.dataset.xlcNewWithContentCalls) != null ? _c : 0) + 1);
         window.XlcHarness.openCapture();
       },
       providerSearch: async (query) => query.includes("\u5DE5\u4F5C\u53F0") ? [

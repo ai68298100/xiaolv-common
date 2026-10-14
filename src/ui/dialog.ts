@@ -58,6 +58,8 @@ export interface DialogDeps {
     getUsage: () => Record<string, {count: number; lastAt: number}>;
     /** 手动新建条目（移动端「＋ 新建」入口） */
     newItem: (titleCandidate?: string) => void;
+    /** 从文本快速创建草稿（拖拽放置 / 面板非输入区快捷粘贴，ADR 0034 / T-0061） */
+    newWithContent?: (content: string, options?: {title?: string}) => void;
     /** AI 语义找（? 前缀触发；仅元数据出域；候选先按当前筛选过滤） */
     aiSemantic: (desc: string, filters: {itemType: string; tag: string; category: string; scope: "all" | "favorites" | "recent"}) => Promise<{ok: true; entries: SearchEntry[]} | {ok: false; message: string}>;
     /** AI 变换（需正文出域权限） */
@@ -139,6 +141,7 @@ export class CommonSearchDialog {
         });
         this.dialog = dialog;
         const content = this.buildDom(isMobile);
+        this.setupDragAndPaste(content);
         const body = getDialogBody(dialog.element);
         if (body) {
             body.innerHTML = "";
@@ -259,6 +262,8 @@ export class CommonSearchDialog {
                 {key: "Enter", action: this.deps.t("kbdEnter")},
                 {key: `${isApple ? "⌘" : "Ctrl"} + Enter`, action: this.deps.t("kbdCopy")},
                 {key: `${isApple ? "⌥" : "Alt"} + 1-9`, action: this.deps.t("kbdQuickInsert")},
+                {key: `${isApple ? "⌥ + ⇧" : "Alt + Shift"} + 1-9`, action: this.deps.t("kbdQuickCopy")},
+                {key: "Tab", action: this.deps.t("kbdTabActions")},
                 {key: "Esc", action: this.deps.t("kbdClose")},
             ]) {
                 const kbd = document.createElement("span");
@@ -971,22 +976,67 @@ export class CommonSearchDialog {
         this.dialog?.element.querySelector<HTMLElement>(".xlc-search-input")?.focus();
     }
 
-    /** 命中高亮：按字面子串（大小写不敏感）切分并注入 mark span；文本一律 textContent，绝不 innerHTML。 */
+    /**
+     * 命中高亮：支持多关键词按空格分词高亮，收集匹配区间并合并重叠区域，注入 mark span。
+     * 文本一律 textContent / createTextNode，绝不使用 innerHTML（ADR 0036 / T-0063）。
+     */
     private appendHighlighted(parent: HTMLElement, text: string, query: string): void {
+        const tokens = query
+            .toLowerCase()
+            .split(/\s+/)
+            .map((t) => t.trim())
+            .filter((t) => t.length > 0);
+
+        if (tokens.length === 0) {
+            parent.appendChild(document.createTextNode(text));
+            return;
+        }
+
         const lowerText = text.toLowerCase();
-        const lowerQuery = query.toLowerCase();
+        // 收集所有 token 在 text 中的命中区间 [start, end)
+        const intervals: Array<[number, number]> = [];
+        for (const token of tokens) {
+            let cursor = 0;
+            while (cursor <= lowerText.length - token.length) {
+                const at = lowerText.indexOf(token, cursor);
+                if (at < 0) break;
+                intervals.push([at, at + token.length]);
+                cursor = at + Math.max(1, token.length);
+            }
+        }
+
+        if (intervals.length === 0) {
+            parent.appendChild(document.createTextNode(text));
+            return;
+        }
+
+        // 合并重叠与相邻区间（Merge Intervals）
+        intervals.sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+        const merged: Array<[number, number]> = [];
+        for (const [start, end] of intervals) {
+            const prev = merged[merged.length - 1];
+            if (prev && start <= prev[1]) {
+                prev[1] = Math.max(prev[1], end);
+            } else {
+                merged.push([start, end]);
+            }
+        }
+
+        // 渲染文本节点与高亮 mark
         let cursor = 0;
-        while (cursor <= text.length - lowerQuery.length) {
-            const at = lowerText.indexOf(lowerQuery, cursor);
-            if (at < 0) break;
-            if (at > cursor) parent.appendChild(document.createTextNode(text.slice(cursor, at)));
+        for (const [start, end] of merged) {
+            if (start > cursor) {
+                parent.appendChild(document.createTextNode(text.slice(cursor, start)));
+            }
             const mark = document.createElement("mark");
             mark.className = "xlc-hit";
-            mark.textContent = text.slice(at, at + query.length);
+            mark.textContent = text.slice(start, end);
             parent.appendChild(mark);
-            cursor = at + query.length;
+            cursor = end;
         }
-        if (cursor < text.length) parent.appendChild(document.createTextNode(text.slice(cursor)));
+        if (cursor < text.length) {
+            parent.appendChild(document.createTextNode(text.slice(cursor)));
+        }
     }
 
     /** 创建一行真实库条目。抽出后虚拟列表可以复用同一套交互与无障碍属性。 */
@@ -1011,8 +1061,11 @@ export class CommonSearchDialog {
         if (index < 9) {
             const ordinal = document.createElement("span");
             ordinal.className = "xlc-row-ordinal";
-            ordinal.textContent = String(index + 1);
-            ordinal.title = this.deps.t("usageHint");
+            const numStr = String(index + 1);
+            ordinal.textContent = numStr;
+            const hint = this.deps.t("ordinalShortcutHint", numStr, numStr);
+            ordinal.title = hint;
+            ordinal.setAttribute("aria-label", hint);
             title.appendChild(ordinal);
         }
         const badge = document.createElement("span");
@@ -2333,14 +2386,60 @@ export class CommonSearchDialog {
         } else if (e.key === "Escape") {
             e.preventDefault();
             this.destroy();
-        } else if (e.altKey && !e.ctrlKey && !e.metaKey && /^[1-9]$/.test(e.key)) {
-            if (e.repeat) return; // 按住 Alt+数字不得连续插入（R138）
-            // Alt+1~9 数字直达插入（Quicker/雷切同款；1 对应列表首行）
-            e.preventDefault();
-            const idx = Number(e.key) - 1;
-            const entry = this.results[idx];
-            if (entry) {
-                await this.runPrimary(entry);
+        } else if (e.altKey && !e.ctrlKey && !e.metaKey) {
+            let num: number | null = null;
+            if (/^[1-9]$/.test(e.key)) {
+                num = Number(e.key);
+            } else if (/^Digit[1-9]$/.test(e.code)) {
+                num = Number(e.code.replace("Digit", ""));
+            }
+            if (num !== null) {
+                if (e.repeat) return; // 按住 Alt+数字不得连续触发（R138）
+                e.preventDefault();
+                const idx = num - 1;
+                const entry = this.results[idx];
+                if (entry) {
+                    if (e.shiftKey) {
+                        // Alt + Shift + 1~9：直达复制
+                        await this.deps.runAction(entry.id, "copy");
+                    } else {
+                        // Alt + 1~9：直达插入
+                        await this.runPrimary(entry);
+                    }
+                }
+            }
+        } else if (e.key === "Tab") {
+            const root = this.dialog?.element;
+            if (!root) return;
+            const focusables = Array.from(root.querySelectorAll<HTMLElement>(
+                'input:not([disabled]):not([type="hidden"]), select:not([disabled]), button:not([disabled]), [tabindex="0"]:not([disabled])'
+            )).filter((el) => {
+                return (el.offsetWidth > 0 || el.offsetHeight > 0 || el.getClientRects().length > 0)
+                    && window.getComputedStyle(el).visibility !== "hidden";
+            });
+            if (focusables.length === 0) return;
+            const first = focusables[0];
+            const last = focusables[focusables.length - 1];
+            const active = document.activeElement as HTMLElement | null;
+
+            // 搜索输入框按 Tab 时，若右侧预览操作区有可用操作，直达预览区首个可用按钮
+            const input = root.querySelector<HTMLInputElement>(".xlc-search-input");
+            if (active === input && !e.shiftKey) {
+                const previewAction = root.querySelector<HTMLElement>(".xlc-pane-foot button:not([disabled])");
+                if (previewAction && focusables.includes(previewAction)) {
+                    e.preventDefault();
+                    previewAction.focus();
+                    return;
+                }
+            }
+
+            // 焦点陷阱（Focus Trap）：首尾循环，防止 Tab 逃逸出搜索模态弹窗
+            if (e.shiftKey && (active === first || active === root)) {
+                e.preventDefault();
+                last?.focus();
+            } else if (!e.shiftKey && active === last) {
+                e.preventDefault();
+                first?.focus();
             }
         }
     }
@@ -2352,11 +2451,111 @@ export class CommonSearchDialog {
         this.virtualEnsureIndex = null;
         this.longPressCancel?.();
         this.longPressCancel = null;
+        this.dropCleanup?.();
+        this.dropCleanup = null;
+        if (this.dragOverlay) {
+            this.dragOverlay.remove();
+            this.dragOverlay = null;
+        }
         if (this.menuDismiss) {
             this.menuDismiss();
             this.menuDismiss = null;
         }
         this.dialog?.destroy();
         this.dialog = null;
+    }
+
+    private dragOverlay: HTMLElement | null = null;
+    private dropCleanup: (() => void) | null = null;
+
+    /** 拖拽放置与面板快捷粘贴治理（ADR 0034 / T-0061） */
+    private setupDragAndPaste(root: HTMLElement): void {
+        let dragDepth = 0;
+
+        const showOverlay = (): void => {
+            if (this.dragOverlay) return;
+            const overlay = document.createElement("div");
+            overlay.className = "xlc-drop-overlay";
+            overlay.dataset.xlcControl = "search.drop";
+            const text = document.createElement("span");
+            text.className = "xlc-drop-text";
+            text.textContent = "📥 " + this.deps.t("dropToAdd");
+            overlay.appendChild(text);
+            root.appendChild(overlay);
+            this.dragOverlay = overlay;
+        };
+
+        const hideOverlay = (): void => {
+            if (this.dragOverlay) {
+                this.dragOverlay.remove();
+                this.dragOverlay = null;
+            }
+        };
+
+        const onDragEnter = (e: DragEvent): void => {
+            const types = e.dataTransfer?.types;
+            if (types && (types.includes("text/plain") || types.includes("text/uri-list") || types.includes("Files"))) {
+                e.preventDefault();
+                dragDepth++;
+                showOverlay();
+            }
+        };
+
+        const onDragOver = (e: DragEvent): void => {
+            const types = e.dataTransfer?.types;
+            if (types && (types.includes("text/plain") || types.includes("text/uri-list") || types.includes("Files"))) {
+                e.preventDefault();
+                if (e.dataTransfer) e.dataTransfer.dropEffect = "copy";
+            }
+        };
+
+        const onDragLeave = (e: DragEvent): void => {
+            e.preventDefault();
+            dragDepth--;
+            if (dragDepth <= 0) {
+                dragDepth = 0;
+                hideOverlay();
+            }
+        };
+
+        const onDrop = (e: DragEvent): void => {
+            e.preventDefault();
+            dragDepth = 0;
+            hideOverlay();
+            const text = e.dataTransfer?.getData("text/plain") || e.dataTransfer?.getData("text/uri-list");
+            if (text && text.trim() && this.deps.newWithContent) {
+                this.destroy();
+                this.deps.newWithContent(text.trim());
+            }
+        };
+
+        const onPaste = (e: ClipboardEvent): void => {
+            const active = document.activeElement as HTMLElement | null;
+            // 焦点处于输入框（搜索框/筛选框/textarea 等）时，保留原生粘贴行为，供用户粘贴搜索关键词
+            if (active && (active.tagName === "INPUT" || active.tagName === "TEXTAREA" || active.isContentEditable)) {
+                return;
+            }
+            const text = e.clipboardData?.getData("text/plain");
+            if (text && text.trim() && this.deps.newWithContent) {
+                e.preventDefault();
+                this.destroy();
+                this.deps.newWithContent(text.trim());
+            }
+        };
+
+        root.addEventListener("dragenter", onDragEnter);
+        root.addEventListener("dragover", onDragOver);
+        root.addEventListener("dragleave", onDragLeave);
+        root.addEventListener("drop", onDrop);
+        root.addEventListener("paste", onPaste);
+
+        this.dropCleanup = () => {
+            hideOverlay();
+            root.removeEventListener("dragenter", onDragEnter);
+            root.removeEventListener("dragover", onDragOver);
+            root.removeEventListener("dragleave", onDragLeave);
+            root.removeEventListener("drop", onDrop);
+            root.removeEventListener("paste", onPaste);
+        };
     }
 }

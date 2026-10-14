@@ -181,6 +181,28 @@
   background: var(--b3-theme-surface);
   color: var(--b3-theme-on-background);
 
+  // ---- 拖拽放置反馈蒙层（ADR 0034 / T-0061） ----
+  .xlc-drop-overlay {
+    position: absolute;
+    inset: var(--xlc-space-3);
+    z-index: 100;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--b3-theme-surface);
+    border: 2px dashed var(--b3-theme-primary);
+    border-radius: 12px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+    pointer-events: none;
+    opacity: 0.96;
+
+    .xlc-drop-text {
+      font-size: var(--xlc-font-lg);
+      font-weight: 600;
+      color: var(--b3-theme-primary);
+    }
+  }
+
   // ---- 顶部：搜索 + 快捷键提示 ----
   .xlc-top {
     display: flex;

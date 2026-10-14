@@ -190,35 +190,39 @@ test("选区、当前块和整篇文档均冻结触发时来源文档", async ()
 
 // ---- 提示词场景包 ----
 
-test("场景包：16 个条目全部可解析（ID/类型合法），清单与包名正确", () => {
+test("场景包：20 个条目全部可解析（ID/类型合法），清单与包名正确", () => {
     const parsed = parseMarkdownPack(PROMPT_PACK_MD);
-    assert.strictEqual(parsed.items.length, 16);
+    assert.strictEqual(parsed.items.length, 20);
     assert.ok(parsed.items.every((i) => /^xlc-[0-9a-z]{10,40}$/.test(i.id)));
     assert.strictEqual(parsed.pack?.name, PROMPT_PACK_NAME);
-    assert.ok((parsed.pack?.vars.length ?? 0) >= 5);
+    assert.ok((parsed.pack?.vars.length ?? 0) >= 10);
     assert.strictEqual(parsed.issues.length, 0);
 });
 
-test("场景包：覆盖三大场景且演示变量系统（ask 与 cursor）", () => {
+test("场景包：覆盖商务、客服、提示词、写作、开发场景且演示变量系统（ask 与 cursor）", () => {
     const parsed = parseMarkdownPack(PROMPT_PACK_MD);
     const categories = new Set(parsed.items.map((i) => i.category));
-    for (const c of ["客服", "提示词", "写作", "开发"]) assert.ok(categories.has(c), `缺少分类 ${c}`);
+    for (const c of ["商务", "客服", "提示词", "写作", "开发"]) assert.ok(categories.has(c), `缺少分类 ${c}`);
     const withVars = parsed.items.filter((i) => /\{\{xlc:ask:/.test(i.kramdown));
     const withCursor = parsed.items.filter((i) => i.kramdown.includes("{{xlc:cursor}}"));
-    assert.ok(withVars.length >= 7);
-    assert.ok(withCursor.length >= 4);
+    assert.ok(withVars.length >= 10);
+    assert.ok(withCursor.length >= 7);
 });
 
-test("场景包：包含可直接改写的使用说明、地址与邮箱模板", () => {
+test("场景包：包含可直接改写的使用说明、地址、开票与退换模板", () => {
     const parsed = parseMarkdownPack(PROMPT_PACK_MD);
     const byTitle = new Map(parsed.items.map((item) => [item.title, item]));
     const guide = byTitle.get("使用说明：三步开始");
     assert.ok(guide, "缺少使用说明条目");
     assert.match(guide.kramdown, /保存|调用|整理/);
     assert.match(guide.kramdown, /xlc:ask/);
+    assert.match(guide.kramdown, /注释|说明/);
+    assert.match(guide.kramdown, /Alt|Tab/);
     assert.ok(!guide.kramdown.includes("xlc-item"), "条目边界不应把下一条元数据带入使用说明");
     assert.strictEqual(variables.listAskFields(guide.kramdown).length, 0, "使用说明中的语法示例不应触发填写卡");
     assert.ok(parsed.items.some((item) => item.category === "地址" && /xlc:ask:收件人/.test(item.kramdown)));
     assert.ok(parsed.items.some((item) => item.category === "邮箱" && /xlc:ask:邮箱/.test(item.kramdown)));
+    assert.ok(parsed.items.some((item) => item.category === "商务" && /xlc:ask:纳税人识别号/.test(item.kramdown)));
+    assert.ok(parsed.items.some((item) => item.category === "客服" && /xlc:ask:退换类型/.test(item.kramdown)));
     assert.ok(parsed.items.some((item) => item.category === "联系方式"));
 });

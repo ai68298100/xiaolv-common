@@ -117,7 +117,7 @@ const check = (name, ok, detail = "") => {
     const fills = await page.evaluate(() => window.__xlcLastFills);
     check("A3 填写值传入插入动作", fills && fills["客户名称"] === "王总" && fills["补偿比例"] === "5%", JSON.stringify(fills));
 
-    // ── B. 键盘链路：↓ 移动选择；Ctrl+Enter 复制动作分派；Alt+1 直达插入（弹变量卡）──
+    // ── B. 键盘链路：↓ 移动选择；Ctrl+Enter 复制动作分派；Alt+1 直达插入；Alt+Shift+2 直达复制；Tab 导航与角标提示 ──
     await open({});
     await sleep(250);
     const activeFirst = (await rows()).find((r) => r.active);
@@ -143,6 +143,71 @@ const check = (name, ok, detail = "") => {
     const varFormGone = await page.evaluate(() => !document.querySelector(".xlc-varform") && Boolean(document.querySelector(".xlc-dialog")));
     const focusBack = await page.evaluate(() => document.activeElement?.classList.contains("xlc-search-input") ?? false);
     check("B4 取消变量卡：卡片关、弹窗留、焦点回搜索框", varFormGone && focusBack, `gone=${varFormGone} focusBack=${focusBack}`);
+
+    // B5: 序号角标带有精确的快捷键提示（title 和 aria-label）
+    const ordinalHintDetail = await page.evaluate(() => {
+        const ord = document.querySelector(".xlc-row-ordinal");
+        if (!ord) return {ok: false, detail: "ord is null"};
+        const title = ord.getAttribute("title") ?? "";
+        const aria = ord.getAttribute("aria-label") ?? "";
+        const ok = title.includes("Alt+1") && title.includes("Alt+Shift+1") && aria.includes("Alt+1");
+        return {ok, detail: `title=${JSON.stringify(title)}, aria=${JSON.stringify(aria)}`};
+    });
+    check("B5 序号角标包含 Alt+1 插入与 Alt+Shift+1 复制提示", ordinalHintDetail.ok, ordinalHintDetail.detail);
+
+    // B6: Alt + Shift + 2 快捷直达复制第二项
+    await page.evaluate(() => { window.__xlcActions = []; });
+    await key("2", {altKey: true, shiftKey: true});
+    await sleep(250);
+    const copyActions = await page.evaluate(() => window.__xlcActions);
+    check("B6 Alt+Shift+2 直达复制对应项", Array.isArray(copyActions) && copyActions.some((a) => a.id === "xlc-demo0000003" && a.mode === "copy"), JSON.stringify(copyActions));
+
+    // B7: 搜索框焦点下按 Tab 键聚焦到预览操作区
+    await page.focus(".xlc-search-input");
+    await key("Tab");
+    await sleep(150);
+    const tabFocusedAction = await page.evaluate(() => {
+        const act = document.activeElement;
+        return Boolean(act?.closest(".xlc-pane-foot") || act?.closest(".xlc-pane-body"));
+    });
+    check("B7 Tab 键从搜索框聚焦到预览操作区", tabFocusedAction);
+
+    // B8: 非输入框区域（列表聚焦）按粘贴分派 newWithContent 捕获草稿
+    await page.evaluate(() => {
+        window.__xlcNewWithContentCalls = [];
+        const list = document.querySelector(".xlc-list");
+        list?.focus();
+        const ev = new Event("paste", {bubbles: true});
+        Object.defineProperty(ev, "clipboardData", {
+            value: {getData: (type) => (type === "text/plain" ? "https://github.com/ai68298100/xiaolv-common" : "")},
+        });
+        list?.dispatchEvent(ev);
+    });
+    await sleep(250);
+    const pasteCallOk = await page.evaluate(() => {
+        const calls = window.__xlcNewWithContentCalls;
+        return Array.isArray(calls) && calls.length > 0 && calls[0].content === "https://github.com/ai68298100/xiaolv-common";
+    });
+    check("B8 非输入区快捷粘贴识别并唤起捕获草稿", pasteCallOk);
+
+    // B9: 拖拽进入展示蒙层、离开移除蒙层
+    await open({});
+    await sleep(250);
+    const overlayShown = await page.evaluate(() => {
+        const root = document.querySelector(".xlc-dialog");
+        const dt = {types: ["text/plain"]};
+        const enterEv = new Event("dragenter", {bubbles: true});
+        Object.defineProperty(enterEv, "dataTransfer", {value: dt});
+        root?.dispatchEvent(enterEv);
+        return Boolean(document.querySelector(".xlc-drop-overlay"));
+    });
+    const overlayRemoved = await page.evaluate(() => {
+        const root = document.querySelector(".xlc-dialog");
+        const leaveEv = new Event("dragleave", {bubbles: true});
+        root?.dispatchEvent(leaveEv);
+        return document.querySelector(".xlc-drop-overlay") === null;
+    });
+    check("B9 拖拽进入出现放置提示层且离开时移除", overlayShown && overlayRemoved, `shown=${overlayShown} removed=${overlayRemoved}`);
 
     // ── C. Esc 关闭弹窗 ──
     await key("Escape");

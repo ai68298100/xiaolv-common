@@ -206,6 +206,27 @@ export class CaptureDialog {
         });
     }
 
+    /** 从外部文本创建草稿（拖拽放置 / 面板快捷粘贴入口，ADR 0034 / T-0061） */
+    newWithContent(content: string, options?: {title?: string; sourceType?: "selection" | "block" | "doc-fragment" | "clipboard" | "manual" | "resource"}): void {
+        if (!this.ensureConfigured()) return;
+        const text = (content ?? "").trim();
+        if (!text) {
+            this.newManual(options?.title);
+            return;
+        }
+        const safeText = this.notifyIfTruncated(text);
+        const inferredType = inferTypeFromText(safeText);
+        const derived = inferredType === "url"
+            ? safeText
+            : (safeText.split("\n")[0] || "").slice(0, 60).trim();
+        const title = options?.title || derived || this.deps.t("unknownType");
+        this.openForm(safeText, inferredType, null, {
+            title,
+            docId: this.deps.currentDocId() ?? undefined,
+            sourceType: options?.sourceType ?? "manual",
+        });
+    }
+
     /** 右键块引用捕获：把被引用块存为 blockref 条目（目标块=引用目标） */
     captureBlockRef(blockId: string, refText: string): void {
         if (!this.ensureConfigured()) return;

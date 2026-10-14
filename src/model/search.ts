@@ -59,12 +59,8 @@ function scoreHaystack(haystack: string, needle: string, weight: number, prefixW
     return score;
 }
 
-/**
- * 单词评分：标题×8（前缀+3）/ 别名×6（前缀+2）/ 标签×4 / 分类×4 / 摘要×2。
- * 拼音适配层把查询展开为等价匹配串，任一命中即按最高分计。
- */
-export function matchEntry(entry: SearchEntry, rawQuery: string): Omit<ScoredResult, "order"> | null {
-    const expansions = getPinyinAdapter().expand(rawQuery.slice(0, LIMITS.queryChars));
+function matchSingleToken(entry: SearchEntry, token: string): {score: number; matchedBy: string} | null {
+    const expansions = getPinyinAdapter().expand(token);
     if (expansions.length === 0) return null;
     const title = normalizeText(entry.title);
     const alias = normalizeText(entry.alias);
@@ -89,7 +85,40 @@ export function matchEntry(entry: SearchEntry, rawQuery: string): Omit<ScoredRes
         const top = candidates.reduce((a, b) => (b.score > a.score ? b : a), first);
         if (top.score > 0 && (!best || top.score > best.score)) best = top;
     }
-    return best ? {entry, score: best.score, matchedBy: best.matchedBy} : null;
+    return best;
+}
+
+/**
+ * 单词/多词组合评分：标题×8（前缀+3）/ 别名×6（前缀+2）/ 标签×4 / 分类×4 / 摘要×2。
+ * 单词走快速路径；空格分隔的多词执行跨字段 AND 匹配并累加各词得分（ADR 0036 / T-0063）。
+ */
+export function matchEntry(entry: SearchEntry, rawQuery: string): Omit<ScoredResult, "order"> | null {
+    const trimmed = rawQuery.slice(0, LIMITS.queryChars).trim();
+    if (!trimmed) return null;
+    const tokens = trimmed.split(/\s+/).filter(Boolean);
+    if (tokens.length === 0) return null;
+
+    if (tokens.length === 1) {
+        const token = tokens[0];
+        if (!token) return null;
+        const res = matchSingleToken(entry, token);
+        return res ? {entry, score: res.score, matchedBy: res.matchedBy} : null;
+    }
+
+    let totalScore = 0;
+    const matchedBys = new Set<string>();
+    for (const token of tokens) {
+        const res = matchSingleToken(entry, token);
+        if (!res || res.score <= 0) {
+            // AND 语义：任意一个关键词未命中任何字段，整个条目视为不匹配
+            return null;
+        }
+        totalScore += res.score;
+        matchedBys.add(res.matchedBy);
+    }
+
+    const matchedBy = matchedBys.size === 1 ? (Array.from(matchedBys)[0] ?? "multi") : "multi";
+    return {entry, score: totalScore, matchedBy};
 }
 
 export function passesFilters(entry: SearchEntry, query: SearchQuery, ctx: SearchContext): boolean {

@@ -112,16 +112,17 @@ const T = (key: string, ...args: string[]): string => {
         type: "类型", tags: "标签", tagsHint: "逗号分隔", title: "标题", alias: "别名", category: "分类", contentLabel: "内容（Markdown）", filterAll: "全部类型", filterAllType: "类型：全部", filterAllTags: "标签：全部", filterAllCategories: "分类：全部",
         "type.text": "纯文本", "type.markdown": "Markdown", "type.url": "网址", "type.code": "代码", "type.image": "图片", "type.asset": "附件", "type.blockref": "块引用", "type.structure": "块结构", filterFavorites: "只看收藏", filterRecent: "最近使用",
         empty: "没有找到匹配内容", usageHint: "↑ ↓ 选择 · Enter 插入 · Ctrl/⌘ + Enter 复制 · Alt + 1-9 快速插入 · Esc 关闭",
+        ordinalShortcutHint: "Alt+%s 插入 · Alt+Shift+%s 复制",
         usageHintMobile: "点按条目尝试插入；若宿主不支持会复制到剪贴板 · 长按查看操作",
         usageGuideBtn: "使用帮助", usageGuideTitle: "小驴常用怎么用",
         usageGuideIntro: "把常用内容保存在思源文档中，之后搜索、预览，再插入或复制。",
         usageGuideAdd: "新增：点「＋ 新建条目」，或从选区、当前块、剪贴板和右键菜单保存。",
         usageGuideSearch: "查找：搜索标题、别名、摘要、标签和分类；也可以用拼音、收藏、最近使用和常用排序。",
-        usageGuideInsert: "使用：Enter 插入当前条目，Ctrl/⌘ + Enter 复制当前条目，Alt/⌥ + 1-9 插入对应条目；长按条目可打开更多操作。",
+        usageGuideInsert: "使用：Enter 插入，Ctrl/⌘ + Enter 复制；Alt/⌥ + 1-9 直达插入，Alt/⌥ + Shift + 1-9 直达复制；Tab 可在搜索框与操作区流转；长按条目可打开更多操作。",
         usageGuideInsertMobile: "使用：点按条目尝试插入；若思源客户端不支持，会复制到剪贴板。移动端插入尚未在真实客户端验证；长按条目可打开更多操作。",
         emptyFiltered: "当前筛选下没有匹配条目", clearFilters: "清除筛选",
-        usageGuideOrganize: "整理：给条目补上清楚的标题、标签和分类；设置 → 数据与模板可导入邮箱、地址和联系方式示例。",
-        usageGuideVariables: "模板规则：{{xlc:ask:字段}} 会在插入前询问；{{xlc:date}}、{{xlc:clipboard}} 等占位符只在使用时展开，不会改写库中的原文。AI 默认关闭。",
+        usageGuideOrganize: "整理：给条目补上清楚的标题、标签和分类；设置 → 数据与模板可导入开票、退换、邮箱、地址和联系方式等示例。",
+        usageGuideVariables: "模板与注释规则：{{xlc:ask:字段}} 插入前询问，支持 {{xlc:ask:字段|选项A,选项B}} 下拉选择；{{xlc:date}}、{{xlc:clipboard}} 等占位符仅使用时展开；条目别名可作场景注释，正文内可用引用块「> 💡 提示：...」记录填写提醒。AI 默认关闭。",
         insert: "插入", copy: "复制", openSource: "打开来源", edit: "编辑", delete: "删除", favorite: "收藏", unfavorite: "取消收藏",
         insertRef: "插入引用", insertEmbed: "插入嵌入", insertCopy: "复制内容",
         sourceMissing: "来源失效", sourceGone: "原内容块已移动或删除。点击「打开来源」可重新指定位置。", previewUnavailable: "暂无预览", previewNoResult: "选择左侧条目后，这里会显示预览",
@@ -136,6 +137,7 @@ const T = (key: string, ...args: string[]): string => {
         kernelError: "思源接口调用失败：%s",
         "tf.polish": "润色", "tf.shorten": "缩短", "tf.formal": "正式化", "tf.translate-en": "译为英文", "tf.bulletize": "列表化",
         more: "返回动作",
+        dropToAdd: "松开鼠标以添加常用条目",
         newItem: "新建条目", newItemAction: "＋ 新建条目", save: "保存", saving: "保存中…", cancel: "取消", confirm: "确定", invalidItem: "条目数据无效",
         captureContentRequired: "请填写要保存的内容。", captureUrlInvalid: "请输入有效的 http 或 https 链接。",
         aiTidy: "AI 整理", aiDraft: "AI 草稿", aiDraftDesc: "描述你想要的内容，AI 生成草稿", aiDraftNeedDescription: "请先描述想生成的内容", aiApplied: "已应用 AI 建议", aiTransform: "AI 变换",
@@ -197,7 +199,7 @@ const T = (key: string, ...args: string[]): string => {
         emptyLibrary: "还没有常用内容", emptyLibrarySub: "先新建一条，或从选区、剪贴板和右键菜单保存；内容会保存在当前内容库",
         updatedAtLabel: "更新于 %s",
         // R138 键集（缺失时 T 回落键名，截图/断言会看到裸键）
-        keyboardHelp: "键盘快捷操作", kbdNav: "切换选中条目", kbdEnter: "插入选中条目", kbdCopy: "复制选中条目", kbdAltDirect: "%s + 1-9 快速插入", kbdEsc: "关闭", kbdQuickInsert: "快速插入对应条目", kbdClose: "关闭面板", loading: "加载中…",
+        keyboardHelp: "键盘快捷操作", kbdNav: "切换选中条目", kbdEnter: "插入选中条目", kbdCopy: "复制选中条目", kbdAltDirect: "%s + 1-9 快速插入", kbdEsc: "关闭", kbdQuickInsert: "快速插入对应条目", kbdQuickCopy: "快速复制对应条目", kbdTabActions: "切换到操作区", kbdClose: "关闭面板", loading: "加载中…",
         truncatedHint: "条目超出索引上限，已截断显示；数据仍安全在库中", copyFailed: "复制失败：无法写入剪贴板",
         libModeNotebook: "笔记本 × %s", libModeDoc: "文档库 · %s 个文档", libModeTree: "文档树 · %s 个根文档", setupPickDocTree: "选择现有文档（含子文档）",
         ctDeleteConfirm: "删除自定义变换「%s」？该操作不可恢复。", ctDeleted: "已删除自定义变换「%s」",
@@ -314,6 +316,13 @@ function makeDeps(overrides: {aiEnabled?: boolean; missing?: boolean; mobile?: b
         newItem: (titleCandidate?: string) => {
             document.body.dataset.xlcNewItemTitle = titleCandidate ?? "";
             document.body.dataset.xlcNewItemCalls = String(Number(document.body.dataset.xlcNewItemCalls ?? 0) + 1);
+            (window as unknown as {XlcHarness: {openCapture: () => void}}).XlcHarness.openCapture();
+        },
+        newWithContent: (content: string, options?: {title?: string}) => {
+            const w = window as unknown as {__xlcNewWithContentCalls?: Array<{content: string; title?: string}>};
+            (w.__xlcNewWithContentCalls ??= []).push({content, title: options?.title});
+            document.body.dataset.xlcNewItemTitle = options?.title ?? "";
+            document.body.dataset.xlcNewWithContentCalls = String(Number(document.body.dataset.xlcNewWithContentCalls ?? 0) + 1);
             (window as unknown as {XlcHarness: {openCapture: () => void}}).XlcHarness.openCapture();
         },
         providerSearch: async (query: string) => query.includes("工作台") ? [

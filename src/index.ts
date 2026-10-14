@@ -1202,6 +1202,7 @@ export default class XiaolvCommonPlugin extends Plugin {
             promptVariables: () => this.state.insert.promptVariables,
             getUsage: () => this.state.usage,
             newItem: (titleCandidate?: string) => this.capture.newManual(titleCandidate),
+            newWithContent: (content: string, options?: {title?: string}) => this.capture.newWithContent(content, options),
             openSource: async (itemId) => {
                 const got = await this.library.getItem(itemId);
                 if (!got.ok) {
