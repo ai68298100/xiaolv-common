@@ -206,4 +206,6 @@ export interface ImportReceipt {
     renamed: number;
     failed: number;
     lines: ImportReceiptLine[];
+    /** 写入已完成但索引刷新失败时保留部分成功回执，供 UI 展示可重试状态。 */
+    reindexError?: string;
 }

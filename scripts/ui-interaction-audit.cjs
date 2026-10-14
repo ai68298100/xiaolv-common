@@ -76,17 +76,17 @@ const check = (name, ok, detail = "") => {
     }, opts);
 
     const type = (text) => page.evaluate((q) => {
-        const input = document.querySelector(".xlc-search-input");
+        const input = document.querySelector("[data-xlc-control='search.input']");
         input.value = q;
         input.dispatchEvent(new Event("input"));
     }, text);
 
     const key = (k, mods = {}) => page.evaluate(({k, mods}) => {
-        const input = document.querySelector(".xlc-search-input");
+        const input = document.querySelector("[data-xlc-control='search.input']");
         input.dispatchEvent(new KeyboardEvent("keydown", {key: k, bubbles: true, ...mods}));
     }, {k, mods});
 
-    const rows = () => page.evaluate(() => Array.from(document.querySelectorAll(".xlc-list .xlc-row")).map((r) => ({
+    const rows = () => page.evaluate(() => Array.from(document.querySelectorAll("[data-xlc-control='item.row']")).map((r) => ({
         title: (r.querySelector(".xlc-row-titletext")?.textContent ?? "").trim(),
         active: r.classList.contains("xlc-row--active"),
     })));
@@ -158,7 +158,7 @@ const check = (name, ok, detail = "") => {
     await sleep(400);
     const callsBefore = await page.evaluate(() => window.__xlcSearchCalls ?? 0);
     await page.evaluate(() => {
-        const sel = document.querySelector(".xlc-type-select");
+        const sel = document.querySelector("[data-xlc-control='filter.type']");
         sel.value = "code";
         sel.dispatchEvent(new Event("change", {bubbles: true}));
     });
@@ -166,11 +166,11 @@ const check = (name, ok, detail = "") => {
     const dState = await page.evaluate(() => ({
         calls: window.__xlcSearchCalls ?? 0,
         set: window.__xlcSetFilters ?? [],
-        value: document.querySelector(".xlc-type-select")?.value ?? "",
+        value: document.querySelector("[data-xlc-control='filter.type']")?.value ?? "",
     }));
     check("D1 类型改选落 setFilters 并重查", dState.calls > callsBefore && dState.set.some((f) => f.type === "code") && dState.value === "code", JSON.stringify(dState));
     await page.evaluate(() => {
-        const sel = document.querySelector(".xlc-type-select");
+        const sel = document.querySelector("[data-xlc-control='filter.type']");
         if (sel) {
             sel.value = "";
             sel.dispatchEvent(new Event("change", {bubbles: true}));
@@ -185,7 +185,7 @@ const check = (name, ok, detail = "") => {
     check("D2 清除筛选后操作列表恢复", (await rows()).length > 0, JSON.stringify(await rows()));
 
     // ── E. 排序菜单：弹出四档、点选后关闭 ──
-    await page.evaluate(() => document.querySelector(".xlc-sort-chip")?.click());
+    await page.evaluate(() => document.querySelector("[data-xlc-control='sort.open']")?.click());
     await sleep(200);
     const sortMenu = await page.evaluate(() => {
         const menu = document.querySelector(".xlc-menu");
@@ -371,15 +371,25 @@ const check = (name, ok, detail = "") => {
     // ── J. 移动端底部 sheet：选中行 + 插入选中可用 ──
     await open({mobile: true});
     await sleep(350);
+    const actionsBeforeMobileSelection = await page.evaluate(() => (window.__xlcActions ?? []).length);
     const mobile = await page.evaluate(() => {
         const sheet = document.querySelector(".xlc-sheet");
         const btn = document.querySelector(".xlc-mobile-insert");
-        const row = document.querySelector(".xlc-list .xlc-row");
-        const enabledBeforeAction = Boolean(btn && !btn.disabled);
+        const row = document.querySelector(".xlc-list .xlc-row[data-xlc-index='1']");
         row?.dispatchEvent(new MouseEvent("click", {bubbles: true}));
-        return {sheet: Boolean(sheet), enabledBeforeAction, disabledWhileBusy: Boolean(btn?.disabled), copyFallback: (btn?.textContent ?? "").includes("复制"), newRowActive: Boolean(document.querySelector(".xlc-row--active"))};
+        return {
+            sheet: Boolean(sheet),
+            copyFallback: (btn?.textContent ?? "").includes("复制"),
+            selectedRow: row?.getAttribute("aria-selected") === "true" && row.classList.contains("xlc-row--active"),
+            buttonAvailable: Boolean(btn && !btn.disabled),
+        };
     });
-    check("J1 移动端 sheet：主动作明确为复制，忙态锁定按钮", mobile.sheet && mobile.enabledBeforeAction && mobile.disabledWhileBusy && mobile.copyFallback && mobile.newRowActive, JSON.stringify(mobile));
+    const actionsAfterMobileSelection = await page.evaluate(() => (window.__xlcActions ?? []).length);
+    check("J1 移动端点按只选择条目，不提前执行复制", mobile.sheet && mobile.selectedRow && mobile.buttonAvailable && mobile.copyFallback && actionsAfterMobileSelection === actionsBeforeMobileSelection, JSON.stringify(mobile));
+    await page.locator("[data-xlc-control='preview.mobile-primary']").click();
+    await sleep(100);
+    const mobileSelectedAction = await page.evaluate(() => window.__xlcActions?.at(-1));
+    check("J2 移动端底栏主按钮执行当前选中条目", mobileSelectedAction?.id === "xlc-demo0000003" && mobileSelectedAction.mode === "copy", JSON.stringify(mobileSelectedAction));
 
     await open({mobile: true, empty: true, query: "不存在的条目"});
     await sleep(200);
@@ -387,7 +397,154 @@ const check = (name, ok, detail = "") => {
         const btn = document.querySelector(".xlc-mobile-insert");
         return {buttonExists: Boolean(btn), disabledWithoutResults: Boolean(btn?.disabled)};
     });
-    check("J2 移动端无搜索结果时禁用插入选中", mobileEmpty.buttonExists && mobileEmpty.disabledWithoutResults, JSON.stringify(mobileEmpty));
+    check("J3 移动端无搜索结果时禁用插入选中", mobileEmpty.buttonExists && mobileEmpty.disabledWithoutResults, JSON.stringify(mobileEmpty));
+
+    // ── K. 搜索主面板控件清点：稳定 control id → 可观察动作结果 ──
+    await open({query: "延期"});
+    await sleep(350);
+    await page.locator("[data-xlc-control='search.clear']").click();
+    await sleep(350);
+    const clearResult = await page.evaluate(() => ({
+        query: document.querySelector("[data-xlc-control='search.input']")?.value ?? "",
+        focused: document.activeElement?.matches("[data-xlc-control='search.input']") ?? false,
+        results: document.querySelectorAll(".xlc-list .xlc-row[data-xlc-index]").length,
+        hidden: !document.querySelector("[data-xlc-control='search.clear']")?.classList.contains("xlc-search-clear--on"),
+    }));
+    check("K1 清空按钮清除查询、恢复结果并将焦点放回搜索框", clearResult.query === "" && clearResult.focused && clearResult.results > 0 && clearResult.hidden, JSON.stringify(clearResult));
+
+    await open({query: "延期"});
+    await sleep(250);
+    await page.locator("[data-xlc-control='search.new']").click();
+    const newItemResult = await page.evaluate(() => ({
+        calls: Number(document.body.dataset.xlcNewItemCalls ?? 0),
+        captureOpened: Boolean(document.querySelector(".xlc-capture")),
+    }));
+    check("K2 常驻新建按钮打开新建表单", newItemResult.calls === 1 && newItemResult.captureOpened, JSON.stringify(newItemResult));
+
+    await open({query: "延期"});
+    await sleep(300);
+    await page.evaluate(() => {
+        const row = Array.from(document.querySelectorAll(".xlc-list .xlc-row[data-xlc-index]"))
+            .find((el) => (el.textContent ?? "").includes("延期简短版"));
+        row?.querySelector("[data-xlc-control='item.favorite']")?.dispatchEvent(new MouseEvent("click", {bubbles: true}));
+    });
+    await sleep(350);
+    const favoriteResult = await page.evaluate(() => {
+        const row = Array.from(document.querySelectorAll(".xlc-list .xlc-row[data-xlc-index]"))
+            .find((el) => (el.textContent ?? "").includes("延期简短版"));
+        const star = row?.querySelector("[data-xlc-control='item.favorite']");
+        return {
+            id: window.__xlcFavoriteToggles?.at(-1),
+            icon: star?.textContent,
+            label: star?.getAttribute("aria-label"),
+        };
+    });
+    check("K3 条目收藏按钮切换状态并更新图标和可访问名称", favoriteResult.id === "xlc-demo0000002" && favoriteResult.icon === "★" && favoriteResult.label === "取消收藏", JSON.stringify(favoriteResult));
+
+    await open({query: "项目延期"});
+    await sleep(300);
+    await page.locator("[data-xlc-control='preview.copy']").click();
+    await sleep(100);
+    const copyAction = await page.evaluate(() => (window.__xlcActions ?? []).at(-1));
+    check("K4 详情复制按钮调用当前条目的复制动作", copyAction?.id === "xlc-demo0000001" && copyAction.mode === "copy", JSON.stringify(copyAction));
+
+    await open({query: "项目延期"});
+    await sleep(300);
+    await page.locator("[data-xlc-control='preview.source']").click();
+    await sleep(100);
+    const sourceId = await page.evaluate(() => window.__xlcOpenedSources?.at(-1));
+    check("K5 打开来源按钮传递当前条目 ID", sourceId === "xlc-demo0000001", String(sourceId));
+
+    await open({query: "项目延期"});
+    await sleep(300);
+    await page.locator("[data-xlc-control='preview.edit']").click();
+    await sleep(100);
+    const editId = await page.evaluate(() => window.__xlcEditedItems?.at(-1));
+    check("K6 编辑按钮传递当前条目 ID", editId === "xlc-demo0000001", String(editId));
+
+    await open({query: "延期"});
+    await page.waitForFunction(() => {
+        const select = document.querySelector("[data-xlc-control='filter.tag']");
+        return select instanceof HTMLSelectElement && !select.disabled;
+    });
+    await page.locator("[data-xlc-control='filter.tag']").selectOption("客户沟通");
+    await sleep(250);
+    const tagFilter = await page.evaluate(() => ({
+        value: document.querySelector("[data-xlc-control='filter.tag']")?.value,
+        saved: window.__xlcSetFilters?.at(-1)?.tag,
+        query: window.__xlcQueries?.at(-1)?.tag,
+    }));
+    check("K7 标签筛选保存选项并按标签重查", tagFilter.value === "客户沟通" && tagFilter.saved === "客户沟通" && tagFilter.query === "客户沟通", JSON.stringify(tagFilter));
+
+    await open({query: "延期"});
+    await page.waitForFunction(() => {
+        const select = document.querySelector("[data-xlc-control='filter.category']");
+        return select instanceof HTMLSelectElement && !select.disabled;
+    });
+    await page.locator("[data-xlc-control='filter.category']").selectOption("客服");
+    await sleep(250);
+    const categoryFilter = await page.evaluate(() => ({
+        value: document.querySelector("[data-xlc-control='filter.category']")?.value,
+        saved: window.__xlcSetFilters?.at(-1)?.category,
+        query: window.__xlcQueries?.at(-1)?.category,
+    }));
+    check("K8 分类筛选保存选项并按分类重查", categoryFilter.value === "客服" && categoryFilter.saved === "客服" && categoryFilter.query === "客服", JSON.stringify(categoryFilter));
+
+    await open({query: "延期"});
+    await sleep(250);
+    await page.locator("[data-xlc-control='filter.scope.favorites']").click();
+    await sleep(250);
+    const favoritesScope = await page.evaluate(() => ({
+        selected: document.querySelector("[data-xlc-control='filter.scope.favorites']")?.classList.contains("xlc-chip--on"),
+        scope: window.__xlcQueries?.at(-1)?.scope,
+    }));
+    check("K9 收藏范围切换后更新状态并按收藏范围搜索", favoritesScope.selected && favoritesScope.scope === "favorites", JSON.stringify(favoritesScope));
+
+    await page.locator("[data-xlc-control='filter.scope.recent']").click();
+    await sleep(250);
+    const recentScope = await page.evaluate(() => ({
+        selected: document.querySelector("[data-xlc-control='filter.scope.recent']")?.classList.contains("xlc-chip--on"),
+        favoritesOff: !document.querySelector("[data-xlc-control='filter.scope.favorites']")?.classList.contains("xlc-chip--on"),
+        scope: window.__xlcQueries?.at(-1)?.scope,
+    }));
+    check("K10 最近范围替换收藏范围并更新查询", recentScope.selected && recentScope.favoritesOff && recentScope.scope === "recent", JSON.stringify(recentScope));
+
+    await open({});
+    const helpReachable = await page.evaluate(() => {
+        const button = document.querySelector("[data-xlc-control='footer.help']");
+        const rect = button?.getBoundingClientRect();
+        return Boolean(button && !button.disabled && rect && rect.top >= 0 && rect.bottom <= innerHeight);
+    });
+    check("K11 使用帮助入口处于当前视口且可用", helpReachable);
+    if (helpReachable) await page.locator("[data-xlc-control='footer.help']").click();
+    const guideOpened = await page.locator(".xlc-guide").isVisible();
+    check("K12 使用帮助入口打开帮助内容", helpReachable && guideOpened);
+
+    await open({});
+    const settingsReachable = await page.evaluate(() => {
+        const button = document.querySelector("[data-xlc-control='footer.settings']");
+        const rect = button?.getBoundingClientRect();
+        return Boolean(button && !button.disabled && rect && rect.top >= 0 && rect.bottom <= innerHeight);
+    });
+    check("K13 设置入口处于当前视口且可用", settingsReachable);
+    if (settingsReachable) await page.locator("[data-xlc-control='footer.settings']").click();
+    const settingsOpened = await page.locator(".xlc-settings").isVisible();
+    check("K14 设置入口离开搜索面板并打开设置", settingsReachable && settingsOpened && !(await page.locator(".xlc-dialog").count()));
+
+    await open({mobile: true, query: "项目延期"});
+    await sleep(300);
+    await page.locator("[data-xlc-control='preview.mobile-primary']").click();
+    await sleep(150);
+    const mobilePrimary = await page.evaluate(() => window.__xlcActions?.at(-1));
+    check("K15 移动端底栏主操作交给服务层处理插入并由宿主能力降级", mobilePrimary?.id === "xlc-demo0000001" && mobilePrimary.mode === "copy", JSON.stringify(mobilePrimary));
+
+    await open({mobile: true, query: "延期"});
+    await page.locator("[data-xlc-control='search.new']").click();
+    const mobileNew = await page.evaluate(() => ({
+        calls: Number(document.body.dataset.xlcNewItemCalls ?? 0),
+        captureOpened: Boolean(document.querySelector(".xlc-capture")),
+    }));
+    check("K16 移动端新建入口打开捕获表单", mobileNew.calls >= 1 && mobileNew.captureOpened, JSON.stringify(mobileNew));
 
     // ── 全局：页面异常为零 ──
     check("Z1 全程 0 页面异常/控制台错误", pageErrors.length === 0, pageErrors.slice(0, 3).join(" | "));

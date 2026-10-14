@@ -1,84 +1,13 @@
-// 样式（质感基准：docs/design/prototype.html v2）：
-// 全部走 b3 CSS 变量（亮暗主题自动适配），禁止硬编码主题色；
-// 固定 rgba 仅用于类型徽标淡彩（原型同款，两主题通用）与中性阴影。
-// Design Token：4px 间距栅格 / 圆角梯度 6-8-10-12 / 三级多层低透明阴影 / 单一缓动曲线。
-// 交互状态：hover / active / focus-visible / disabled / loading / 空状态 / 选中态全补齐。
-// 动效：120-220ms，只动 transform / opacity / 背景；菜单弹层 xlc-pop。
-// 移动端：底部 sheet + safe-area + 44px+ 命中区；行改圆角卡片（原型屏4）。
+@use "./tokens-r187";
 
-// ---------- Design Tokens ----------
-// 作用域 = 三类插件根：搜索弹窗 / 表单（捕获·编辑·设置·引导·导入）/ 变量填充卡。
-// 变量填充卡是独立 Dialog（不在 .xlc-dialog/.xlc-form 内），漏掉即 Token 失效
-// （v0.2.4 前变量紫/圆角/徽标在填充卡内全部回落系统灰——R105 修复）。
+// R187：R54 视觉变量和公共组件见 tokens-r187.scss；此文件保留各表面的布局和交互状态。
+// 所有规则限定插件根/已标记弹窗，不改变思源全局主题。
 .xlc-dialog,
 .xlc-form,
 .xlc-varform {
-  // 插件作用域内统一 border-box：宿主全局规则不保证覆盖到独立 Dialog
   *,
   *::before,
   *::after { box-sizing: border-box; }
-
-  --xlc-radius-lg: 12px;
-  --xlc-radius: 10px;
-  --xlc-radius-sm: 8px;
-  --xlc-radius-xs: 6px;
-  --xlc-shadow-1: 0 1px 2px rgba(31, 35, 41, .05), 0 1px 3px rgba(31, 35, 41, .04);
-  --xlc-shadow-2: 0 1px 2px rgba(31, 35, 41, .05), 0 4px 14px rgba(31, 35, 41, .07);
-  --xlc-ease: cubic-bezier(.33, 1, .68, 1);
-  --xlc-dur-fast: 120ms;
-  --xlc-dur: 160ms;
-  --xlc-dur-slow: 220ms;
-  // 类型徽标淡彩（原型同款固定色；亮暗主题均以低透明叠底，不随主题翻转）
-  --xlc-badge-text: #1b5e20; // R159 a11y: 深绿 ≥6:1（WCAG AA）
-  --xlc-hit-text: #1d4ed8; // R159 a11y: 深蓝 ≥5.5:1（WCAG AA）
-  --xlc-badge-text-bg: rgba(94, 168, 94, .13);
-  --xlc-badge-md: var(--b3-theme-primary);
-  --xlc-badge-md-bg: rgba(53, 117, 240, .09);
-  --xlc-badge-url: #b0680a;
-  --xlc-badge-url-bg: rgba(232, 152, 45, .13);
-  --xlc-badge-code: #8a5ad0;
-  --xlc-badge-code-bg: rgba(150, 105, 224, .13);
-  --xlc-badge-image: #3a9ab5;
-  --xlc-badge-image-bg: rgba(80, 175, 200, .13);
-  --xlc-badge-file: #8a8a93;
-  --xlc-badge-file-bg: rgba(140, 140, 150, .14);
-  --xlc-badge-ref: #d05a8a;
-  --xlc-badge-ref-bg: rgba(220, 110, 155, .13);
-  --xlc-badge-warn: #c2503a;
-  --xlc-badge-warn-bg: rgba(226, 106, 80, .12);
-  --xlc-ai-tint: rgba(53, 117, 240, .08);
-  --xlc-ai-tint-strong: rgba(53, 117, 240, .14);
-  // 变量系统（F1，原型屏 4）：紫罗兰独占，与 AI 蓝区分
-  --xlc-var: #8a5ad0;
-  --xlc-var-tint: rgba(150, 105, 224, .1);
-  --xlc-var-tint-strong: rgba(150, 105, 224, .16);
-  // 自绘下拉箭头（中性灰，亮暗通用）
-  --xlc-chevron: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%237d8085' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
-}
-
-// 暗色主题：变量紫文字提亮 #8a5ad0 → #b49ae0（原型 .t-dark 同款）。
-// #8a5ad0 在暗色底上对比度约 3.6:1，10-11px 小字（徽标/语法标签）不达 AA；
-// 背景淡彩保持固定（spec 2.1 两主题通用），仅提亮文字色。
-// 暗色标记三重约定对齐思源宿主 + harness 桩（.b3-scope.dark 仅供截图证据）。
-// R115：全部类型徽标文字一并提亮（原型仅覆盖 var/md/ai，其余属疏漏；
-// 各色均调至暗底 ≥4.5:1，亮色主题取值不变）。
-[data-theme-mode="dark"],
-body.body--dark,
-body.b3-theme-dark,
-.b3-scope.dark {
-  .xlc-dialog,
-  .xlc-form,
-  .xlc-varform {
-    --xlc-var: #b49ae0;
-    --xlc-badge-text: #7fbf7f;
-    --xlc-badge-url: #e0a350;
-    --xlc-badge-code: #b49ae0;
-    --xlc-badge-image: #7cc7de;
-    --xlc-badge-file: #b0b0bc;
-    --xlc-badge-ref: #ec8fb8;
-    --xlc-badge-warn: #ec9078;
-    --xlc-hit-text: #7ca8f5; // R159 a11y: 暗底提亮保对比
-  }
 }
 
 // ---------- 细滚动条（仅插件作用域） ----------
@@ -93,7 +22,7 @@ body.b3-theme-dark,
 .xlc-form ::-webkit-scrollbar-thumb,
 .xlc-varform ::-webkit-scrollbar-thumb {
   background-color: var(--b3-border-color);
-  border-radius: 4px;
+  border-radius: var(--xlc-radius-sm);
 
   &:hover { background-color: var(--b3-theme-on-surface); }
 }
@@ -114,13 +43,13 @@ body.b3-theme-dark,
 .xlc-kbd {
   display: inline-flex;
   align-items: center;
-  font-size: 11px;
-  line-height: 18px;
+  font-size: var(--xlc-font-xs);
+  line-height: var(--xlc-line-control);
   color: var(--b3-theme-on-surface);
   border: 1px solid var(--b3-border-color);
   border-bottom-width: 2px;
-  border-radius: 4px;
-  padding: 0 6px;
+  border-radius: var(--xlc-radius-sm);
+  padding: var(--xlc-space-0) var(--xlc-space-2);
   white-space: nowrap;
   user-select: none;
   background-color: var(--b3-theme-surface);
@@ -129,14 +58,14 @@ body.b3-theme-dark,
 .xlc-kbd-hint {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
+  gap: var(--xlc-space-1);
   min-height: 24px;
-  padding: 2px 7px 2px 4px;
+  padding: var(--xlc-space-0-5) var(--xlc-space-2) var(--xlc-space-0-5) var(--xlc-space-1);
   border: 1px solid var(--b3-border-color);
-  border-radius: 7px;
+  border-radius: var(--xlc-radius-sm);
   background: var(--b3-theme-surface);
   color: var(--b3-theme-on-surface);
-  font-size: 10.5px;
+  font-size: var(--xlc-font-2xs);
   white-space: nowrap;
   user-select: none;
 }
@@ -145,19 +74,19 @@ body.b3-theme-dark,
   display: inline-flex;
   align-items: center;
   min-height: 18px;
-  padding: 0 5px;
+  padding: var(--xlc-space-0) var(--xlc-space-1);
   border: 1px solid var(--b3-border-color);
   border-bottom-width: 2px;
-  border-radius: 4px;
+  border-radius: var(--xlc-radius-sm);
   background: var(--b3-theme-background);
   color: var(--b3-theme-on-background);
-  font-size: 10px;
-  font-weight: 600;
-  line-height: 16px;
+  font-size: var(--xlc-font-2xs);
+  font-weight: var(--xlc-weight-semibold);
+  line-height: var(--xlc-line-compact);
 }
 
 .xlc-kbd-label {
-  line-height: 16px;
+  line-height: var(--xlc-line-compact);
 }
 
 // ---------- 统一按钮（插件作用域内收拢 b3-button 观感） ----------
@@ -166,16 +95,16 @@ body.b3-theme-dark,
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 4px;
+  gap: var(--xlc-space-1);
   min-height: 28px;
-  padding: 4px 12px;
+  padding: var(--xlc-space-1) var(--xlc-space-3);
   border: 1px solid var(--b3-border-color);
   border-radius: var(--xlc-radius-sm);
   background-color: var(--b3-theme-background);
   color: var(--b3-theme-on-background);
-  font-size: 12.5px;
+  font-size: var(--xlc-font-sm);
   font-family: inherit;
-  line-height: 18px;
+  line-height: var(--xlc-line-control);
   cursor: pointer;
   user-select: none;
   transition: background-color var(--xlc-dur-fast) var(--xlc-ease),
@@ -245,9 +174,10 @@ body.b3-theme-dark,
   position: relative;
   display: flex;
   flex-direction: column;
+  box-sizing: border-box;
   height: 100%;
-  gap: 10px;
-  padding: 2px;
+  gap: var(--xlc-space-3);
+  padding: var(--xlc-space-0-5);
   background: var(--b3-theme-surface);
   color: var(--b3-theme-on-background);
 
@@ -255,14 +185,14 @@ body.b3-theme-dark,
   .xlc-top {
     display: flex;
     align-items: flex-start;
-    gap: 10px;
+    gap: var(--xlc-space-3);
     flex-wrap: wrap;
   }
 
   .xlc-top-main {
     display: flex;
     align-items: flex-start;
-    gap: 10px;
+    gap: var(--xlc-space-3);
     flex: 1;
     min-width: 0;
   }
@@ -273,10 +203,10 @@ body.b3-theme-dark,
   }
 
   .xlc-search-hint {
-    margin: 4px 2px 0;
+    margin: var(--xlc-space-1) var(--xlc-space-0-5) var(--xlc-space-0);
     color: var(--b3-theme-on-surface);
-    font-size: 11px;
-    line-height: 1.35;
+    font-size: var(--xlc-font-xs);
+    line-height: var(--xlc-leading-tight);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -285,11 +215,11 @@ body.b3-theme-dark,
   .xlc-kbdrow {
     display: flex;
     align-items: center;
-    gap: 5px;
+    gap: var(--xlc-space-1);
     flex-shrink: 0;
     width: 100%;
     justify-content: flex-start;
-    padding: 4px 6px;
+    padding: var(--xlc-space-1) var(--xlc-space-2);
     border: 1px solid var(--b3-border-color);
     border-radius: var(--xlc-radius);
     background: var(--b3-theme-surface);
@@ -302,10 +232,10 @@ body.b3-theme-dark,
 
   .xlc-kbdrow-label {
     flex: 0 0 auto;
-    margin-right: 2px;
+    margin-right: var(--xlc-space-0-5);
     color: var(--b3-theme-on-surface);
-    font-size: 11px;
-    font-weight: 600;
+    font-size: var(--xlc-font-xs);
+    font-weight: var(--xlc-weight-semibold);
     letter-spacing: .2px;
     white-space: nowrap;
   }
@@ -314,16 +244,16 @@ body.b3-theme-dark,
   .xlc-top-actions {
     display: flex;
     align-items: center;
-    gap: 5px;
+    gap: var(--xlc-space-1);
     flex-shrink: 0;
   }
 
   .xlc-top-new {
     min-height: 36px;
-    padding: 6px 14px;
+    padding: var(--xlc-space-2) var(--xlc-space-4);
     border-radius: var(--xlc-radius);
     white-space: nowrap;
-    font-size: 12.5px;
+    font-size: var(--xlc-font-sm);
     box-shadow: var(--xlc-shadow-1);
   }
 
@@ -332,11 +262,11 @@ body.b3-theme-dark,
     min-width: 220px;
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: var(--xlc-space-2);
     background-color: var(--b3-theme-surface);
     border: 1.5px solid transparent;
     border-radius: var(--xlc-radius-sm);
-    padding: 0 10px;
+    padding: var(--xlc-space-0) var(--xlc-space-3);
     height: 40px;
     transition: border-color var(--xlc-dur-fast) var(--xlc-ease),
                 background-color var(--xlc-dur-fast) var(--xlc-ease),
@@ -371,7 +301,7 @@ body.b3-theme-dark,
         left: 2px;
         top: 2px;
         border: 1.6px solid currentColor;
-        border-radius: 50%;
+        border-radius: var(--xlc-radius-circle);
       }
 
       &::after {
@@ -379,7 +309,7 @@ body.b3-theme-dark,
         height: 1.6px;
         left: 10px;
         top: 11px;
-        border-radius: 1px;
+        border-radius: var(--xlc-radius-hairline);
         background: currentColor;
         transform: rotate(45deg);
         transform-origin: left center;
@@ -391,9 +321,9 @@ body.b3-theme-dark,
       border: none;
       background: transparent;
       box-shadow: none;
-      padding: 0;
+      padding: var(--xlc-space-0);
       height: auto;
-      font-size: 13.5px;
+      font-size: var(--xlc-font-md);
 
       &::placeholder {
         color: var(--b3-theme-on-surface);
@@ -408,11 +338,11 @@ body.b3-theme-dark,
       width: 18px;
       height: 18px;
       border: none;
-      border-radius: 50%;
+      border-radius: var(--xlc-radius-circle);
       background-color: var(--b3-border-color);
       color: var(--b3-theme-on-surface);
-      font-size: 12px;
-      line-height: 1;
+      font-size: var(--xlc-font-sm);
+      line-height: var(--xlc-leading-none);
       cursor: pointer;
       transition: background-color var(--xlc-dur-fast) var(--xlc-ease),
                   color var(--xlc-dur-fast) var(--xlc-ease);
@@ -438,20 +368,20 @@ body.b3-theme-dark,
   // ---- 筛选 chips（含自绘箭头的轻量下拉）----
   .xlc-filters {
     display: flex;
-    gap: 6px;
+    gap: var(--xlc-space-2);
     align-items: center;
     flex-wrap: wrap;
-    padding: 0 2px;
+    padding: var(--xlc-space-0) var(--xlc-space-0-5);
 
     .b3-select {
       appearance: none;
       -webkit-appearance: none;
       max-width: 118px;
       border: 1px solid var(--b3-border-color);
-      border-radius: 999px;
-      padding: 2px 22px 2px 10px;
+      border-radius: var(--xlc-radius-pill);
+      padding: var(--xlc-space-0-5) var(--xlc-space-6) var(--xlc-space-0-5) var(--xlc-space-3);
       height: 26px;
-      font-size: 11.5px;
+      font-size: var(--xlc-font-xs);
       font-family: inherit;
       color: var(--b3-theme-on-surface);
       background-color: transparent;
@@ -480,10 +410,10 @@ body.b3-theme-dark,
     border: 1px solid var(--b3-border-color);
     background: transparent;
     color: var(--b3-theme-on-surface);
-    border-radius: 999px;
-    padding: 2px 9px;
-    font-size: 11.5px;
-    line-height: 20px;
+    border-radius: var(--xlc-radius-pill);
+    padding: var(--xlc-space-0-5) var(--xlc-space-2);
+    font-size: var(--xlc-font-xs);
+    line-height: var(--xlc-line-body);
     min-height: 26px;
     font-family: inherit;
     cursor: pointer;
@@ -505,7 +435,7 @@ body.b3-theme-dark,
       background-color: var(--b3-theme-primary-lighter);
       border-color: transparent;
       color: var(--b3-theme-primary);
-      font-weight: 600;
+      font-weight: var(--xlc-weight-semibold);
 
       &:hover { border-color: transparent; }
     }
@@ -526,7 +456,7 @@ body.b3-theme-dark,
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    line-height: 20px;
+    line-height: var(--xlc-line-body);
     border-style: dashed;
     color: var(--b3-theme-primary);
     background-color: transparent;
@@ -536,10 +466,10 @@ body.b3-theme-dark,
   .xlc-status {
     display: none;
     align-items: center;
-    gap: 6px;
+    gap: var(--xlc-space-2);
     min-height: 18px;
-    padding: 2px 2px 0;
-    font-size: 12px;
+    padding: var(--xlc-space-0-5) var(--xlc-space-0-5) var(--xlc-space-0);
+    font-size: var(--xlc-font-sm);
     color: var(--b3-theme-on-surface);
 
     &:not(:empty) { display: flex; }
@@ -571,14 +501,21 @@ body.b3-theme-dark,
 
     // 搜索刷新中的轻量反馈（aria-busy 同步置位；R106）
     &--loading { opacity: .55; }
+
+    // 大结果集虚拟窗口：固定行高让滚动位置稳定，窗口外只保留占位高度。
+    &--virtual {
+      contain: strict;
+      .xlc-row { min-height: 72px; height: 72px; box-sizing: border-box; }
+      [data-xlc-spacer] { pointer-events: none; }
+    }
   }
 
   .xlc-row {
     display: flex;
     // 顶对齐（原型屏 1）：星标与标题行齐平，两行内容时右侧不悬空
     align-items: flex-start;
-    gap: 8px;
-    padding: 10px 12px;
+    gap: var(--xlc-space-2);
+    padding: var(--xlc-space-3) var(--xlc-space-3);
     min-height: 44px;
     cursor: pointer;
     border-bottom: 1px solid var(--b3-border-color);
@@ -601,10 +538,10 @@ body.b3-theme-dark,
     .xlc-row-title {
       display: flex;
       align-items: center;
-      gap: 6px;
-      font-size: 13px;
-      font-weight: 500;
-      margin-bottom: 2px;
+      gap: var(--xlc-space-2);
+      font-size: var(--xlc-font-md);
+      font-weight: var(--xlc-weight-medium);
+      margin-bottom: var(--xlc-space-0-5);
       overflow: hidden;
     }
 
@@ -619,7 +556,7 @@ body.b3-theme-dark,
       .xlc-hit {
         background-color: transparent;
         color: var(--xlc-hit-text, var(--b3-theme-primary));
-        font-weight: 600;
+        font-weight: var(--xlc-weight-semibold);
       }
     }
 
@@ -635,8 +572,8 @@ body.b3-theme-dark,
       width: 18px;
       height: 18px;
       flex-shrink: 0;
-      font-size: 11px;
-      border-radius: 50%;
+      font-size: var(--xlc-font-xs);
+      border-radius: var(--xlc-radius-circle);
       color: var(--xlc-badge-warn);
       background-color: var(--xlc-badge-warn-bg);
       cursor: help;
@@ -648,9 +585,9 @@ body.b3-theme-dark,
       justify-content: center;
       width: 16px;
       height: 16px;
-      border-radius: 4px;
-      font-size: 10.5px;
-      font-weight: 600;
+      border-radius: var(--xlc-radius-sm);
+      font-size: var(--xlc-font-2xs);
+      font-weight: var(--xlc-weight-semibold);
       color: var(--b3-theme-on-surface);
       background-color: var(--b3-theme-surface);
       border: 1px solid var(--b3-border-color);
@@ -667,7 +604,7 @@ body.b3-theme-dark,
     }
 
     .xlc-row-meta {
-      font-size: 11.5px;
+      font-size: var(--xlc-font-xs);
       font-variant-numeric: tabular-nums;
       color: var(--b3-theme-on-surface);
       overflow: hidden;
@@ -687,10 +624,10 @@ body.b3-theme-dark,
       min-height: 24px;
       flex-shrink: 0;
       border: none;
-      border-radius: var(--xlc-radius-xs);
+      border-radius: var(--xlc-radius-sm);
       background: transparent;
       color: var(--b3-theme-on-surface);
-      font-size: 13px;
+      font-size: var(--xlc-font-md);
       cursor: pointer;
       opacity: .45;
       transition: opacity var(--xlc-dur-fast) var(--xlc-ease),
@@ -701,7 +638,7 @@ body.b3-theme-dark,
       &:hover {
         opacity: 1;
         background-color: var(--b3-list-hover);
-        color: #e8a020;
+        color: var(--xlc-favorite);
       }
 
       &:active { transform: scale(.92); }
@@ -725,8 +662,8 @@ body.b3-theme-dark,
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 4px;
-    padding: 44px 20px;
+    gap: var(--xlc-space-1);
+    padding: var(--xlc-space-11) var(--xlc-space-5);
     text-align: center;
     color: var(--b3-theme-on-surface);
     user-select: none;
@@ -737,28 +674,28 @@ body.b3-theme-dark,
       justify-content: center;
       width: 44px;
       height: 44px;
-      margin-bottom: 4px;
+      margin-bottom: var(--xlc-space-1);
       border: 1px dashed var(--b3-border-color);
       border-radius: var(--xlc-radius);
       background-color: var(--b3-theme-surface);
       color: var(--b3-theme-primary);
-      font-size: 18px;
+      font-size: var(--xlc-font-2xl);
     }
 
     .xlc-empty-text {
-      font-size: 13px;
+      font-size: var(--xlc-font-md);
       color: var(--b3-theme-on-background);
     }
 
     .xlc-empty-hint {
-      font-size: 11.5px;
-      line-height: 1.6;
+      font-size: var(--xlc-font-xs);
+      line-height: var(--xlc-leading-relaxed);
       max-width: 240px;
     }
 
     // 空库就地新建（R107）：空态里的核心动作
     .xlc-empty-action {
-      margin-top: 10px;
+      margin-top: var(--xlc-space-3);
       max-width: 100%;
       white-space: normal;
       overflow-wrap: anywhere;
@@ -777,12 +714,12 @@ body.b3-theme-dark,
   .xlc-pane-head {
     display: flex;
     align-items: center;
-    gap: 8px;
-    padding: 12px 14px 4px;
+    gap: var(--xlc-space-2);
+    padding: var(--xlc-space-3) var(--xlc-space-4) var(--xlc-space-1);
 
     .xlc-pane-title {
-      font-weight: 600;
-      font-size: 13.5px;
+      font-weight: var(--xlc-weight-semibold);
+      font-size: var(--xlc-font-md);
       overflow: hidden;
       text-overflow: ellipsis;
       white-space: nowrap;
@@ -794,10 +731,10 @@ body.b3-theme-dark,
   .xlc-pane-meta {
     display: none;
     align-items: center;
-    gap: 6px;
+    gap: var(--xlc-space-2);
     flex-wrap: wrap;
-    margin: 4px 14px 0;
-    font-size: 11px;
+    margin: var(--xlc-space-1) var(--xlc-space-4) var(--xlc-space-0);
+    font-size: var(--xlc-font-xs);
 
     .xlc-meta-chip {
       // 长标签防御（R117）：用户标签可任意长，单行省略（内容纯文本，line-height 定高）
@@ -806,11 +743,11 @@ body.b3-theme-dark,
       overflow: hidden;
       text-overflow: ellipsis;
       white-space: nowrap;
-      font-size: 11px;
-      line-height: 18px;
-      padding: 0 8px;
+      font-size: var(--xlc-font-xs);
+      line-height: var(--xlc-line-control);
+      padding: var(--xlc-space-0) var(--xlc-space-2);
       border: 1px solid var(--b3-border-color);
-      border-radius: 999px;
+      border-radius: var(--xlc-radius-pill);
       background-color: transparent;
       color: var(--b3-theme-on-surface);
       font-family: inherit;
@@ -845,7 +782,7 @@ body.b3-theme-dark,
         border-color: var(--b3-theme-primary-light);
         background-color: var(--xlc-ai-tint);
         color: var(--b3-theme-primary);
-        font-weight: 600;
+        font-weight: var(--xlc-weight-semibold);
       }
     }
 
@@ -859,16 +796,16 @@ body.b3-theme-dark,
 
   // 分组 sticky 头（F4-lite，原型屏 1）
   .xlc-group-head {
-    padding: 5px 12px;
-    font-size: 11px;
-    font-weight: 600;
+    padding: var(--xlc-space-1) var(--xlc-space-3);
+    font-size: var(--xlc-font-xs);
+    font-weight: var(--xlc-weight-semibold);
     letter-spacing: .4px;
     color: var(--b3-theme-on-surface);
     background-color: var(--b3-theme-surface);
     border-bottom: 1px solid var(--b3-border-color);
     position: sticky;
     top: 0;
-    z-index: 1;
+    z-index: var(--xlc-layer-local);
     user-select: none;
   }
 
@@ -876,33 +813,33 @@ body.b3-theme-dark,
   .xlc-pane-vars {
     display: none;
     align-items: center;
-    gap: 6px;
+    gap: var(--xlc-space-2);
     flex-wrap: wrap;
-    margin: 4px 14px 2px;
-    padding: 6px 10px;
-    border-radius: var(--xlc-radius-xs);
-    font-size: 11.5px;
-    line-height: 1.7;
+    margin: var(--xlc-space-1) var(--xlc-space-4) var(--xlc-space-0-5);
+    padding: var(--xlc-space-2) var(--xlc-space-3);
+    border-radius: var(--xlc-radius-sm);
+    font-size: var(--xlc-font-xs);
+    line-height: var(--xlc-leading-loose);
     color: var(--xlc-var);
     background-color: var(--xlc-var-tint);
 
     code {
       font-family: var(--mono, ui-monospace, monospace);
-      font-size: 10.5px;
+      font-size: var(--xlc-font-2xs);
       background-color: var(--xlc-var-tint-strong);
-      border-radius: 4px;
-      padding: 1px 5px;
+      border-radius: var(--xlc-radius-sm);
+      padding: var(--xlc-space-0-5) var(--xlc-space-1);
       // 多选项字段（上限 16 项）的语法 chip 是长 ASCII 串：无空格断点会撑破提示行（R162）
       word-break: break-all;
     }
   }
 
   .xlc-pane-warn {
-    margin: 6px 14px 4px;
-    padding: 6px 10px;
-    border-radius: var(--xlc-radius-xs);
-    font-size: 12px;
-    line-height: 1.6;
+    margin: var(--xlc-space-2) var(--xlc-space-4) var(--xlc-space-1);
+    padding: var(--xlc-space-2) var(--xlc-space-3);
+    border-radius: var(--xlc-radius-sm);
+    font-size: var(--xlc-font-sm);
+    line-height: var(--xlc-leading-relaxed);
     color: var(--xlc-badge-warn);
     background-color: var(--xlc-badge-warn-bg);
   }
@@ -910,9 +847,9 @@ body.b3-theme-dark,
   .xlc-pane-body {
     flex: 1;
     overflow: auto;
-    padding: 6px 14px;
-    font-size: 12.5px;
-    line-height: 1.75;
+    padding: var(--xlc-space-2) var(--xlc-space-4);
+    font-size: var(--xlc-font-sm);
+    line-height: var(--xlc-leading-loose);
     white-space: pre-wrap;
     word-break: break-word;
     color: var(--b3-theme-on-background);
@@ -924,15 +861,15 @@ body.b3-theme-dark,
     // 代码条目预览：等宽字体（仍为纯文本渲染，仅观感）
     &--code {
       font-family: var(--mono, ui-monospace, monospace);
-      font-size: 12px;
-      line-height: 1.65;
+      font-size: var(--xlc-font-sm);
+      line-height: var(--xlc-leading-relaxed);
     }
   }
 
   .xlc-pane-foot {
     display: flex;
-    gap: 6px;
-    padding: 8px 14px 12px;
+    gap: var(--xlc-space-2);
+    padding: var(--xlc-space-2) var(--xlc-space-4) var(--xlc-space-3);
     flex-wrap: wrap;
 
     .xlc-foot-spacer { flex: 1; }
@@ -940,16 +877,16 @@ body.b3-theme-dark,
 
   // 提供方分区（pv: 虚拟行）
   .xlc-provider-header {
-    padding: 6px 12px;
-    font-size: 11px;
-    font-weight: 600;
+    padding: var(--xlc-space-2) var(--xlc-space-3);
+    font-size: var(--xlc-font-xs);
+    font-weight: var(--xlc-weight-semibold);
     letter-spacing: .3px;
     color: var(--b3-theme-primary);
     background-color: rgba(53, 117, 240, .06);
     border-bottom: 1px solid var(--b3-border-color);
     position: sticky;
     top: 0;
-    z-index: 1;
+    z-index: var(--xlc-layer-local);
   }
 
   .xlc-row--provider {
@@ -962,11 +899,11 @@ body.b3-theme-dark,
   .xlc-footer {
     display: flex;
     align-items: center;
-    gap: 10px;
-    font-size: 11.5px;
+    gap: var(--xlc-space-3);
+    font-size: var(--xlc-font-xs);
     color: var(--b3-theme-on-surface);
     border-top: 1px solid var(--b3-border-color);
-    padding: 8px 2px 0;
+    padding: var(--xlc-space-2) var(--xlc-space-0-5) var(--xlc-space-0);
     flex-wrap: wrap;
 
     .xlc-footer-count {
@@ -976,9 +913,9 @@ body.b3-theme-dark,
 
     .xlc-footer-claim {
       margin-left: auto;
-      padding: 3px 9px;
+      padding: var(--xlc-space-1) var(--xlc-space-2);
       border: 1px solid var(--b3-border-color);
-      border-radius: 999px;
+      border-radius: var(--xlc-radius-pill);
       background: var(--b3-theme-surface);
       white-space: nowrap;
       overflow: hidden;
@@ -986,7 +923,7 @@ body.b3-theme-dark,
     }
 
     .xlc-footer-claim--static {
-      padding: 2px 0;
+      padding: var(--xlc-space-0-5) var(--xlc-space-0);
       border-color: transparent;
       background: transparent;
       cursor: default;
@@ -996,8 +933,8 @@ body.b3-theme-dark,
       border: none;
       background: transparent;
       color: var(--b3-theme-on-surface);
-      font-size: 11.5px;
-      padding: 2px 6px;
+      font-size: var(--xlc-font-xs);
+      padding: var(--xlc-space-0-5) var(--xlc-space-2);
       min-height: 26px;
       white-space: nowrap;
     }
@@ -1006,8 +943,8 @@ body.b3-theme-dark,
       border: none;
       background: transparent;
       color: var(--b3-theme-on-surface);
-      font-size: 11.5px;
-      padding: 2px 6px;
+      font-size: var(--xlc-font-xs);
+      padding: var(--xlc-space-0-5) var(--xlc-space-2);
       min-height: 26px;
       white-space: nowrap;
     }
@@ -1017,8 +954,11 @@ body.b3-theme-dark,
   // ---- 动作菜单（分组 + AI 变换）----
   .xlc-menu {
     position: absolute;
-    inset: auto 16px 16px auto;
-    z-index: 10;
+    // 宿主 Dialog 通常会裁掉容器边缘，给底部动作留出稳定安全区。
+    // 桌面宿主会在视口底部保留约 120px 的 chrome/操作区；固定安全底距避免
+    // 菜单在大尺寸面板中越过 Dialog 容器边界。移动端 sheet 在下方覆盖此值。
+    inset: auto 16px 128px auto;
+    z-index: var(--xlc-layer-popover);
     display: flex;
     flex-direction: column;
     background-color: var(--b3-menu-background);
@@ -1042,21 +982,21 @@ body.b3-theme-dark,
     }
 
     .xlc-menu-lbl {
-      font-size: 11px;
+      font-size: var(--xlc-font-xs);
       color: var(--b3-theme-on-surface);
-      padding: 10px 14px 2px;
+      padding: var(--xlc-space-3) var(--xlc-space-4) var(--xlc-space-0-5);
       overflow: hidden;
       text-overflow: ellipsis;
       white-space: nowrap;
     }
 
     .xlc-menu-preview {
-      margin: 8px 10px;
-      padding: 8px 10px;
+      margin: var(--xlc-space-2) var(--xlc-space-3);
+      padding: var(--xlc-space-2) var(--xlc-space-3);
       max-height: 150px;
       overflow: auto;
-      font-size: 12px;
-      line-height: 1.7;
+      font-size: var(--xlc-font-sm);
+      line-height: var(--xlc-leading-loose);
       font-family: inherit;
       color: var(--b3-theme-on-background);
       background-color: var(--b3-theme-surface);
@@ -1071,14 +1011,14 @@ body.b3-theme-dark,
 
     // 内联文档搜索（插入到指定文档）：菜单内无 .xlc-form 作用域，这里补齐输入观感
     .xlc-pickdoc-input {
-      margin: 4px 8px 6px;
+      margin: var(--xlc-space-1) var(--xlc-space-2) var(--xlc-space-2);
       width: calc(100% - 16px);
       border: 1px solid var(--b3-border-color);
       border-radius: var(--xlc-radius-sm);
       background-color: var(--b3-theme-surface);
       color: var(--b3-theme-on-background);
-      padding: 6px 10px;
-      font-size: 13px;
+      padding: var(--xlc-space-2) var(--xlc-space-3);
+      font-size: var(--xlc-font-md);
       font-family: inherit;
       box-shadow: none;
       outline: none;
@@ -1096,18 +1036,18 @@ body.b3-theme-dark,
 
     // 无匹配反馈（R120）：不再静默无反应
     .xlc-pickdoc-empty {
-      padding: 2px 10px 8px;
-      font-size: 11px;
-      line-height: 1.6;
+      padding: var(--xlc-space-0-5) var(--xlc-space-3) var(--xlc-space-2);
+      font-size: var(--xlc-font-xs);
+      line-height: var(--xlc-leading-relaxed);
       color: var(--b3-theme-on-surface);
     }
 
     .xlc-menu-sec {
-      padding: 4px 8px 6px;
+      padding: var(--xlc-space-1) var(--xlc-space-2) var(--xlc-space-2);
       border-bottom: 1px solid var(--b3-border-color);
       display: flex;
       flex-wrap: wrap;
-      gap: 2px;
+      gap: var(--xlc-space-0-5);
 
       &:last-child { border-bottom: none; }
 
@@ -1117,16 +1057,16 @@ body.b3-theme-dark,
     .xlc-menu-item {
       display: inline-flex;
       align-items: center;
-      gap: 8px;
+      gap: var(--xlc-space-2);
       text-align: left;
       min-height: 34px;
       width: 100%;
       background: transparent;
       border: none;
-      border-radius: 7px;
+      border-radius: var(--xlc-radius-sm);
       color: var(--b3-theme-on-background);
-      padding: 6px 10px;
-      font-size: 13px;
+      padding: var(--xlc-space-2) var(--xlc-space-3);
+      font-size: var(--xlc-font-md);
       font-family: inherit;
       cursor: pointer;
       transition: background-color var(--xlc-dur-fast) var(--xlc-ease),
@@ -1166,7 +1106,7 @@ body.b3-theme-dark,
       }
 
       // 当前档（排序直选菜单 ✓ 项，R108）
-      &--on { font-weight: 600; }
+      &--on { font-weight: var(--xlc-weight-semibold); }
 
       // 危险动作（删除）：固定语义红，一眼可辨（R106）
       &--danger,
@@ -1180,11 +1120,11 @@ body.b3-theme-dark,
 .xlc-form .xlc-badge,
 .xlc-varform .xlc-badge {
   display: inline-block;
-  font-size: 11px;
-  font-weight: 600;
-  padding: 0 8px;
-  border-radius: 999px;
-  line-height: 18px;
+  font-size: var(--xlc-font-xs);
+  font-weight: var(--xlc-weight-semibold);
+  padding: var(--xlc-space-0) var(--xlc-space-2);
+  border-radius: var(--xlc-radius-pill);
+  line-height: var(--xlc-line-control);
   letter-spacing: .3px;
   white-space: nowrap;
   flex-shrink: 0;
@@ -1199,7 +1139,7 @@ body.b3-theme-dark,
   &--structure { color: var(--xlc-badge-md); background-color: var(--xlc-badge-md-bg); }
   &--warn      { color: var(--xlc-badge-warn); background-color: var(--xlc-badge-warn-bg); }
   &--ai        { color: var(--b3-theme-primary); background-color: var(--xlc-badge-md-bg); }
-  &--var       { color: var(--xlc-var); background-color: var(--xlc-var-tint); font-family: var(--mono, inherit); font-weight: 500; letter-spacing: 0; }
+  &--var       { color: var(--xlc-var); background-color: var(--xlc-var-tint); font-family: var(--mono, inherit); font-weight: var(--xlc-weight-medium); letter-spacing: 0; }
 }
 
 // 菜单弹层动效（只动 transform / opacity）
@@ -1219,23 +1159,67 @@ body.b3-theme-dark,
 .xlc-form {
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: var(--xlc-space-4);
   // 基准字号 13：卡片内裸文本（说明、状态行）不再回落宿主 16px
-  font-size: 13px;
+  font-size: var(--xlc-font-md);
   color: var(--b3-theme-on-background);
 
   // 标签/提示在任意层级生效（引导与模板包弹窗的提示行是 .xlc-form 直接子元素，
   // 曾回落 16px 深色正文——R105 提升作用域）
   .xlc-form-label {
-    font-size: 12px;
-    font-weight: 500;
+    font-size: var(--xlc-font-sm);
+    font-weight: var(--xlc-weight-medium);
     color: var(--b3-theme-on-surface);
   }
 
   .xlc-form-hint {
-    font-size: 11px;
-    line-height: 1.6;
+    font-size: var(--xlc-font-xs);
+    line-height: var(--xlc-leading-relaxed);
     color: var(--b3-theme-on-surface);
+  }
+
+  .xlc-form-error {
+    color: var(--xlc-badge-warn);
+    font-size: var(--xlc-font-xs);
+    line-height: var(--xlc-leading-normal);
+  }
+
+  // 设置数据动作的统一反馈槽：不会因 toast 消失而让用户失去上下文，
+  // 错误态与重试按钮保持同一行并允许长错误换行。
+  .xlc-operation-status {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: var(--xlc-space-2) var(--xlc-space-2);
+    min-width: 0;
+    padding: var(--xlc-space-2) var(--xlc-space-2);
+    border: 1px solid var(--b3-border-color);
+    border-radius: var(--xlc-radius-sm);
+    background: var(--b3-theme-background);
+
+    &[hidden] { display: none; }
+    &[data-state="loading"] { border-color: color-mix(in srgb, var(--b3-theme-primary) 30%, var(--b3-border-color)); }
+    &[data-state="success"] { border-color: color-mix(in srgb, var(--b3-theme-success) 35%, var(--b3-border-color)); }
+    &[data-state="empty"] { border-style: dashed; }
+    &[data-state="error"] { border-color: color-mix(in srgb, var(--xlc-badge-warn) 40%, var(--b3-border-color)); background: color-mix(in srgb, var(--xlc-badge-warn) 8%, var(--b3-theme-background)); }
+    .xlc-form-hint, .xlc-form-error { flex: 1 1 180px; overflow-wrap: anywhere; }
+    .xlc-operation-retry { flex: 0 0 auto; margin-left: auto; }
+  }
+
+  .xlc-ai-failure {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: var(--xlc-space-2) var(--xlc-space-2);
+    min-width: 0;
+    padding: var(--xlc-space-2) var(--xlc-space-2);
+    border: 1px solid color-mix(in srgb, var(--xlc-badge-warn) 35%, var(--b3-border-color));
+    border-radius: var(--xlc-radius-sm);
+    background: color-mix(in srgb, var(--xlc-badge-warn) 8%, var(--b3-theme-background));
+
+    &[hidden] { display: none; }
+    .xlc-form-error { flex: 1 1 180px; overflow-wrap: anywhere; }
+    .xlc-ai-retry { flex: 0 0 auto; margin-left: auto; }
   }
 
   // 输入控件统一观感（聚焦描边 + 背景提亮）
@@ -1245,8 +1229,8 @@ body.b3-theme-dark,
     border-radius: var(--xlc-radius-sm);
     background-color: var(--b3-theme-surface);
     color: var(--b3-theme-on-background);
-    padding: 7px 10px;
-    font-size: 13px;
+    padding: var(--xlc-space-2) var(--xlc-space-3);
+    font-size: var(--xlc-font-md);
     font-family: inherit;
     box-shadow: none;
     transition: border-color var(--xlc-dur-fast) var(--xlc-ease),
@@ -1266,6 +1250,10 @@ body.b3-theme-dark,
       border-color: var(--xlc-badge-warn);
     }
 
+    &.xlc-input--error:focus-visible {
+      outline-color: var(--xlc-badge-warn);
+    }
+
     &:hover { border-color: var(--b3-theme-primary-light); }
 
     &:focus {
@@ -1279,7 +1267,7 @@ body.b3-theme-dark,
   textarea.b3-text-field {
     min-height: 110px;
     resize: vertical;
-    line-height: 1.7;
+    line-height: var(--xlc-leading-loose);
   }
 
   .b3-select {
@@ -1290,9 +1278,9 @@ body.b3-theme-dark,
     border-radius: var(--xlc-radius-sm);
     background-color: var(--b3-theme-surface);
     color: var(--b3-theme-on-background);
-    padding: 6px 28px 6px 10px;
+    padding: var(--xlc-space-2) var(--xlc-space-7) var(--xlc-space-2) var(--xlc-space-3);
     height: 34px;
-    font-size: 13px;
+    font-size: var(--xlc-font-md);
     font-family: inherit;
     background-image: var(--xlc-chevron);
     background-repeat: no-repeat;
@@ -1318,7 +1306,7 @@ body.b3-theme-dark,
   .xlc-form-field {
     display: flex;
     flex-direction: column;
-    gap: 4px;
+    gap: var(--xlc-space-1);
     min-width: 0;
 
     .xlc-form-label .xlc-form-ai {
@@ -1327,9 +1315,9 @@ body.b3-theme-dark,
       cursor: pointer;
       border: none;
       background: transparent;
-      font-size: 12px;
+      font-size: var(--xlc-font-sm);
       font-family: inherit;
-      padding: 0 0 0 6px;
+      padding: var(--xlc-space-0) var(--xlc-space-0) var(--xlc-space-0) var(--xlc-space-2);
 
       &:hover { text-decoration: underline; }
     }
@@ -1342,8 +1330,8 @@ body.b3-theme-dark,
       background: transparent;
       color: var(--b3-theme-primary);
       min-height: 22px;
-      padding: 0 4px;
-      font-size: 12px;
+      padding: var(--xlc-space-0) var(--xlc-space-1);
+      font-size: var(--xlc-font-sm);
 
       &:hover {
         background-color: var(--xlc-ai-tint);
@@ -1355,7 +1343,7 @@ body.b3-theme-dark,
   // 双栏字段行（原型：别名|类型、标签|分类）
   .xlc-form-row {
     display: flex;
-    gap: 10px;
+    gap: var(--xlc-space-3);
 
     .xlc-form-field { flex: 1; }
 
@@ -1368,15 +1356,15 @@ body.b3-theme-dark,
   // AI 建议行（虚线描边 + 主色淡底）
   .xlc-sugrow {
     display: flex;
-    gap: 6px;
+    gap: var(--xlc-space-2);
     align-items: center;
     flex-wrap: wrap;
-    font-size: 12px;
+    font-size: var(--xlc-font-sm);
     color: var(--b3-theme-primary);
     background-color: var(--xlc-ai-tint);
     border: 1px dashed var(--b3-theme-primary-light);
     border-radius: var(--xlc-radius-sm);
-    padding: 6px 10px;
+    padding: var(--xlc-space-2) var(--xlc-space-3);
 
     .xlc-sugrow-adopt {
       margin-left: auto;
@@ -1385,11 +1373,11 @@ body.b3-theme-dark,
       border: 1px solid var(--b3-theme-primary-light);
       color: var(--b3-theme-primary);
       background: transparent;
-      border-radius: var(--xlc-radius-xs);
-      padding: 2px 10px;
-      font-size: 12px;
+      border-radius: var(--xlc-radius-sm);
+      padding: var(--xlc-space-0-5) var(--xlc-space-3);
+      font-size: var(--xlc-font-sm);
       font-family: inherit;
-      line-height: 18px;
+      line-height: var(--xlc-line-control);
       min-height: 22px;
       cursor: pointer;
       transition: background-color var(--xlc-dur-fast) var(--xlc-ease),
@@ -1404,14 +1392,20 @@ body.b3-theme-dark,
   .xlc-form-actions {
     position: sticky;
     bottom: 0;
-    z-index: 1;
+    z-index: var(--xlc-layer-local);
     display: flex;
     justify-content: flex-end;
     align-items: center;
-    gap: 8px;
-    margin: 2px -2px -2px;
-    padding: 10px 2px 2px;
+    gap: var(--xlc-space-2);
+    margin: var(--xlc-space-0-5) var(--xlc-space-neg-0-5) var(--xlc-space-neg-0-5);
+    padding: var(--xlc-space-3) var(--xlc-space-0-5) var(--xlc-space-0-5);
     background: linear-gradient(to bottom, transparent, var(--b3-theme-background) 14px);
+  }
+
+  // 桌面表单由主体滚动承载，操作区跟随字段自然出现；sticky 只保留给移动端，
+  // 避免首屏操作区覆盖尚未阅读到的下一组字段。
+  @media (min-width: 621px) {
+    .xlc-form-actions { position: static; }
   }
 
   // 行内说明（编辑弹窗来源行：文本 + 动作按钮）
@@ -1419,9 +1413,9 @@ body.b3-theme-dark,
     display: flex;
     align-items: center;
     flex-wrap: wrap;
-    gap: 4px 6px;
-    font-size: 11px;
-    line-height: 1.6;
+    gap: var(--xlc-space-1) var(--xlc-space-2);
+    font-size: var(--xlc-font-xs);
+    line-height: var(--xlc-leading-relaxed);
     color: var(--b3-theme-on-surface);
   }
 }
@@ -1431,7 +1425,7 @@ body.b3-theme-dark,
   border: 1px solid var(--b3-border-color);
   background-color: var(--b3-theme-background);
   border-radius: var(--xlc-radius-lg);
-  padding: 14px 16px;
+  padding: var(--xlc-space-4) var(--xlc-space-4);
   box-shadow: var(--xlc-shadow-1);
   transition: border-color var(--xlc-dur-fast) var(--xlc-ease),
               box-shadow var(--xlc-dur-fast) var(--xlc-ease);
@@ -1442,17 +1436,17 @@ body.b3-theme-dark,
   }
 
   > .xlc-form-label {
-    font-size: 12px;
-    font-weight: 600;
+    font-size: var(--xlc-font-sm);
+    font-weight: var(--xlc-weight-semibold);
     letter-spacing: .4px;
-    margin-bottom: 4px;
+    margin-bottom: var(--xlc-space-1);
   }
 }
 
 .xlc-setup-recommendation {
-  padding: 8px 10px;
+  padding: var(--xlc-space-2) var(--xlc-space-3);
   border-left: 3px solid var(--b3-theme-primary);
-  border-radius: var(--xlc-radius-xs);
+  border-radius: var(--xlc-radius-sm);
   background: var(--xlc-badge-md-bg);
   color: var(--b3-theme-on-background) !important;
 }
@@ -1461,9 +1455,9 @@ body.b3-theme-dark,
 .xlc-setup-quickstart {
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  margin: 2px 0 4px;
-  padding: 11px 12px;
+  gap: var(--xlc-space-2);
+  margin: var(--xlc-space-0-5) var(--xlc-space-0) var(--xlc-space-1);
+  padding: var(--xlc-space-3) var(--xlc-space-3);
   border: 1px solid var(--b3-border-color);
   border-radius: var(--xlc-radius);
   background: var(--b3-theme-surface);
@@ -1471,17 +1465,17 @@ body.b3-theme-dark,
 }
 
 .xlc-setup-quickstart-title {
-  margin: 0 0 1px;
-  font-size: 12px;
-  line-height: 1.5;
-  font-weight: 650;
+  margin: var(--xlc-space-0) var(--xlc-space-0) var(--xlc-space-0-5);
+  font-size: var(--xlc-font-sm);
+  line-height: var(--xlc-leading-normal);
+  font-weight: var(--xlc-weight-strong);
   color: var(--b3-theme-on-background);
 }
 
 .xlc-setup-quickstart-item {
   display: flex;
   align-items: flex-start;
-  gap: 9px;
+  gap: var(--xlc-space-2);
   min-width: 0;
 }
 
@@ -1492,31 +1486,52 @@ body.b3-theme-dark,
   flex: 0 0 19px;
   width: 19px;
   height: 19px;
-  margin-top: 1px;
-  border-radius: 50%;
+  margin-top: var(--xlc-space-0-5);
+  border-radius: var(--xlc-radius-circle);
   background: var(--xlc-ai-tint);
   color: var(--b3-theme-primary);
-  font-size: 11px;
-  font-weight: 700;
+  font-size: var(--xlc-font-xs);
+  font-weight: var(--xlc-weight-bold);
   font-variant-numeric: tabular-nums;
 }
 
 .xlc-setup-quickstart-copy {
   display: flex;
   flex-direction: column;
-  gap: 1px;
+  gap: var(--xlc-space-0-5);
   min-width: 0;
-  line-height: 1.55;
+  line-height: var(--xlc-leading-normal);
 }
 
 .xlc-setup-quickstart-item-title {
-  font-size: 12px;
+  font-size: var(--xlc-font-sm);
   color: var(--b3-theme-on-background);
 }
 
 .xlc-setup-quickstart-item-desc {
-  font-size: 11px;
+  font-size: var(--xlc-font-xs);
   color: var(--b3-theme-on-surface);
+}
+
+// 首跑说明在桌面首屏采用紧凑三列，保留“保存→找到→使用”路径但不挤压库方式选择。
+@media (min-width: 621px) {
+  .xlc-form.xlc-setup .xlc-setup-quickstart {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: var(--xlc-space-3) var(--xlc-space-3);
+    padding: var(--xlc-space-3) var(--xlc-space-4);
+  }
+
+  .xlc-form.xlc-setup .xlc-setup-quickstart-title {
+    grid-column: 1 / -1;
+    font-size: var(--xlc-font-md);
+    line-height: var(--xlc-line-control);
+  }
+
+  .xlc-form.xlc-setup .xlc-setup-quickstart-item { gap: var(--xlc-space-2); }
+  .xlc-form.xlc-setup .xlc-setup-quickstart-dot { flex-basis: 22px; width: 22px; height: 22px; font-size: var(--xlc-font-xs); }
+  .xlc-form.xlc-setup .xlc-setup-quickstart-item-title { font-size: var(--xlc-font-sm); line-height: var(--xlc-line-control); }
+  .xlc-form.xlc-setup .xlc-setup-quickstart-item-desc { font-size: var(--xlc-font-2xs); line-height: var(--xlc-line-compact); }
 }
 
 // 设置/首跑/导入等页面共用中性画布，内容卡片用更亮的面层建立层级。
@@ -1525,14 +1540,14 @@ body.b3-theme-dark,
 
   .b3-dialog__header {
     position: relative;
-    z-index: 1;
-    padding-bottom: 4px;
+    z-index: var(--xlc-layer-local);
+    padding-bottom: var(--xlc-space-1);
   }
 }
 
 .xlc-template-import-row {
   align-items: flex-start;
-  margin-top: 8px;
+  margin-top: var(--xlc-space-2);
 
   > .b3-button { flex: 0 0 auto; }
 }
@@ -1545,33 +1560,33 @@ body.b3-theme-dark,
 .xlc-ct-list {
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  margin-bottom: 6px;
+  gap: var(--xlc-space-2);
+  margin-bottom: var(--xlc-space-2);
 
   .xlc-ct-row {
     display: flex;
-    gap: 6px;
+    gap: var(--xlc-space-2);
     align-items: center;
 
     .xlc-ct-name {
       flex: 0 0 88px;
       min-width: 0;
-      padding: 4px 8px;
-      font-size: 12px;
+      padding: var(--xlc-space-1) var(--xlc-space-2);
+      font-size: var(--xlc-font-sm);
     }
 
     .xlc-ct-prompt {
       flex: 1;
       min-width: 0;
-      padding: 4px 8px;
-      font-size: 12px;
+      padding: var(--xlc-space-1) var(--xlc-space-2);
+      font-size: var(--xlc-font-sm);
     }
 
     .xlc-ct-del {
       flex-shrink: 0;
       min-height: 24px;
-      padding: 2px 8px;
-      font-size: 11.5px;
+      padding: var(--xlc-space-0-5) var(--xlc-space-2);
+      font-size: var(--xlc-font-xs);
     }
   }
 }
@@ -1580,11 +1595,11 @@ body.b3-theme-dark,
 .xlc-setting-row {
   display: flex;
   align-items: center;
-  gap: 10px;
-  font-size: 12.5px;
-  line-height: 1.6;
+  gap: var(--xlc-space-3);
+  font-size: var(--xlc-font-sm);
+  line-height: var(--xlc-leading-relaxed);
   color: var(--b3-theme-on-background);
-  padding: 3px 0;
+  padding: var(--xlc-space-1) var(--xlc-space-0);
 
   .xlc-setting-text {
     flex: 1;
@@ -1593,10 +1608,10 @@ body.b3-theme-dark,
 
   // 开关行副文本（原型屏 5：主文案 12.5 + 副文本 11 on-surface 两级）
   .xlc-setting-sub {
-    font-size: 11px;
-    line-height: 1.5;
+    font-size: var(--xlc-font-xs);
+    line-height: var(--xlc-leading-normal);
     color: var(--b3-theme-on-surface);
-    margin-top: 1px;
+    margin-top: var(--xlc-space-0-5);
   }
 
   .xlc-switch {
@@ -1605,10 +1620,10 @@ body.b3-theme-dark,
     position: relative;
     width: 34px;
     height: 20px;
-    margin: 0;
+    margin: var(--xlc-space-0);
     flex-shrink: 0;
     border: none;
-    border-radius: 999px;
+    border-radius: var(--xlc-radius-pill);
     background-color: var(--b3-border-color);
     cursor: pointer;
     transition: background-color var(--xlc-dur-fast) var(--xlc-ease);
@@ -1620,9 +1635,9 @@ body.b3-theme-dark,
       left: 2px;
       width: 16px;
       height: 16px;
-      border-radius: 50%;
-      background-color: #fff;
-      box-shadow: 0 1px 2px rgba(0, 0, 0, .2);
+      border-radius: var(--xlc-radius-circle);
+      background-color: var(--xlc-control-knob);
+      box-shadow: var(--xlc-shadow-soft-focus);
       transition: transform var(--xlc-dur-fast) var(--xlc-ease);
     }
 
@@ -1641,10 +1656,10 @@ body.b3-theme-dark,
 .xlc-varform {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: var(--xlc-space-3);
   min-height: 0;
   flex: 1;
-  font-size: 13px;
+  font-size: var(--xlc-font-md);
   color: var(--b3-theme-on-background);
 
   // 字段滚动区（R162）：头/说明/按钮固定，仅字段滚动
@@ -1654,20 +1669,20 @@ body.b3-theme-dark,
     overflow-y: auto;
     display: flex;
     flex-direction: column;
-    gap: 10px;
-    padding: 1px; // 防字段聚焦描边被 overflow 裁切
+    gap: var(--xlc-space-3);
+    padding: var(--xlc-space-0-5); // 防字段聚焦描边被 overflow 裁切
   }
 
   .xlc-varform-head {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: var(--xlc-space-2);
 
     .xlc-varform-title {
       flex: 1;
       min-width: 0;
-      font-weight: 600;
-      font-size: 13.5px;
+      font-weight: var(--xlc-weight-semibold);
+      font-size: var(--xlc-font-md);
       overflow: hidden;
       text-overflow: ellipsis;
       white-space: nowrap;
@@ -1675,27 +1690,27 @@ body.b3-theme-dark,
   }
 
   .xlc-varform-sub {
-    font-size: 11px;
-    line-height: 1.6;
+    font-size: var(--xlc-font-xs);
+    line-height: var(--xlc-leading-relaxed);
     color: var(--b3-theme-on-surface);
-    margin-top: -4px;
+    margin-top: var(--xlc-space-neg-1);
   }
 
   .xlc-varform-field {
     display: flex;
     flex-direction: column;
-    gap: 4px;
+    gap: var(--xlc-space-1);
     min-width: 0;
 
     .xlc-varform-label {
-      font-size: 11.5px;
+      font-size: var(--xlc-font-xs);
       color: var(--b3-theme-on-surface);
 
       .xlc-varform-tag {
         font-family: var(--mono, ui-monospace, monospace);
-        font-size: 10px;
+        font-size: var(--xlc-font-2xs);
         color: var(--xlc-var);
-        margin-left: 6px;
+        margin-left: var(--xlc-space-2);
       }
     }
 
@@ -1705,8 +1720,8 @@ body.b3-theme-dark,
       border-radius: var(--xlc-radius-sm);
       background-color: var(--b3-theme-surface);
       color: var(--b3-theme-on-background);
-      padding: 6px 10px;
-      font-size: 12.5px;
+      padding: var(--xlc-space-2) var(--xlc-space-3);
+      font-size: var(--xlc-font-sm);
       font-family: inherit;
 
       &:focus {
@@ -1720,19 +1735,19 @@ body.b3-theme-dark,
     textarea.b3-text-field {
       resize: vertical;
       min-height: 64px;
-      line-height: 1.55;
+      line-height: var(--xlc-leading-normal);
     }
   }
 
   .xlc-varform-foot {
     display: flex;
     align-items: center;
-    gap: 8px;
-    margin-top: 4px;
+    gap: var(--xlc-space-2);
+    margin-top: var(--xlc-space-1);
 
     .xlc-varform-hint {
       margin-right: auto;
-      font-size: 11px;
+      font-size: var(--xlc-font-xs);
       color: var(--b3-theme-on-surface);
     }
   }
@@ -1742,21 +1757,21 @@ body.b3-theme-dark,
 .xlc-varbar {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--xlc-space-2);
   flex-wrap: wrap;
 
   .xlc-varbar-cap {
-    font-size: 11px;
+    font-size: var(--xlc-font-xs);
     color: var(--b3-theme-on-surface);
   }
 
   .xlc-varbtn {
     font-family: var(--mono, ui-monospace, monospace);
-    font-size: 11px;
-    line-height: 18px;
-    padding: 1px 9px;
+    font-size: var(--xlc-font-xs);
+    line-height: var(--xlc-line-control);
+    padding: var(--xlc-space-0-5) var(--xlc-space-2);
     border: 1px solid rgba(150, 105, 224, .35);
-    border-radius: 999px;
+    border-radius: var(--xlc-radius-pill);
     color: var(--xlc-var);
     background-color: var(--xlc-var-tint);
     cursor: pointer;
@@ -1777,28 +1792,28 @@ body.b3-theme-dark,
 // ---------- 导入策略（原型屏 8）：徽标行 + 策略卡 ----------
 .xlc-import-meta {
   display: flex;
-  gap: 6px;
+  gap: var(--xlc-space-2);
   flex-wrap: wrap;
-  margin-bottom: 4px;
+  margin-bottom: var(--xlc-space-1);
 }
 
 .xlc-policy-list {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--xlc-space-2);
 
   .xlc-policy {
     display: flex;
     align-items: center;
-    gap: 10px;
+    gap: var(--xlc-space-3);
     width: 100%;
     text-align: left;
     border: 1px solid var(--b3-border-color);
     border-radius: var(--xlc-radius);
     background-color: var(--b3-theme-surface);
-    padding: 10px 12px;
+    padding: var(--xlc-space-3) var(--xlc-space-3);
     color: var(--b3-theme-on-background);
-    font-size: 12.5px;
+    font-size: var(--xlc-font-sm);
     font-family: inherit;
     cursor: pointer;
     transition: border-color var(--xlc-dur-fast) var(--xlc-ease),
@@ -1816,18 +1831,18 @@ body.b3-theme-dark,
       width: 16px;
       text-align: center;
       color: var(--b3-theme-primary);
-      font-size: 14px;
+      font-size: var(--xlc-font-lg);
     }
 
     .xlc-policy-title {
       display: block;
-      font-weight: 600;
+      font-weight: var(--xlc-weight-semibold);
     }
 
     .xlc-policy-desc {
       display: block;
-      font-size: 11px;
-      line-height: 1.6;
+      font-size: var(--xlc-font-xs);
+      line-height: var(--xlc-leading-relaxed);
       color: var(--b3-theme-on-surface);
     }
 
@@ -1842,8 +1857,8 @@ body.b3-theme-dark,
 .xlc-steps {
   display: flex;
   align-items: center;
-  gap: 6px;
-  margin-bottom: 12px;
+  gap: var(--xlc-space-2);
+  margin-bottom: var(--xlc-space-3);
 
   .xlc-step-dot {
     display: inline-flex;
@@ -1851,17 +1866,17 @@ body.b3-theme-dark,
     justify-content: center;
     width: 18px;
     height: 18px;
-    border-radius: 50%;
+    border-radius: var(--xlc-radius-circle);
     border: 1px solid var(--b3-border-color);
     color: var(--b3-theme-on-surface);
-    font-size: 10.5px;
+    font-size: var(--xlc-font-2xs);
     font-variant-numeric: tabular-nums;
 
     &--on {
       background-color: var(--b3-theme-primary);
       border-color: var(--b3-theme-primary);
       color: var(--b3-theme-on-primary);
-      font-weight: 600;
+      font-weight: var(--xlc-weight-semibold);
     }
   }
 
@@ -1872,9 +1887,9 @@ body.b3-theme-dark,
   }
 
   .xlc-step-cap {
-    font-size: 11px;
+    font-size: var(--xlc-font-xs);
     color: var(--b3-theme-on-surface);
-    margin-left: 4px;
+    margin-left: var(--xlc-space-1);
   }
 }
 
@@ -1894,7 +1909,7 @@ body.b3-theme-dark,
     overflow-y: auto;
     box-sizing: border-box;
     // 思源不同版本的 body/content 默认 padding 不一致；统一给插件表单留出呼吸空间。
-    padding: 18px 20px 20px;
+    padding: var(--xlc-space-5) var(--xlc-space-5) var(--xlc-space-5);
     display: flex;
     flex-direction: column;
 
@@ -1931,7 +1946,7 @@ body.b3-theme-dark,
   }
 
   .b3-dialog__content, .b3-dialog__body {
-    padding: 14px 16px 14px;
+    padding: var(--xlc-space-4) var(--xlc-space-4) var(--xlc-space-4);
   }
 }
 
@@ -1939,22 +1954,22 @@ body.b3-theme-dark,
 .xlc-doclist {
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  margin-top: 6px;
+  gap: var(--xlc-space-2);
+  margin-top: var(--xlc-space-2);
 }
 
 .xlc-doclist-item {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--xlc-space-2);
   width: 100%;
   text-align: left;
   border: 1px solid var(--b3-border-color);
   border-radius: var(--xlc-radius-sm);
   background-color: var(--b3-theme-surface);
   color: var(--b3-theme-on-background);
-  padding: 8px 10px;
-  font-size: 12.5px;
+  padding: var(--xlc-space-2) var(--xlc-space-3);
+  font-size: var(--xlc-font-sm);
   font-family: inherit;
   cursor: pointer;
   transition: border-color var(--xlc-dur-fast) var(--xlc-ease),
@@ -1971,22 +1986,29 @@ body.b3-theme-dark,
     border-color: var(--b3-theme-primary-light);
     background-color: var(--xlc-ai-tint);
     color: var(--b3-theme-primary);
-    font-weight: 600;
+    font-weight: var(--xlc-weight-semibold);
   }
 }
 
 .xlc-doclist-empty {
-  font-size: 11px;
-  line-height: 1.6;
+  font-size: var(--xlc-font-xs);
+  line-height: var(--xlc-leading-relaxed);
   color: var(--b3-theme-on-surface);
-  padding: 2px;
+  padding: var(--xlc-space-0-5);
 }
 
 // ---------- 宿主容器适配（只作用于本插件弹窗）----------
 // 搜索弹窗：收紧 content 内边距，贴近原型 14px 边距与通体感
 .b3-dialog__container.xlc-dialog-host {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+
   .b3-dialog__content, .b3-dialog__body {
-    padding: 10px 14px 12px;
+    flex: 1 1 auto;
+    min-height: 0;
+    box-sizing: border-box;
+    padding: var(--xlc-space-3) var(--xlc-space-4) var(--xlc-space-3);
     display: flex;
     flex-direction: column;
     overflow: hidden;
@@ -2008,13 +2030,13 @@ body.b3-theme-dark,
   right: 0;
   bottom: 0;
   top: auto !important;
-  margin-bottom: 0;
-  border-radius: 16px 16px 0 0;
+  margin-bottom: var(--xlc-space-0);
+  border-radius: var(--xlc-radius-sheet-top);
   transform: none !important;
-  padding-bottom: env(safe-area-inset-bottom, 0);
+  padding-bottom: env(safe-area-inset-bottom, var(--xlc-space-0));
 
   .b3-dialog__content, .b3-dialog__body {
-    padding: 8px 14px 12px;
+    padding: var(--xlc-space-2) var(--xlc-space-4) var(--xlc-space-3);
     display: flex;
     flex-direction: column;
     overflow: hidden;
@@ -2023,15 +2045,110 @@ body.b3-theme-dark,
 
 // 普通表单在窄屏继续保留可触控的左右边距；内容区滚动时边缘不再贴屏。
 @media (max-width: 620px) {
+  // R200：tokens-r187 的作用域选择器包含多个根类，优先级高于普通 sheet 规则，
+  // 会让移动端标题/内容区回退到桌面宽松内边距。这里使用同等级作用域覆盖，
+  // 把首屏空间还给搜索与结果列表；仍保留安全区和触控命中尺寸。
+  :is(.b3-dialog__container.xlc-sheet, .xlc-dialog).b3-dialog__container {
+    .b3-dialog__header {
+      padding: var(--xlc-space-2) var(--xlc-space-4) var(--xlc-space-1);
+      font-size: var(--xlc-font-xl);
+      line-height: var(--xlc-line-heading);
+    }
+
+    > .b3-dialog__body,
+    > .b3-dialog__content {
+      padding: var(--xlc-space-2) var(--xlc-space-3) var(--xlc-space-2);
+    }
+  }
+
+  // 同理，tokens-r187 的 .xlc-dialog 规则会覆盖移动端紧凑间距。
+  :is(.xlc-dialog, .xlc-form, .xlc-varform, .b3-dialog__container.xlc-sheet).xlc-dialog.xlc-dialog--mobile {
+    gap: var(--xlc-space-2);
+
+    .xlc-top,
+    .xlc-top-main { gap: var(--xlc-space-2); }
+
+    .xlc-search-hint {
+      margin-top: var(--xlc-space-0-5);
+      font-size: var(--xlc-font-xs);
+      line-height: var(--xlc-line-control);
+    }
+
+    .xlc-target-banner {
+      min-height: 32px;
+      padding: var(--xlc-space-1) var(--xlc-space-2);
+      font-size: var(--xlc-font-xs);
+      line-height: var(--xlc-line-control);
+    }
+
+    .xlc-filters { gap: var(--xlc-space-1); }
+
+    .xlc-footer {
+      padding-top: var(--xlc-space-0-5);
+      gap: var(--xlc-space-0-5) var(--xlc-space-2);
+      row-gap: var(--xlc-space-0-5);
+    }
+  }
+
+  // 移动端标题栏压缩为单行任务头，把首屏留给搜索与结果。
+  .b3-dialog__container.xlc-sheet {
+    .b3-dialog__header {
+      padding: var(--xlc-space-2) var(--xlc-space-4) var(--xlc-space-1);
+      font-size: var(--xlc-font-xl);
+      line-height: var(--xlc-line-heading);
+    }
+
+    .b3-dialog__body,
+    .b3-dialog__content {
+      padding: var(--xlc-space-2) var(--xlc-space-3) var(--xlc-space-2);
+    }
+  }
+
   .b3-dialog__container.xlc-form-host {
     .b3-dialog__body, .b3-dialog__content {
-      padding: 14px 16px 16px;
+      padding: var(--xlc-space-4) var(--xlc-space-4) var(--xlc-space-4);
     }
   }
 }
 
+// 桌面宽松密度：主面板与表单默认放大，减少标题/正文截断并一次展示更多内容。
+// 移动端沿用 sheet 与 44px 触控规则，避免重复放大导致可视区域反而减少。
+@media (min-width: 621px) {
+  .xlc-dialog {
+    gap: var(--xlc-space-3);
+    padding: var(--xlc-space-1);
+
+    .xlc-search { height: 48px; }
+    .xlc-search .xlc-search-input { font-size: var(--xlc-font-lg); }
+    .xlc-list { width: 420px; }
+    .xlc-row {
+      min-height: 72px;
+      padding: var(--xlc-space-3) var(--xlc-space-4);
+    }
+    .xlc-row .xlc-row-title { font-size: var(--xlc-font-lg); line-height: var(--xlc-line-heading); }
+    .xlc-row .xlc-row-meta { font-size: var(--xlc-font-sm); line-height: var(--xlc-line-body); }
+    .xlc-pane-title { font-size: var(--xlc-font-2xl); }
+    .xlc-pane-body { font-size: var(--xlc-font-xl); }
+  }
+
+  .xlc-form,
+  .xlc-varform {
+    gap: var(--xlc-space-5);
+    font-size: var(--xlc-font-lg);
+  }
+
+  :is(.xlc-form, .xlc-varform) :is(.b3-text-field, .b3-select) {
+    min-height: 44px;
+    font-size: var(--xlc-font-lg);
+  }
+
+  .xlc-form textarea.b3-text-field { min-height: 140px; }
+}
+
 // ---------- 桌面窄容器：单列降级（预览隐藏；kbd 行换行反而碍事，一并隐藏）----------
 @media (max-width: 620px) {
+  .xlc-list.xlc-list--virtual .xlc-row { min-height: 64px; height: 64px; }
+
   .xlc-dialog:not(.xlc-dialog--mobile) {
     .xlc-list { width: 100%; border-right: none; }
     .xlc-pane { display: none; }
@@ -2042,7 +2159,7 @@ body.b3-theme-dark,
   .xlc-form {
     .xlc-form-row {
       flex-direction: column;
-      gap: 8px;
+      gap: var(--xlc-space-2);
 
       .xlc-form-field--fixed {
         width: auto;
@@ -2061,11 +2178,16 @@ body.b3-theme-dark,
 
 // ---------- 移动端：底部 sheet（触控优先；行 = 圆角卡片，原型屏4）----------
 .xlc-dialog--mobile {
-  gap: 10px;
+  gap: var(--xlc-space-2);
+  padding: var(--xlc-space-0);
+
+  .xlc-top { gap: var(--xlc-space-2); }
+  .xlc-top-main { gap: var(--xlc-space-2); }
+  .xlc-search-block { min-width: 0; }
 
   .xlc-kbdrow { display: none; }
 
-  .xlc-search { height: 40px; }
+  .xlc-search { height: 44px; }
 
   // 语义搜索提示在窄屏完整保留入口和前置条件，最多显示两行。
   .xlc-search-hint {
@@ -2079,26 +2201,56 @@ body.b3-theme-dark,
   // 移动端搜索输入 16px：低于该值 iOS 聚焦时整页缩放（R109）
   .xlc-search-input { font-size: 16px; }
 
+  // 说明保留为一行短提示；完整解释从“使用帮助”进入，首屏优先展示结果。
+  .xlc-search-hint {
+    display: block;
+    max-height: var(--xlc-line-control);
+    margin-top: var(--xlc-space-0-5);
+    font-size: var(--xlc-font-xs);
+    line-height: var(--xlc-line-control);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .xlc-target-banner {
+    min-height: 32px;
+    padding: var(--xlc-space-1) var(--xlc-space-2);
+    font-size: var(--xlc-font-xs);
+    line-height: var(--xlc-line-control);
+  }
+
   // 触控命中：清空 × 与筛选下拉提至 24/32px（18/26px 低于指尖标准，R106）
   .xlc-search-clear {
     width: 24px;
     height: 24px;
-    font-size: 14px;
+    font-size: var(--xlc-font-lg);
   }
 
-  .xlc-filters .b3-select { height: 32px; }
+  .xlc-filters {
+    gap: var(--xlc-space-1);
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    overflow-y: hidden;
+    padding-bottom: var(--xlc-space-0-5);
+    scrollbar-width: none;
+    &::-webkit-scrollbar { display: none; }
+    > * { flex: 0 0 auto; }
+  }
+  .xlc-filters .b3-select { height: 36px; min-height: 36px; max-width: none; font-size: var(--xlc-font-sm); }
 
-  .xlc-chip { min-height: 32px; }
+  .xlc-chip { min-height: 36px; font-size: var(--xlc-font-sm); padding-left: var(--xlc-space-2); padding-right: var(--xlc-space-2); }
 
   .xlc-body {
     border: none;
     background: transparent;
+    min-height: 240px;
   }
 
   .xlc-list {
     width: 100%;
     border: none;
-    border-radius: 0;
+    border-radius: var(--xlc-radius-none);
     background: transparent;
   }
 
@@ -2106,8 +2258,8 @@ body.b3-theme-dark,
     align-items: center;
     border: 1px solid var(--b3-border-color);
     border-radius: var(--xlc-radius);
-    margin-bottom: 8px;
-    padding: 10px 12px;
+    margin-bottom: var(--xlc-space-2);
+    padding: var(--xlc-space-3) var(--xlc-space-3);
     min-height: 52px;
 
     &:last-child { border-bottom: 1px solid var(--b3-border-color); }
@@ -2124,19 +2276,19 @@ body.b3-theme-dark,
       min-width: 44px;
       height: 44px;
       min-height: 44px;
-      margin: -6px -6px -6px 0;
-      font-size: 17px;
+      margin: var(--xlc-space-neg-1-5) var(--xlc-space-neg-1-5) var(--xlc-space-neg-1-5) var(--xlc-space-0);
+      font-size: var(--xlc-font-xl);
     }
   }
 
   // 表单内联 AI 操作与建议采纳按钮同样保持可触控尺寸。
-  .xlc-form-ai { min-height: 36px; padding: 6px 8px; }
-  .xlc-sugrow-adopt { min-height: 40px; padding: 6px 12px; }
+  .xlc-form-ai { min-height: 36px; padding: var(--xlc-space-2) var(--xlc-space-2); }
+  .xlc-sugrow-adopt { min-height: 40px; padding: var(--xlc-space-2) var(--xlc-space-3); }
 
   .xlc-menu {
     inset: auto 0 0 0;
-    border-radius: 16px 16px 0 0;
-    padding-bottom: env(safe-area-inset-bottom, 0);
+    border-radius: var(--xlc-radius-sheet-top);
+    padding-bottom: env(safe-area-inset-bottom, var(--xlc-space-0));
     max-height: 78%;
     transform-origin: 50% 100%;
 
@@ -2145,24 +2297,29 @@ body.b3-theme-dark,
 
   .xlc-footer {
     border-top: none;
-    padding-top: 0;
+    padding-top: var(--xlc-space-0-5);
+    gap: var(--xlc-space-0-5) var(--xlc-space-2);
     flex-wrap: wrap;
-    row-gap: 6px;
+    row-gap: var(--xlc-space-0-5);
+    font-size: var(--xlc-font-xs);
 
     .xlc-footer-claim { display: none; }
+    :is(.xlc-footer-guide, .xlc-footer-gear) { min-height: 32px; padding: var(--xlc-space-0-5) var(--xlc-space-1); font-size: var(--xlc-font-xs); }
   }
+
+  .xlc-empty { padding: var(--xlc-space-6) var(--xlc-space-3); gap: var(--xlc-space-1); }
 
   // 操作钮行（F3/原型屏 7：＋新建 / 插入选中；40px 触控命中）
   .xlc-mobile-foot {
     display: flex;
-    gap: 8px;
+    gap: var(--xlc-space-2);
     width: 100%;
 
     .b3-button {
       flex: 1;
       min-height: 40px;
       border-radius: var(--xlc-radius);
-      font-size: 13px;
+      font-size: var(--xlc-font-md);
     }
   }
 }
@@ -2178,10 +2335,10 @@ body.b3-theme-dark,
   .xlc-varform-field .b3-text-field,
   .xlc-ct-name,
   .xlc-ct-prompt {
-    font-size: 16px;
+    font-size: var(--xlc-font-xl);
   }
 
-  .xlc-setting-row { padding: 6px 0; }
+  .xlc-setting-row { padding: var(--xlc-space-2) var(--xlc-space-0); }
 
   .xlc-switch {
     width: 40px;
@@ -2199,7 +2356,7 @@ body.b3-theme-dark,
 
   .xlc-varbtn {
     min-height: 28px;
-    padding: 3px 12px;
+    padding: var(--xlc-space-1) var(--xlc-space-3);
   }
 
   .xlc-ct-del { min-height: 32px; }
@@ -2223,22 +2380,22 @@ body.b3-theme-dark,
 .xlc-guide {
   .xlc-guide-intro,
   .xlc-guide-vars {
-    margin: 0;
+    margin: var(--xlc-space-0);
   }
 
   .xlc-guide-list {
-    margin: 0;
-    padding-left: 22px;
+    margin: var(--xlc-space-0);
+    padding-left: var(--xlc-space-6);
     display: flex;
     flex-direction: column;
-    gap: 8px;
-    line-height: 1.65;
+    gap: var(--xlc-space-2);
+    line-height: var(--xlc-leading-relaxed);
     color: var(--b3-theme-on-background);
   }
 
   .xlc-guide-list li::marker {
     color: var(--b3-theme-primary);
-    font-weight: 600;
+    font-weight: var(--xlc-weight-semibold);
   }
 }
 
@@ -2248,51 +2405,58 @@ body.b3-theme-dark,
   height: 100%;
   overflow: clip;
   min-height: 0;
-  gap: 10px;
+  gap: var(--xlc-space-3);
 
   .xlc-discovery-head,
   .xlc-discovery-status-row,
   .xlc-discovery-footer {
     display: flex;
     align-items: center;
-    gap: 10px;
+    gap: var(--xlc-space-3);
   }
 
   .xlc-discovery-head {
     justify-content: space-between;
-    padding-bottom: 2px;
+    align-items: flex-start;
+    padding-bottom: var(--xlc-space-0-5);
     border-bottom: 1px solid var(--b3-border-color);
   }
 
   .xlc-discovery-heading { min-width: 0; }
 
+  .xlc-discovery-head > [data-xlc-discovery-action='close'] {
+    flex: 0 0 auto;
+    min-width: 44px;
+    white-space: nowrap;
+  }
+
   .xlc-discovery-heading .xlc-form-title {
-    margin: 0;
-    font-size: 16px;
-    line-height: 24px;
+    margin: var(--xlc-space-0);
+    font-size: var(--xlc-font-xl);
+    line-height: var(--xlc-line-heading);
   }
 
   .xlc-discovery-scope-row {
     display: flex;
     align-items: center;
     flex-wrap: wrap;
-    gap: 6px;
+    gap: var(--xlc-space-2);
     min-width: 0;
   }
 
   .xlc-discovery-scope-row > label {
     display: inline-flex;
     align-items: center;
-    gap: 5px;
+    gap: var(--xlc-space-1);
     white-space: nowrap;
   }
 
   .xlc-discovery-scope-select {
     min-width: 112px;
     min-height: 26px;
-    padding-top: 2px;
-    padding-bottom: 2px;
-    font-size: 11px;
+    padding-top: var(--xlc-space-0-5);
+    padding-bottom: var(--xlc-space-0-5);
+    font-size: var(--xlc-font-xs);
   }
 
   .xlc-discovery-scope-target {
@@ -2300,7 +2464,7 @@ body.b3-theme-dark,
     flex: 1 1 100%;
     align-items: center;
     flex-wrap: wrap;
-    gap: 6px;
+    gap: var(--xlc-space-2);
     min-width: 0;
   }
 
@@ -2310,7 +2474,7 @@ body.b3-theme-dark,
   .xlc-discovery-all-confirm {
     display: inline-flex;
     align-items: center;
-    gap: 7px;
+    gap: var(--xlc-space-2);
     min-height: 30px;
     color: var(--b3-theme-on-background);
   }
@@ -2324,11 +2488,11 @@ body.b3-theme-dark,
   }
 
   .xlc-discovery-notice {
-    padding: 8px 10px;
+    padding: var(--xlc-space-2) var(--xlc-space-3);
     border: 1px solid var(--b3-border-color);
     border-radius: var(--xlc-radius-sm);
     background: var(--b3-theme-background);
-    line-height: 1.45;
+    line-height: var(--xlc-leading-normal);
   }
 
   .xlc-discovery-status-row { min-height: 30px; }
@@ -2338,11 +2502,11 @@ body.b3-theme-dark,
     display: flex;
     align-items: center;
     flex-wrap: wrap;
-    gap: 6px;
+    gap: var(--xlc-space-2);
   }
 
   .xlc-discovery-filters .xlc-form-label {
-    margin-right: 2px;
+    margin-right: var(--xlc-space-0-5);
     white-space: nowrap;
   }
 
@@ -2358,10 +2522,41 @@ body.b3-theme-dark,
     min-width: 150px;
   }
 
+  .xlc-discovery-category-settings {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: var(--xlc-space-2) var(--xlc-space-3);
+    min-width: 0;
+  }
+
+  .xlc-discovery-category-settings > label,
+  .xlc-discovery-candidate-category > label {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--xlc-space-2);
+    min-width: 0;
+  }
+
+  .xlc-discovery-category-settings > label,
+  .xlc-discovery-candidate-category > label { flex: 0 0 auto; }
+
+  .xlc-discovery-category-settings > .b3-text-field {
+    flex: 0 0 150px;
+    width: 150px;
+    min-width: 110px;
+    min-height: 30px;
+  }
+
+  .xlc-discovery-category-settings > .xlc-form-hint {
+    min-width: 0;
+    line-height: var(--xlc-leading-tight);
+  }
+
   .xlc-discovery-content {
     display: grid;
     grid-template-columns: minmax(0, 1.08fr) minmax(0, .92fr);
-    gap: 10px;
+    gap: var(--xlc-space-3);
     flex: 1;
     min-height: 120px;
   }
@@ -2375,7 +2570,7 @@ body.b3-theme-dark,
     background: var(--b3-theme-background);
   }
 
-  .xlc-discovery-list { padding: 5px; }
+  .xlc-discovery-list { padding: var(--xlc-space-1); }
 
   .xlc-discovery-pager {
     position: sticky;
@@ -2383,9 +2578,9 @@ body.b3-theme-dark,
     display: flex;
     align-items: center;
     justify-content: center;
-    gap: 8px;
-    margin: 5px -5px -5px;
-    padding: 7px 5px;
+    gap: var(--xlc-space-2);
+    margin: var(--xlc-space-1) var(--xlc-space-neg-1-25) var(--xlc-space-neg-1-25);
+    padding: var(--xlc-space-2) var(--xlc-space-1);
     border-top: 1px solid var(--b3-border-color);
     background: var(--b3-theme-background);
   }
@@ -2393,9 +2588,9 @@ body.b3-theme-dark,
   .xlc-discovery-row {
     display: flex;
     align-items: flex-start;
-    gap: 8px;
-    padding: 9px 8px;
-    border-radius: var(--xlc-radius-xs);
+    gap: var(--xlc-space-2);
+    padding: var(--xlc-space-2) var(--xlc-space-2);
+    border-radius: var(--xlc-radius-sm);
     cursor: pointer;
     transition: background-color var(--xlc-dur-fast) var(--xlc-ease);
   }
@@ -2403,11 +2598,16 @@ body.b3-theme-dark,
   .xlc-discovery-row:hover,
   .xlc-discovery-row--active { background: var(--b3-list-hover); }
 
+  .xlc-discovery-row:focus-visible {
+    outline: 2px solid var(--b3-theme-primary);
+    outline-offset: -2px;
+  }
+
   .xlc-discovery-row--disabled { opacity: .72; }
 
   .xlc-discovery-row > input {
     flex: 0 0 auto;
-    margin-top: 3px;
+    margin-top: var(--xlc-space-1);
   }
 
   .xlc-discovery-row-body { flex: 1; min-width: 0; }
@@ -2415,8 +2615,8 @@ body.b3-theme-dark,
   .xlc-discovery-row-title {
     overflow: hidden;
     color: var(--b3-theme-on-background);
-    font-weight: 600;
-    line-height: 20px;
+    font-weight: var(--xlc-weight-semibold);
+    line-height: var(--xlc-line-body);
     text-overflow: ellipsis;
     white-space: nowrap;
   }
@@ -2425,8 +2625,8 @@ body.b3-theme-dark,
   .xlc-discovery-row-summary {
     overflow: hidden;
     color: var(--b3-theme-on-surface);
-    font-size: 11px;
-    line-height: 17px;
+    font-size: var(--xlc-font-xs);
+    line-height: var(--xlc-line-control);
     text-overflow: ellipsis;
     white-space: nowrap;
   }
@@ -2436,35 +2636,64 @@ body.b3-theme-dark,
     flex: 0 0 auto;
     align-items: flex-end;
     flex-direction: column;
-    gap: 5px;
+    gap: var(--xlc-space-1);
   }
 
   .xlc-discovery-row-side .b3-button {
     min-height: 26px;
-    padding: 3px 8px;
-    font-size: 11px;
+    padding: var(--xlc-space-1) var(--xlc-space-2);
+    font-size: var(--xlc-font-xs);
   }
 
   .xlc-discovery-preview { display: flex; flex-direction: column; }
 
   .xlc-discovery-preview h3 {
     flex: 0 0 auto;
-    margin: 0;
-    padding: 10px 12px 8px;
+    margin: var(--xlc-space-0);
+    padding: var(--xlc-space-3) var(--xlc-space-3) var(--xlc-space-2);
     border-bottom: 1px solid var(--b3-border-color);
-    font-size: 13px;
+    font-size: var(--xlc-font-md);
+  }
+
+  .xlc-discovery-candidate-category {
+    display: flex;
+    flex: 0 0 auto;
+    align-items: center;
+    gap: var(--xlc-space-2);
+    padding: var(--xlc-space-2) var(--xlc-space-3) var(--xlc-space-0);
+  }
+
+  .xlc-discovery-candidate-category .xlc-form-label {
+    flex: 0 0 auto;
+    font-size: var(--xlc-font-xs);
+    white-space: nowrap;
+  }
+
+  .xlc-discovery-candidate-category .b3-text-field {
+    flex: 1;
+    width: auto;
+    min-width: 0;
+    min-height: 28px;
+    font-size: var(--xlc-font-sm);
+  }
+
+  .xlc-discovery-candidate-category .b3-button {
+    flex: 0 0 auto;
+    min-height: 28px;
+    padding: var(--xlc-space-1) var(--xlc-space-2);
+    font-size: var(--xlc-font-xs);
   }
 
   .xlc-discovery-preview-body {
     flex: 1;
     min-height: 0;
-    margin: 0;
-    padding: 11px 12px;
+    margin: var(--xlc-space-0);
+    padding: var(--xlc-space-3) var(--xlc-space-3);
     overflow: auto;
     color: var(--b3-theme-on-background);
     font-family: var(--b3-font-family-code);
-    font-size: 12px;
-    line-height: 1.55;
+    font-size: var(--xlc-font-sm);
+    line-height: var(--xlc-leading-normal);
     white-space: pre-wrap;
     overflow-wrap: anywhere;
   }
@@ -2472,7 +2701,7 @@ body.b3-theme-dark,
   .xlc-discovery-footer {
     flex-wrap: wrap;
     justify-content: flex-end;
-    padding-top: 2px;
+    padding-top: var(--xlc-space-0-5);
   }
 
   .xlc-discovery-footer > .xlc-form-hint { margin-right: auto; }
@@ -2480,36 +2709,76 @@ body.b3-theme-dark,
   .xlc-discovery-force {
     display: inline-flex;
     align-items: center;
-    gap: 5px;
+    gap: var(--xlc-space-1);
     color: var(--b3-theme-on-surface);
-    font-size: 11px;
+    font-size: var(--xlc-font-xs);
   }
 
   .xlc-discovery-receipt {
     max-height: 110px;
-    padding: 8px 10px;
+    padding: var(--xlc-space-2) var(--xlc-space-3);
     overflow: auto;
     border: 1px solid var(--b3-border-color);
     border-radius: var(--xlc-radius-sm);
     color: var(--b3-theme-on-background);
-    font-size: 11px;
-    line-height: 1.5;
+    font-size: var(--xlc-font-xs);
+    line-height: var(--xlc-leading-normal);
     white-space: pre-wrap;
   }
 
   .xlc-discovery-receipt strong {
     display: block;
-    margin-bottom: 2px;
+    margin-bottom: var(--xlc-space-0-5);
     color: var(--b3-theme-on-background);
   }
 
   .xlc-discovery-receipt .b3-button {
-    margin-top: 7px;
+    margin-top: var(--xlc-space-2);
+  }
+
+  .xlc-discovery-empty {
+    display: flex;
+    min-height: 100%;
+    align-items: center;
+    justify-content: center;
+    flex-direction: column;
+    gap: var(--xlc-space-2);
+    padding: var(--xlc-space-4);
+    color: var(--b3-theme-on-surface);
+    text-align: center;
   }
 }
 
 @media (max-width: 620px) {
-  .xlc-discovery-content { grid-template-columns: 1fr; min-height: 120px; }
-  .xlc-discovery-preview { min-height: 120px; }
+  .b3-dialog__container.xlc-discovery-host {
+    .b3-dialog__content,
+    .b3-dialog__body {
+      overflow-y: auto;
+      overscroll-behavior: contain;
+    }
+  }
+
+  .xlc-discovery {
+    height: auto;
+    min-height: 100%;
+    overflow: visible;
+  }
+
+  .xlc-discovery .xlc-discovery-head {
+    align-items: flex-start;
+  }
+
+  .xlc-discovery .xlc-discovery-content {
+    grid-template-columns: 1fr;
+    grid-template-rows: minmax(200px, 34vh) minmax(260px, 42vh);
+    flex: 0 0 auto;
+    min-height: 0;
+  }
+  .xlc-discovery .xlc-discovery-list { min-height: 200px; }
+  .xlc-discovery .xlc-discovery-preview { min-height: 260px; }
+  .xlc-discovery .xlc-discovery-candidate-category { flex-wrap: wrap; }
+  .xlc-discovery .xlc-discovery-candidate-category .xlc-form-label { flex: 0 0 100%; }
+  .xlc-discovery .xlc-discovery-candidate-category .b3-text-field { flex: 1 1 0; width: 0; }
+  .xlc-discovery .xlc-discovery-candidate-category .b3-button { padding-right: var(--xlc-space-1); padding-left: var(--xlc-space-1); }
   .xlc-discovery-row-side .xlc-badge { max-width: 76px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 }

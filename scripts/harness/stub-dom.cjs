@@ -47,7 +47,9 @@ class StubDialog {
 
 module.exports = {
     Dialog: StubDialog,
-    confirm: () => {},
+    confirm: (_title, _message, callback) => {
+        if (globalThis.__xlcAutoConfirm === true && typeof callback === "function") callback();
+    },
     showMessage: () => {},
     getActiveEditor: () => null,
     openTab: () => {},

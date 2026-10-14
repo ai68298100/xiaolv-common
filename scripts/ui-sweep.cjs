@@ -138,11 +138,21 @@ const SURFACES = [
         if (dbl.found) console.log(`  ℹ [${surface.name}] 双击探测：${dbl.label}`);
 
         // 表面残留计数
-        const residue = await page.evaluate(() => ({
-            dialogs: document.querySelectorAll(".b3-dialog").length,
-            menus: document.querySelectorAll(".xlc-menu").length,
-        }));
-        if (residue.dialogs > 3) problems.push(`[${surface.name}] 弹窗层堆积 ${residue.dialogs} 个`);
+        const residue = await page.evaluate(() => {
+            const count = (selector) => document.querySelectorAll(selector).length;
+            // 搜索→捕获→变量填写等是有意的嵌套流程；只把同一类宿主的重复实例视为堆叠。
+            return {
+                // 导入策略/模板/导出等设置子流程复用 xlc-settings-host，属于有意嵌套；
+                // 只统计真正的设置根弹窗，避免把合法的二次确认误报为同类堆叠。
+                duplicateSettings: count(".b3-dialog__container.xlc-settings-root-host") > 1 || count(".b3-dialog__container.xlc-setup-root-host") > 1,
+                duplicateSearch: count(".b3-dialog__container.xlc-dialog-host") > 1,
+                duplicateVariable: count(".b3-dialog__container.xlc-varform-host") > 1,
+                menus: count(".xlc-menu"),
+            };
+        });
+        if (residue.duplicateSettings) problems.push(`[${surface.name}] 设置/引导同类弹窗重复堆叠`);
+        if (residue.duplicateSearch) problems.push(`[${surface.name}] 搜索弹窗重复堆叠`);
+        if (residue.duplicateVariable) problems.push(`[${surface.name}] 变量填写卡重复堆叠`);
 
         console.log(`  sweep ${surface.name}: ${clicked.size} 次点击 + 键盘走查完成${problems.filter((p) => p.startsWith(`[${surface.name}]`)).length ? `，⚠ ${problems.filter((p) => p.startsWith(`[${surface.name}]`)).length} 个问题` : "，干净"}`);
     }

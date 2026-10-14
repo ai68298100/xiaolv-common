@@ -7,12 +7,24 @@
   var __getProtoOf = Object.getPrototypeOf;
   var __hasOwnProp = Object.prototype.hasOwnProperty;
   var __defNormalProp = (obj, key, value) => key in obj ? __defProp(obj, key, { enumerable: true, configurable: true, writable: true, value }) : obj[key] = value;
+  var __esm = (fn, res, err) => function __init() {
+    if (err) throw err[0];
+    try {
+      return fn && (res = (0, fn[__getOwnPropNames(fn)[0]])(fn = 0)), res;
+    } catch (e) {
+      throw err = [e], e;
+    }
+  };
   var __commonJS = (cb, mod) => function __require() {
     try {
       return mod || (0, cb[__getOwnPropNames(cb)[0]])((mod = { exports: {} }).exports, mod), mod.exports;
     } catch (e) {
       throw mod = 0, e;
     }
+  };
+  var __export = (target, all) => {
+    for (var name in all)
+      __defProp(target, name, { get: all[name], enumerable: true });
   };
   var __copyProps = (to, from, except, desc) => {
     if (from && typeof from === "object" || typeof from === "function") {
@@ -76,7 +88,8 @@
       };
       module.exports = {
         Dialog: StubDialog,
-        confirm: () => {
+        confirm: (_title, _message, callback) => {
+          if (globalThis.__xlcAutoConfirm === true && typeof callback === "function") callback();
         },
         showMessage: () => {
         },
@@ -88,2656 +101,7 @@
     }
   });
 
-  // src/ui/dialog.ts
-  var import_siyuan2 = __toESM(require_stub_dom());
-
-  // src/ui/dialog-dom.ts
-  function getDialogBody(root) {
-    var _a;
-    return (_a = root.querySelector(".b3-dialog__body")) != null ? _a : root.querySelector(".b3-dialog__content");
-  }
-
-  // src/constants.ts
-  var PROTOCOL_NAME = "xiaolv-common";
-  var LIMITS = {
-    title: 512,
-    alias: 256,
-    tag: 64,
-    tags: 32,
-    category: 64,
-    summary: 240,
-    contentChars: 1e5,
-    queryChars: 200,
-    maxItems: 2e3,
-    maxDocs: 200,
-    maxFavorites: 500,
-    maxRecents: 200,
-    maxProviders: 32,
-    maxImportBytes: 4 * 1024 * 1024,
-    walkDepth: 8,
-    kernelTimeoutMs: 8e3,
-    askValueChars: 2e3,
-    maxUsage: 2e3,
-    maxAskFields: 16,
-    maxCustomTransforms: 10,
-    customNameChars: 20,
-    customPromptChars: 500
-  };
-  var EXPORT_SCHEMA_VERSION = 1;
-
-  // src/model/item.ts
-  var ITEM_TYPES = [
-    "text",
-    "markdown",
-    "url",
-    "code",
-    "image",
-    "asset",
-    "blockref",
-    "structure"
-  ];
-  var SOURCE_TYPES = [
-    "",
-    "selection",
-    "block",
-    "doc-fragment",
-    "clipboard",
-    "manual",
-    "resource",
-    "external"
-  ];
-  function isItemType(v) {
-    return typeof v === "string" && ITEM_TYPES.includes(v);
-  }
-  function isSafeHttpUrl(v) {
-    if (typeof v !== "string") return false;
-    const value = v.trim();
-    if (!/^https?:\/\//i.test(value)) return false;
-    try {
-      const parsed = new URL(value);
-      return (parsed.protocol === "http:" || parsed.protocol === "https:") && Boolean(parsed.hostname);
-    } catch {
-      return false;
-    }
-  }
-  function isSourceType(v) {
-    return typeof v === "string" && SOURCE_TYPES.includes(v);
-  }
-  var LOGICAL_ID_RE = /^xlc-[0-9a-z]{10,40}$/;
-  function isLogicalId(v) {
-    return typeof v === "string" && LOGICAL_ID_RE.test(v);
-  }
-
-  // src/model/variables.ts
-  var ASK_PATTERN = /\{\{xlc:ask:([^|}]+)(?:\|([^}]*))?\}\}/g;
-  function parseAskField(rawName, rawOptions) {
-    var _a, _b;
-    const name = rawName.trim().slice(0, LIMITS.tag);
-    if (!name) return null;
-    const options = (rawOptions != null ? rawOptions : "").split(",").map((s) => s.trim().slice(0, LIMITS.tag)).filter(Boolean).slice(0, 16);
-    if (options.length === 1 && ((_a = options[0]) == null ? void 0 : _a.toLowerCase()) === "date") return { name, kind: "date", options: [] };
-    if (options.length === 1 && ((_b = options[0]) == null ? void 0 : _b.toLowerCase()) === "textarea") return { name, kind: "textarea", options: [] };
-    if (options.length >= 2) return { name, kind: "select", options };
-    return { name, kind: "text", options: [] };
-  }
-  function askFieldTag(field) {
-    if (field.kind === "text") return `{{xlc:ask:${field.name}}}`;
-    if (field.kind === "select") return `{{xlc:ask:${field.name}|${field.options.join(",")}}}`;
-    return `{{xlc:ask:${field.name}|${field.kind}}}`;
-  }
-  function listAskFields(text) {
-    var _a;
-    if (!text) return [];
-    const fields = [];
-    const seen = /* @__PURE__ */ new Set();
-    for (const match of text.matchAll(ASK_PATTERN)) {
-      const field = parseAskField((_a = match[1]) != null ? _a : "", match[2]);
-      if (!field || seen.has(field.name)) continue;
-      seen.add(field.name);
-      fields.push(field);
-      if (fields.length >= 16) break;
-    }
-    return fields;
-  }
-  var CURSOR_TOKEN = "{{xlc:cursor}}";
-  function hasCursorToken(text) {
-    return text.includes(CURSOR_TOKEN);
-  }
-
-  // src/ui/variable-form.ts
-  var import_siyuan = __toESM(require_stub_dom());
-  var TYPE_BADGES = {
-    text: "TXT",
-    markdown: "MD",
-    url: "URL",
-    code: "CODE",
-    image: "IMG",
-    asset: "FILE",
-    blockref: "REF",
-    structure: "BLK"
-  };
-  function openVariableFillCard(options) {
-    var _a, _b;
-    const t = options.t;
-    const dialog = new import_siyuan.Dialog({
-      title: t("varFormTitle"),
-      content: "",
-      width: "min(360px, 92vw)",
-      height: "auto",
-      // 所有关闭路径（Esc/scrim）统一走 onCancel：上层搜索弹窗焦点回归（R128）；
-      // 按钮确认/取消已自行结算，不在此重复触发（R138 结算语义）
-      destroyCallback: () => {
-        var _a2;
-        if (!settled) (_a2 = options.onCancel) == null ? void 0 : _a2.call(options);
-      }
-    });
-    const container = dialog.element.querySelector(".b3-dialog__container");
-    if (container) container.classList.add("xlc-varform-host");
-    const body = getDialogBody(dialog.element);
-    if (!body) return;
-    body.innerHTML = "";
-    const root = document.createElement("div");
-    root.className = "xlc-varform";
-    const head = document.createElement("div");
-    head.className = "xlc-varform-head";
-    const badge = document.createElement("span");
-    badge.className = "xlc-badge xlc-badge--markdown";
-    badge.textContent = (_a = TYPE_BADGES[options.itemType]) != null ? _a : "TXT";
-    head.appendChild(badge);
-    const title = document.createElement("span");
-    title.className = "xlc-varform-title";
-    title.textContent = options.title || t("unknownType");
-    head.appendChild(title);
-    const escHint = document.createElement("span");
-    escHint.className = "xlc-kbd";
-    escHint.textContent = "Esc " + t("cancel");
-    head.appendChild(escHint);
-    root.appendChild(head);
-    const sub = document.createElement("div");
-    sub.className = "xlc-varform-sub";
-    sub.textContent = t("varFormSub", String(options.fields.length));
-    root.appendChild(sub);
-    const inputs = [];
-    const fieldsWrap = document.createElement("div");
-    fieldsWrap.className = "xlc-varform-fields";
-    for (const [fieldIndex, field] of options.fields.entries()) {
-      const wrap = document.createElement("label");
-      wrap.className = "xlc-varform-field";
-      const label = document.createElement("span");
-      label.className = "xlc-varform-label";
-      label.textContent = field.name;
-      const tag = document.createElement("span");
-      tag.className = "xlc-varform-tag";
-      tag.textContent = askFieldTag(field);
-      label.appendChild(tag);
-      wrap.appendChild(label);
-      const input = field.kind === "textarea" ? document.createElement("textarea") : document.createElement("input");
-      input.className = "b3-text-field";
-      if (field.kind === "textarea") {
-        input.rows = 3;
-        input.setAttribute("spellcheck", "false");
-      } else {
-        input.setAttribute("enterkeyhint", "done");
-      }
-      if (field.kind === "date") input.type = "date";
-      if (field.kind === "select") {
-        input.setAttribute("list", `xlc-varform-list-${fieldIndex}`);
-        const datalist = document.createElement("datalist");
-        datalist.id = `xlc-varform-list-${fieldIndex}`;
-        for (const opt of field.options) {
-          const option = document.createElement("option");
-          option.value = opt;
-          datalist.appendChild(option);
-        }
-        wrap.appendChild(datalist);
-      }
-      input.dataset.xlcVarField = field.name;
-      wrap.appendChild(input);
-      inputs.push(input);
-      fieldsWrap.appendChild(wrap);
-    }
-    root.appendChild(fieldsWrap);
-    const foot = document.createElement("div");
-    foot.className = "xlc-varform-foot";
-    const kbdHint = document.createElement("span");
-    kbdHint.className = "xlc-varform-hint";
-    kbdHint.textContent = options.fields.some((f) => f.kind === "textarea") ? t("varFormHintMultiline") : t("varFormHint");
-    foot.appendChild(kbdHint);
-    const cancelBtn = document.createElement("button");
-    cancelBtn.className = "b3-button";
-    cancelBtn.textContent = t("cancel");
-    foot.appendChild(cancelBtn);
-    const insertBtn = document.createElement("button");
-    insertBtn.className = "b3-button xlc-btn-primary";
-    insertBtn.textContent = t("insert");
-    foot.appendChild(insertBtn);
-    root.appendChild(foot);
-    body.appendChild(root);
-    const collect = () => {
-      var _a2;
-      const fills = {};
-      for (const input of inputs) {
-        const name = (_a2 = input.dataset.xlcVarField) != null ? _a2 : "";
-        if (name) fills[name] = input.value;
-      }
-      return fills;
-    };
-    let settled = false;
-    const confirm3 = () => {
-      if (settled) return;
-      settled = true;
-      dialog.destroy();
-      options.onConfirm(collect());
-    };
-    insertBtn.addEventListener("click", confirm3);
-    cancelBtn.addEventListener("click", () => {
-      var _a2;
-      if (settled) return;
-      settled = true;
-      dialog.destroy();
-      (_a2 = options.onCancel) == null ? void 0 : _a2.call(options);
-    });
-    root.addEventListener("keydown", (ev) => {
-      var _a2;
-      if (ev.isComposing || ev.keyCode === 229) return;
-      if (ev.key === "Enter" && !ev.altKey && !ev.ctrlKey && !ev.metaKey) {
-        if (ev.target.tagName === "BUTTON") return;
-        if (ev.target.tagName === "TEXTAREA") return;
-        const el = ev.target;
-        if (el instanceof HTMLInputElement && el.list) {
-          setTimeout(() => confirm3(), 0);
-          return;
-        }
-        ev.preventDefault();
-        confirm3();
-        return;
-      }
-      if (ev.key === "Tab") {
-        const focusables = Array.from(
-          root.querySelectorAll("input, textarea, button")
-        ).filter((el) => !el.hasAttribute("disabled"));
-        if (focusables.length === 0) return;
-        const index = focusables.indexOf(document.activeElement);
-        ev.preventDefault();
-        const next = ev.shiftKey ? (index - 1 + focusables.length) % focusables.length : (index + 1) % focusables.length;
-        (_a2 = focusables[next]) == null ? void 0 : _a2.focus();
-      }
-    });
-    (_b = inputs[0]) == null ? void 0 : _b.focus();
-  }
-  function buildVariableBar(t, getTarget) {
-    const bar = document.createElement("div");
-    bar.className = "xlc-varbar";
-    const cap = document.createElement("span");
-    cap.className = "xlc-varbar-cap";
-    cap.textContent = t("insertVariable");
-    bar.appendChild(cap);
-    const snippets = [
-      "{{xlc:ask:\u5B57\u6BB5}}",
-      "{{xlc:ask:\u5B57\u6BB5|\u9009\u9879A,\u9009\u9879B}}",
-      "{{xlc:ask:\u5B57\u6BB5|textarea}}",
-      "{{xlc:snippet:\u6807\u9898}}",
-      "{{xlc:cursor}}",
-      "{{xlc:date}}",
-      "{{xlc:date|+3d}}",
-      "{{xlc:random|\u9009\u9879A,\u9009\u9879B}}",
-      "{{xlc:doc}}",
-      "{{xlc:clipboard}}"
-    ];
-    for (const snippet of snippets) {
-      const btn = document.createElement("button");
-      btn.type = "button";
-      btn.className = "xlc-varbtn";
-      btn.textContent = snippet;
-      btn.addEventListener("click", () => {
-        var _a, _b;
-        const el = getTarget();
-        const start = (_a = el.selectionStart) != null ? _a : el.value.length;
-        const end = (_b = el.selectionEnd) != null ? _b : start;
-        el.value = el.value.slice(0, start) + snippet + el.value.slice(end);
-        const caret = start + snippet.length;
-        el.focus();
-        el.setSelectionRange(caret, caret);
-        el.dispatchEvent(new Event("input", { bubbles: true }));
-      });
-      bar.appendChild(btn);
-    }
-    return bar;
-  }
-
-  // src/ui/dialog.ts
-  var TYPE_BADGES2 = {
-    text: "TXT",
-    markdown: "MD",
-    url: "URL",
-    code: "CODE",
-    image: "IMG",
-    asset: "FILE",
-    blockref: "REF",
-    structure: "BLK"
-  };
-  var TRANSFORM_KINDS = ["polish", "shorten", "formal", "translate-en", "bulletize"];
-  var CommonSearchDialog = class {
-    constructor(deps) {
-      this.deps = deps;
-      this.dialog = null;
-      this.results = [];
-      this.providerRows = [];
-      this.activeProvider = -1;
-      this.aiResults = false;
-      this.activeIndex = 0;
-      this.searchSeq = 0;
-      this.previewSeq = 0;
-      this.currentScope = "all";
-      this.lastPreviewId = null;
-      /** 空状态文案（refresh 计算后交 renderList 渲染大空态；瞬态/错误仍走 status 行） */
-      this.emptyMessage = "";
-      /** 使用计数快照（refresh 时取自侧车；行 meta 与预览徽标展示用） */
-      this.usageCounts = /* @__PURE__ */ new Map();
-      /** 最近一次查询词（行标题命中高亮用；空串=不高亮） */
-      this.lastQueryText = "";
-      /** 动作菜单 document 监听兜底清理（destroy 时调用；防键盘关弹窗残留监听） */
-      this.menuDismiss = null;
-      this.inputDebounce = null;
-      this.longPressCancel = null;
-      /** IME 组合输入中（中文输入法组词期间跳过刷新，compositionend 后统一刷新） */
-      this.isComposing = false;
-      this.filterOptionsSeq = 0;
-      this.primaryBusy = false;
-      this.varFormOpen = false;
-      /** 普通点击 = 主动作（insert；blockref = 插入引用）。含变量时先弹填充卡片（F1）。
-       *  执行期防重入（R138）：双击行/按住 Enter 不得重复插入同一块。 */
-      /** AI 变换代次：连点两个变换时丢弃慢的旧结果（R138） */
-      this.transformSeq = 0;
-      /** 排序菜单关闭时刻：chip 的 click 在 pointerdown 关闭之后到达，不得立刻重开（R138 toggle） */
-      this.sortMenuClosedAt = 0;
-    }
-    open() {
-      const isMobile = this.deps.isMobile();
-      const dialog = new import_siyuan2.Dialog({
-        title: this.deps.t("pluginName"),
-        content: "",
-        width: isMobile ? "100vw" : "min(760px, 94vw)",
-        height: isMobile ? "100vh" : "min(600px, 84vh)",
-        destroyCallback: () => {
-          this.dialog = null;
-          this.deps.close();
-        }
-      });
-      this.dialog = dialog;
-      const content = this.buildDom(isMobile);
-      const body = getDialogBody(dialog.element);
-      if (body) {
-        body.innerHTML = "";
-        body.appendChild(content);
-        void this.refreshFilterOptions().then((changed) => {
-          if (changed) void this.refresh();
-        });
-      }
-      const container = this.dialog.element.querySelector(".b3-dialog__container");
-      if (container) container.classList.add(isMobile ? "xlc-sheet" : "xlc-dialog-host");
-      const input = this.dialog.element.querySelector(".xlc-search-input");
-      if (input) {
-        const last = this.deps.getLastQuery();
-        if (last) {
-          input.value = last;
-          this.currentScope = "all";
-          input.dispatchEvent(new Event("input", { bubbles: true }));
-        }
-        input.focus();
-      }
-      void this.refresh();
-    }
-    buildDom(isMobile) {
-      var _a, _b, _c, _d, _e, _f;
-      const root = document.createElement("div");
-      root.className = "xlc-dialog" + (isMobile ? " xlc-dialog--mobile" : "");
-      const top = document.createElement("div");
-      top.className = "xlc-top";
-      const topMain = document.createElement("div");
-      topMain.className = "xlc-top-main";
-      const searchBlock = document.createElement("div");
-      searchBlock.className = "xlc-search-block";
-      const search = document.createElement("div");
-      search.className = "xlc-search";
-      const qMark = document.createElement("span");
-      qMark.className = "xlc-search-icon";
-      qMark.setAttribute("aria-hidden", "true");
-      const input = document.createElement("input");
-      input.className = "b3-text-field xlc-search-input";
-      input.placeholder = this.deps.t("searchPlaceholder");
-      input.setAttribute("enterkeyhint", "search");
-      input.setAttribute("autocomplete", "off");
-      input.setAttribute("autocapitalize", "off");
-      input.setAttribute("autocorrect", "off");
-      input.setAttribute("spellcheck", "false");
-      input.setAttribute("role", "combobox");
-      input.setAttribute("aria-expanded", "true");
-      input.setAttribute("aria-label", this.deps.t("searchPlaceholder"));
-      const syncQMark = () => {
-        clearBtn.classList.toggle("xlc-search-clear--on", input.value.length > 0);
-      };
-      const clearBtn = document.createElement("button");
-      clearBtn.type = "button";
-      clearBtn.className = "xlc-search-clear";
-      clearBtn.textContent = "\xD7";
-      clearBtn.setAttribute("aria-label", this.deps.t("clearSearch"));
-      clearBtn.addEventListener("click", () => {
-        input.value = "";
-        syncQMark();
-        input.focus();
-        input.dispatchEvent(new Event("input", { bubbles: true }));
-      });
-      input.addEventListener("input", () => {
-        syncQMark();
-        this.currentScope = "all";
-        this.syncScopeChips();
-        this.deps.setLastQuery(input.value.replace(/^\?+/, ""));
-        if (this.isComposing) return;
-        if (this.inputDebounce) clearTimeout(this.inputDebounce);
-        this.inputDebounce = setTimeout(() => void this.refresh(), 200);
-      });
-      input.addEventListener("compositionstart", () => {
-        this.isComposing = true;
-      });
-      input.addEventListener("compositionend", () => {
-        this.isComposing = false;
-        syncQMark();
-        this.currentScope = "all";
-        this.syncScopeChips();
-        if (this.inputDebounce) clearTimeout(this.inputDebounce);
-        this.inputDebounce = setTimeout(() => void this.refresh(), 50);
-      });
-      input.addEventListener("keydown", (e) => void this.onKeydown(e));
-      search.appendChild(qMark);
-      search.appendChild(input);
-      search.appendChild(clearBtn);
-      searchBlock.appendChild(search);
-      const searchHint = document.createElement("div");
-      searchHint.className = "xlc-search-hint";
-      searchHint.textContent = this.deps.t("searchHint");
-      searchBlock.appendChild(searchHint);
-      topMain.appendChild(searchBlock);
-      let kbdRow = null;
-      if (!isMobile) {
-        const isApple = /Mac|iPhone|iPad/i.test(navigator.platform || "");
-        kbdRow = document.createElement("div");
-        kbdRow.className = "xlc-kbdrow";
-        kbdRow.setAttribute("aria-label", this.deps.t("keyboardHelp"));
-        const kbdLabel = document.createElement("span");
-        kbdLabel.className = "xlc-kbdrow-label";
-        kbdLabel.textContent = this.deps.t("shortcutLabel");
-        kbdRow.appendChild(kbdLabel);
-        for (const hint of [
-          { key: "\u2191 \u2193", action: this.deps.t("kbdNav") },
-          { key: "Enter", action: this.deps.t("kbdEnter") },
-          { key: `${isApple ? "\u2318" : "Ctrl"} + Enter`, action: this.deps.t("kbdCopy") },
-          { key: `${isApple ? "\u2325" : "Alt"} + 1-9`, action: this.deps.t("kbdQuickInsert") },
-          { key: "Esc", action: this.deps.t("kbdClose") }
-        ]) {
-          const kbd = document.createElement("span");
-          kbd.className = "xlc-kbd xlc-kbd-hint";
-          kbd.title = `${hint.key}\uFF1A${hint.action}`;
-          const key = document.createElement("span");
-          key.className = "xlc-kbd-key";
-          key.textContent = hint.key;
-          const action = document.createElement("span");
-          action.className = "xlc-kbd-label";
-          action.textContent = hint.action;
-          kbd.append(key, action);
-          kbdRow.appendChild(kbd);
-        }
-        const topActions = document.createElement("div");
-        topActions.className = "xlc-top-actions";
-        const topNew = document.createElement("button");
-        topNew.type = "button";
-        topNew.className = "b3-button xlc-btn-primary xlc-top-new";
-        topNew.textContent = this.deps.t("quickNew");
-        topNew.setAttribute("aria-label", this.deps.t("newItem"));
-        topNew.addEventListener("click", () => this.deps.newItem());
-        topActions.appendChild(topNew);
-        topMain.appendChild(topActions);
-      }
-      top.appendChild(topMain);
-      if (kbdRow) top.appendChild(kbdRow);
-      root.appendChild(top);
-      const filters = document.createElement("div");
-      filters.className = "xlc-filters";
-      const typeSelect = document.createElement("select");
-      typeSelect.className = "b3-select xlc-type-select";
-      typeSelect.setAttribute("aria-label", this.deps.t("type"));
-      const allOpt = document.createElement("option");
-      allOpt.value = "";
-      allOpt.textContent = this.deps.t("filterAllType");
-      typeSelect.appendChild(allOpt);
-      for (const t of ITEM_TYPES) {
-        const opt = document.createElement("option");
-        opt.value = t;
-        opt.textContent = this.deps.t(`type.${t}`);
-        typeSelect.appendChild(opt);
-      }
-      const savedFilters = this.deps.getFilters();
-      if (savedFilters.type) typeSelect.value = savedFilters.type;
-      typeSelect.addEventListener("change", () => {
-        var _a2, _b2;
-        this.deps.setFilters({
-          type: typeSelect.value,
-          tag: (_a2 = tagSelect == null ? void 0 : tagSelect.value) != null ? _a2 : "",
-          category: (_b2 = categorySelect == null ? void 0 : categorySelect.value) != null ? _b2 : ""
-        });
-        void this.refresh();
-      });
-      filters.appendChild(typeSelect);
-      const tagSelect = document.createElement("select");
-      tagSelect.className = "b3-select xlc-tag-select";
-      tagSelect.setAttribute("aria-label", this.deps.t("tags"));
-      tagSelect.disabled = true;
-      tagSelect.addEventListener("change", () => {
-        var _a2;
-        this.deps.setFilters({
-          type: typeSelect.value,
-          tag: tagSelect.value,
-          category: (_a2 = categorySelect == null ? void 0 : categorySelect.value) != null ? _a2 : ""
-        });
-        void this.refresh();
-      });
-      filters.appendChild(tagSelect);
-      const categorySelect = document.createElement("select");
-      categorySelect.className = "b3-select xlc-category-select";
-      categorySelect.setAttribute("aria-label", this.deps.t("category"));
-      categorySelect.disabled = true;
-      categorySelect.addEventListener("change", () => {
-        this.deps.setFilters({ type: typeSelect.value, tag: tagSelect.value, category: categorySelect.value });
-        void this.refresh();
-      });
-      filters.appendChild(categorySelect);
-      for (const scope of ["favorites", "recent"]) {
-        const chip = document.createElement("button");
-        chip.className = "xlc-chip xlc-scope-chip";
-        chip.dataset.scope = scope;
-        chip.textContent = (scope === "favorites" ? "\u2605 " : "\u{1F550} ") + this.deps.t(`filter${scope === "favorites" ? "Favorites" : "Recent"}`);
-        chip.addEventListener("click", () => {
-          this.currentScope = this.currentScope === scope ? "all" : scope;
-          this.syncScopeChips();
-          void this.refresh();
-        });
-        filters.appendChild(chip);
-      }
-      const aiBanner = document.createElement("span");
-      aiBanner.className = "xlc-chip xlc-ai-banner";
-      aiBanner.style.display = "none";
-      filters.insertBefore(aiBanner, filters.firstChild);
-      const sortChip = document.createElement("button");
-      sortChip.className = "xlc-chip xlc-sort-chip";
-      const paintSort = () => {
-        const sort = this.deps.getSort();
-        sortChip.textContent = "\u21C5 " + this.deps.t("sort") + "\uFF1A" + this.deps.t(`sort.${sort}`);
-        sortChip.title = this.deps.t(`sortHint.${sort}`);
-        sortChip.setAttribute("aria-label", `${this.deps.t("sort")}\uFF1A${this.deps.t(`sort.${sort}`)}\u3002${this.deps.t(`sortHint.${sort}`)}`);
-        sortChip.classList.toggle("xlc-chip--on", sort !== "manual");
-      };
-      paintSort();
-      sortChip.addEventListener("click", () => {
-        if (Date.now() - this.sortMenuClosedAt < 300) return;
-        this.showSortMenu(paintSort);
-      });
-      filters.appendChild(sortChip);
-      if (this.insertTarget) {
-        const targetBanner = document.createElement("span");
-        targetBanner.className = "xlc-chip xlc-target-banner";
-        targetBanner.textContent = "\u2913 " + this.deps.t("insertTargetBanner", this.insertTarget.hPath || this.insertTarget.docId);
-        filters.insertBefore(targetBanner, filters.firstChild);
-      } else {
-        const targetBanner = document.createElement("span");
-        targetBanner.className = "xlc-chip xlc-target-banner";
-        const hasEditor = (_c = (_b = (_a = this.deps).hasActiveEditor) == null ? void 0 : _b.call(_a)) != null ? _c : true;
-        const hasTarget = (_f = (_e = (_d = this.deps).hasInsertTarget) == null ? void 0 : _e.call(_d)) != null ? _f : hasEditor;
-        const fallbackKey = this.deps.isMobile() ? "insertMobileActionHint" : hasTarget ? "insertCurrentEditorBanner" : hasEditor ? "insertTargetUnavailableBanner" : "insertNoEditorBanner";
-        targetBanner.textContent = "\u2913 " + this.deps.t(fallbackKey);
-        targetBanner.setAttribute("role", "note");
-        targetBanner.setAttribute("aria-label", this.deps.t(fallbackKey));
-        filters.insertBefore(targetBanner, filters.firstChild);
-      }
-      root.appendChild(filters);
-      const status = document.createElement("div");
-      status.className = "xlc-status";
-      status.setAttribute("aria-live", "polite");
-      root.appendChild(status);
-      const bodyWrap = document.createElement("div");
-      bodyWrap.className = "xlc-body";
-      const list = document.createElement("div");
-      list.className = "xlc-list";
-      list.id = "xlc-search-results";
-      list.tabIndex = 0;
-      list.setAttribute("role", "listbox");
-      list.setAttribute("aria-label", this.deps.t("pluginName"));
-      input.setAttribute("aria-controls", list.id);
-      list.addEventListener("keydown", (e) => void this.onKeydown(e));
-      list.addEventListener("click", (e) => {
-        if (e.target.closest(".xlc-row-action")) return;
-        const row = e.target.closest("[data-xlc-index]");
-        if (!row) return;
-        const entry = this.results[Number(row.dataset.xlcIndex)];
-        if (entry) void this.runPrimary(entry);
-      });
-      list.addEventListener("mouseover", (e) => {
-        if (isMobile) return;
-        const row = e.target.closest("[data-xlc-index]");
-        if (!row) return;
-        const entry = this.results[Number(row.dataset.xlcIndex)];
-        if (entry && this.activeIndex !== Number(row.dataset.xlcIndex)) {
-          this.activeIndex = Number(row.dataset.xlcIndex);
-          this.activeProvider = -1;
-          this.paintActive();
-          this.schedulePreview(entry);
-        }
-      });
-      this.attachLongPress(list, isMobile);
-      bodyWrap.appendChild(list);
-      if (!isMobile) {
-        const pane = document.createElement("div");
-        pane.className = "xlc-pane";
-        pane.appendChild(this.buildPaneHead());
-        const paneMeta = document.createElement("div");
-        paneMeta.className = "xlc-pane-meta";
-        paneMeta.style.display = "none";
-        pane.appendChild(paneMeta);
-        const paneVars = document.createElement("div");
-        paneVars.className = "xlc-pane-vars";
-        paneVars.style.display = "none";
-        pane.appendChild(paneVars);
-        const warn = document.createElement("div");
-        warn.className = "xlc-pane-warn";
-        warn.style.display = "none";
-        pane.appendChild(warn);
-        const paneBody = document.createElement("div");
-        paneBody.className = "xlc-pane-body xlc-pane-body--muted";
-        paneBody.textContent = this.deps.t("previewUnavailable");
-        pane.appendChild(paneBody);
-        pane.appendChild(this.buildPaneFoot());
-        bodyWrap.appendChild(pane);
-      }
-      root.appendChild(bodyWrap);
-      const footer = document.createElement("div");
-      footer.className = "xlc-footer";
-      const count = document.createElement("span");
-      count.className = "xlc-footer-count";
-      count.setAttribute("aria-live", "polite");
-      if (isMobile) {
-        const footBtns = document.createElement("div");
-        footBtns.className = "xlc-mobile-foot";
-        const newBtn = document.createElement("button");
-        newBtn.className = "b3-button";
-        newBtn.textContent = this.deps.t("quickNew");
-        newBtn.addEventListener("click", () => this.deps.newItem());
-        footBtns.appendChild(newBtn);
-        const insertBtn = document.createElement("button");
-        insertBtn.className = "b3-button xlc-btn-primary xlc-mobile-insert";
-        insertBtn.textContent = this.deps.t(this.mobilePrimaryIsCopy() ? "copy" : "quickInsertSelected");
-        insertBtn.disabled = true;
-        if (this.mobilePrimaryIsCopy()) {
-          insertBtn.title = this.deps.t("insertMobileActionHint");
-          insertBtn.setAttribute("aria-label", this.deps.t("insertMobileActionHint"));
-        }
-        insertBtn.addEventListener("click", () => {
-          const entry = this.results[this.activeIndex];
-          if (entry) void this.runPrimary(entry);
-        });
-        footBtns.appendChild(insertBtn);
-        footer.appendChild(footBtns);
-        count.textContent = this.deps.t("usageHintMobile");
-      } else {
-        count.textContent = "";
-      }
-      footer.appendChild(count);
-      if (!isMobile) {
-        const claim = document.createElement("span");
-        claim.className = "xlc-footer-claim xlc-footer-claim--static";
-        claim.textContent = this.deps.t("dataTruth");
-        claim.title = this.deps.t("dataTruthHint");
-        claim.setAttribute("role", "note");
-        claim.setAttribute("aria-label", this.deps.t("dataTruthHint"));
-        footer.appendChild(claim);
-      }
-      const guide = document.createElement("button");
-      guide.type = "button";
-      guide.className = "b3-button b3-button--text xlc-btn-ghost xlc-footer-guide";
-      guide.textContent = "\u24D8 " + this.deps.t("usageGuideBtn");
-      guide.addEventListener("click", () => this.openUsageGuide());
-      footer.appendChild(guide);
-      const gear = document.createElement("button");
-      gear.className = "b3-button b3-button--text xlc-btn-ghost xlc-footer-gear";
-      gear.textContent = "\u2699 " + this.deps.t("openSettings");
-      gear.addEventListener("click", () => {
-        this.destroy();
-        this.deps.openSetup();
-      });
-      footer.appendChild(gear);
-      root.appendChild(footer);
-      return root;
-    }
-    /** 打开一页内置使用说明（不离开搜索弹窗，适合首次使用与移动端）。 */
-    openUsageGuide() {
-      var _a;
-      const guideDialog = new import_siyuan2.Dialog({
-        title: this.deps.t("usageGuideTitle"),
-        content: "",
-        width: "min(520px, 92vw)",
-        height: "min(520px, 84vh)"
-      });
-      (_a = guideDialog.element.querySelector(".b3-dialog__container")) == null ? void 0 : _a.classList.add("xlc-form-host");
-      const body = getDialogBody(guideDialog.element);
-      if (!body) return;
-      body.innerHTML = "";
-      const root = document.createElement("div");
-      root.className = "xlc-form xlc-guide";
-      const intro = document.createElement("p");
-      intro.className = "xlc-form-hint xlc-guide-intro";
-      intro.textContent = this.deps.t("usageGuideIntro");
-      root.appendChild(intro);
-      const steps = document.createElement("ol");
-      steps.className = "xlc-guide-list";
-      const guideKeys = ["usageGuideAdd", "usageGuideSearch", this.deps.isMobile() ? "usageGuideInsertMobile" : "usageGuideInsert", "usageGuideOrganize"];
-      for (const key of guideKeys) {
-        const item = document.createElement("li");
-        item.textContent = this.deps.t(key);
-        steps.appendChild(item);
-      }
-      root.appendChild(steps);
-      const variables = document.createElement("p");
-      variables.className = "xlc-form-hint xlc-guide-vars";
-      variables.textContent = this.deps.t("usageGuideVariables");
-      root.appendChild(variables);
-      const actions = document.createElement("div");
-      actions.className = "xlc-form-actions";
-      const close = document.createElement("button");
-      close.type = "button";
-      close.className = "b3-button xlc-btn-primary";
-      close.textContent = this.deps.t("close");
-      close.addEventListener("click", () => guideDialog.destroy());
-      actions.appendChild(close);
-      root.appendChild(actions);
-      body.appendChild(root);
-    }
-    buildPaneHead() {
-      const head = document.createElement("div");
-      head.className = "xlc-pane-head";
-      const title = document.createElement("span");
-      title.className = "xlc-pane-title";
-      head.appendChild(title);
-      const badge = document.createElement("span");
-      badge.className = "xlc-badge xlc-badge--ai xlc-pane-ai";
-      badge.style.display = "none";
-      badge.textContent = "\u2726 " + this.deps.t("aiFound");
-      head.appendChild(badge);
-      const usage = document.createElement("span");
-      usage.className = "xlc-badge xlc-badge--ai xlc-pane-usage";
-      usage.style.display = "none";
-      head.appendChild(usage);
-      return head;
-    }
-    buildPaneFoot() {
-      const foot = document.createElement("div");
-      foot.className = "xlc-pane-foot";
-      const insert = document.createElement("button");
-      insert.className = "b3-button xlc-btn-primary";
-      insert.textContent = this.deps.t("insert");
-      insert.dataset.xlcPaneAct = "insert";
-      insert.addEventListener("click", () => {
-        var _a;
-        if (this.activeProvider >= 0) {
-          const row = this.providerRows[this.activeProvider];
-          if (row) void this.deps.insertProviderPayload(row.payload, (_a = this.insertTarget) != null ? _a : void 0);
-          return;
-        }
-        const entry = this.results[this.activeIndex];
-        if (entry) void this.runPrimary(entry);
-      });
-      const copy = document.createElement("button");
-      copy.className = "b3-button";
-      copy.textContent = this.deps.t("copy");
-      copy.dataset.xlcPaneAct = "copy";
-      copy.addEventListener("click", () => {
-        if (this.activeProvider >= 0) {
-          const row = this.providerRows[this.activeProvider];
-          if (row) void this.deps.copyProviderPayload(row.payload);
-          return;
-        }
-        const entry = this.results[this.activeIndex];
-        if (entry) void this.deps.runAction(entry.id, "copy");
-      });
-      const aiBtn = document.createElement("button");
-      aiBtn.className = "b3-button xlc-btn-ai";
-      aiBtn.textContent = "\u2726 " + this.deps.t("aiTransform");
-      aiBtn.dataset.xlcPaneAct = "ai";
-      aiBtn.addEventListener("click", () => {
-        const entry = this.results[this.activeIndex];
-        if (entry) void this.showActionMenu(entry);
-      });
-      const spacer = document.createElement("span");
-      spacer.className = "xlc-foot-spacer";
-      const source = document.createElement("button");
-      source.className = "b3-button b3-button--text xlc-btn-ghost";
-      source.textContent = this.deps.t("openSource");
-      source.dataset.xlcPaneAct = "source";
-      source.addEventListener("click", () => {
-        const entry = this.results[this.activeIndex];
-        if (entry) void this.deps.openSource(entry.id);
-      });
-      const edit = document.createElement("button");
-      edit.className = "b3-button b3-button--text xlc-btn-ghost";
-      edit.textContent = this.deps.t("edit");
-      edit.dataset.xlcPaneAct = "edit";
-      edit.addEventListener("click", () => {
-        const entry = this.results[this.activeIndex];
-        if (entry) void this.deps.editItem(entry.id);
-      });
-      foot.appendChild(insert);
-      foot.appendChild(aiBtn);
-      foot.appendChild(copy);
-      foot.appendChild(spacer);
-      foot.appendChild(source);
-      foot.appendChild(edit);
-      return foot;
-    }
-    /** 重新加载标签/分类选项；成功时清理已经不存在的持久化筛选，失败时保留当前筛选并给出提示。 */
-    async refreshFilterOptions() {
-      var _a, _b;
-      const tagSelect = (_a = this.dialog) == null ? void 0 : _a.element.querySelector(".xlc-tag-select");
-      const categorySelect = (_b = this.dialog) == null ? void 0 : _b.element.querySelector(".xlc-category-select");
-      if (!tagSelect || !categorySelect) return false;
-      const seq = ++this.filterOptionsSeq;
-      const current = this.deps.getFilters();
-      tagSelect.disabled = true;
-      categorySelect.disabled = true;
-      tagSelect.title = "";
-      categorySelect.title = "";
-      tagSelect.replaceChildren();
-      categorySelect.replaceChildren();
-      const tagAll = document.createElement("option");
-      tagAll.value = "";
-      tagAll.textContent = this.deps.t("filterAllTags");
-      tagSelect.appendChild(tagAll);
-      const categoryAll = document.createElement("option");
-      categoryAll.value = "";
-      categoryAll.textContent = this.deps.t("filterAllCategories");
-      categorySelect.appendChild(categoryAll);
-      const [tagsResult, categoriesResult] = await Promise.allSettled([this.deps.getTags(), this.deps.getCategories()]);
-      if (seq !== this.filterOptionsSeq || !this.dialog) return false;
-      const tags = tagsResult.status === "fulfilled" ? Array.from(new Set(tagsResult.value.filter(Boolean))) : [];
-      const categories = categoriesResult.status === "fulfilled" ? Array.from(new Set(categoriesResult.value.filter(Boolean))) : [];
-      for (const tag of tags) {
-        const option = document.createElement("option");
-        option.value = tag;
-        option.textContent = tag;
-        tagSelect.appendChild(option);
-      }
-      for (const category of categories) {
-        const option = document.createElement("option");
-        option.value = category;
-        option.textContent = category;
-        categorySelect.appendChild(option);
-      }
-      if (tagsResult.status === "rejected") {
-        tagSelect.title = this.deps.t("kernelError", this.deps.t("tags"));
-        if (current.tag) {
-          const option = document.createElement("option");
-          option.value = current.tag;
-          option.textContent = current.tag;
-          tagSelect.appendChild(option);
-        }
-      }
-      if (categoriesResult.status === "rejected") {
-        categorySelect.title = this.deps.t("kernelError", this.deps.t("category"));
-        if (current.category) {
-          const option = document.createElement("option");
-          option.value = current.category;
-          option.textContent = current.category;
-          categorySelect.appendChild(option);
-        }
-      }
-      const nextTag = tagsResult.status === "fulfilled" ? current.tag && tags.includes(current.tag) ? current.tag : "" : current.tag;
-      const nextCategory = categoriesResult.status === "fulfilled" ? current.category && categories.includes(current.category) ? current.category : "" : current.category;
-      tagSelect.value = nextTag;
-      categorySelect.value = nextCategory;
-      tagSelect.disabled = false;
-      categorySelect.disabled = false;
-      const changed = tagsResult.status === "fulfilled" && nextTag !== current.tag || categoriesResult.status === "fulfilled" && nextCategory !== current.category;
-      if (changed) {
-        this.deps.setFilters({ type: current.type, tag: nextTag, category: nextCategory });
-      }
-      return changed;
-    }
-    attachLongPress(list, isMobile) {
-      let pressTimer;
-      let startY = 0;
-      let startX = 0;
-      const cancel = () => {
-        if (pressTimer) clearTimeout(pressTimer);
-        pressTimer = void 0;
-      };
-      this.longPressCancel = cancel;
-      list.addEventListener("contextmenu", cancel);
-      list.addEventListener("touchstart", (e) => {
-        var _a, _b, _c, _d;
-        startY = (_b = (_a = e.touches[0]) == null ? void 0 : _a.clientY) != null ? _b : 0;
-        startX = (_d = (_c = e.touches[0]) == null ? void 0 : _c.clientX) != null ? _d : 0;
-        const row = e.target.closest("[data-xlc-index]");
-        if (!row) return;
-        const entry = this.results[Number(row.dataset.xlcIndex)];
-        if (!entry) return;
-        cancel();
-        pressTimer = setTimeout(() => void this.showActionMenu(entry), 550);
-      }, { passive: true });
-      list.addEventListener("touchmove", (e) => {
-        var _a, _b, _c, _d;
-        const dy = Math.abs(((_b = (_a = e.touches[0]) == null ? void 0 : _a.clientY) != null ? _b : 0) - startY);
-        const dx = Math.abs(((_d = (_c = e.touches[0]) == null ? void 0 : _c.clientX) != null ? _d : 0) - startX);
-        if (Math.max(dx, dy) > 10) cancel();
-      }, { passive: true });
-      list.addEventListener("touchend", cancel, { passive: true });
-      list.addEventListener("touchcancel", cancel, { passive: true });
-      list.addEventListener("pointercancel", cancel, { passive: true });
-      list.addEventListener("contextmenu", (e) => {
-        e.preventDefault();
-        const row = e.target.closest("[data-xlc-index]");
-        const entry = row ? this.results[Number(row.dataset.xlcIndex)] : this.results[this.activeIndex];
-        if (entry) void this.showActionMenu(entry);
-      });
-      void isMobile;
-    }
-    syncScopeChips() {
-      var _a;
-      (_a = this.dialog) == null ? void 0 : _a.element.querySelectorAll(".xlc-scope-chip").forEach((chip) => {
-        chip.classList.toggle("xlc-chip--on", chip.dataset.scope === this.currentScope);
-      });
-    }
-    buildQuery() {
-      var _a, _b, _c, _d, _e, _f, _g, _h, _i;
-      const el = (_a = this.dialog) == null ? void 0 : _a.element;
-      const text = (_c = (_b = el == null ? void 0 : el.querySelector(".xlc-search-input")) == null ? void 0 : _b.value) != null ? _c : "";
-      const itemType = (_e = (_d = el == null ? void 0 : el.querySelector(".xlc-type-select")) == null ? void 0 : _d.value) != null ? _e : "";
-      const tag = (_g = (_f = el == null ? void 0 : el.querySelector(".xlc-tag-select")) == null ? void 0 : _f.value) != null ? _g : "";
-      const category = (_i = (_h = el == null ? void 0 : el.querySelector(".xlc-category-select")) == null ? void 0 : _h.value) != null ? _i : "";
-      return { text, itemType, tag, category, scope: this.currentScope };
-    }
-    async refresh() {
-      var _a, _b, _c, _d, _e, _f, _g, _h;
-      const seq = ++this.searchSeq;
-      const query = this.buildQuery();
-      this.lastQueryText = query.text.trim();
-      this.usageCounts = new Map(Object.entries(this.deps.getUsage()).map(([id, u]) => [id, u.count]));
-      const list = (_a = this.dialog) == null ? void 0 : _a.element.querySelector(".xlc-list");
-      const status = (_b = this.dialog) == null ? void 0 : _b.element.querySelector(".xlc-status");
-      const footer = (_c = this.dialog) == null ? void 0 : _c.element.querySelector(".xlc-footer");
-      const aiBanner = (_d = this.dialog) == null ? void 0 : _d.element.querySelector(".xlc-ai-banner");
-      if (!list) return;
-      const mobileInsert = (_e = this.dialog) == null ? void 0 : _e.element.querySelector(".xlc-mobile-insert");
-      if (mobileInsert) mobileInsert.disabled = true;
-      this.lastPreviewId = null;
-      list.classList.add("xlc-list--loading");
-      list.setAttribute("aria-busy", "true");
-      let total = 0;
-      let truncated = false;
-      let loading = false;
-      let loadError;
-      let directError = "";
-      try {
-        const text = query.text.trim();
-        if (text.startsWith("?") && text.length > 1) {
-          const aiResult = await this.deps.aiSemantic(text.slice(1), { itemType: (_f = query.itemType) != null ? _f : "", tag: (_g = query.tag) != null ? _g : "", category: (_h = query.category) != null ? _h : "", scope: this.currentScope });
-          if (seq !== this.searchSeq) return;
-          if (aiResult.ok) {
-            this.results = aiResult.entries;
-            this.aiResults = true;
-            total = aiResult.entries.length;
-          } else {
-            this.results = [];
-            this.aiResults = false;
-            directError = aiResult.message;
-          }
-          if (aiBanner) aiBanner.style.display = this.aiResults && this.results.length ? "" : "none";
-          if (aiBanner && this.aiResults) {
-            aiBanner.textContent = `\u2726 ${this.deps.t("aiResultCount", String(this.results.length))}`;
-          }
-        } else {
-          const result = await this.deps.search(query);
-          if (seq !== this.searchSeq) return;
-          this.results = result.entries;
-          total = result.total;
-          truncated = result.truncated;
-          loading = result.loading === true;
-          loadError = result.error;
-          this.aiResults = false;
-          if (aiBanner) aiBanner.style.display = "none";
-        }
-      } catch (err) {
-        if (seq !== this.searchSeq) return;
-        this.results = [];
-        this.providerRows = [];
-        this.activeIndex = 0;
-        this.activeProvider = -1;
-        this.aiResults = false;
-        this.emptyMessage = "";
-        if (aiBanner) aiBanner.style.display = "none";
-        if (status) {
-          status.textContent = this.deps.t("kernelError", err.message);
-          status.classList.add("xlc-status--error");
-        }
-        if (footer) {
-          const count = footer.querySelector(".xlc-footer-count");
-          if (count && !this.deps.isMobile()) count.textContent = "";
-        }
-        this.finishSearchLoad(list);
-        this.renderList(list);
-        return;
-      }
-      if (seq !== this.searchSeq) return;
-      this.activeIndex = 0;
-      this.activeProvider = -1;
-      if (status) {
-        this.emptyMessage = "";
-        const isError = Boolean(directError || loadError);
-        status.classList.toggle("xlc-status--error", isError);
-        if (directError) {
-          status.textContent = directError;
-        } else if (loadError) {
-          status.textContent = this.deps.t("kernelError", loadError);
-        } else if (this.results.length) {
-          status.textContent = "";
-        } else if (loading) {
-          status.textContent = this.deps.t("indexing");
-        } else {
-          status.textContent = "";
-          if (!query.text.trim() && this.currentScope === "favorites") {
-            this.emptyMessage = this.deps.t("emptyFavorites");
-          } else if (!query.text.trim() && this.currentScope === "recent") {
-            this.emptyMessage = this.deps.t("emptyRecent");
-          } else if (!query.text.trim() && this.currentScope === "all" && Boolean(query.itemType || query.tag || query.category)) {
-            this.emptyMessage = this.deps.t("emptyFiltered");
-          } else if (query.text.trim() && !query.text.trim().startsWith("?") && this.deps.aiEnabled()) {
-            this.emptyMessage = this.deps.t("semanticSuggestion");
-          } else if (total === 0 && !query.text.trim()) {
-            this.emptyMessage = this.deps.t("emptyLibrary");
-          } else {
-            this.emptyMessage = this.deps.t("empty");
-          }
-        }
-      }
-      if (footer) {
-        const count = footer.querySelector(".xlc-footer-count");
-        if (count && !this.deps.isMobile()) {
-          const sortSuffix = this.deps.getSort() === "frequent" ? ` \xB7 ${this.deps.t("sort.frequent")}` : "";
-          if (directError) {
-            count.textContent = "";
-            count.title = "";
-          } else {
-            const countLabel = this.aiResults ? this.deps.t("aiResultCount", String(total)) : this.deps.t("totalItems", String(total));
-            count.textContent = countLabel + (!this.aiResults ? sortSuffix : "") + (truncated ? " \u26A0" : "");
-            count.title = truncated ? this.deps.t("truncatedHint") : "";
-          }
-        }
-      }
-      this.providerRows = [];
-      const q = query.text.trim();
-      if (q && !q.startsWith("?")) {
-        try {
-          this.providerRows = await this.deps.providerSearch(q);
-        } catch {
-          this.providerRows = [];
-        }
-        if (seq !== this.searchSeq) return;
-      }
-      this.finishSearchLoad(list);
-      this.renderList(list);
-      this.updatePreview();
-    }
-    /** 收尾一次搜索刷新：解除列表加载反馈（成功与失败路径共用）。 */
-    finishSearchLoad(list) {
-      list.classList.remove("xlc-list--loading");
-      list.removeAttribute("aria-busy");
-    }
-    /** 菜单关闭后把焦点还给搜索框（键盘连续性；弹窗已销毁则静默忽略）。 */
-    restoreFocusToSearch() {
-      var _a, _b;
-      (_b = (_a = this.dialog) == null ? void 0 : _a.element.querySelector(".xlc-search-input")) == null ? void 0 : _b.focus();
-    }
-    /** 命中高亮：按字面子串（大小写不敏感）切分并注入 mark span；文本一律 textContent，绝不 innerHTML。 */
-    appendHighlighted(parent, text, query) {
-      const lowerText = text.toLowerCase();
-      const lowerQuery = query.toLowerCase();
-      let cursor = 0;
-      while (cursor <= text.length - lowerQuery.length) {
-        const at = lowerText.indexOf(lowerQuery, cursor);
-        if (at < 0) break;
-        if (at > cursor) parent.appendChild(document.createTextNode(text.slice(cursor, at)));
-        const mark = document.createElement("mark");
-        mark.className = "xlc-hit";
-        mark.textContent = text.slice(at, at + query.length);
-        parent.appendChild(mark);
-        cursor = at + query.length;
-      }
-      if (cursor < text.length) parent.appendChild(document.createTextNode(text.slice(cursor)));
-    }
-    renderList(list) {
-      var _a, _b, _c, _d, _e, _f;
-      list.innerHTML = "";
-      if (this.results.length === 0 && this.providerRows.length === 0 && this.emptyMessage) {
-        const empty = document.createElement("div");
-        empty.className = "xlc-empty";
-        const icon = document.createElement("div");
-        icon.className = "xlc-empty-icon";
-        icon.textContent = "\u2726";
-        empty.appendChild(icon);
-        const text = document.createElement("div");
-        text.className = "xlc-empty-text";
-        text.textContent = this.emptyMessage;
-        empty.appendChild(text);
-        const queryText = this.lastQueryText.trim();
-        if (queryText && !queryText.startsWith("?")) {
-          const titleHint = document.createElement("div");
-          titleHint.className = "xlc-empty-hint";
-          titleHint.textContent = this.deps.t("emptyQueryHint");
-          empty.appendChild(titleHint);
-          if (this.deps.aiEnabled()) {
-            const hint = document.createElement("div");
-            hint.className = "xlc-empty-hint";
-            hint.textContent = this.deps.t("aiSemanticHint");
-            empty.appendChild(hint);
-          }
-        } else if (queryText.startsWith("?")) {
-          const hint = document.createElement("div");
-          hint.className = "xlc-empty-hint";
-          hint.textContent = this.deps.t("semanticEmptyHint");
-          empty.appendChild(hint);
-        } else if (this.emptyMessage === this.deps.t("emptyFavorites")) {
-          const hint = document.createElement("div");
-          hint.className = "xlc-empty-hint";
-          hint.textContent = this.deps.t("emptyFavoritesSub");
-          empty.appendChild(hint);
-        } else if (this.emptyMessage === this.deps.t("emptyLibrary")) {
-          const hint = document.createElement("div");
-          hint.className = "xlc-empty-hint";
-          hint.textContent = this.deps.t("emptyLibrarySub");
-          empty.appendChild(hint);
-          const guide = document.createElement("button");
-          guide.type = "button";
-          guide.className = "b3-button xlc-btn-ghost xlc-empty-action";
-          guide.dataset.xlcAction = "help";
-          guide.textContent = "\u24D8 " + this.deps.t("usageGuideBtn");
-          guide.addEventListener("click", () => this.openUsageGuide());
-          empty.appendChild(guide);
-        }
-        if (this.emptyMessage === this.deps.t("emptyFiltered")) {
-          const clear = document.createElement("button");
-          clear.type = "button";
-          clear.className = "b3-button xlc-btn-ghost xlc-empty-action";
-          clear.dataset.xlcAction = "clear-filters";
-          clear.textContent = this.deps.t("clearFilters");
-          clear.addEventListener("click", () => {
-            var _a2;
-            this.deps.setFilters({ type: "", tag: "", category: "" });
-            (_a2 = this.dialog) == null ? void 0 : _a2.element.querySelectorAll(".xlc-type-select, .xlc-tag-select, .xlc-category-select").forEach((select) => {
-              select.value = "";
-            });
-            void this.refresh();
-          });
-          empty.appendChild(clear);
-        }
-        if (this.emptyMessage === this.deps.t("emptyLibrary") || this.emptyMessage === this.deps.t("emptyFiltered") || this.lastQueryText.trim()) {
-          const create = document.createElement("button");
-          create.type = "button";
-          create.className = "b3-button xlc-btn-primary xlc-empty-action";
-          create.dataset.xlcAction = "new-item";
-          const query = this.lastQueryText.trim();
-          const fullTitleCandidate = query && !query.startsWith("?") ? query.slice(0, 120) : "";
-          const buttonTitle = fullTitleCandidate.length > 24 ? `${fullTitleCandidate.slice(0, 24)}\u2026` : fullTitleCandidate;
-          create.textContent = buttonTitle ? this.deps.t("newItemActionWithQuery", buttonTitle) : this.deps.t("newItemAction");
-          const accessibleLabel = fullTitleCandidate ? this.deps.t("newItemWithTitle", fullTitleCandidate) : this.deps.t("newItemAction");
-          create.setAttribute("aria-label", accessibleLabel);
-          create.title = accessibleLabel;
-          create.addEventListener("click", () => {
-            this.deps.newItem(fullTitleCandidate || void 0);
-          });
-          empty.appendChild(create);
-        }
-        list.appendChild(empty);
-      }
-      const grouping = this.currentScope === "all" && this.deps.getSort() !== "title";
-      const groupLabels = [];
-      if (grouping && this.results.length > 0) {
-        const isManual = this.deps.getSort() === "manual";
-        const favs = [];
-        const rest = [];
-        for (const e of this.results) {
-          if (isManual && e && this.deps.isFavorite(e.id)) favs.push(e);
-          else rest.push(e);
-        }
-        const byCat = /* @__PURE__ */ new Map();
-        const uncategorized = [];
-        for (const e of rest) {
-          const cat = (_a = e == null ? void 0 : e.category) != null ? _a : "";
-          if (!cat) {
-            uncategorized.push(e);
-            continue;
-          }
-          const bucket = (_b = byCat.get(cat)) != null ? _b : [];
-          bucket.push(e);
-          byCat.set(cat, bucket);
-        }
-        const catKeys = Array.from(byCat.keys()).sort((a, b) => a.localeCompare(b, "zh-Hans-CN"));
-        const ordered = [];
-        if (isManual && favs.length > 0) {
-          groupLabels.push({ label: "\u2605 " + this.deps.t("groupFavorites"), count: favs.length });
-          ordered.push(...favs);
-        }
-        for (const key of catKeys) {
-          const bucket = (_c = byCat.get(key)) != null ? _c : [];
-          groupLabels.push({ label: key, count: bucket.length });
-          ordered.push(...bucket);
-        }
-        if (uncategorized.length > 0) {
-          groupLabels.push({ label: this.deps.t("groupUncategorized"), count: uncategorized.length });
-          ordered.push(...uncategorized);
-        }
-        if (groupLabels.length > 1) {
-          this.results = ordered;
-        } else {
-          groupLabels.length = 0;
-        }
-      }
-      let headCursor = -1;
-      const headStarts = [];
-      let groupAcc = 0;
-      for (const g of groupLabels) {
-        headStarts.push(groupAcc);
-        groupAcc += g.count;
-      }
-      const placeGroupHead = (label, count) => {
-        const head = document.createElement("div");
-        head.className = "xlc-group-head";
-        head.dataset.xlcHead = "1";
-        head.setAttribute("aria-hidden", "true");
-        head.textContent = `${label} \xB7 ${count}`;
-        list.appendChild(head);
-      };
-      for (let i = 0; i < this.results.length; i++) {
-        while (headCursor + 1 < groupLabels.length && i === headStarts[headCursor + 1]) {
-          headCursor++;
-          const head = groupLabels[headCursor];
-          if (head) placeGroupHead(head.label, head.count);
-        }
-        const entry = this.results[i];
-        if (!entry) continue;
-        const fav = this.deps.isFavorite(entry.id);
-        const row = document.createElement("div");
-        row.className = "xlc-row" + (i === this.activeIndex ? " xlc-row--active" : "") + (fav ? " xlc-row--fav" : "");
-        row.dataset.xlcIndex = String(i);
-        row.id = `xlc-result-${i}`;
-        row.setAttribute("role", "option");
-        row.setAttribute("aria-selected", i === this.activeIndex ? "true" : "false");
-        const main = document.createElement("div");
-        main.className = "xlc-row-main";
-        const title = document.createElement("div");
-        title.className = "xlc-row-title";
-        if (i < 9) {
-          const ordinal = document.createElement("span");
-          ordinal.className = "xlc-row-ordinal";
-          ordinal.textContent = String(i + 1);
-          ordinal.title = this.deps.t("usageHint");
-          title.appendChild(ordinal);
-        }
-        const badge = document.createElement("span");
-        badge.className = `xlc-badge xlc-badge--${entry.itemType}`;
-        badge.textContent = (_d = TYPE_BADGES2[entry.itemType]) != null ? _d : "TXT";
-        badge.title = this.deps.t(`type.${entry.itemType}`);
-        badge.setAttribute("aria-label", this.deps.t(`type.${entry.itemType}`));
-        title.appendChild(badge);
-        const titleText = document.createElement("span");
-        titleText.className = "xlc-row-titletext";
-        const highlight = this.lastQueryText.length > 0 && !this.lastQueryText.startsWith("?") && !this.aiResults;
-        if (highlight) {
-          this.appendHighlighted(titleText, entry.title || this.deps.t("unknownType"), this.lastQueryText);
-        } else {
-          titleText.textContent = entry.title || this.deps.t("unknownType");
-        }
-        title.appendChild(titleText);
-        if (((_e = entry.varCount) != null ? _e : 0) > 0) {
-          const varBadge = document.createElement("span");
-          varBadge.className = "xlc-badge xlc-badge--var";
-          varBadge.textContent = this.deps.t("varCountBadge", String(entry.varCount));
-          title.appendChild(varBadge);
-        }
-        main.appendChild(title);
-        const meta = document.createElement("div");
-        meta.className = "xlc-row-meta";
-        const useCount = (_f = this.usageCounts.get(entry.id)) != null ? _f : 0;
-        const joined = [entry.tags.join(" / "), entry.summary].filter(Boolean).join(" \xB7 ");
-        const metaBase = joined.length > 140 ? joined.slice(0, 140) + "\u2026" : joined;
-        meta.textContent = metaBase + (useCount > 0 ? ` \xB7 ${this.deps.t("useCount", String(useCount))}` : "");
-        main.appendChild(meta);
-        row.appendChild(main);
-        if (this.deps.isSourceMissing(entry)) {
-          const warn = document.createElement("span");
-          warn.className = "xlc-row-warn";
-          warn.textContent = "\u26A0";
-          warn.title = this.deps.t("sourceMissing") + " \xB7 " + this.deps.t("sourceGone");
-          warn.setAttribute("aria-label", this.deps.t("sourceMissing"));
-          title.appendChild(warn);
-        }
-        const star = document.createElement("button");
-        star.className = "b3-button b3-button--small xlc-row-action";
-        star.textContent = fav ? "\u2605" : "\u2606";
-        star.setAttribute("aria-label", fav ? this.deps.t("unfavorite") : this.deps.t("favorite"));
-        star.addEventListener("click", (e) => {
-          e.stopPropagation();
-          this.deps.toggleFavorite(entry.id);
-          star.textContent = this.deps.isFavorite(entry.id) ? "\u2605" : "\u2606";
-          void this.refreshPreservingPosition().then(() => this.restoreFocusToSearch());
-        });
-        row.appendChild(star);
-        list.appendChild(row);
-      }
-      if (this.providerRows.length > 0) {
-        const header = document.createElement("div");
-        header.className = "xlc-provider-header";
-        header.dataset.xlcHead = "1";
-        header.setAttribute("aria-hidden", "true");
-        header.textContent = "\u2726 " + this.deps.t("providerSection") + " \xB7 " + this.providerRows.length;
-        list.appendChild(header);
-        for (const row of this.providerRows) {
-          const el = document.createElement("div");
-          el.className = "xlc-row xlc-row--provider";
-          el.dataset.xlcVirtualId = row.virtualId;
-          el.id = `xlc-provider-${this.providerRows.indexOf(row)}`;
-          el.setAttribute("role", "option");
-          el.setAttribute("aria-selected", "false");
-          const main = document.createElement("div");
-          main.className = "xlc-row-main";
-          const title = document.createElement("div");
-          title.className = "xlc-row-title";
-          const badge = document.createElement("span");
-          badge.className = "xlc-badge xlc-badge--ai";
-          badge.textContent = row.providerName.length > 12 ? row.providerName.slice(0, 12) + "\u2026" : row.providerName;
-          badge.title = row.providerName;
-          title.appendChild(badge);
-          const titleText = document.createElement("span");
-          titleText.className = "xlc-row-titletext";
-          titleText.textContent = row.title || row.payload.slice(0, 40);
-          title.appendChild(titleText);
-          main.appendChild(title);
-          const meta = document.createElement("div");
-          meta.className = "xlc-row-meta";
-          meta.textContent = row.payload.slice(0, 120);
-          main.appendChild(meta);
-          el.appendChild(main);
-          el.addEventListener("click", () => void this.showProviderMenu(row, el));
-          el.addEventListener("contextmenu", (e) => {
-            e.preventDefault();
-            void this.showProviderMenu(row, el);
-          });
-          list.appendChild(el);
-        }
-      }
-      this.paintActive();
-      this.syncPaneActions();
-    }
-    /** 预览区动作随当前选中行同步；键盘切换/来源预检也必须更新按钮状态。 */
-    syncPaneActions() {
-      var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k, _l, _m, _n, _o, _p, _q, _r, _s, _t, _u, _v, _w, _x, _y, _z, _A, _B, _C;
-      const actionable = this.results.length > 0;
-      const scope = (_b = (_a = this.dialog) == null ? void 0 : _a.element) != null ? _b : document;
-      const targetBanner = scope.querySelector(".xlc-target-banner");
-      if (targetBanner && !this.insertTarget) {
-        const hasEditor = (_e = (_d = (_c = this.deps).hasActiveEditor) == null ? void 0 : _d.call(_c)) != null ? _e : true;
-        const hasTarget = (_h = (_g = (_f = this.deps).hasInsertTarget) == null ? void 0 : _g.call(_f)) != null ? _h : hasEditor;
-        const fallbackKey = this.deps.isMobile() ? "insertMobileActionHint" : hasTarget ? "insertCurrentEditorBanner" : hasEditor ? "insertTargetUnavailableBanner" : "insertNoEditorBanner";
-        targetBanner.textContent = "\u2913 " + this.deps.t(fallbackKey);
-        targetBanner.setAttribute("aria-label", this.deps.t(fallbackKey));
-      }
-      scope.querySelectorAll(".xlc-pane-foot .b3-button").forEach((btn) => {
-        var _a2, _b2;
-        if (this.activeProvider >= 0) {
-          const act2 = (_a2 = btn.dataset.xlcPaneAct) != null ? _a2 : "";
-          btn.disabled = this.primaryBusy || !(act2 === "insert" || act2 === "copy");
-          return;
-        }
-        const entry = this.results[this.activeIndex];
-        const act = (_b2 = btn.dataset.xlcPaneAct) != null ? _b2 : "";
-        const unavailable = !entry || act === "ai" && !this.deps.aiEnabled() || act === "source" && this.deps.isSourceMissing(entry);
-        btn.disabled = !actionable || unavailable || this.primaryBusy || this.varFormOpen;
-        btn.removeAttribute("title");
-        if (act === "ai" && !this.deps.aiEnabled()) btn.title = this.deps.t("aiDisabled");
-        if (act === "source" && entry && this.deps.isSourceMissing(entry)) btn.title = this.deps.t("sourceGone");
-      });
-      const insertBtn = scope.querySelector('[data-xlc-pane-act="insert"]');
-      if (insertBtn) {
-        const copyFallback = this.activeProvider >= 0 ? !this.insertTarget && (this.deps.isMobile() || !((_n = (_m = (_j = (_i = this.deps).hasInsertTarget) == null ? void 0 : _j.call(_i)) != null ? _m : (_l = (_k = this.deps).hasActiveEditor) == null ? void 0 : _l.call(_k)) != null ? _n : true)) : this.mobilePrimaryIsCopy() || !this.insertTarget && !((_t = (_s = (_p = (_o = this.deps).hasInsertTarget) == null ? void 0 : _p.call(_o)) != null ? _s : (_r = (_q = this.deps).hasActiveEditor) == null ? void 0 : _r.call(_q)) != null ? _t : true);
-        insertBtn.textContent = copyFallback ? this.deps.t("copy") : this.deps.t("insert");
-        const hint = this.deps.isMobile() && !this.insertTarget ? this.deps.t("insertMobileActionHint") : !this.insertTarget && !((_z = (_y = (_v = (_u = this.deps).hasInsertTarget) == null ? void 0 : _v.call(_u)) != null ? _y : (_x = (_w = this.deps).hasActiveEditor) == null ? void 0 : _x.call(_w)) != null ? _z : true) ? this.deps.t(((_C = (_B = (_A = this.deps).hasActiveEditor) == null ? void 0 : _B.call(_A)) != null ? _C : true) ? "insertTargetUnavailableCopied" : "insertNoEditor") : "";
-        insertBtn.title = hint;
-        if (hint) insertBtn.setAttribute("aria-label", hint);
-        else insertBtn.removeAttribute("aria-label");
-        insertBtn.setAttribute("aria-busy", this.primaryBusy ? "true" : "false");
-      }
-      const mobileInsert = scope.querySelector(".xlc-mobile-foot .xlc-btn-primary");
-      if (mobileInsert) {
-        mobileInsert.disabled = !actionable || this.primaryBusy || this.varFormOpen;
-        mobileInsert.textContent = this.deps.t(this.mobilePrimaryIsCopy() ? "copy" : "quickInsertSelected");
-        const hint = this.mobilePrimaryIsCopy() ? this.deps.t("insertMobileActionHint") : "";
-        mobileInsert.title = hint;
-        if (hint) mobileInsert.setAttribute("aria-label", hint);
-        else mobileInsert.removeAttribute("aria-label");
-        mobileInsert.setAttribute("aria-busy", this.primaryBusy ? "true" : "false");
-      }
-    }
-    mobilePrimaryIsCopy() {
-      return this.deps.isMobile() && !this.insertTarget;
-    }
-    async showProviderMenu(row, anchor) {
-      var _a, _b, _c, _d, _e, _f;
-      (_a = this.menuDismiss) == null ? void 0 : _a.call(this);
-      this.menuDismiss = null;
-      const menu = document.createElement("div");
-      menu.className = "xlc-menu";
-      menu.setAttribute("role", "menu");
-      menu.setAttribute("aria-label", row.providerName + " \xB7 " + this.deps.t("providerSection"));
-      const lbl = document.createElement("div");
-      lbl.className = "xlc-menu-lbl";
-      lbl.textContent = row.providerName + " \xB7 " + this.deps.t("providerSection");
-      menu.appendChild(lbl);
-      const sec = document.createElement("div");
-      sec.className = "xlc-menu-sec";
-      sec.appendChild(this.menuButton("\uFF0B", this.deps.t("providerInsert"), "xlc-menu-item", async () => {
-        var _a2;
-        const execution = this.deps.insertProviderPayload(row.payload, (_a2 = this.insertTarget) != null ? _a2 : void 0);
-        this.destroy();
-        await execution;
-      }));
-      sec.appendChild(this.menuButton("\u29C9", this.deps.t("providerCopy"), "xlc-menu-item", async () => {
-        this.destroy();
-        await this.deps.copyProviderPayload(row.payload);
-      }));
-      menu.appendChild(sec);
-      const host = (_e = (_d = (_b = this.dialog) == null ? void 0 : _b.element.querySelector(".xlc-dialog")) != null ? _d : (_c = this.dialog) == null ? void 0 : _c.element) != null ? _e : anchor;
-      host.appendChild(menu);
-      const dismiss = (e) => {
-        if (!menu.contains(e.target)) {
-          menu.remove();
-          if (this.menuDismiss === dismissMenu) this.menuDismiss = null;
-          document.removeEventListener("pointerdown", dismiss, true);
-          this.restoreFocusToSearch();
-        }
-      };
-      const dismissMenu = () => {
-        menu.remove();
-        document.removeEventListener("pointerdown", dismiss, true);
-      };
-      this.menuDismiss = dismissMenu;
-      document.addEventListener("pointerdown", dismiss, true);
-      menu.addEventListener("keydown", (e) => {
-        if (e.key === "Escape") {
-          e.preventDefault();
-          e.stopPropagation();
-          menu.remove();
-          if (this.menuDismiss === dismissMenu) this.menuDismiss = null;
-          document.removeEventListener("pointerdown", dismiss, true);
-          this.restoreFocusToSearch();
-        }
-      });
-      (_f = menu.querySelector(".xlc-menu-item")) == null ? void 0 : _f.focus();
-    }
-    /** 外部变更（动作菜单内删除/建副本等）后的列表同步入口（R138）。 */
-    refreshAfterExternalChange() {
-      void this.refreshPreservingPosition();
-    }
-    async refreshPreservingPosition() {
-      var _a, _b, _c;
-      const list = (_a = this.dialog) == null ? void 0 : _a.element.querySelector(".xlc-list");
-      const scrollTop = (_b = list == null ? void 0 : list.scrollTop) != null ? _b : 0;
-      const selectedId = (_c = this.results[this.activeIndex]) == null ? void 0 : _c.id;
-      await this.refreshFilterOptions();
-      await this.refresh();
-      if (selectedId) {
-        const next = this.results.findIndex((entry) => entry.id === selectedId);
-        if (next >= 0) this.activeIndex = next;
-      }
-      if (list) {
-        this.renderList(list);
-        list.scrollTop = scrollTop;
-      }
-      this.updatePreview();
-    }
-    /** 统一导航位：0..results.length-1 为库条目，之后为提供方行 */
-    setNav(pos) {
-      if (pos < this.results.length) {
-        this.activeIndex = pos;
-        this.activeProvider = -1;
-      } else {
-        this.activeIndex = Math.max(Math.min(pos, Math.max(this.results.length - 1, 0)), 0);
-        this.activeProvider = pos - this.results.length;
-      }
-    }
-    navPosition() {
-      return this.activeProvider >= 0 ? this.results.length + this.activeProvider : this.activeIndex;
-    }
-    paintActive() {
-      var _a, _b;
-      const list = (_a = this.dialog) == null ? void 0 : _a.element.querySelector(".xlc-list");
-      if (!list) return;
-      const rows = Array.from(list.children).filter((el) => !el.dataset.xlcHead);
-      rows.forEach((child, i) => {
-        const isReal = i < this.results.length;
-        const active3 = isReal ? this.activeProvider < 0 && i === this.activeIndex : this.activeProvider >= 0 && i - this.results.length === this.activeProvider;
-        child.classList.toggle("xlc-row--active", active3);
-        child.setAttribute("aria-selected", active3 ? "true" : "false");
-      });
-      const active2 = rows[this.navPosition()];
-      const input = (_b = this.dialog) == null ? void 0 : _b.element.querySelector(".xlc-search-input");
-      if (active2 == null ? void 0 : active2.id) input == null ? void 0 : input.setAttribute("aria-activedescendant", active2.id);
-      else input == null ? void 0 : input.removeAttribute("aria-activedescendant");
-      active2 == null ? void 0 : active2.scrollIntoView({ block: "nearest" });
-    }
-    schedulePreview(entry) {
-      this.updatePreview(entry.id);
-    }
-    /** 变量提示行：从预览文本解析 ask 字段与光标标记并列出语法 chip（code/提供方行不展示）。 */
-    paintPaneVars(text, itemType) {
-      var _a;
-      const paneVars = (_a = this.dialog) == null ? void 0 : _a.element.querySelector(".xlc-pane-vars");
-      if (!paneVars) return;
-      const hasCursor = Boolean(text && hasCursorToken(text));
-      const fields = itemType && itemType !== "code" && itemType !== "provider" && text ? listAskFields(text) : [];
-      paneVars.textContent = "";
-      if (fields.length === 0 && !hasCursor) {
-        paneVars.style.display = "none";
-        return;
-      }
-      if (fields.length > 0) {
-        const label = document.createElement("span");
-        label.textContent = this.deps.t("paneVarsLabel", String(fields.length));
-        paneVars.appendChild(label);
-      }
-      for (const field of fields) {
-        const chip = document.createElement("code");
-        chip.textContent = askFieldTag(field);
-        paneVars.appendChild(chip);
-      }
-      if (hasCursor) {
-        const sep = document.createElement("span");
-        sep.textContent = (fields.length > 0 ? "\xB7 " : "") + this.deps.t("cursorHint");
-        paneVars.appendChild(sep);
-        const chip = document.createElement("code");
-        chip.textContent = "{{xlc:cursor}}";
-        paneVars.appendChild(chip);
-      }
-      paneVars.style.display = "flex";
-    }
-    /** 排序直选菜单（R108）：4 档可枚举、当前档 ✓，替代不可见的循环切换。 */
-    showSortMenu(paintSort) {
-      var _a, _b, _c, _d, _e, _f;
-      (_a = this.menuDismiss) == null ? void 0 : _a.call(this);
-      this.menuDismiss = null;
-      const modes = ["manual", "recent", "frequent", "title"];
-      const current = this.deps.getSort();
-      const menu = document.createElement("div");
-      menu.className = "xlc-menu xlc-menu--compact";
-      menu.setAttribute("role", "menu");
-      menu.setAttribute("aria-label", this.deps.t("sort"));
-      const lbl = document.createElement("div");
-      lbl.className = "xlc-menu-lbl";
-      lbl.textContent = this.deps.t("sort");
-      menu.appendChild(lbl);
-      const sec = document.createElement("div");
-      sec.className = "xlc-menu-sec";
-      for (const mode of modes) {
-        const option = this.menuButton(mode === current ? "\u2713" : " ", this.deps.t(`sort.${mode}`), "xlc-menu-item" + (mode === current ? " xlc-menu-item--on" : ""), async () => {
-          var _a2;
-          this.sortMenuClosedAt = Date.now();
-          (_a2 = this.menuDismiss) == null ? void 0 : _a2.call(this);
-          this.menuDismiss = null;
-          this.deps.setSort(mode);
-          paintSort();
-          this.restoreFocusToSearch();
-          void this.refresh();
-        });
-        option.title = this.deps.t(`sortHint.${mode}`);
-        sec.appendChild(option);
-      }
-      menu.appendChild(sec);
-      const host = (_e = (_d = (_b = this.dialog) == null ? void 0 : _b.element.querySelector(".xlc-dialog")) != null ? _d : (_c = this.dialog) == null ? void 0 : _c.element) != null ? _e : document.body;
-      host.appendChild(menu);
-      const dismiss = (e) => {
-        if (!menu.contains(e.target)) {
-          menu.remove();
-          this.sortMenuClosedAt = Date.now();
-          if (this.menuDismiss === dismissMenu) this.menuDismiss = null;
-          document.removeEventListener("pointerdown", dismiss, true);
-          this.restoreFocusToSearch();
-        }
-      };
-      const dismissMenu = () => {
-        menu.remove();
-        document.removeEventListener("pointerdown", dismiss, true);
-      };
-      this.menuDismiss = dismissMenu;
-      document.addEventListener("pointerdown", dismiss, true);
-      menu.addEventListener("keydown", (e) => {
-        if (e.key === "Escape") {
-          e.preventDefault();
-          e.stopPropagation();
-          menu.remove();
-          this.sortMenuClosedAt = Date.now();
-          if (this.menuDismiss === dismissMenu) this.menuDismiss = null;
-          document.removeEventListener("pointerdown", dismiss, true);
-          this.restoreFocusToSearch();
-        }
-      });
-      (_f = menu.querySelector(".xlc-menu-item")) == null ? void 0 : _f.focus();
-    }
-    /** 预览窗格元数据行（R108，Raycast Detail.Metadata 惯例）：类型徽标 + 分类/标签可点筛选 + 更新日期。 */
-    paintPaneMeta(entry) {
-      var _a, _b;
-      const meta = (_a = this.dialog) == null ? void 0 : _a.element.querySelector(".xlc-pane-meta");
-      if (!meta) return;
-      meta.textContent = "";
-      if (!entry) {
-        meta.style.display = "none";
-        return;
-      }
-      const typeBadge = document.createElement("span");
-      typeBadge.className = `xlc-badge xlc-badge--${entry.itemType}`;
-      typeBadge.textContent = (_b = TYPE_BADGES2[entry.itemType]) != null ? _b : "TXT";
-      meta.appendChild(typeBadge);
-      const setFilter = (patch) => {
-        var _a2, _b2, _c, _d;
-        const current = this.deps.getFilters();
-        const next = {
-          type: current.type,
-          tag: (_a2 = patch.tag) != null ? _a2 : current.tag,
-          category: (_b2 = patch.category) != null ? _b2 : current.category
-        };
-        this.deps.setFilters(next);
-        const tagSelect = (_c = this.dialog) == null ? void 0 : _c.element.querySelector(".xlc-tag-select");
-        const categorySelect = (_d = this.dialog) == null ? void 0 : _d.element.querySelector(".xlc-category-select");
-        if (tagSelect) tagSelect.value = next.tag;
-        if (categorySelect) categorySelect.value = next.category;
-        void this.refresh();
-      };
-      const toggleChip = (value, active2) => active2 === value ? "" : value;
-      const currentFilters = this.deps.getFilters();
-      if (entry.category) {
-        const cat = document.createElement("button");
-        cat.type = "button";
-        cat.className = "xlc-meta-chip" + (currentFilters.category === entry.category ? " xlc-meta-chip--on" : "");
-        cat.textContent = entry.category;
-        cat.title = this.deps.t("category");
-        cat.setAttribute("aria-pressed", String(currentFilters.category === entry.category));
-        cat.addEventListener("click", () => setFilter({ category: toggleChip(entry.category, this.deps.getFilters().category) }));
-        meta.appendChild(cat);
-      }
-      const cleanTags = entry.tags.filter(Boolean);
-      const shownTags = cleanTags.slice(0, 3);
-      for (const tag of shownTags) {
-        const chip = document.createElement("button");
-        chip.type = "button";
-        chip.className = "xlc-meta-chip" + (currentFilters.tag === tag ? " xlc-meta-chip--on" : "");
-        chip.textContent = tag;
-        chip.title = this.deps.t("tags");
-        chip.setAttribute("aria-pressed", String(currentFilters.tag === tag));
-        chip.addEventListener("click", () => setFilter({ tag: toggleChip(tag, this.deps.getFilters().tag) }));
-        meta.appendChild(chip);
-      }
-      if (cleanTags.length > shownTags.length) {
-        const more = document.createElement("span");
-        more.className = "xlc-meta-chip xlc-meta-chip--static";
-        more.textContent = `+${cleanTags.length - shownTags.length}`;
-        meta.appendChild(more);
-      }
-      if (Number.isFinite(entry.updatedAt) && entry.updatedAt > 9466848e5) {
-        const date = document.createElement("span");
-        date.className = "xlc-pane-meta-date";
-        date.textContent = this.deps.t("updatedAtLabel", new Date(entry.updatedAt).toLocaleDateString());
-        meta.appendChild(date);
-      }
-      meta.style.display = "flex";
-    }
-    updatePreview(forceId) {
-      var _a, _b, _c, _d, _e, _f, _g;
-      const paneBody = (_a = this.dialog) == null ? void 0 : _a.element.querySelector(".xlc-pane-body");
-      const paneTitle = (_b = this.dialog) == null ? void 0 : _b.element.querySelector(".xlc-pane-title");
-      const paneWarn = (_c = this.dialog) == null ? void 0 : _c.element.querySelector(".xlc-pane-warn");
-      const paneAi = (_d = this.dialog) == null ? void 0 : _d.element.querySelector(".xlc-pane-ai");
-      const paneUsage = (_e = this.dialog) == null ? void 0 : _e.element.querySelector(".xlc-pane-usage");
-      if (!paneBody || !paneTitle || !paneWarn || !paneAi || !paneUsage) return;
-      this.syncPaneActions();
-      const paintUsageBadge = (entry2) => {
-        var _a2;
-        const count = entry2 ? (_a2 = this.usageCounts.get(entry2.id)) != null ? _a2 : 0 : 0;
-        if (this.aiResults || count <= 0) {
-          paneUsage.style.display = "none";
-          return;
-        }
-        paneUsage.textContent = `\u2726 ${this.deps.t("sort.frequent")} \xB7 ${this.deps.t("useCount", String(count))}`;
-        paneUsage.style.display = "inline-block";
-      };
-      if (this.activeProvider >= 0) {
-        const row = this.providerRows[this.activeProvider];
-        if (row) {
-          this.lastPreviewId = row.virtualId;
-          paneTitle.textContent = row.title || row.providerName;
-          paneAi.style.display = "none";
-          paneUsage.style.display = "none";
-          paneWarn.style.display = "none";
-          this.paintPaneMeta(void 0);
-          paneBody.classList.remove("xlc-pane-body--muted", "xlc-pane-body--code");
-          this.paintPaneVars(null, "provider");
-          paneBody.textContent = row.payload;
-          return;
-        }
-        this.activeProvider = -1;
-      }
-      const entry = this.results[this.activeIndex];
-      const id = (_f = forceId != null ? forceId : entry == null ? void 0 : entry.id) != null ? _f : null;
-      this.paintPaneMeta(entry);
-      if (!id) {
-        ++this.previewSeq;
-        this.lastPreviewId = "";
-        paneTitle.textContent = "";
-        paneAi.style.display = "none";
-        paneWarn.style.display = "none";
-        paneUsage.style.display = "none";
-        paneBody.classList.add("xlc-pane-body--muted");
-        paneBody.classList.remove("xlc-pane-body--code");
-        paneBody.textContent = this.deps.t("previewNoResult");
-        paneBody.scrollTop = 0;
-        this.paintPaneVars(null, void 0);
-        return;
-      }
-      if (!id || id === this.lastPreviewId) return;
-      const seq = ++this.previewSeq;
-      this.lastPreviewId = id;
-      if (paneTitle) paneTitle.textContent = (_g = entry == null ? void 0 : entry.title) != null ? _g : "";
-      if (paneAi) paneAi.style.display = this.aiResults ? "" : "none";
-      paintUsageBadge(entry);
-      if (paneWarn) {
-        const missing = Boolean(entry && this.deps.isSourceMissing(entry));
-        paneWarn.style.display = missing ? "" : "none";
-        if (missing) paneWarn.textContent = "\u26A0 " + this.deps.t("sourceGone");
-      }
-      this.paintPaneVars(null, entry == null ? void 0 : entry.itemType);
-      paneBody.classList.add("xlc-pane-body--muted");
-      paneBody.textContent = this.deps.t("loading");
-      void this.deps.preview(id).then((text) => {
-        if (seq !== this.previewSeq) return;
-        const finalText = text || this.deps.t("previewUnavailable");
-        paneBody.classList.toggle("xlc-pane-body--muted", finalText === this.deps.t("previewUnavailable"));
-        paneBody.textContent = finalText;
-        paneBody.scrollTop = 0;
-        paneBody.classList.toggle("xlc-pane-body--code", (entry == null ? void 0 : entry.itemType) === "code");
-        this.paintPaneVars(text, entry == null ? void 0 : entry.itemType);
-      }).catch(() => {
-        if (seq !== this.previewSeq) return;
-        paneBody.classList.add("xlc-pane-body--muted");
-        paneBody.textContent = this.deps.t("kernelError", "preview");
-        paneBody.classList.remove("xlc-pane-body--code");
-        this.paintPaneVars(null, entry == null ? void 0 : entry.itemType);
-      });
-    }
-    async runPrimary(entry) {
-      if (this.primaryBusy || this.varFormOpen) return;
-      await this.insertEntryWithVars(entry, (fills) => this.runActionFor(entry, fills));
-    }
-    runActionFor(entry, fills) {
-      if (this.deps.insertTarget) {
-        const target = this.deps.insertTarget;
-        return this.deps.insertToDoc(entry.id, target.docId, target.hPath, fills);
-      }
-      const mode = entry.itemType === "blockref" ? "insert-ref" : "insert";
-      return fills ? this.deps.runActionWithFills(entry.id, mode, fills) : this.deps.runAction(entry.id, mode);
-    }
-    /** F1：插入前询问变量（设置可关；无 ask 字段零打扰；code 条目不询问）。
-     *  perform 收到 fills（undefined=未触发询问，走原路径）。 */
-    async insertEntryWithVars(entry, perform, options) {
-      var _a, _b, _c;
-      if (this.varFormOpen || this.primaryBusy) return;
-      this.primaryBusy = true;
-      this.syncPaneActions();
-      const releaseBusy = () => {
-        this.primaryBusy = false;
-        this.syncPaneActions();
-      };
-      if (!this.deps.promptVariables()) {
-        try {
-          await perform();
-        } finally {
-          releaseBusy();
-        }
-        return;
-      }
-      let fields = [];
-      let previewFailed = false;
-      try {
-        const content = await this.deps.preview(entry.id);
-        fields = entry.itemType === "code" || !content ? [] : listAskFields(content);
-      } catch {
-        fields = [];
-        previewFailed = true;
-      }
-      if (fields.length === 0) {
-        if (previewFailed && ((_a = entry.varCount) != null ? _a : 0) > 0) {
-          const status = (_b = this.dialog) == null ? void 0 : _b.element.querySelector(".xlc-status");
-          if (status) {
-            status.textContent = this.deps.t("varParseFailed");
-            status.classList.add("xlc-status--error");
-          }
-        }
-        try {
-          const execution = perform();
-          (_c = options == null ? void 0 : options.beforePerform) == null ? void 0 : _c.call(options);
-          await execution;
-        } finally {
-          releaseBusy();
-        }
-        return;
-      }
-      if (this.varFormOpen) {
-        releaseBusy();
-        return;
-      }
-      this.varFormOpen = true;
-      this.syncPaneActions();
-      openVariableFillCard({
-        t: this.deps.t,
-        itemType: entry.itemType,
-        title: entry.title,
-        fields,
-        onConfirm: (fills) => {
-          this.varFormOpen = false;
-          this.syncPaneActions();
-          const execution = perform(fills);
-          if (options == null ? void 0 : options.beforePerform) options.beforePerform();
-          else this.destroy();
-          void execution.finally(() => {
-            releaseBusy();
-          });
-        },
-        // 取消/关闭（Esc/scrim/取消钮）后焦点回搜索框，与浮层菜单一致（R128）
-        onCancel: () => {
-          this.varFormOpen = false;
-          releaseBusy();
-          this.restoreFocusToSearch();
-        }
-      });
-    }
-    /** 菜单按钮统一构造：图标列 + 文本（createTextNode 注入，绝不 innerHTML） */
-    menuButton(icon, label, cls, run) {
-      const btn = document.createElement("button");
-      btn.type = "button";
-      btn.className = cls;
-      btn.setAttribute("role", "menuitem");
-      const ic = document.createElement("span");
-      ic.className = "xlc-menu-ic";
-      ic.textContent = icon;
-      btn.appendChild(ic);
-      btn.appendChild(document.createTextNode(label));
-      btn.addEventListener("click", () => void run());
-      return btn;
-    }
-    async showActionMenu(entry) {
-      var _a, _b, _c, _d, _e, _f;
-      (_a = this.menuDismiss) == null ? void 0 : _a.call(this);
-      this.menuDismiss = null;
-      const menu = document.createElement("div");
-      menu.className = "xlc-menu";
-      menu.setAttribute("role", "menu");
-      menu.setAttribute("aria-label", entry.title || this.deps.t("unknownType"));
-      const rebuild = (render) => {
-        menu.innerHTML = "";
-        render();
-      };
-      const buildDefault = () => {
-        const lbl = document.createElement("div");
-        lbl.className = "xlc-menu-lbl";
-        lbl.textContent = (entry.title || this.deps.t("unknownType")) + " \xB7 " + this.deps.t("actionsNoun");
-        menu.appendChild(lbl);
-        const previewBox = document.createElement("pre");
-        previewBox.className = "xlc-menu-preview xlc-menu-preview--muted";
-        previewBox.textContent = this.deps.t("previewUnavailable");
-        void this.deps.preview(entry.id).then((text) => {
-          if (text) {
-            previewBox.textContent = text.slice(0, 500);
-            previewBox.classList.remove("xlc-menu-preview--muted");
-          }
-        }).catch(() => {
-          previewBox.textContent = this.deps.t("kernelError", "preview");
-        });
-        const sec1 = document.createElement("div");
-        sec1.className = "xlc-menu-sec";
-        const addAction = (icon, label, run, cls = "xlc-menu-item", destroyBeforeRun = true) => {
-          sec1.appendChild(this.menuButton(icon, label, cls, async () => {
-            var _a2;
-            const execution = run();
-            if (destroyBeforeRun) this.destroy();
-            else {
-              (_a2 = this.menuDismiss) == null ? void 0 : _a2.call(this);
-              this.menuDismiss = null;
-            }
-            await execution;
-          }));
-        };
-        if (entry.itemType === "blockref") {
-          addAction("\uFF0B", this.deps.t("insertRef"), () => this.deps.insertTarget ? this.deps.insertToDoc(entry.id, this.deps.insertTarget.docId, this.deps.insertTarget.hPath, void 0, "insert-ref") : this.deps.runAction(entry.id, "insert-ref"));
-          addAction("\u229E", this.deps.t("insertEmbed"), () => this.deps.insertTarget ? this.deps.insertToDoc(entry.id, this.deps.insertTarget.docId, this.deps.insertTarget.hPath, void 0, "insert-embed") : this.deps.runAction(entry.id, "insert-embed"));
-          addAction("\u29C9", this.deps.t("insertCopy"), () => this.deps.runAction(entry.id, "copy-content"));
-        } else {
-          addAction("\uFF0B", this.deps.t("insert"), () => this.insertEntryWithVars(entry, (fills) => this.runActionFor(entry, fills), { beforePerform: () => this.destroy() }), "xlc-menu-item", false);
-          addAction("\u29C9", this.deps.t("copy"), () => this.deps.runAction(entry.id, "copy"));
-        }
-        menu.appendChild(sec1);
-        if (this.deps.aiEnabled()) {
-          const secAi = document.createElement("div");
-          secAi.className = "xlc-menu-sec xlc-menu-sec--ai";
-          const openTransform = (transformLabel, run) => {
-            const gen = ++this.transformSeq;
-            rebuild(() => buildTransformView(entry.title + " \xB7 " + transformLabel, transformLabel));
-            void runTransformView(run, gen);
-          };
-          for (const kind of TRANSFORM_KINDS) {
-            secAi.appendChild(this.menuButton("\u2726", this.deps.t(`tf.${kind}`), "xlc-menu-item xlc-menu-item--ai", () => {
-              openTransform(this.deps.t(`tf.${kind}`), async () => this.deps.aiTransform(entry.id, kind));
-            }));
-          }
-          for (const ct of this.deps.listCustomTransforms()) {
-            secAi.appendChild(this.menuButton("\u2726", ct.name, "xlc-menu-item xlc-menu-item--ai", () => {
-              openTransform(ct.name, async () => this.deps.aiTransformCustom(entry.id, ct.id));
-            }));
-          }
-          menu.appendChild(secAi);
-        }
-        const sec2 = document.createElement("div");
-        sec2.className = "xlc-menu-sec";
-        const addSilent = (icon, label, run, cls = "xlc-menu-item") => {
-          sec2.appendChild(this.menuButton(icon, label, cls, async () => {
-            var _a2;
-            (_a2 = this.menuDismiss) == null ? void 0 : _a2.call(this);
-            this.menuDismiss = null;
-            await run();
-          }));
-        };
-        addSilent("\u2197", this.deps.t("openSource"), () => this.deps.openSource(entry.id));
-        addSilent("\u270E", this.deps.t("edit"), () => this.deps.editItem(entry.id));
-        addSilent("\u29C9", this.deps.t("duplicateItem"), () => this.deps.duplicateItem(entry.id));
-        addSilent("\u{1F5D1}", this.deps.t("delete"), () => this.deps.deleteItem(entry.id), "xlc-menu-item xlc-menu-item--danger");
-        const toDocBtn = this.menuButton("\u2913", this.deps.t("insertToDoc"), "xlc-menu-item", () => {
-          var _a2;
-          let sec = menu.querySelector(".xlc-menu-pickdoc");
-          if (sec) {
-            sec.remove();
-            return;
-          }
-          sec = document.createElement("div");
-          sec.className = "xlc-menu-sec xlc-menu-pickdoc";
-          sec.style.flexDirection = "column";
-          const input = document.createElement("input");
-          input.className = "b3-text-field xlc-pickdoc-input";
-          input.placeholder = this.deps.t("insertToDocPick");
-          input.setAttribute("aria-label", this.deps.t("insertToDocPick"));
-          input.setAttribute("autocomplete", "off");
-          input.addEventListener("keydown", (ev) => {
-            ev.stopPropagation();
-            if (ev.key === "Enter" && !ev.isComposing) {
-              ev.preventDefault();
-              const first = sec.querySelector(".xlc-pickdoc-hit");
-              first == null ? void 0 : first.click();
-            }
-          });
-          sec.appendChild(input);
-          let seq = 0;
-          input.addEventListener("input", () => {
-            const mySeq = ++seq;
-            const k = input.value.trim();
-            sec.querySelectorAll(".xlc-pickdoc-hit").forEach((el) => el.remove());
-            sec.querySelectorAll(".xlc-pickdoc-empty").forEach((el) => el.remove());
-            if (!k) return;
-            void this.deps.searchDocs(k).then((hits) => {
-              if (mySeq !== seq) return;
-              if (hits.length === 0) {
-                const empty = document.createElement("div");
-                empty.className = "xlc-pickdoc-empty";
-                empty.textContent = this.deps.t("docPickerEmpty");
-                sec.appendChild(empty);
-                return;
-              }
-              for (const hit of hits.slice(0, 5)) {
-                sec.appendChild(this.menuButton("\u2913", hit.hPath || hit.name || hit.id, "xlc-menu-item xlc-pickdoc-hit", async () => {
-                  var _a3;
-                  (_a3 = this.menuDismiss) == null ? void 0 : _a3.call(this);
-                  this.menuDismiss = null;
-                  await this.insertEntryWithVars(entry, (fills) => this.deps.insertToDoc(entry.id, hit.id, hit.hPath, fills));
-                }));
-              }
-            }).catch((err) => {
-              if (mySeq !== seq) return;
-              const error = document.createElement("div");
-              error.className = "xlc-pickdoc-empty xlc-status--error";
-              error.textContent = this.deps.t("kernelError", err instanceof Error ? err.message : String(err));
-              sec.appendChild(error);
-            });
-          });
-          const actions2 = menu.querySelectorAll(".xlc-menu-sec");
-          (_a2 = actions2[actions2.length - 1]) == null ? void 0 : _a2.before(sec);
-          input.focus();
-        });
-        sec2.appendChild(toDocBtn);
-        menu.appendChild(sec2);
-        menu.appendChild(previewBox);
-      };
-      const buildTransformView = (viewLabel, transformLabel) => {
-        const lbl = document.createElement("div");
-        lbl.className = "xlc-menu-lbl";
-        lbl.textContent = viewLabel;
-        menu.appendChild(lbl);
-        const box = document.createElement("pre");
-        box.className = "xlc-menu-preview xlc-menu-preview--muted";
-        box.textContent = this.deps.t("aiWorking");
-        menu.appendChild(box);
-        const sec = document.createElement("div");
-        sec.className = "xlc-menu-sec";
-        const resultButtons = [];
-        const syncReady = () => {
-          const ready = Boolean(box.dataset.transformed);
-          for (const b of resultButtons) b.disabled = !ready;
-        };
-        const insertBtn = this.menuButton("\uFF0B", this.deps.t("aiInsertTransformed"), "xlc-menu-item", async () => {
-          var _a2, _b2;
-          const transformed = (_a2 = box.dataset.transformed) != null ? _a2 : "";
-          if (!transformed) return;
-          const execution = this.deps.insertRaw(transformed, (_b2 = this.insertTarget) != null ? _b2 : void 0);
-          this.destroy();
-          await execution;
-        });
-        const copyBtn = this.menuButton("\u29C9", this.deps.t("aiCopyTransformed"), "xlc-menu-item", async () => {
-          var _a2;
-          const transformed = (_a2 = box.dataset.transformed) != null ? _a2 : "";
-          if (!transformed) return;
-          await this.deps.copyText(transformed);
-        });
-        resultButtons.push(insertBtn, copyBtn);
-        sec.appendChild(insertBtn);
-        sec.appendChild(copyBtn);
-        syncReady();
-        menu.syncTransformReady = syncReady;
-        sec.appendChild(this.menuButton("\u21A9", this.deps.t("aiInsertOriginal"), "xlc-menu-item", async () => {
-          const execution = this.runActionFor(entry);
-          this.destroy();
-          await execution;
-        }));
-        const saveBtn = this.menuButton("\u{1F5CE}", this.deps.t("saveTransformed"), "xlc-menu-item", async () => {
-          var _a2;
-          const transformed = (_a2 = box.dataset.transformed) != null ? _a2 : "";
-          if (!transformed) return;
-          this.destroy();
-          await this.deps.saveTransformed(entry.id, transformLabel, transformed);
-        });
-        resultButtons.push(saveBtn);
-        sec.appendChild(saveBtn);
-        syncReady();
-        menu.appendChild(sec);
-        const secBack = document.createElement("div");
-        secBack.className = "xlc-menu-sec";
-        secBack.appendChild(this.menuButton("\u2190", this.deps.t("more"), "xlc-menu-item", () => {
-          rebuild(buildDefault);
-        }));
-        menu.appendChild(secBack);
-        menu.applyTransform = (text) => {
-          var _a2;
-          box.dataset.transformed = text;
-          box.textContent = text.slice(0, 800);
-          box.classList.remove("xlc-menu-preview--muted");
-          (_a2 = menu.syncTransformReady) == null ? void 0 : _a2.call(menu);
-        };
-      };
-      const runTransformView = async (run, gen) => {
-        const result = await run();
-        if (gen !== this.transformSeq) return;
-        const apply = menu.applyTransform;
-        if (result.ok) {
-          apply == null ? void 0 : apply(result.text);
-        } else {
-          const box = menu.querySelector(".xlc-menu-preview");
-          if (box) box.textContent = result.message;
-        }
-      };
-      rebuild(buildDefault);
-      const host = (_e = (_d = (_b = this.dialog) == null ? void 0 : _b.element.querySelector(".xlc-dialog")) != null ? _d : (_c = this.dialog) == null ? void 0 : _c.element) != null ? _e : document.body;
-      host.appendChild(menu);
-      const escHandler = (e) => {
-        var _a2;
-        if (e.key === "Escape") {
-          e.preventDefault();
-          e.stopPropagation();
-          (_a2 = this.menuDismiss) == null ? void 0 : _a2.call(this);
-          this.menuDismiss = null;
-          this.restoreFocusToSearch();
-        }
-      };
-      menu.addEventListener("keydown", escHandler);
-      const focusMenuItem = (offset) => {
-        const items = Array.from(menu.querySelectorAll(".xlc-menu-item"));
-        if (items.length === 0) return;
-        const current = items.indexOf(document.activeElement);
-        const next = items[((current + offset) % items.length + items.length) % items.length];
-        next == null ? void 0 : next.focus();
-      };
-      menu.addEventListener("keydown", (e) => {
-        if (e.key === "ArrowDown") {
-          e.preventDefault();
-          e.stopPropagation();
-          focusMenuItem(1);
-        } else if (e.key === "ArrowUp") {
-          e.preventDefault();
-          e.stopPropagation();
-          focusMenuItem(-1);
-        } else if (e.key === "Tab") {
-          e.preventDefault();
-          e.stopPropagation();
-          focusMenuItem(e.shiftKey ? -1 : 1);
-        }
-      });
-      const dismiss = (e) => {
-        if (!menu.contains(e.target)) {
-          menu.remove();
-          this.menuDismiss = null;
-          document.removeEventListener("pointerdown", dismiss, true);
-          this.restoreFocusToSearch();
-        }
-      };
-      this.menuDismiss = () => {
-        menu.remove();
-        document.removeEventListener("pointerdown", dismiss, true);
-      };
-      document.addEventListener("pointerdown", dismiss, true);
-      (_f = menu.querySelector(".xlc-menu-item")) == null ? void 0 : _f.focus();
-    }
-    async onKeydown(e) {
-      var _a, _b, _c, _d;
-      if (e.isComposing || e.keyCode === 229) return;
-      const list = (_a = this.dialog) == null ? void 0 : _a.element.querySelector(".xlc-list");
-      if (!list) return;
-      if (e.key === "ArrowDown") {
-        e.preventDefault();
-        const total = this.results.length + this.providerRows.length;
-        if (total > 0) this.setNav(Math.min(this.navPosition() + 1, total - 1));
-        this.paintActive();
-        this.updatePreview();
-      } else if (e.key === "ArrowUp") {
-        e.preventDefault();
-        this.setNav(Math.max(this.navPosition() - 1, 0));
-        this.paintActive();
-        this.updatePreview();
-      } else if (e.key === "Enter" && !e.ctrlKey && !e.metaKey) {
-        if ((_c = (_b = e.target).closest) == null ? void 0 : _c.call(_b, ".xlc-row-action")) return;
-        if (e.repeat) return;
-        e.preventDefault();
-        if (this.activeProvider >= 0) {
-          const row = this.providerRows[this.activeProvider];
-          if (row) {
-            const execution = this.deps.insertProviderPayload(row.payload, (_d = this.insertTarget) != null ? _d : void 0);
-            this.destroy();
-            await execution;
-          }
-          return;
-        }
-        const entry = this.results[this.activeIndex];
-        if (entry) await this.runPrimary(entry);
-      } else if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
-        e.preventDefault();
-        if (this.activeProvider >= 0) {
-          const row = this.providerRows[this.activeProvider];
-          if (row) await this.deps.copyProviderPayload(row.payload);
-          return;
-        }
-        const entry = this.results[this.activeIndex];
-        if (entry) await this.deps.runAction(entry.id, "copy");
-      } else if (e.key === "Escape") {
-        e.preventDefault();
-        this.destroy();
-      } else if (e.altKey && !e.ctrlKey && !e.metaKey && /^[1-9]$/.test(e.key)) {
-        if (e.repeat) return;
-        e.preventDefault();
-        const idx = Number(e.key) - 1;
-        const entry = this.results[idx];
-        if (entry) {
-          await this.runPrimary(entry);
-        }
-      }
-    }
-    destroy() {
-      var _a, _b;
-      if (this.inputDebounce) clearTimeout(this.inputDebounce);
-      (_a = this.longPressCancel) == null ? void 0 : _a.call(this);
-      this.longPressCancel = null;
-      if (this.menuDismiss) {
-        this.menuDismiss();
-        this.menuDismiss = null;
-      }
-      (_b = this.dialog) == null ? void 0 : _b.destroy();
-      this.dialog = null;
-    }
-  };
-
-  // src/ui/settings-dialog.ts
-  var import_siyuan3 = __toESM(require_stub_dom());
-
-  // src/model/storage.ts
-  var CONFIG_VERSION = 1;
-
-  // src/model/transfer.ts
-  function toTimestamp(v) {
-    const n = Number(v);
-    return Number.isFinite(n) && n > 0 ? n : 0;
-  }
-  function validateImport(jsonText) {
-    const issues = [];
-    if (jsonText.length > LIMITS.maxImportBytes) {
-      return { ok: false, reason: "file-too-large", issues };
-    }
-    let obj;
-    try {
-      obj = JSON.parse(jsonText);
-    } catch (e) {
-      return { ok: false, reason: "json-parse", issues };
-    }
-    if (!obj || typeof obj !== "object" || Array.isArray(obj)) {
-      return { ok: false, reason: "not-an-object", issues };
-    }
-    const record = obj;
-    if (record.protocol !== PROTOCOL_NAME) {
-      return { ok: false, reason: "protocol-mismatch", issues };
-    }
-    const schemaVersion = record.schemaVersion;
-    if (schemaVersion !== EXPORT_SCHEMA_VERSION) {
-      return { ok: false, reason: "schema-version-unsupported", issues };
-    }
-    if (!Array.isArray(record.items)) {
-      return { ok: false, reason: "items-not-array", issues };
-    }
-    if (record.items.length > LIMITS.maxItems) {
-      return { ok: false, reason: "too-many-items", issues };
-    }
-    const knownTop = ["protocol", "schemaVersion", "exportedAt", "items"];
-    const unknownTopFields = Object.keys(record).filter((k) => !knownTop.includes(k));
-    const items = [];
-    const seenIds = /* @__PURE__ */ new Set();
-    record.items.forEach((raw, index) => {
-      const item = normalizeExportedItem(raw);
-      if (!item) {
-        issues.push({ index, reason: "invalid-item" });
-        return;
-      }
-      if (seenIds.has(item.id)) {
-        issues.push({ index, reason: "duplicate-id" });
-        return;
-      }
-      seenIds.add(item.id);
-      items.push(item);
-    });
-    return { ok: true, parsed: { schemaVersion: EXPORT_SCHEMA_VERSION, items, unknownTopFields }, issues };
-  }
-  function normalizeExportedItem(raw) {
-    var _a;
-    if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
-    const obj = raw;
-    if (!isLogicalId(obj.id)) return null;
-    if (typeof obj.kramdown !== "string" || obj.kramdown.length > LIMITS.contentChars) return null;
-    if (!isItemType(obj.itemType)) return null;
-    const sourceRaw = (_a = obj.source) != null ? _a : {};
-    const known = ["id", "itemType", "title", "alias", "tags", "category", "kramdown", "source", "url", "targetBlockId", "createdAt", "updatedAt"];
-    const extensions = /* @__PURE__ */ Object.create(null);
-    for (const [k, v] of Object.entries(obj)) {
-      if (!known.includes(k)) extensions[k] = v;
-    }
-    const str = (v, cap) => typeof v === "string" ? v.slice(0, cap) : "";
-    const tags = Array.isArray(obj.tags) ? obj.tags.filter((t) => typeof t === "string").slice(0, LIMITS.tags) : [];
-    const url = str(obj.url, 2048);
-    if (url && !isSafeHttpUrl(url)) return null;
-    return {
-      id: obj.id,
-      itemType: obj.itemType,
-      title: str(obj.title, LIMITS.title),
-      alias: str(obj.alias, LIMITS.alias),
-      tags,
-      category: str(obj.category, LIMITS.category),
-      kramdown: obj.kramdown,
-      source: {
-        sourceDocId: str(sourceRaw.sourceDocId, 32),
-        sourceBlockId: str(sourceRaw.sourceBlockId, 32),
-        sourceType: isSourceType(sourceRaw.sourceType) ? sourceRaw.sourceType : "external"
-      },
-      url,
-      targetBlockId: str(obj.targetBlockId, 32),
-      createdAt: toTimestamp(obj.createdAt),
-      updatedAt: toTimestamp(obj.updatedAt),
-      extensions: Object.keys(extensions).length ? extensions : void 0
-    };
-  }
-
-  // src/model/zip.ts
-  var CRC_TABLE = (() => {
-    const table = new Uint32Array(256);
-    for (let n = 0; n < 256; n++) {
-      let c = n;
-      for (let k = 0; k < 8; k++) c = c & 1 ? 3988292384 ^ c >>> 1 : c >>> 1;
-      table[n] = c >>> 0;
-    }
-    return table;
-  })();
-  function crc32(data) {
-    var _a;
-    let c = 0 ^ -1;
-    for (const byte of data) c = c >>> 8 ^ ((_a = CRC_TABLE[(c ^ byte) & 255]) != null ? _a : 0);
-    return (c ^ -1) >>> 0;
-  }
-  function dosDateTime() {
-    const time = 0;
-    const date = 2026 - 1980 << 9 | 1 << 5 | 1;
-    return { time, date };
-  }
-  function u16(arr, value) {
-    arr.push(value & 255, value >>> 8 & 255);
-  }
-  function u32(arr, value) {
-    arr.push(value & 255, value >>> 8 & 255, value >>> 16 & 255, value >>> 24 & 255);
-  }
-  function buildZip(entries) {
-    if (entries.length === 0) throw new Error("zip: no entries");
-    if (entries.length > 65535) throw new Error("zip: too many entries");
-    const { time, date } = dosDateTime();
-    const localParts = [];
-    const centralParts = [];
-    let offset = 0;
-    for (const entry of entries) {
-      if (!entry.name || entry.name.startsWith("/") || entry.name.includes("..") || entry.name.includes("\\")) {
-        throw new Error(`zip: unsafe entry name ${entry.name}`);
-      }
-      const nameBytes = new TextEncoder().encode(entry.name);
-      const crc = crc32(entry.data);
-      const local = [];
-      u32(local, 67324752);
-      u16(local, 20);
-      u16(local, 0);
-      u16(local, 0);
-      u16(local, time);
-      u16(local, date);
-      u32(local, crc);
-      u32(local, entry.data.length);
-      u32(local, entry.data.length);
-      u16(local, nameBytes.length);
-      u16(local, 0);
-      local.push(...nameBytes);
-      const headerOffset = offset;
-      localParts.push(local, Array.from(entry.data));
-      const central = [];
-      u32(central, 33639248);
-      u16(central, 20);
-      u16(central, 20);
-      u16(central, 0);
-      u16(central, 0);
-      u16(central, time);
-      u16(central, date);
-      u32(central, crc);
-      u32(central, entry.data.length);
-      u32(central, entry.data.length);
-      u16(central, nameBytes.length);
-      u16(central, 0);
-      u16(central, 0);
-      u16(central, 0);
-      u16(central, 0);
-      u32(central, 0);
-      u32(central, headerOffset);
-      central.push(...nameBytes);
-      centralParts.push(central);
-      offset += local.length + entry.data.length;
-    }
-    const centralStart = offset;
-    let centralSize = 0;
-    const out = [];
-    for (const part of localParts) out.push(...part);
-    for (const part of centralParts) {
-      out.push(...part);
-      centralSize += part.length;
-    }
-    const eocd = [];
-    u32(eocd, 101010256);
-    u16(eocd, 0);
-    u16(eocd, 0);
-    u16(eocd, entries.length);
-    u16(eocd, entries.length);
-    u32(eocd, centralSize);
-    u32(eocd, centralStart);
-    u16(eocd, 0);
-    out.push(...eocd);
-    return new Uint8Array(out);
-  }
-
-  // src/model/actions.ts
-  var ASSET_PATH_RE = /^(assets\/[^\s/][^\s]*|assets\/[^\s/])$/;
-  function isValidAssetPath(path) {
-    return ASSET_PATH_RE.test(path) && !path.includes("..");
-  }
-  function extractAssetPath(kramdown) {
-    const m = kramdown.match(/\]\((assets\/[^)\s]+)[^)]*\)/);
-    const path = m == null ? void 0 : m[1];
-    if (!path) return null;
-    return isValidAssetPath(path) ? path : null;
-  }
-
-  // src/service/export-markdown.ts
-  async function buildMarkdownExport(items, kramdownById, fetchAssetBytes, pack) {
-    var _a, _b;
-    const oneLine = (value) => value.replace(/[\r\n]+/g, " ").trim();
-    const entries = [];
-    const skippedAssets = [];
-    const assetEntries = /* @__PURE__ */ new Map();
-    const usedNames = /* @__PURE__ */ new Set(["items.md"]);
-    let assetCount = 0;
-    const varNames = [];
-    for (const item of items) {
-      if (item.itemType === "code") continue;
-      for (const field of listAskFields((_a = kramdownById.get(item.id)) != null ? _a : "")) {
-        if (!varNames.includes(field.name)) varNames.push(field.name);
-        if (varNames.length >= LIMITS.maxAskFields) break;
-      }
-      if (varNames.length >= LIMITS.maxAskFields) break;
-    }
-    const mdParts = [
-      "# \u5C0F\u9A74\u5E38\u7528\uFF08\u5185\u6D4B\u7248\uFF09 \xB7 \u6761\u76EE\u5BFC\u51FA",
-      "",
-      `> \u5BFC\u51FA\u81EA\u601D\u6E90\u63D2\u4EF6\u300C\u5C0F\u9A74\u5E38\u7528\uFF08\u5185\u6D4B\u7248\uFF09\u300D\uFF0C\u5171 ${items.length} \u6761\u3002\u8D44\u6E90\u4F4D\u4E8E assets/\uFF0C\u6761\u76EE\u5185\u94FE\u63A5\u4E3A\u76F8\u5BF9\u8DEF\u5F84\u3002`,
-      ""
-    ];
-    let totalLen = mdParts.reduce((n, p) => n + p.length, 0);
-    if (pack && pack.name.trim()) {
-      const manifest = [
-        `<!-- xlc-pack`,
-        `name: ${oneLine(pack.name).slice(0, LIMITS.title)}`,
-        `items: ${items.length}`,
-        varNames.length ? `vars: ${varNames.join(",")}` : "",
-        `-->`
-      ].filter(Boolean).join("\n");
-      mdParts.unshift(manifest, "");
-    }
-    for (const item of items) {
-      const kramdown = (_b = kramdownById.get(item.id)) != null ? _b : "";
-      const meta = [
-        `<!-- xlc-item`,
-        `id: ${item.id}`,
-        `type: ${item.itemType}`,
-        item.alias ? `alias: ${oneLine(item.alias)}` : "",
-        item.tags.length ? `tags: ${item.tags.map(oneLine).join(",")}` : "",
-        item.category ? `category: ${oneLine(item.category)}` : "",
-        item.source.sourceDocId ? `source-doc: ${oneLine(item.source.sourceDocId)}` : "",
-        item.source.sourceBlockId ? `source-block: ${oneLine(item.source.sourceBlockId)}` : "",
-        item.source.sourceType ? `source-type: ${oneLine(item.source.sourceType)}` : "",
-        item.url ? `url: ${oneLine(item.url)}` : "",
-        item.targetBlockId ? `target: ${oneLine(item.targetBlockId)}` : "",
-        `-->`
-      ].filter(Boolean).join("\n");
-      mdParts.push(`## ${oneLine(item.title || item.id)}`, "", meta, "", kramdown, "");
-      if (item.itemType === "image" || item.itemType === "asset") {
-        const assetPath = extractAssetPath(kramdown);
-        if (assetPath && !assetEntries.has(assetPath)) {
-          const bytes = await fetchAssetBytes(assetPath);
-          if (bytes && bytes.length > 0) {
-            const name = assetPath;
-            usedNames.add(name);
-            assetEntries.set(assetPath, { name, data: bytes });
-            assetCount++;
-          } else {
-            skippedAssets.push(assetPath);
-          }
-        }
-      }
-      totalLen += 6 + (item.title || item.id).length + meta.length + kramdown.length;
-      if (totalLen > LIMITS.contentChars) {
-        mdParts.push("", "> \uFF08\u5185\u5BB9\u8D85\u957F\uFF0C\u5BFC\u51FA\u5728\u6B64\u622A\u65AD\uFF09");
-        break;
-      }
-    }
-    entries.push({ name: "items.md", data: new TextEncoder().encode(mdParts.join("\n")) });
-    entries.push(...assetEntries.values());
-    return { entries, itemCount: items.length, assetCount, skippedAssets, varNames };
-  }
-
-  // src/service/import-markdown.ts
-  var ITEM_COMMENT_START = "<!-- xlc-item";
-  var ITEM_COMMENT_END = "-->";
-  var PACK_COMMENT_START = "<!-- xlc-pack";
-  var TITLE_RE = /^##\s+(.+)$/;
-  function parseMetadata(lines) {
-    const fields = /* @__PURE__ */ new Map();
-    let titleHint = "";
-    for (const line of lines) {
-      const trimmed = line.trim();
-      if (!trimmed || trimmed === ITEM_COMMENT_START || trimmed === ITEM_COMMENT_END) continue;
-      const idx = trimmed.indexOf(":");
-      if (idx <= 0) continue;
-      fields.set(trimmed.slice(0, idx).trim(), trimmed.slice(idx + 1).trim());
-    }
-    return { fields, titleHint };
-  }
-  function parsePackManifest(md, firstItemAt) {
-    var _a, _b;
-    const start = md.indexOf(PACK_COMMENT_START);
-    if (start === -1 || start > firstItemAt) return void 0;
-    const end = md.indexOf(ITEM_COMMENT_END, start);
-    if (end === -1) return void 0;
-    const fields = parseMetadata(md.slice(start + PACK_COMMENT_START.length, end).split("\n")).fields;
-    const name = ((_a = fields.get("name")) != null ? _a : "").slice(0, LIMITS.title);
-    const vars = ((_b = fields.get("vars")) != null ? _b : "").split(",").map((s) => s.trim()).filter(Boolean).slice(0, LIMITS.maxAskFields);
-    if (!name) return void 0;
-    return { name, vars };
-  }
-  function parseMarkdownPack(md) {
-    var _a, _b;
-    const items = [];
-    const issues = [];
-    const seenIds = /* @__PURE__ */ new Set();
-    if (!md || !md.includes(ITEM_COMMENT_START)) return { items, issues };
-    const firstItemAt = md.indexOf(ITEM_COMMENT_START);
-    const pack = parsePackManifest(md, firstItemAt);
-    const commentStarts = [];
-    const commentEnds = [];
-    let hasUnclosed = false;
-    let scan = 0;
-    while (true) {
-      const start = md.indexOf(ITEM_COMMENT_START, scan);
-      if (start === -1) break;
-      const end = md.indexOf(ITEM_COMMENT_END, start);
-      if (end === -1) {
-        hasUnclosed = true;
-        break;
-      }
-      commentStarts.push(start);
-      commentEnds.push(end + ITEM_COMMENT_END.length);
-      scan = start + ITEM_COMMENT_START.length;
-      if (commentStarts.length > LIMITS.maxItems) break;
-    }
-    const chunks = [];
-    for (let i = 0; i < commentStarts.length; i++) {
-      const itemStart = (_a = commentStarts[i]) != null ? _a : 0;
-      const lowerBound = i > 0 ? (_b = commentEnds[i - 1]) != null ? _b : 0 : 0;
-      const titleLineStart = md.lastIndexOf("\n## ", itemStart) + 1;
-      const chunkStart = Math.max(Math.min(titleLineStart, itemStart), lowerBound);
-      const nextCommentStart = commentStarts[i + 1];
-      const nextTitleStart = nextCommentStart === void 0 ? -1 : md.lastIndexOf("\n## ", nextCommentStart) + 1;
-      const chunkEnd = nextTitleStart > itemStart ? nextTitleStart : nextCommentStart != null ? nextCommentStart : md.length;
-      chunks.push(md.slice(chunkStart, chunkEnd));
-    }
-    chunks.forEach((chunk, index) => {
-      var _a2, _b2, _c, _d, _e, _f, _g, _h, _i, _j, _k;
-      const endIdx = chunk.indexOf(ITEM_COMMENT_END);
-      if (endIdx === -1) {
-        issues.push({ index, reason: "metadata-comment-unclosed" });
-        return;
-      }
-      const metaLines = chunk.slice(0, endIdx).split("\n");
-      const { fields } = parseMetadata(metaLines);
-      const id = (_a2 = fields.get("id")) != null ? _a2 : "";
-      if (!/^xlc-[0-9a-z]{10,40}$/.test(id)) {
-        issues.push({ index, reason: "invalid-id" });
-        return;
-      }
-      if (seenIds.has(id)) {
-        issues.push({ index, reason: "duplicate-id" });
-        return;
-      }
-      const itemType = (_b2 = fields.get("type")) != null ? _b2 : "text";
-      if (!isItemType(itemType)) {
-        issues.push({ index, reason: "invalid-item-type" });
-        return;
-      }
-      const url = (_c = fields.get("url")) != null ? _c : "";
-      if (url && !isSafeHttpUrl(url)) {
-        issues.push({ index, reason: "invalid-url" });
-        return;
-      }
-      let title = "";
-      const before = chunk.slice(0, chunk.indexOf(ITEM_COMMENT_START));
-      for (const line of before.split("\n")) {
-        const m = line.match(TITLE_RE);
-        const matched = m == null ? void 0 : m[1];
-        if (matched) title = matched.trim();
-      }
-      if (!title && fields.get("alias")) title = (_d = fields.get("alias")) != null ? _d : "";
-      const body = chunk.slice(endIdx + ITEM_COMMENT_END.length).replace(/^\s*\n/, "").replace(/\n\s*$/, "");
-      seenIds.add(id);
-      items.push({
-        id,
-        itemType,
-        title: title.slice(0, LIMITS.title),
-        alias: ((_e = fields.get("alias")) != null ? _e : "").slice(0, LIMITS.alias),
-        tags: ((_f = fields.get("tags")) != null ? _f : "").split(",").map((s) => s.trim()).filter(Boolean).slice(0, LIMITS.tags),
-        category: ((_g = fields.get("category")) != null ? _g : "").slice(0, LIMITS.category),
-        kramdown: body.slice(0, LIMITS.contentChars),
-        source: {
-          sourceDocId: (_h = fields.get("source-doc")) != null ? _h : "",
-          sourceBlockId: (_i = fields.get("source-block")) != null ? _i : "",
-          sourceType: (_j = fields.get("source-type")) != null ? _j : "external"
-        },
-        url,
-        targetBlockId: (_k = fields.get("target")) != null ? _k : "",
-        createdAt: 0,
-        updatedAt: Date.now()
-      });
-    });
-    if (hasUnclosed) issues.push({ index: commentStarts.length, reason: "metadata-comment-unclosed" });
-    return { items, issues, pack };
-  }
-
   // node_modules/.pnpm/js-yaml@5.4.3/node_modules/js-yaml/dist/js-yaml.mjs
-  var NOT_RESOLVED = /* @__PURE__ */ Symbol("NOT_RESOLVED");
   function defineScalarTag(tagName, options) {
     var _a, _b, _c, _d, _e;
     return {
@@ -2789,153 +153,6 @@
       representTagName: (_d = options.representTagName) != null ? _d : (() => tagName)
     };
   }
-  var strTag = defineScalarTag("tag:yaml.org,2002:str", {
-    resolve: (source) => source,
-    identify: (data) => typeof data === "string"
-  });
-  var NULL_VALUES$1 = [
-    "",
-    "~",
-    "null",
-    "Null",
-    "NULL"
-  ];
-  var nullCoreTag = defineScalarTag("tag:yaml.org,2002:null", {
-    implicit: true,
-    implicitFirstChars: [
-      "",
-      "~",
-      "n",
-      "N"
-    ],
-    resolve: (source) => {
-      if (NULL_VALUES$1.indexOf(source) !== -1) return null;
-      return NOT_RESOLVED;
-    },
-    identify: (object) => object === null,
-    represent: () => "null"
-  });
-  var nullJsonTag = defineScalarTag("tag:yaml.org,2002:null", {
-    implicit: true,
-    implicitFirstChars: ["n"],
-    resolve: (source, isExplicit) => {
-      if (source === "null" || isExplicit && source === "") return null;
-      return NOT_RESOLVED;
-    },
-    identify: (object) => object === null,
-    represent: () => "null"
-  });
-  var NULL_VALUES = [
-    "",
-    "~",
-    "null",
-    "Null",
-    "NULL"
-  ];
-  var nullYaml11Tag = defineScalarTag("tag:yaml.org,2002:null", {
-    implicit: true,
-    implicitFirstChars: [
-      "",
-      "~",
-      "n",
-      "N"
-    ],
-    resolve: (source) => {
-      if (NULL_VALUES.indexOf(source) !== -1) return null;
-      return NOT_RESOLVED;
-    },
-    identify: (object) => object === null,
-    represent: () => "null"
-  });
-  var TRUE_VALUES$2 = [
-    "true",
-    "True",
-    "TRUE"
-  ];
-  var FALSE_VALUES$2 = [
-    "false",
-    "False",
-    "FALSE"
-  ];
-  var boolCoreTag = defineScalarTag("tag:yaml.org,2002:bool", {
-    implicit: true,
-    implicitFirstChars: [
-      "t",
-      "T",
-      "f",
-      "F"
-    ],
-    resolve: (source) => {
-      if (TRUE_VALUES$2.indexOf(source) !== -1) return true;
-      if (FALSE_VALUES$2.indexOf(source) !== -1) return false;
-      return NOT_RESOLVED;
-    },
-    identify: (object) => Object.prototype.toString.call(object) === "[object Boolean]",
-    represent: (object) => object ? "true" : "false"
-  });
-  var TRUE_VALUES$1 = ["true"];
-  var FALSE_VALUES$1 = ["false"];
-  var boolJsonTag = defineScalarTag("tag:yaml.org,2002:bool", {
-    implicit: true,
-    implicitFirstChars: ["t", "f"],
-    resolve: (source) => {
-      if (TRUE_VALUES$1.indexOf(source) !== -1) return true;
-      if (FALSE_VALUES$1.indexOf(source) !== -1) return false;
-      return NOT_RESOLVED;
-    },
-    identify: (object) => Object.prototype.toString.call(object) === "[object Boolean]",
-    represent: (object) => object ? "true" : "false"
-  });
-  var TRUE_VALUES = [
-    "true",
-    "True",
-    "TRUE",
-    "y",
-    "Y",
-    "yes",
-    "Yes",
-    "YES",
-    "on",
-    "On",
-    "ON"
-  ];
-  var FALSE_VALUES = [
-    "false",
-    "False",
-    "FALSE",
-    "n",
-    "N",
-    "no",
-    "No",
-    "NO",
-    "off",
-    "Off",
-    "OFF"
-  ];
-  var boolYaml11Tag = defineScalarTag("tag:yaml.org,2002:bool", {
-    implicit: true,
-    implicitFirstChars: [
-      "y",
-      "Y",
-      "n",
-      "N",
-      "t",
-      "T",
-      "f",
-      "F",
-      "o",
-      "O"
-    ],
-    resolve: (source) => {
-      if (TRUE_VALUES.indexOf(source) !== -1) return true;
-      if (FALSE_VALUES.indexOf(source) !== -1) return false;
-      return NOT_RESOLVED;
-    },
-    identify: (object) => Object.prototype.toString.call(object) === "[object Boolean]",
-    represent: (object) => object ? "true" : "false"
-  });
-  var YAML_INTEGER_IMPLICIT_PATTERN$1 = /* @__PURE__ */ new RegExp("^(?:0o[0-7]+|0x[0-9a-fA-F]+|[-+]?[0-9]+)$");
-  var YAML_INTEGER_EXPLICIT_PATTERN$1 = /* @__PURE__ */ new RegExp("^(?:[-+]?0b[0-1]+|[-+]?0o[0-7]+|[-+]?0x[0-9a-fA-F]+|[-+]?[0-9]+)$");
   function parseYamlInteger$2(source) {
     let value = source;
     let sign = 1;
@@ -2955,19 +172,6 @@
     const result = parseYamlInteger$2(source);
     return Number.isFinite(result) ? result : NOT_RESOLVED;
   }
-  var intCoreTag = defineScalarTag("tag:yaml.org,2002:int", {
-    implicit: true,
-    implicitFirstChars: [
-      "-",
-      "+",
-      ..."0123456789"
-    ],
-    resolve: resolveYamlInteger$2,
-    identify: (object) => Number.isInteger(object) && !Object.is(object, -0) && object.toString(10).indexOf("e") < 0,
-    represent: (object) => object.toString(10)
-  });
-  var YAML_INTEGER_IMPLICIT_PATTERN = /* @__PURE__ */ new RegExp("^-?(?:0|[1-9][0-9]*)$");
-  var YAML_INTEGER_EXPLICIT_PATTERN = /* @__PURE__ */ new RegExp("^(?:[-+]?0b[0-1]+|[-+]?0o[0-7]+|[-+]?0x[0-9a-fA-F]+|[-+]?[0-9]+)$");
   function parseYamlInteger$1(source) {
     let value = source;
     let sign = 1;
@@ -2987,14 +191,6 @@
     const result = parseYamlInteger$1(source);
     return Number.isFinite(result) ? result : NOT_RESOLVED;
   }
-  var intJsonTag = defineScalarTag("tag:yaml.org,2002:int", {
-    implicit: true,
-    implicitFirstChars: ["-", ..."0123456789"],
-    resolve: resolveYamlInteger$1,
-    identify: (object) => Number.isInteger(object) && !Object.is(object, -0) && object.toString(10).indexOf("e") < 0,
-    represent: (object) => object.toString(10)
-  });
-  var YAML_INTEGER_PATTERN = /* @__PURE__ */ new RegExp("^(?:[-+]?0b[0-1_]+|[-+]?0[0-7_]+|[-+]?0x[0-9a-fA-F_]+|[-+]?[0-9][0-9_]*(?::[0-5]?[0-9])+|[-+]?(?:0|[1-9][0-9_]*))$");
   function parseYamlInteger(source) {
     let value = source.replace(/_/g, "");
     let sign = 1;
@@ -3017,19 +213,6 @@
     const result = parseYamlInteger(source);
     return Number.isFinite(result) ? result : NOT_RESOLVED;
   }
-  var intYaml11Tag = defineScalarTag("tag:yaml.org,2002:int", {
-    implicit: true,
-    implicitFirstChars: [
-      "-",
-      "+",
-      ..."0123456789"
-    ],
-    resolve: resolveYamlInteger,
-    identify: (object) => Number.isInteger(object) && !Object.is(object, -0) && object.toString(10).indexOf("e") < 0,
-    represent: (object) => object.toString(10)
-  });
-  var YAML_FLOAT_PATTERN$1 = /* @__PURE__ */ new RegExp("^(?:[-+]?[0-9]+(?:\\.[0-9]*)?(?:[eE][-+]?[0-9]+)?|[-+]?\\.[0-9]+(?:[eE][-+]?[0-9]+)?|[-+]?\\.(?:inf|Inf|INF)|\\.(?:nan|NaN|NAN))$");
-  var YAML_FLOAT_SPECIAL_PATTERN$1 = /* @__PURE__ */ new RegExp("^(?:[-+]?\\.(?:inf|Inf|INF)|\\.(?:nan|NaN|NAN))$");
   function resolveYamlFloat$2(source) {
     if (!YAML_FLOAT_PATTERN$1.test(source)) return NOT_RESOLVED;
     let value = source.toLowerCase();
@@ -3049,20 +232,6 @@
     const result = object.toString(10);
     return /^[-+]?[0-9]+e/.test(result) ? result.replace("e", ".e") : result;
   }
-  var floatCoreTag = defineScalarTag("tag:yaml.org,2002:float", {
-    implicit: true,
-    implicitFirstChars: [
-      "-",
-      "+",
-      ".",
-      ..."0123456789"
-    ],
-    resolve: resolveYamlFloat$2,
-    identify: (object) => typeof object === "number" && (!Number.isInteger(object) || Object.is(object, -0) || object.toString(10).indexOf("e") >= 0),
-    represent: representYamlFloat$2
-  });
-  var YAML_FLOAT_IMPLICIT_PATTERN = /* @__PURE__ */ new RegExp("^-?(?:0|[1-9][0-9]*)(?:\\.[0-9]*)?(?:[eE][-+]?[0-9]+)?$");
-  var YAML_FLOAT_EXPLICIT_PATTERN = /* @__PURE__ */ new RegExp("^(?:[-+]?[0-9]+(?:\\.[0-9]*)?(?:[eE][-+]?[0-9]+)?|[-+]?\\.[0-9]+(?:[eE][-+]?[0-9]+)?|[-+]?\\.(?:inf|Inf|INF)|\\.(?:nan|NaN|NAN))$");
   function resolveYamlFloat$1(source, isExplicit) {
     if (isExplicit) {
       if (!YAML_FLOAT_EXPLICIT_PATTERN.test(source)) return NOT_RESOLVED;
@@ -3087,15 +256,6 @@
     const result = object.toString(10);
     return /^[-+]?[0-9]+e/.test(result) ? result.replace("e", ".e") : result;
   }
-  var floatJsonTag = defineScalarTag("tag:yaml.org,2002:float", {
-    implicit: true,
-    implicitFirstChars: ["-", ..."0123456789"],
-    resolve: resolveYamlFloat$1,
-    identify: (object) => typeof object === "number" && (!Number.isInteger(object) || Object.is(object, -0) || object.toString(10).indexOf("e") >= 0),
-    represent: representYamlFloat$1
-  });
-  var YAML_FLOAT_PATTERN = /* @__PURE__ */ new RegExp("^(?:[-+]?(?:(?:[0-9][0-9_]*)?\\.[0-9_]*)(?:[eE][-+][0-9]+)?|[-+]?[0-9][0-9_]*(?::[0-5]?[0-9])+\\.[0-9_]*|[-+]?\\.(?:inf|Inf|INF)|\\.(?:nan|NaN|NAN))$");
-  var YAML_FLOAT_SPECIAL_PATTERN = /* @__PURE__ */ new RegExp("^(?:[-+]?\\.(?:inf|Inf|INF)|\\.(?:nan|NaN|NAN))$");
   function resolveYamlFloat(source) {
     if (!YAML_FLOAT_PATTERN.test(source)) return NOT_RESOLVED;
     let value = source.toLowerCase().replace(/_/g, "");
@@ -3119,28 +279,6 @@
     const result = object.toString(10);
     return /^[-+]?[0-9]+e/.test(result) ? result.replace("e", ".e") : result;
   }
-  var floatYaml11Tag = defineScalarTag("tag:yaml.org,2002:float", {
-    implicit: true,
-    implicitFirstChars: [
-      "-",
-      "+",
-      ".",
-      ..."0123456789"
-    ],
-    resolve: resolveYamlFloat,
-    identify: (object) => typeof object === "number" && (!Number.isInteger(object) || Object.is(object, -0) || object.toString(10).indexOf("e") >= 0),
-    represent: representYamlFloat
-  });
-  var mergeTag = defineScalarTag("tag:yaml.org,2002:merge", {
-    implicit: true,
-    implicitFirstChars: ["<"],
-    resolve: (source, isExplicit) => {
-      if (source === "<<" || isExplicit && source === "") return "<<";
-      return NOT_RESOLVED;
-    },
-    identify: () => false
-  });
-  var BASE64_PATTERN = /^[A-Za-z0-9+/]*={0,2}$/;
   function resolveYamlBinary(source) {
     const input = source.replace(/\s/g, "");
     if (input.length % 4 !== 0 || !BASE64_PATTERN.test(input)) return NOT_RESOLVED;
@@ -3154,13 +292,6 @@
     for (let index = 0; index < object.length; index++) binary += String.fromCharCode(object[index]);
     return btoa(binary);
   }
-  var binaryTag = defineScalarTag("tag:yaml.org,2002:binary", {
-    resolve: resolveYamlBinary,
-    identify: (object) => Object.prototype.toString.call(object) === "[object Uint8Array]",
-    represent: representYamlBinary
-  });
-  var YAML_DATE_REGEXP = /* @__PURE__ */ new RegExp("^([0-9][0-9][0-9][0-9])-([0-9][0-9])-([0-9][0-9])$");
-  var YAML_TIMESTAMP_REGEXP = /* @__PURE__ */ new RegExp("^([0-9][0-9][0-9][0-9])-([0-9][0-9]?)-([0-9][0-9]?)(?:[Tt]|[ \\t]+)([0-9][0-9]?):([0-9][0-9]):([0-9][0-9])(?:\\.([0-9]*))?(?:[ \\t]*(Z|([-+])([0-9][0-9]?)(?::([0-9][0-9]))?))?$");
   function makeUtcDate(year, month, day, hour = 0, minute = 0, second = 0, fraction = 0) {
     const date = new Date(Date.UTC(year, month, day, hour, minute, second, fraction));
     date.setUTCFullYear(year, month, day);
@@ -3199,20 +330,6 @@
     }
     return date;
   }
-  var timestampTag = defineScalarTag("tag:yaml.org,2002:timestamp", {
-    implicit: true,
-    implicitFirstChars: [..."0123456789"],
-    resolve: resolveYamlTimestamp,
-    identify: (object) => object instanceof Date,
-    represent: (object) => object.toISOString()
-  });
-  var seqTag = defineSequenceTag("tag:yaml.org,2002:seq", {
-    create: () => [],
-    addItem: (container, item) => {
-      container.push(item);
-    },
-    identify: Array.isArray
-  });
   function isPlainObject(data) {
     if (data === null || typeof data !== "object" || Array.isArray(data)) return false;
     const prototype = Object.getPrototypeOf(data);
@@ -3223,94 +340,6 @@
     for (const key of keys) if (object[key] !== void 0) result[key] = object[key];
     return result;
   }
-  var omapTag = defineSequenceTag("tag:yaml.org,2002:omap", {
-    create: () => ({
-      list: [],
-      seen: /* @__PURE__ */ new Set()
-    }),
-    addItem: (carrier, item) => {
-      let key;
-      if (item instanceof Map) {
-        if (item.size !== 1) return "cannot resolve an ordered map item";
-        key = item.keys().next().value;
-      } else if (isPlainObject(item)) {
-        const itemKeys = Object.keys(item);
-        if (itemKeys.length !== 1) return "cannot resolve an ordered map item";
-        key = itemKeys[0];
-      } else return "cannot resolve an ordered map item";
-      if (carrier.seen.has(key)) return "duplicate key in ordered map";
-      carrier.seen.add(key);
-      carrier.list.push(item);
-      return "";
-    },
-    finalize: (carrier) => carrier.list,
-    identify: () => false
-  });
-  var pairsTag = defineSequenceTag("tag:yaml.org,2002:pairs", {
-    create: () => [],
-    addItem: (container, item) => {
-      if (item instanceof Map) {
-        if (item.size !== 1) return "cannot resolve a pairs item";
-        container.push(item.entries().next().value);
-        return "";
-      }
-      if (Object.prototype.toString.call(item) !== "[object Object]") return "cannot resolve a pairs item";
-      const object = item;
-      const keys = Object.keys(object);
-      if (keys.length !== 1) return "cannot resolve a pairs item";
-      container.push([keys[0], object[keys[0]]]);
-      return "";
-    },
-    identify: () => false
-  });
-  var mapTag = defineMappingTag("tag:yaml.org,2002:map", {
-    create: () => ({}),
-    identify: isPlainObject,
-    represent: (o) => {
-      const map = /* @__PURE__ */ new Map();
-      for (const key of Object.keys(o)) map.set(key, o[key]);
-      return map;
-    },
-    addPair: (container, key, value) => {
-      if (key !== null && typeof key === "object") return "object-based map does not support complex keys";
-      const normalizedKey = String(key);
-      if (normalizedKey === "__proto__") Object.defineProperty(container, normalizedKey, {
-        value,
-        enumerable: true,
-        configurable: true,
-        writable: true
-      });
-      else container[normalizedKey] = value;
-      return "";
-    },
-    has: (container, key) => {
-      if (key !== null && typeof key === "object") return false;
-      return Object.prototype.hasOwnProperty.call(container, String(key));
-    },
-    keys: (container) => Object.keys(container),
-    get: (container, key) => {
-      const normalizedKey = String(key);
-      if (!Object.prototype.hasOwnProperty.call(container, normalizedKey)) return null;
-      return container[normalizedKey];
-    }
-  });
-  var setTag = defineMappingTag("tag:yaml.org,2002:set", {
-    create: () => /* @__PURE__ */ new Set(),
-    identify: (data) => data instanceof Set,
-    represent: (data) => {
-      const map = /* @__PURE__ */ new Map();
-      for (const key of data) map.set(key, null);
-      return map;
-    },
-    addPair: (container, key, value) => {
-      if (value !== null) return "cannot resolve a set item";
-      container.add(key);
-      return "";
-    },
-    has: (container, key) => container.has(key),
-    keys: (container) => container.keys(),
-    get: () => null
-  });
   function createTagDefinitionMap() {
     return {
       scalar: /* @__PURE__ */ Object.create(null),
@@ -3340,198 +369,6 @@
     }
     return result;
   }
-  var Schema = class Schema2 {
-    constructor(tags) {
-      __publicField(this, "tags");
-      /** @internal */
-      __publicField(this, "implicitScalarTags");
-      /**
-      * Dispatch implicit scalar resolvers by `source.charAt(0)`. Each bucket holds
-      * the resolvers that may match that key, in schema order; a key absent from
-      * the map uses
-      * {@link Schema.implicitScalarAnyFirstChar}
-      * (resolvers that declared no first-char constraint, so they apply to any
-      * first character).
-      */
-      __publicField(this, "implicitScalarByFirstChar");
-      __publicField(this, "implicitScalarAnyFirstChar");
-      /**
-      * The default scalar tag (`!!str`), resolved once so the composer's fallback
-      * for unresolved plain scalars avoids a keyed lookup per scalar.
-      *
-      * @internal
-      */
-      __publicField(this, "defaultScalarTag");
-      /**
-      * The default container tags (`!!seq` / `!!map`), used by the dumper: when a
-      * value is identified by its default tag, the tag is implicit and not
-      * printed. Undefined if the schema does not define them (then such values
-      * can't be dumped).
-      *
-      * @internal
-      */
-      __publicField(this, "defaultSequenceTag");
-      /** @internal */
-      __publicField(this, "defaultMappingTag");
-      __publicField(this, "exact");
-      __publicField(this, "prefix");
-      const compiledTags = compileTags(tags);
-      const implicitScalarTags = [];
-      const exact = createTagDefinitionMap();
-      const prefix = createTagDefinitionListMap();
-      for (const tag of compiledTags) {
-        if (tag.nodeKind === "scalar" && tag.implicit) {
-          if (tag.matchByTagPrefix) throw new Error("Implicit scalar tags cannot match by tag prefix");
-          implicitScalarTags.push(tag);
-        }
-        switch (tag.nodeKind) {
-          case "scalar":
-            if (tag.matchByTagPrefix) prefix.scalar.push(tag);
-            else exact.scalar[tag.tagName] = tag;
-            break;
-          case "sequence":
-            if (tag.matchByTagPrefix) prefix.sequence.push(tag);
-            else exact.sequence[tag.tagName] = tag;
-            break;
-          case "mapping":
-            if (tag.matchByTagPrefix) prefix.mapping.push(tag);
-            else exact.mapping[tag.tagName] = tag;
-            break;
-        }
-      }
-      const implicitScalarAnyFirstChar = implicitScalarTags.filter((tag) => tag.implicitFirstChars === null);
-      const keys = /* @__PURE__ */ new Set();
-      for (const tag of implicitScalarTags) if (tag.implicitFirstChars !== null) for (const key of tag.implicitFirstChars) keys.add(key);
-      const implicitScalarByFirstChar = /* @__PURE__ */ new Map();
-      for (const key of keys) implicitScalarByFirstChar.set(key, implicitScalarTags.filter((tag) => tag.implicitFirstChars === null || tag.implicitFirstChars.indexOf(key) !== -1));
-      const defaultScalarTag = exact.scalar["tag:yaml.org,2002:str"];
-      if (!defaultScalarTag) throw new Error("schema does not define the default scalar tag (tag:yaml.org,2002:str)");
-      this.tags = compiledTags;
-      this.implicitScalarTags = implicitScalarTags;
-      this.implicitScalarByFirstChar = implicitScalarByFirstChar;
-      this.implicitScalarAnyFirstChar = implicitScalarAnyFirstChar;
-      this.defaultScalarTag = defaultScalarTag;
-      this.defaultSequenceTag = exact.sequence["tag:yaml.org,2002:seq"];
-      this.defaultMappingTag = exact.mapping["tag:yaml.org,2002:map"];
-      this.exact = exact;
-      this.prefix = prefix;
-    }
-    /** @internal */
-    lookupScalarTag(tagName) {
-      const exactTag = this.exact.scalar[tagName];
-      if (exactTag) return exactTag;
-      for (const tag of this.prefix.scalar) if (tagName.startsWith(tag.tagName)) return tag;
-    }
-    /** @internal */
-    lookupSequenceTag(tagName) {
-      const exactTag = this.exact.sequence[tagName];
-      if (exactTag) return exactTag;
-      for (const tag of this.prefix.sequence) if (tagName.startsWith(tag.tagName)) return tag;
-    }
-    /** @internal */
-    lookupMappingTag(tagName) {
-      const exactTag = this.exact.mapping[tagName];
-      if (exactTag) return exactTag;
-      for (const tag of this.prefix.mapping) if (tagName.startsWith(tag.tagName)) return tag;
-    }
-    /** @internal */
-    resolveImplicitScalarTag(source) {
-      var _a;
-      const candidates = (_a = this.implicitScalarByFirstChar.get(source.charAt(0))) != null ? _a : this.implicitScalarAnyFirstChar;
-      for (const tag2 of candidates) {
-        const value = tag2.resolve(source, false, tag2.tagName);
-        if (value !== NOT_RESOLVED) return {
-          value,
-          tag: tag2
-        };
-      }
-      const tag = this.defaultScalarTag;
-      return {
-        value: tag.resolve(source, false, tag.tagName),
-        tag
-      };
-    }
-    /**
-    * Creates a new schema with the specified tags added. If a tag already
-    * exists, it is replaced by the specified tag.
-    *
-    * @example
-    *
-    * ```javascript
-    * import { CORE_SCHEMA, mergeTag, realMapTag } from 'js-yaml'
-    *
-    * const schema = CORE_SCHEMA.withTags(mergeTag, realMapTag)
-    * ```
-    */
-    withTags(...tags) {
-      let flatTags = [];
-      for (const tag of tags) flatTags = flatTags.concat(tag);
-      return new Schema2([...this.tags, ...flatTags]);
-    }
-  };
-  var FAILSAFE_SCHEMA = new Schema([
-    strTag,
-    seqTag,
-    mapTag
-  ]);
-  var JSON_SCHEMA = new Schema([
-    ...FAILSAFE_SCHEMA.tags,
-    nullJsonTag,
-    boolJsonTag,
-    intJsonTag,
-    floatJsonTag
-  ]);
-  var CORE_SCHEMA = new Schema([
-    ...FAILSAFE_SCHEMA.tags,
-    nullCoreTag,
-    boolCoreTag,
-    intCoreTag,
-    floatCoreTag
-  ]);
-  var YAML11_SCHEMA = new Schema([
-    ...FAILSAFE_SCHEMA.tags,
-    nullYaml11Tag,
-    boolYaml11Tag,
-    intYaml11Tag,
-    floatYaml11Tag,
-    timestampTag,
-    mergeTag,
-    binaryTag,
-    omapTag,
-    pairsTag,
-    setTag
-  ]);
-  var DUMP_SCHEMA = YAML11_SCHEMA.withTags({
-    ...intYaml11Tag,
-    resolve: (source, isExplicit, tagName) => {
-      const result = intYaml11Tag.resolve(source, isExplicit, tagName);
-      return result === NOT_RESOLVED ? intCoreTag.resolve(source, isExplicit, tagName) : result;
-    }
-  }, {
-    ...floatYaml11Tag,
-    resolve: (source, isExplicit, tagName) => {
-      const result = floatYaml11Tag.resolve(source, isExplicit, tagName);
-      return result === NOT_RESOLVED ? floatCoreTag.resolve(source, isExplicit, tagName) : result;
-    }
-  });
-  var realMapTag = defineMappingTag("tag:yaml.org,2002:map", {
-    create: () => /* @__PURE__ */ new Map(),
-    addPair: (container, key, value) => {
-      container.set(key, value);
-      return "";
-    },
-    has: (container, key) => container.has(key),
-    keys: (container) => container.keys(),
-    get: (container, key) => container.get(key),
-    identify: (data) => data instanceof Map || isPlainObject(data),
-    represent: (data) => {
-      if (data instanceof Map) return data;
-      const map = /* @__PURE__ */ new Map();
-      const obj = data;
-      for (const key of Object.keys(obj)) map.set(key, obj[key]);
-      return map;
-    }
-  });
   function normalizeKey(key) {
     if (Array.isArray(key)) {
       const array = Array.prototype.slice.call(key);
@@ -3544,43 +381,6 @@
     if (typeof key === "object" && Object.prototype.toString.call(key) === "[object Object]") return "[object Object]";
     return String(key);
   }
-  var legacyMapTag = defineMappingTag("tag:yaml.org,2002:map", {
-    create: () => ({}),
-    identify: isPlainObject,
-    represent: (o) => {
-      const map = /* @__PURE__ */ new Map();
-      for (const key of Object.keys(o)) map.set(key, o[key]);
-      return map;
-    },
-    addPair: (container, key, value) => {
-      const normalizedKey = normalizeKey(key);
-      if (normalizedKey === null) return "nested arrays are not supported inside keys";
-      if (normalizedKey === "__proto__") Object.defineProperty(container, normalizedKey, {
-        value,
-        enumerable: true,
-        configurable: true,
-        writable: true
-      });
-      else container[normalizedKey] = value;
-      return "";
-    },
-    has: (container, key) => {
-      const normalizedKey = normalizeKey(key);
-      return normalizedKey !== null && Object.prototype.hasOwnProperty.call(container, normalizedKey);
-    },
-    keys: (container) => Object.keys(container),
-    get: (container, key) => {
-      const normalizedKey = String(key);
-      if (!Object.prototype.hasOwnProperty.call(container, normalizedKey)) return null;
-      return container[normalizedKey];
-    }
-  });
-  var DEFAULT_SNIPPET_OPTIONS = {
-    maxLength: 79,
-    indent: 1,
-    linesBefore: 3,
-    linesAfter: 2
-  };
   function getLine(buffer, lineStart, lineEnd, position, maxLineLength) {
     let head = "";
     let tail = "";
@@ -3650,81 +450,6 @@ ${result}`;
 ${exception.mark.snippet}`;
     return `${exception.reason} ${where}`;
   }
-  var YAMLException = class YAMLException2 extends Error {
-    /**
-    * Optional `mark` contains source snippet data. Usually, use
-    * {@link YAMLException.throwAt} instead of passing it directly.
-    */
-    constructor(reason, mark) {
-      super();
-      __publicField(this, "reason");
-      __publicField(this, "mark");
-      this.name = "YAMLException";
-      this.reason = reason;
-      this.mark = mark;
-      this.message = formatError(this, false);
-      if (Error.captureStackTrace) Error.captureStackTrace(this, this.constructor);
-    }
-    /**
-    * Returns the formatted error, omitting the source snippet in compact mode.
-    */
-    toString(compact) {
-      return `${this.name}: ${formatError(this, compact)}`;
-    }
-    /**
-    * Builds a YAMLException with a source snippet and throws it. `source` is
-    * the raw input text; `position` is an offset into it.
-    */
-    static throwAt(source, position, message, filename = "") {
-      let line = 0;
-      let lineStart = 0;
-      for (let index = 0; index < position; index++) {
-        const ch = source.charCodeAt(index);
-        if (ch === 10) {
-          line++;
-          lineStart = index + 1;
-        } else if (ch === 13) {
-          line++;
-          if (source.charCodeAt(index + 1) === 10) index++;
-          lineStart = index + 1;
-        }
-      }
-      const mark = {
-        name: filename,
-        buffer: source,
-        position,
-        line,
-        column: position - lineStart
-      };
-      mark.snippet = makeSnippet(mark);
-      throw new YAMLException2(message, mark);
-    }
-  };
-  var EVENT_ID = {
-    DOCUMENT: 1,
-    SEQUENCE: 2,
-    MAPPING: 3,
-    SCALAR: 4,
-    ALIAS: 5,
-    POP: 6
-  };
-  var SCALAR_STYLE = {
-    PLAIN: 1,
-    SINGLE_QUOTED: 2,
-    DOUBLE_QUOTED: 3,
-    LITERAL_BLOCK: 4,
-    FOLDED_BLOCK: 5
-  };
-  var COLLECTION_STYLE = {
-    BLOCK: 1,
-    FLOW: 2
-  };
-  var CHOMPING_MODE = {
-    CLIP: 1,
-    STRIP: 2,
-    KEEP: 3
-  };
-  var NO_RANGE$3 = -1;
   function simpleEscapeSequence(c) {
     switch (c) {
       case 48:
@@ -3766,12 +491,6 @@ ${exception.mark.snippet}`;
       default:
         return "";
     }
-  }
-  var simpleEscapeCheck = new Array(256);
-  var simpleEscapeMap = new Array(256);
-  for (let i = 0; i < 256; i++) {
-    simpleEscapeCheck[i] = simpleEscapeSequence(i) ? 1 : 0;
-    simpleEscapeMap[i] = simpleEscapeSequence(i);
   }
   function charFromCodepoint(c) {
     if (c <= 65535) return String.fromCharCode(c);
@@ -3944,10 +663,6 @@ ${exception.mark.snippet}`;
         return getPlainValue(input, valueStart, valueEnd);
     }
   }
-  var DEFAULT_TAG_HANDLERS = Object.assign(/* @__PURE__ */ Object.create(null), {
-    "!": "!",
-    "!!": "tag:yaml.org,2002:"
-  });
   function tagNameFull(rawTag, tagHandlers) {
     var _a, _b;
     if (rawTag.startsWith("!<") && rawTag.endsWith(">")) return decodeURIComponent(rawTag.slice(2, -1));
@@ -3956,15 +671,6 @@ ${exception.mark.snippet}`;
     const prefix = (_b = (_a = tagHandlers == null ? void 0 : tagHandlers[handle]) != null ? _a : DEFAULT_TAG_HANDLERS[handle]) != null ? _b : handle;
     return decodeURIComponent(prefix) + decodeURIComponent(rawTag.slice(handle.length));
   }
-  var NO_RANGE$2 = -1;
-  var MERGE_TAG_NAME = "tag:yaml.org,2002:merge";
-  var DEFAULT_CONSTRUCTOR_OPTIONS = {
-    filename: "",
-    schema: CORE_SCHEMA,
-    json: false,
-    maxTotalMergeKeys: 1e4,
-    maxAliases: -1
-  };
   function eventPosition$1(event) {
     if ("tagStart" in event && event.tagStart !== NO_RANGE$2) return event.tagStart;
     if ("anchorStart" in event && event.anchorStart !== NO_RANGE$2) return event.anchorStart;
@@ -4204,24 +910,6 @@ ${exception.mark.snippet}`;
     }
     return state.documents;
   }
-  var NO_RANGE$1 = -1;
-  var HAS_OWN = Object.prototype.hasOwnProperty;
-  var CONTEXT_FLOW_IN = 1;
-  var CONTEXT_FLOW_OUT = 2;
-  var CONTEXT_BLOCK_IN = 3;
-  var CONTEXT_BLOCK_OUT = 4;
-  var PATTERN_NON_PRINTABLE = /[\x00-\x08\x0B\x0C\x0E-\x1F\x7F-\x84\x86-\x9F\uFFFE\uFFFF]|[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?:[^\uD800-\uDBFF]|^)[\uDC00-\uDFFF]/;
-  var PATTERN_FLOW_INDICATORS = /[,\[\]{}]/;
-  var PATTERN_TAG_HANDLE = /^(?:!|!!|![0-9A-Za-z-]+!)$/;
-  var NS_URI_CHAR = String.raw`(?:%[0-9A-Fa-f]{2}|[0-9A-Za-z\-#;/?:@&=+$,_.!~*'()\[\]])`;
-  var NS_TAG_CHAR = String.raw`(?:%[0-9A-Fa-f]{2}|[0-9A-Za-z\-#;/?:@&=+$.~*'()_])`;
-  var PATTERN_TAG_URI = new RegExp(`^(?:${NS_URI_CHAR})*$`);
-  var PATTERN_TAG_SUFFIX = new RegExp(`^(?:${NS_TAG_CHAR})+$`);
-  var PATTERN_TAG_PREFIX = new RegExp(`^(?:!(?:${NS_URI_CHAR})*|${NS_TAG_CHAR}(?:${NS_URI_CHAR})*)$`);
-  var DEFAULT_PARSER_OPTIONS = {
-    filename: "",
-    maxDepth: 100
-  };
   function addDocumentEvent(state, explicitStart, explicitEnd) {
     state.events.push({
       type: EVENT_ID.DOCUMENT,
@@ -5044,10 +1732,6 @@ ${exception.mark.snippet}`;
     }
     return state.events;
   }
-  var DEFAULT_LOAD_OPTIONS = {
-    ...DEFAULT_PARSER_OPTIONS,
-    ...DEFAULT_CONSTRUCTOR_OPTIONS
-  };
   function loadDocuments(input, options = {}) {
     const opts = {
       ...DEFAULT_LOAD_OPTIONS,
@@ -5070,15 +1754,6 @@ ${exception.mark.snippet}`;
   function hasBit(mask, bit) {
     return (mask & 1 << bit) !== 0;
   }
-  var DEFAULT_SCALAR_STYLE_RULES = {
-    applyQuoteFlowKeysOption,
-    doubleQuoteForInvisibles,
-    doubleQuoteWhitespaceOnly,
-    applyForceQuotesOption,
-    tryLongOrMultilineAsBlock,
-    quoteInvalidPlain,
-    fallbackToDoubleQuoted
-  };
   function _preferredQuotedStyle(layout) {
     if (layout.presenterOptions.quoteStyle === "single" && hasBit(layout.allowedStylesMask, SCALAR_STYLE.SINGLE_QUOTED)) return SCALAR_STYLE.SINGLE_QUOTED;
     return SCALAR_STYLE.DOUBLE_QUOTED;
@@ -5134,80 +1809,782 @@ ${exception.mark.snippet}`;
   function fallbackToDoubleQuoted(layout) {
     if (!hasBit(layout.allowedStylesMask, layout.style)) layout.style = SCALAR_STYLE.DOUBLE_QUOTED;
   }
-  var SRC_C_PRINTABLE = "[\\x09\\x0A\\x0D\\x20-\\x7E\\x85\\xA0-\\uD7FF\\uE000-\\uFFFD\\u{10000}-\\u{10FFFF}]";
-  var SRC_B_CHAR = "[\\n\\r]";
-  var SRC_C_BYTE_ORDER_MARK = "\\uFEFF";
-  var SRC_S_WHITE = "[ \\t]";
-  var SRC_NB_CHAR = `(?:(?!(?:${SRC_B_CHAR}|${SRC_C_BYTE_ORDER_MARK}))${SRC_C_PRINTABLE})`;
-  var SRC_NS_CHAR = `(?:(?!${SRC_S_WHITE})${SRC_NB_CHAR})`;
-  var SRC_NB_JSON = "[\\x09\\x20-\\uD7FF\\uE000-\\uFFFF\\u{10000}-\\u{10FFFF}]";
-  var SRC_C_INDICATOR = "[-?:,\\[\\]{}#&*!|>'\"%@`]";
-  var SRC_C_FLOW_INDICATOR = "[,\\[\\]{}]";
-  var SRC_NS_PLAIN_SAFE_FLOW_OUT = SRC_NS_CHAR;
-  var SRC_NS_PLAIN_SAFE_FLOW_IN = `(?:(?!${SRC_C_FLOW_INDICATOR})${SRC_NS_CHAR})`;
-  var SRC_NS_PLAIN_FIRST_FLOW_OUT = `(?:(?:(?!${SRC_C_INDICATOR})${SRC_NS_CHAR})|[?:-](?=${SRC_NS_PLAIN_SAFE_FLOW_OUT}))`;
-  var SRC_NS_PLAIN_FIRST_FLOW_IN = `(?:(?:(?!${SRC_C_INDICATOR})${SRC_NS_CHAR})|[?:-](?=${SRC_NS_PLAIN_SAFE_FLOW_IN}))`;
-  var SRC_NS_PLAIN_CHAR_FLOW_OUT = `(?:(?:(?![:#])${SRC_NS_PLAIN_SAFE_FLOW_OUT})|:(?=${SRC_NS_PLAIN_SAFE_FLOW_OUT}))#*`;
-  var SRC_NS_PLAIN_CHAR_FLOW_IN = `(?:(?:(?![:#])${SRC_NS_PLAIN_SAFE_FLOW_IN})|:(?=${SRC_NS_PLAIN_SAFE_FLOW_IN}))#*`;
-  var SRC_NB_NS_PLAIN_IN_LINE_FLOW_OUT = `(?:${SRC_S_WHITE}*${SRC_NS_PLAIN_CHAR_FLOW_OUT})*`;
-  var SRC_NB_NS_PLAIN_IN_LINE_FLOW_IN = `(?:${SRC_S_WHITE}*${SRC_NS_PLAIN_CHAR_FLOW_IN})*`;
-  var SRC_NS_PLAIN_ONE_LINE_FLOW_OUT = `${SRC_NS_PLAIN_FIRST_FLOW_OUT}#*${SRC_NB_NS_PLAIN_IN_LINE_FLOW_OUT}`;
-  var SRC_NS_PLAIN_ONE_LINE_FLOW_IN = `${SRC_NS_PLAIN_FIRST_FLOW_IN}#*${SRC_NB_NS_PLAIN_IN_LINE_FLOW_IN}`;
-  var SRC_NS_PLAIN_ONE_LINE_BLOCK_KEY = SRC_NS_PLAIN_ONE_LINE_FLOW_OUT;
-  var SRC_NS_PLAIN_ONE_LINE_FLOW_KEY = SRC_NS_PLAIN_ONE_LINE_FLOW_IN;
-  var SRC_S_NS_PLAIN_NEXT_LINE_FLOW_OUT = `\\n+${SRC_NS_PLAIN_CHAR_FLOW_OUT}${SRC_NB_NS_PLAIN_IN_LINE_FLOW_OUT}`;
-  var SRC_S_NS_PLAIN_NEXT_LINE_FLOW_IN = `\\n+${SRC_NS_PLAIN_CHAR_FLOW_IN}${SRC_NB_NS_PLAIN_IN_LINE_FLOW_IN}`;
-  var SRC_NS_PLAIN_MULTI_LINE_FLOW_OUT = `${SRC_NS_PLAIN_ONE_LINE_FLOW_OUT}(?:${SRC_S_NS_PLAIN_NEXT_LINE_FLOW_OUT})*`;
-  var SRC_NS_PLAIN_MULTI_LINE_FLOW_IN = `${SRC_NS_PLAIN_ONE_LINE_FLOW_IN}(?:${SRC_S_NS_PLAIN_NEXT_LINE_FLOW_IN})*`;
-  var NS_PLAIN_FLOW_OUT = new RegExp(`^(?:${SRC_NS_PLAIN_MULTI_LINE_FLOW_OUT})$`, "u");
-  var NS_PLAIN_FLOW_IN = new RegExp(`^(?:${SRC_NS_PLAIN_MULTI_LINE_FLOW_IN})$`, "u");
-  var NS_PLAIN_BLOCK_KEY = new RegExp(`^(?:${SRC_NS_PLAIN_ONE_LINE_BLOCK_KEY})$`, "u");
-  var NS_PLAIN_FLOW_KEY = new RegExp(`^(?:${SRC_NS_PLAIN_ONE_LINE_FLOW_KEY})$`, "u");
-  var NB_SINGLE_ONE_LINE = new RegExp(`^(?:${SRC_NB_JSON})*$`, "u");
-  var NB_SINGLE_MULTI_LINE = new RegExp(`^(?:${SRC_NB_JSON}|\\n)*$`, "u");
-  var BLOCK_SCALAR_CONTENT = new RegExp(`^(?:${SRC_NB_CHAR}|\\n)*$`, "u");
-  var DEFAULT_PRESENTER_OPTIONS = {
-    indent: 2,
-    seqNoIndent: false,
-    seqInlineFirst: true,
-    lineWidth: 80,
-    flowBracketPadding: false,
-    flowSkipCommaSpace: false,
-    flowSkipColonSpace: false,
-    quoteFlowKeys: false,
-    quoteStyle: "single",
-    forceQuotes: false,
-    scalarStyleRules: Object.keys(DEFAULT_SCALAR_STYLE_RULES).map((name) => Reflect.get(DEFAULT_SCALAR_STYLE_RULES, name)),
-    tagBeforeAnchor: false
-  };
-  var DEFAULT_DUMP_OPTIONS = {
-    ...DEFAULT_PRESENTER_OPTIONS,
-    schema: DUMP_SCHEMA,
-    skipInvalid: false,
-    noRefs: false,
-    flowLevel: -1,
-    sortKeys: false,
-    transform: () => {
+  var NOT_RESOLVED, strTag, NULL_VALUES$1, nullCoreTag, nullJsonTag, NULL_VALUES, nullYaml11Tag, TRUE_VALUES$2, FALSE_VALUES$2, boolCoreTag, TRUE_VALUES$1, FALSE_VALUES$1, boolJsonTag, TRUE_VALUES, FALSE_VALUES, boolYaml11Tag, YAML_INTEGER_IMPLICIT_PATTERN$1, YAML_INTEGER_EXPLICIT_PATTERN$1, intCoreTag, YAML_INTEGER_IMPLICIT_PATTERN, YAML_INTEGER_EXPLICIT_PATTERN, intJsonTag, YAML_INTEGER_PATTERN, intYaml11Tag, YAML_FLOAT_PATTERN$1, YAML_FLOAT_SPECIAL_PATTERN$1, floatCoreTag, YAML_FLOAT_IMPLICIT_PATTERN, YAML_FLOAT_EXPLICIT_PATTERN, floatJsonTag, YAML_FLOAT_PATTERN, YAML_FLOAT_SPECIAL_PATTERN, floatYaml11Tag, mergeTag, BASE64_PATTERN, binaryTag, YAML_DATE_REGEXP, YAML_TIMESTAMP_REGEXP, timestampTag, seqTag, omapTag, pairsTag, mapTag, setTag, Schema, FAILSAFE_SCHEMA, JSON_SCHEMA, CORE_SCHEMA, YAML11_SCHEMA, DUMP_SCHEMA, realMapTag, legacyMapTag, DEFAULT_SNIPPET_OPTIONS, YAMLException, EVENT_ID, SCALAR_STYLE, COLLECTION_STYLE, CHOMPING_MODE, NO_RANGE$3, simpleEscapeCheck, simpleEscapeMap, DEFAULT_TAG_HANDLERS, NO_RANGE$2, MERGE_TAG_NAME, DEFAULT_CONSTRUCTOR_OPTIONS, NO_RANGE$1, HAS_OWN, CONTEXT_FLOW_IN, CONTEXT_FLOW_OUT, CONTEXT_BLOCK_IN, CONTEXT_BLOCK_OUT, PATTERN_NON_PRINTABLE, PATTERN_FLOW_INDICATORS, PATTERN_TAG_HANDLE, NS_URI_CHAR, NS_TAG_CHAR, PATTERN_TAG_URI, PATTERN_TAG_SUFFIX, PATTERN_TAG_PREFIX, DEFAULT_PARSER_OPTIONS, DEFAULT_LOAD_OPTIONS, DEFAULT_SCALAR_STYLE_RULES, SRC_C_PRINTABLE, SRC_B_CHAR, SRC_C_BYTE_ORDER_MARK, SRC_S_WHITE, SRC_NB_CHAR, SRC_NS_CHAR, SRC_NB_JSON, SRC_C_INDICATOR, SRC_C_FLOW_INDICATOR, SRC_NS_PLAIN_SAFE_FLOW_OUT, SRC_NS_PLAIN_SAFE_FLOW_IN, SRC_NS_PLAIN_FIRST_FLOW_OUT, SRC_NS_PLAIN_FIRST_FLOW_IN, SRC_NS_PLAIN_CHAR_FLOW_OUT, SRC_NS_PLAIN_CHAR_FLOW_IN, SRC_NB_NS_PLAIN_IN_LINE_FLOW_OUT, SRC_NB_NS_PLAIN_IN_LINE_FLOW_IN, SRC_NS_PLAIN_ONE_LINE_FLOW_OUT, SRC_NS_PLAIN_ONE_LINE_FLOW_IN, SRC_NS_PLAIN_ONE_LINE_BLOCK_KEY, SRC_NS_PLAIN_ONE_LINE_FLOW_KEY, SRC_S_NS_PLAIN_NEXT_LINE_FLOW_OUT, SRC_S_NS_PLAIN_NEXT_LINE_FLOW_IN, SRC_NS_PLAIN_MULTI_LINE_FLOW_OUT, SRC_NS_PLAIN_MULTI_LINE_FLOW_IN, NS_PLAIN_FLOW_OUT, NS_PLAIN_FLOW_IN, NS_PLAIN_BLOCK_KEY, NS_PLAIN_FLOW_KEY, NB_SINGLE_ONE_LINE, NB_SINGLE_MULTI_LINE, BLOCK_SCALAR_CONTENT, DEFAULT_PRESENTER_OPTIONS, DEFAULT_DUMP_OPTIONS, EVENT_DOCUMENT, EVENT_SEQUENCE, EVENT_MAPPING, EVENT_SCALAR, EVENT_ALIAS, EVENT_POP, SCALAR_STYLE_PLAIN, SCALAR_STYLE_SINGLE_QUOTED, SCALAR_STYLE_DOUBLE_QUOTED, SCALAR_STYLE_LITERAL_BLOCK, SCALAR_STYLE_FOLDED_BLOCK, COLLECTION_STYLE_BLOCK, COLLECTION_STYLE_FLOW, CHOMPING_CLIP, CHOMPING_STRIP, CHOMPING_KEEP;
+  var init_js_yaml = __esm({
+    "node_modules/.pnpm/js-yaml@5.4.3/node_modules/js-yaml/dist/js-yaml.mjs"() {
+      NOT_RESOLVED = /* @__PURE__ */ Symbol("NOT_RESOLVED");
+      strTag = defineScalarTag("tag:yaml.org,2002:str", {
+        resolve: (source) => source,
+        identify: (data) => typeof data === "string"
+      });
+      NULL_VALUES$1 = [
+        "",
+        "~",
+        "null",
+        "Null",
+        "NULL"
+      ];
+      nullCoreTag = defineScalarTag("tag:yaml.org,2002:null", {
+        implicit: true,
+        implicitFirstChars: [
+          "",
+          "~",
+          "n",
+          "N"
+        ],
+        resolve: (source) => {
+          if (NULL_VALUES$1.indexOf(source) !== -1) return null;
+          return NOT_RESOLVED;
+        },
+        identify: (object) => object === null,
+        represent: () => "null"
+      });
+      nullJsonTag = defineScalarTag("tag:yaml.org,2002:null", {
+        implicit: true,
+        implicitFirstChars: ["n"],
+        resolve: (source, isExplicit) => {
+          if (source === "null" || isExplicit && source === "") return null;
+          return NOT_RESOLVED;
+        },
+        identify: (object) => object === null,
+        represent: () => "null"
+      });
+      NULL_VALUES = [
+        "",
+        "~",
+        "null",
+        "Null",
+        "NULL"
+      ];
+      nullYaml11Tag = defineScalarTag("tag:yaml.org,2002:null", {
+        implicit: true,
+        implicitFirstChars: [
+          "",
+          "~",
+          "n",
+          "N"
+        ],
+        resolve: (source) => {
+          if (NULL_VALUES.indexOf(source) !== -1) return null;
+          return NOT_RESOLVED;
+        },
+        identify: (object) => object === null,
+        represent: () => "null"
+      });
+      TRUE_VALUES$2 = [
+        "true",
+        "True",
+        "TRUE"
+      ];
+      FALSE_VALUES$2 = [
+        "false",
+        "False",
+        "FALSE"
+      ];
+      boolCoreTag = defineScalarTag("tag:yaml.org,2002:bool", {
+        implicit: true,
+        implicitFirstChars: [
+          "t",
+          "T",
+          "f",
+          "F"
+        ],
+        resolve: (source) => {
+          if (TRUE_VALUES$2.indexOf(source) !== -1) return true;
+          if (FALSE_VALUES$2.indexOf(source) !== -1) return false;
+          return NOT_RESOLVED;
+        },
+        identify: (object) => Object.prototype.toString.call(object) === "[object Boolean]",
+        represent: (object) => object ? "true" : "false"
+      });
+      TRUE_VALUES$1 = ["true"];
+      FALSE_VALUES$1 = ["false"];
+      boolJsonTag = defineScalarTag("tag:yaml.org,2002:bool", {
+        implicit: true,
+        implicitFirstChars: ["t", "f"],
+        resolve: (source) => {
+          if (TRUE_VALUES$1.indexOf(source) !== -1) return true;
+          if (FALSE_VALUES$1.indexOf(source) !== -1) return false;
+          return NOT_RESOLVED;
+        },
+        identify: (object) => Object.prototype.toString.call(object) === "[object Boolean]",
+        represent: (object) => object ? "true" : "false"
+      });
+      TRUE_VALUES = [
+        "true",
+        "True",
+        "TRUE",
+        "y",
+        "Y",
+        "yes",
+        "Yes",
+        "YES",
+        "on",
+        "On",
+        "ON"
+      ];
+      FALSE_VALUES = [
+        "false",
+        "False",
+        "FALSE",
+        "n",
+        "N",
+        "no",
+        "No",
+        "NO",
+        "off",
+        "Off",
+        "OFF"
+      ];
+      boolYaml11Tag = defineScalarTag("tag:yaml.org,2002:bool", {
+        implicit: true,
+        implicitFirstChars: [
+          "y",
+          "Y",
+          "n",
+          "N",
+          "t",
+          "T",
+          "f",
+          "F",
+          "o",
+          "O"
+        ],
+        resolve: (source) => {
+          if (TRUE_VALUES.indexOf(source) !== -1) return true;
+          if (FALSE_VALUES.indexOf(source) !== -1) return false;
+          return NOT_RESOLVED;
+        },
+        identify: (object) => Object.prototype.toString.call(object) === "[object Boolean]",
+        represent: (object) => object ? "true" : "false"
+      });
+      YAML_INTEGER_IMPLICIT_PATTERN$1 = /* @__PURE__ */ new RegExp("^(?:0o[0-7]+|0x[0-9a-fA-F]+|[-+]?[0-9]+)$");
+      YAML_INTEGER_EXPLICIT_PATTERN$1 = /* @__PURE__ */ new RegExp("^(?:[-+]?0b[0-1]+|[-+]?0o[0-7]+|[-+]?0x[0-9a-fA-F]+|[-+]?[0-9]+)$");
+      intCoreTag = defineScalarTag("tag:yaml.org,2002:int", {
+        implicit: true,
+        implicitFirstChars: [
+          "-",
+          "+",
+          ..."0123456789"
+        ],
+        resolve: resolveYamlInteger$2,
+        identify: (object) => Number.isInteger(object) && !Object.is(object, -0) && object.toString(10).indexOf("e") < 0,
+        represent: (object) => object.toString(10)
+      });
+      YAML_INTEGER_IMPLICIT_PATTERN = /* @__PURE__ */ new RegExp("^-?(?:0|[1-9][0-9]*)$");
+      YAML_INTEGER_EXPLICIT_PATTERN = /* @__PURE__ */ new RegExp("^(?:[-+]?0b[0-1]+|[-+]?0o[0-7]+|[-+]?0x[0-9a-fA-F]+|[-+]?[0-9]+)$");
+      intJsonTag = defineScalarTag("tag:yaml.org,2002:int", {
+        implicit: true,
+        implicitFirstChars: ["-", ..."0123456789"],
+        resolve: resolveYamlInteger$1,
+        identify: (object) => Number.isInteger(object) && !Object.is(object, -0) && object.toString(10).indexOf("e") < 0,
+        represent: (object) => object.toString(10)
+      });
+      YAML_INTEGER_PATTERN = /* @__PURE__ */ new RegExp("^(?:[-+]?0b[0-1_]+|[-+]?0[0-7_]+|[-+]?0x[0-9a-fA-F_]+|[-+]?[0-9][0-9_]*(?::[0-5]?[0-9])+|[-+]?(?:0|[1-9][0-9_]*))$");
+      intYaml11Tag = defineScalarTag("tag:yaml.org,2002:int", {
+        implicit: true,
+        implicitFirstChars: [
+          "-",
+          "+",
+          ..."0123456789"
+        ],
+        resolve: resolveYamlInteger,
+        identify: (object) => Number.isInteger(object) && !Object.is(object, -0) && object.toString(10).indexOf("e") < 0,
+        represent: (object) => object.toString(10)
+      });
+      YAML_FLOAT_PATTERN$1 = /* @__PURE__ */ new RegExp("^(?:[-+]?[0-9]+(?:\\.[0-9]*)?(?:[eE][-+]?[0-9]+)?|[-+]?\\.[0-9]+(?:[eE][-+]?[0-9]+)?|[-+]?\\.(?:inf|Inf|INF)|\\.(?:nan|NaN|NAN))$");
+      YAML_FLOAT_SPECIAL_PATTERN$1 = /* @__PURE__ */ new RegExp("^(?:[-+]?\\.(?:inf|Inf|INF)|\\.(?:nan|NaN|NAN))$");
+      floatCoreTag = defineScalarTag("tag:yaml.org,2002:float", {
+        implicit: true,
+        implicitFirstChars: [
+          "-",
+          "+",
+          ".",
+          ..."0123456789"
+        ],
+        resolve: resolveYamlFloat$2,
+        identify: (object) => typeof object === "number" && (!Number.isInteger(object) || Object.is(object, -0) || object.toString(10).indexOf("e") >= 0),
+        represent: representYamlFloat$2
+      });
+      YAML_FLOAT_IMPLICIT_PATTERN = /* @__PURE__ */ new RegExp("^-?(?:0|[1-9][0-9]*)(?:\\.[0-9]*)?(?:[eE][-+]?[0-9]+)?$");
+      YAML_FLOAT_EXPLICIT_PATTERN = /* @__PURE__ */ new RegExp("^(?:[-+]?[0-9]+(?:\\.[0-9]*)?(?:[eE][-+]?[0-9]+)?|[-+]?\\.[0-9]+(?:[eE][-+]?[0-9]+)?|[-+]?\\.(?:inf|Inf|INF)|\\.(?:nan|NaN|NAN))$");
+      floatJsonTag = defineScalarTag("tag:yaml.org,2002:float", {
+        implicit: true,
+        implicitFirstChars: ["-", ..."0123456789"],
+        resolve: resolveYamlFloat$1,
+        identify: (object) => typeof object === "number" && (!Number.isInteger(object) || Object.is(object, -0) || object.toString(10).indexOf("e") >= 0),
+        represent: representYamlFloat$1
+      });
+      YAML_FLOAT_PATTERN = /* @__PURE__ */ new RegExp("^(?:[-+]?(?:(?:[0-9][0-9_]*)?\\.[0-9_]*)(?:[eE][-+][0-9]+)?|[-+]?[0-9][0-9_]*(?::[0-5]?[0-9])+\\.[0-9_]*|[-+]?\\.(?:inf|Inf|INF)|\\.(?:nan|NaN|NAN))$");
+      YAML_FLOAT_SPECIAL_PATTERN = /* @__PURE__ */ new RegExp("^(?:[-+]?\\.(?:inf|Inf|INF)|\\.(?:nan|NaN|NAN))$");
+      floatYaml11Tag = defineScalarTag("tag:yaml.org,2002:float", {
+        implicit: true,
+        implicitFirstChars: [
+          "-",
+          "+",
+          ".",
+          ..."0123456789"
+        ],
+        resolve: resolveYamlFloat,
+        identify: (object) => typeof object === "number" && (!Number.isInteger(object) || Object.is(object, -0) || object.toString(10).indexOf("e") >= 0),
+        represent: representYamlFloat
+      });
+      mergeTag = defineScalarTag("tag:yaml.org,2002:merge", {
+        implicit: true,
+        implicitFirstChars: ["<"],
+        resolve: (source, isExplicit) => {
+          if (source === "<<" || isExplicit && source === "") return "<<";
+          return NOT_RESOLVED;
+        },
+        identify: () => false
+      });
+      BASE64_PATTERN = /^[A-Za-z0-9+/]*={0,2}$/;
+      binaryTag = defineScalarTag("tag:yaml.org,2002:binary", {
+        resolve: resolveYamlBinary,
+        identify: (object) => Object.prototype.toString.call(object) === "[object Uint8Array]",
+        represent: representYamlBinary
+      });
+      YAML_DATE_REGEXP = /* @__PURE__ */ new RegExp("^([0-9][0-9][0-9][0-9])-([0-9][0-9])-([0-9][0-9])$");
+      YAML_TIMESTAMP_REGEXP = /* @__PURE__ */ new RegExp("^([0-9][0-9][0-9][0-9])-([0-9][0-9]?)-([0-9][0-9]?)(?:[Tt]|[ \\t]+)([0-9][0-9]?):([0-9][0-9]):([0-9][0-9])(?:\\.([0-9]*))?(?:[ \\t]*(Z|([-+])([0-9][0-9]?)(?::([0-9][0-9]))?))?$");
+      timestampTag = defineScalarTag("tag:yaml.org,2002:timestamp", {
+        implicit: true,
+        implicitFirstChars: [..."0123456789"],
+        resolve: resolveYamlTimestamp,
+        identify: (object) => object instanceof Date,
+        represent: (object) => object.toISOString()
+      });
+      seqTag = defineSequenceTag("tag:yaml.org,2002:seq", {
+        create: () => [],
+        addItem: (container, item) => {
+          container.push(item);
+        },
+        identify: Array.isArray
+      });
+      omapTag = defineSequenceTag("tag:yaml.org,2002:omap", {
+        create: () => ({
+          list: [],
+          seen: /* @__PURE__ */ new Set()
+        }),
+        addItem: (carrier, item) => {
+          let key;
+          if (item instanceof Map) {
+            if (item.size !== 1) return "cannot resolve an ordered map item";
+            key = item.keys().next().value;
+          } else if (isPlainObject(item)) {
+            const itemKeys = Object.keys(item);
+            if (itemKeys.length !== 1) return "cannot resolve an ordered map item";
+            key = itemKeys[0];
+          } else return "cannot resolve an ordered map item";
+          if (carrier.seen.has(key)) return "duplicate key in ordered map";
+          carrier.seen.add(key);
+          carrier.list.push(item);
+          return "";
+        },
+        finalize: (carrier) => carrier.list,
+        identify: () => false
+      });
+      pairsTag = defineSequenceTag("tag:yaml.org,2002:pairs", {
+        create: () => [],
+        addItem: (container, item) => {
+          if (item instanceof Map) {
+            if (item.size !== 1) return "cannot resolve a pairs item";
+            container.push(item.entries().next().value);
+            return "";
+          }
+          if (Object.prototype.toString.call(item) !== "[object Object]") return "cannot resolve a pairs item";
+          const object = item;
+          const keys = Object.keys(object);
+          if (keys.length !== 1) return "cannot resolve a pairs item";
+          container.push([keys[0], object[keys[0]]]);
+          return "";
+        },
+        identify: () => false
+      });
+      mapTag = defineMappingTag("tag:yaml.org,2002:map", {
+        create: () => ({}),
+        identify: isPlainObject,
+        represent: (o) => {
+          const map = /* @__PURE__ */ new Map();
+          for (const key of Object.keys(o)) map.set(key, o[key]);
+          return map;
+        },
+        addPair: (container, key, value) => {
+          if (key !== null && typeof key === "object") return "object-based map does not support complex keys";
+          const normalizedKey = String(key);
+          if (normalizedKey === "__proto__") Object.defineProperty(container, normalizedKey, {
+            value,
+            enumerable: true,
+            configurable: true,
+            writable: true
+          });
+          else container[normalizedKey] = value;
+          return "";
+        },
+        has: (container, key) => {
+          if (key !== null && typeof key === "object") return false;
+          return Object.prototype.hasOwnProperty.call(container, String(key));
+        },
+        keys: (container) => Object.keys(container),
+        get: (container, key) => {
+          const normalizedKey = String(key);
+          if (!Object.prototype.hasOwnProperty.call(container, normalizedKey)) return null;
+          return container[normalizedKey];
+        }
+      });
+      setTag = defineMappingTag("tag:yaml.org,2002:set", {
+        create: () => /* @__PURE__ */ new Set(),
+        identify: (data) => data instanceof Set,
+        represent: (data) => {
+          const map = /* @__PURE__ */ new Map();
+          for (const key of data) map.set(key, null);
+          return map;
+        },
+        addPair: (container, key, value) => {
+          if (value !== null) return "cannot resolve a set item";
+          container.add(key);
+          return "";
+        },
+        has: (container, key) => container.has(key),
+        keys: (container) => container.keys(),
+        get: () => null
+      });
+      Schema = class Schema2 {
+        constructor(tags) {
+          __publicField(this, "tags");
+          /** @internal */
+          __publicField(this, "implicitScalarTags");
+          /**
+          * Dispatch implicit scalar resolvers by `source.charAt(0)`. Each bucket holds
+          * the resolvers that may match that key, in schema order; a key absent from
+          * the map uses
+          * {@link Schema.implicitScalarAnyFirstChar}
+          * (resolvers that declared no first-char constraint, so they apply to any
+          * first character).
+          */
+          __publicField(this, "implicitScalarByFirstChar");
+          __publicField(this, "implicitScalarAnyFirstChar");
+          /**
+          * The default scalar tag (`!!str`), resolved once so the composer's fallback
+          * for unresolved plain scalars avoids a keyed lookup per scalar.
+          *
+          * @internal
+          */
+          __publicField(this, "defaultScalarTag");
+          /**
+          * The default container tags (`!!seq` / `!!map`), used by the dumper: when a
+          * value is identified by its default tag, the tag is implicit and not
+          * printed. Undefined if the schema does not define them (then such values
+          * can't be dumped).
+          *
+          * @internal
+          */
+          __publicField(this, "defaultSequenceTag");
+          /** @internal */
+          __publicField(this, "defaultMappingTag");
+          __publicField(this, "exact");
+          __publicField(this, "prefix");
+          const compiledTags = compileTags(tags);
+          const implicitScalarTags = [];
+          const exact = createTagDefinitionMap();
+          const prefix = createTagDefinitionListMap();
+          for (const tag of compiledTags) {
+            if (tag.nodeKind === "scalar" && tag.implicit) {
+              if (tag.matchByTagPrefix) throw new Error("Implicit scalar tags cannot match by tag prefix");
+              implicitScalarTags.push(tag);
+            }
+            switch (tag.nodeKind) {
+              case "scalar":
+                if (tag.matchByTagPrefix) prefix.scalar.push(tag);
+                else exact.scalar[tag.tagName] = tag;
+                break;
+              case "sequence":
+                if (tag.matchByTagPrefix) prefix.sequence.push(tag);
+                else exact.sequence[tag.tagName] = tag;
+                break;
+              case "mapping":
+                if (tag.matchByTagPrefix) prefix.mapping.push(tag);
+                else exact.mapping[tag.tagName] = tag;
+                break;
+            }
+          }
+          const implicitScalarAnyFirstChar = implicitScalarTags.filter((tag) => tag.implicitFirstChars === null);
+          const keys = /* @__PURE__ */ new Set();
+          for (const tag of implicitScalarTags) if (tag.implicitFirstChars !== null) for (const key of tag.implicitFirstChars) keys.add(key);
+          const implicitScalarByFirstChar = /* @__PURE__ */ new Map();
+          for (const key of keys) implicitScalarByFirstChar.set(key, implicitScalarTags.filter((tag) => tag.implicitFirstChars === null || tag.implicitFirstChars.indexOf(key) !== -1));
+          const defaultScalarTag = exact.scalar["tag:yaml.org,2002:str"];
+          if (!defaultScalarTag) throw new Error("schema does not define the default scalar tag (tag:yaml.org,2002:str)");
+          this.tags = compiledTags;
+          this.implicitScalarTags = implicitScalarTags;
+          this.implicitScalarByFirstChar = implicitScalarByFirstChar;
+          this.implicitScalarAnyFirstChar = implicitScalarAnyFirstChar;
+          this.defaultScalarTag = defaultScalarTag;
+          this.defaultSequenceTag = exact.sequence["tag:yaml.org,2002:seq"];
+          this.defaultMappingTag = exact.mapping["tag:yaml.org,2002:map"];
+          this.exact = exact;
+          this.prefix = prefix;
+        }
+        /** @internal */
+        lookupScalarTag(tagName) {
+          const exactTag = this.exact.scalar[tagName];
+          if (exactTag) return exactTag;
+          for (const tag of this.prefix.scalar) if (tagName.startsWith(tag.tagName)) return tag;
+        }
+        /** @internal */
+        lookupSequenceTag(tagName) {
+          const exactTag = this.exact.sequence[tagName];
+          if (exactTag) return exactTag;
+          for (const tag of this.prefix.sequence) if (tagName.startsWith(tag.tagName)) return tag;
+        }
+        /** @internal */
+        lookupMappingTag(tagName) {
+          const exactTag = this.exact.mapping[tagName];
+          if (exactTag) return exactTag;
+          for (const tag of this.prefix.mapping) if (tagName.startsWith(tag.tagName)) return tag;
+        }
+        /** @internal */
+        resolveImplicitScalarTag(source) {
+          var _a;
+          const candidates = (_a = this.implicitScalarByFirstChar.get(source.charAt(0))) != null ? _a : this.implicitScalarAnyFirstChar;
+          for (const tag2 of candidates) {
+            const value = tag2.resolve(source, false, tag2.tagName);
+            if (value !== NOT_RESOLVED) return {
+              value,
+              tag: tag2
+            };
+          }
+          const tag = this.defaultScalarTag;
+          return {
+            value: tag.resolve(source, false, tag.tagName),
+            tag
+          };
+        }
+        /**
+        * Creates a new schema with the specified tags added. If a tag already
+        * exists, it is replaced by the specified tag.
+        *
+        * @example
+        *
+        * ```javascript
+        * import { CORE_SCHEMA, mergeTag, realMapTag } from 'js-yaml'
+        *
+        * const schema = CORE_SCHEMA.withTags(mergeTag, realMapTag)
+        * ```
+        */
+        withTags(...tags) {
+          let flatTags = [];
+          for (const tag of tags) flatTags = flatTags.concat(tag);
+          return new Schema2([...this.tags, ...flatTags]);
+        }
+      };
+      FAILSAFE_SCHEMA = new Schema([
+        strTag,
+        seqTag,
+        mapTag
+      ]);
+      JSON_SCHEMA = new Schema([
+        ...FAILSAFE_SCHEMA.tags,
+        nullJsonTag,
+        boolJsonTag,
+        intJsonTag,
+        floatJsonTag
+      ]);
+      CORE_SCHEMA = new Schema([
+        ...FAILSAFE_SCHEMA.tags,
+        nullCoreTag,
+        boolCoreTag,
+        intCoreTag,
+        floatCoreTag
+      ]);
+      YAML11_SCHEMA = new Schema([
+        ...FAILSAFE_SCHEMA.tags,
+        nullYaml11Tag,
+        boolYaml11Tag,
+        intYaml11Tag,
+        floatYaml11Tag,
+        timestampTag,
+        mergeTag,
+        binaryTag,
+        omapTag,
+        pairsTag,
+        setTag
+      ]);
+      DUMP_SCHEMA = YAML11_SCHEMA.withTags({
+        ...intYaml11Tag,
+        resolve: (source, isExplicit, tagName) => {
+          const result = intYaml11Tag.resolve(source, isExplicit, tagName);
+          return result === NOT_RESOLVED ? intCoreTag.resolve(source, isExplicit, tagName) : result;
+        }
+      }, {
+        ...floatYaml11Tag,
+        resolve: (source, isExplicit, tagName) => {
+          const result = floatYaml11Tag.resolve(source, isExplicit, tagName);
+          return result === NOT_RESOLVED ? floatCoreTag.resolve(source, isExplicit, tagName) : result;
+        }
+      });
+      realMapTag = defineMappingTag("tag:yaml.org,2002:map", {
+        create: () => /* @__PURE__ */ new Map(),
+        addPair: (container, key, value) => {
+          container.set(key, value);
+          return "";
+        },
+        has: (container, key) => container.has(key),
+        keys: (container) => container.keys(),
+        get: (container, key) => container.get(key),
+        identify: (data) => data instanceof Map || isPlainObject(data),
+        represent: (data) => {
+          if (data instanceof Map) return data;
+          const map = /* @__PURE__ */ new Map();
+          const obj = data;
+          for (const key of Object.keys(obj)) map.set(key, obj[key]);
+          return map;
+        }
+      });
+      legacyMapTag = defineMappingTag("tag:yaml.org,2002:map", {
+        create: () => ({}),
+        identify: isPlainObject,
+        represent: (o) => {
+          const map = /* @__PURE__ */ new Map();
+          for (const key of Object.keys(o)) map.set(key, o[key]);
+          return map;
+        },
+        addPair: (container, key, value) => {
+          const normalizedKey = normalizeKey(key);
+          if (normalizedKey === null) return "nested arrays are not supported inside keys";
+          if (normalizedKey === "__proto__") Object.defineProperty(container, normalizedKey, {
+            value,
+            enumerable: true,
+            configurable: true,
+            writable: true
+          });
+          else container[normalizedKey] = value;
+          return "";
+        },
+        has: (container, key) => {
+          const normalizedKey = normalizeKey(key);
+          return normalizedKey !== null && Object.prototype.hasOwnProperty.call(container, normalizedKey);
+        },
+        keys: (container) => Object.keys(container),
+        get: (container, key) => {
+          const normalizedKey = String(key);
+          if (!Object.prototype.hasOwnProperty.call(container, normalizedKey)) return null;
+          return container[normalizedKey];
+        }
+      });
+      DEFAULT_SNIPPET_OPTIONS = {
+        maxLength: 79,
+        indent: 1,
+        linesBefore: 3,
+        linesAfter: 2
+      };
+      YAMLException = class YAMLException2 extends Error {
+        /**
+        * Optional `mark` contains source snippet data. Usually, use
+        * {@link YAMLException.throwAt} instead of passing it directly.
+        */
+        constructor(reason, mark) {
+          super();
+          __publicField(this, "reason");
+          __publicField(this, "mark");
+          this.name = "YAMLException";
+          this.reason = reason;
+          this.mark = mark;
+          this.message = formatError(this, false);
+          if (Error.captureStackTrace) Error.captureStackTrace(this, this.constructor);
+        }
+        /**
+        * Returns the formatted error, omitting the source snippet in compact mode.
+        */
+        toString(compact) {
+          return `${this.name}: ${formatError(this, compact)}`;
+        }
+        /**
+        * Builds a YAMLException with a source snippet and throws it. `source` is
+        * the raw input text; `position` is an offset into it.
+        */
+        static throwAt(source, position, message, filename = "") {
+          let line = 0;
+          let lineStart = 0;
+          for (let index = 0; index < position; index++) {
+            const ch = source.charCodeAt(index);
+            if (ch === 10) {
+              line++;
+              lineStart = index + 1;
+            } else if (ch === 13) {
+              line++;
+              if (source.charCodeAt(index + 1) === 10) index++;
+              lineStart = index + 1;
+            }
+          }
+          const mark = {
+            name: filename,
+            buffer: source,
+            position,
+            line,
+            column: position - lineStart
+          };
+          mark.snippet = makeSnippet(mark);
+          throw new YAMLException2(message, mark);
+        }
+      };
+      EVENT_ID = {
+        DOCUMENT: 1,
+        SEQUENCE: 2,
+        MAPPING: 3,
+        SCALAR: 4,
+        ALIAS: 5,
+        POP: 6
+      };
+      SCALAR_STYLE = {
+        PLAIN: 1,
+        SINGLE_QUOTED: 2,
+        DOUBLE_QUOTED: 3,
+        LITERAL_BLOCK: 4,
+        FOLDED_BLOCK: 5
+      };
+      COLLECTION_STYLE = {
+        BLOCK: 1,
+        FLOW: 2
+      };
+      CHOMPING_MODE = {
+        CLIP: 1,
+        STRIP: 2,
+        KEEP: 3
+      };
+      NO_RANGE$3 = -1;
+      simpleEscapeCheck = new Array(256);
+      simpleEscapeMap = new Array(256);
+      for (let i = 0; i < 256; i++) {
+        simpleEscapeCheck[i] = simpleEscapeSequence(i) ? 1 : 0;
+        simpleEscapeMap[i] = simpleEscapeSequence(i);
+      }
+      DEFAULT_TAG_HANDLERS = Object.assign(/* @__PURE__ */ Object.create(null), {
+        "!": "!",
+        "!!": "tag:yaml.org,2002:"
+      });
+      NO_RANGE$2 = -1;
+      MERGE_TAG_NAME = "tag:yaml.org,2002:merge";
+      DEFAULT_CONSTRUCTOR_OPTIONS = {
+        filename: "",
+        schema: CORE_SCHEMA,
+        json: false,
+        maxTotalMergeKeys: 1e4,
+        maxAliases: -1
+      };
+      NO_RANGE$1 = -1;
+      HAS_OWN = Object.prototype.hasOwnProperty;
+      CONTEXT_FLOW_IN = 1;
+      CONTEXT_FLOW_OUT = 2;
+      CONTEXT_BLOCK_IN = 3;
+      CONTEXT_BLOCK_OUT = 4;
+      PATTERN_NON_PRINTABLE = /[\x00-\x08\x0B\x0C\x0E-\x1F\x7F-\x84\x86-\x9F\uFFFE\uFFFF]|[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?:[^\uD800-\uDBFF]|^)[\uDC00-\uDFFF]/;
+      PATTERN_FLOW_INDICATORS = /[,\[\]{}]/;
+      PATTERN_TAG_HANDLE = /^(?:!|!!|![0-9A-Za-z-]+!)$/;
+      NS_URI_CHAR = String.raw`(?:%[0-9A-Fa-f]{2}|[0-9A-Za-z\-#;/?:@&=+$,_.!~*'()\[\]])`;
+      NS_TAG_CHAR = String.raw`(?:%[0-9A-Fa-f]{2}|[0-9A-Za-z\-#;/?:@&=+$.~*'()_])`;
+      PATTERN_TAG_URI = new RegExp(`^(?:${NS_URI_CHAR})*$`);
+      PATTERN_TAG_SUFFIX = new RegExp(`^(?:${NS_TAG_CHAR})+$`);
+      PATTERN_TAG_PREFIX = new RegExp(`^(?:!(?:${NS_URI_CHAR})*|${NS_TAG_CHAR}(?:${NS_URI_CHAR})*)$`);
+      DEFAULT_PARSER_OPTIONS = {
+        filename: "",
+        maxDepth: 100
+      };
+      DEFAULT_LOAD_OPTIONS = {
+        ...DEFAULT_PARSER_OPTIONS,
+        ...DEFAULT_CONSTRUCTOR_OPTIONS
+      };
+      DEFAULT_SCALAR_STYLE_RULES = {
+        applyQuoteFlowKeysOption,
+        doubleQuoteForInvisibles,
+        doubleQuoteWhitespaceOnly,
+        applyForceQuotesOption,
+        tryLongOrMultilineAsBlock,
+        quoteInvalidPlain,
+        fallbackToDoubleQuoted
+      };
+      SRC_C_PRINTABLE = "[\\x09\\x0A\\x0D\\x20-\\x7E\\x85\\xA0-\\uD7FF\\uE000-\\uFFFD\\u{10000}-\\u{10FFFF}]";
+      SRC_B_CHAR = "[\\n\\r]";
+      SRC_C_BYTE_ORDER_MARK = "\\uFEFF";
+      SRC_S_WHITE = "[ \\t]";
+      SRC_NB_CHAR = `(?:(?!(?:${SRC_B_CHAR}|${SRC_C_BYTE_ORDER_MARK}))${SRC_C_PRINTABLE})`;
+      SRC_NS_CHAR = `(?:(?!${SRC_S_WHITE})${SRC_NB_CHAR})`;
+      SRC_NB_JSON = "[\\x09\\x20-\\uD7FF\\uE000-\\uFFFF\\u{10000}-\\u{10FFFF}]";
+      SRC_C_INDICATOR = "[-?:,\\[\\]{}#&*!|>'\"%@`]";
+      SRC_C_FLOW_INDICATOR = "[,\\[\\]{}]";
+      SRC_NS_PLAIN_SAFE_FLOW_OUT = SRC_NS_CHAR;
+      SRC_NS_PLAIN_SAFE_FLOW_IN = `(?:(?!${SRC_C_FLOW_INDICATOR})${SRC_NS_CHAR})`;
+      SRC_NS_PLAIN_FIRST_FLOW_OUT = `(?:(?:(?!${SRC_C_INDICATOR})${SRC_NS_CHAR})|[?:-](?=${SRC_NS_PLAIN_SAFE_FLOW_OUT}))`;
+      SRC_NS_PLAIN_FIRST_FLOW_IN = `(?:(?:(?!${SRC_C_INDICATOR})${SRC_NS_CHAR})|[?:-](?=${SRC_NS_PLAIN_SAFE_FLOW_IN}))`;
+      SRC_NS_PLAIN_CHAR_FLOW_OUT = `(?:(?:(?![:#])${SRC_NS_PLAIN_SAFE_FLOW_OUT})|:(?=${SRC_NS_PLAIN_SAFE_FLOW_OUT}))#*`;
+      SRC_NS_PLAIN_CHAR_FLOW_IN = `(?:(?:(?![:#])${SRC_NS_PLAIN_SAFE_FLOW_IN})|:(?=${SRC_NS_PLAIN_SAFE_FLOW_IN}))#*`;
+      SRC_NB_NS_PLAIN_IN_LINE_FLOW_OUT = `(?:${SRC_S_WHITE}*${SRC_NS_PLAIN_CHAR_FLOW_OUT})*`;
+      SRC_NB_NS_PLAIN_IN_LINE_FLOW_IN = `(?:${SRC_S_WHITE}*${SRC_NS_PLAIN_CHAR_FLOW_IN})*`;
+      SRC_NS_PLAIN_ONE_LINE_FLOW_OUT = `${SRC_NS_PLAIN_FIRST_FLOW_OUT}#*${SRC_NB_NS_PLAIN_IN_LINE_FLOW_OUT}`;
+      SRC_NS_PLAIN_ONE_LINE_FLOW_IN = `${SRC_NS_PLAIN_FIRST_FLOW_IN}#*${SRC_NB_NS_PLAIN_IN_LINE_FLOW_IN}`;
+      SRC_NS_PLAIN_ONE_LINE_BLOCK_KEY = SRC_NS_PLAIN_ONE_LINE_FLOW_OUT;
+      SRC_NS_PLAIN_ONE_LINE_FLOW_KEY = SRC_NS_PLAIN_ONE_LINE_FLOW_IN;
+      SRC_S_NS_PLAIN_NEXT_LINE_FLOW_OUT = `\\n+${SRC_NS_PLAIN_CHAR_FLOW_OUT}${SRC_NB_NS_PLAIN_IN_LINE_FLOW_OUT}`;
+      SRC_S_NS_PLAIN_NEXT_LINE_FLOW_IN = `\\n+${SRC_NS_PLAIN_CHAR_FLOW_IN}${SRC_NB_NS_PLAIN_IN_LINE_FLOW_IN}`;
+      SRC_NS_PLAIN_MULTI_LINE_FLOW_OUT = `${SRC_NS_PLAIN_ONE_LINE_FLOW_OUT}(?:${SRC_S_NS_PLAIN_NEXT_LINE_FLOW_OUT})*`;
+      SRC_NS_PLAIN_MULTI_LINE_FLOW_IN = `${SRC_NS_PLAIN_ONE_LINE_FLOW_IN}(?:${SRC_S_NS_PLAIN_NEXT_LINE_FLOW_IN})*`;
+      NS_PLAIN_FLOW_OUT = new RegExp(`^(?:${SRC_NS_PLAIN_MULTI_LINE_FLOW_OUT})$`, "u");
+      NS_PLAIN_FLOW_IN = new RegExp(`^(?:${SRC_NS_PLAIN_MULTI_LINE_FLOW_IN})$`, "u");
+      NS_PLAIN_BLOCK_KEY = new RegExp(`^(?:${SRC_NS_PLAIN_ONE_LINE_BLOCK_KEY})$`, "u");
+      NS_PLAIN_FLOW_KEY = new RegExp(`^(?:${SRC_NS_PLAIN_ONE_LINE_FLOW_KEY})$`, "u");
+      NB_SINGLE_ONE_LINE = new RegExp(`^(?:${SRC_NB_JSON})*$`, "u");
+      NB_SINGLE_MULTI_LINE = new RegExp(`^(?:${SRC_NB_JSON}|\\n)*$`, "u");
+      BLOCK_SCALAR_CONTENT = new RegExp(`^(?:${SRC_NB_CHAR}|\\n)*$`, "u");
+      DEFAULT_PRESENTER_OPTIONS = {
+        indent: 2,
+        seqNoIndent: false,
+        seqInlineFirst: true,
+        lineWidth: 80,
+        flowBracketPadding: false,
+        flowSkipCommaSpace: false,
+        flowSkipColonSpace: false,
+        quoteFlowKeys: false,
+        quoteStyle: "single",
+        forceQuotes: false,
+        scalarStyleRules: Object.keys(DEFAULT_SCALAR_STYLE_RULES).map((name) => Reflect.get(DEFAULT_SCALAR_STYLE_RULES, name)),
+        tagBeforeAnchor: false
+      };
+      DEFAULT_DUMP_OPTIONS = {
+        ...DEFAULT_PRESENTER_OPTIONS,
+        schema: DUMP_SCHEMA,
+        skipInvalid: false,
+        noRefs: false,
+        flowLevel: -1,
+        sortKeys: false,
+        transform: () => {
+        }
+      };
+      EVENT_DOCUMENT = EVENT_ID.DOCUMENT;
+      EVENT_SEQUENCE = EVENT_ID.SEQUENCE;
+      EVENT_MAPPING = EVENT_ID.MAPPING;
+      EVENT_SCALAR = EVENT_ID.SCALAR;
+      EVENT_ALIAS = EVENT_ID.ALIAS;
+      EVENT_POP = EVENT_ID.POP;
+      SCALAR_STYLE_PLAIN = SCALAR_STYLE.PLAIN;
+      SCALAR_STYLE_SINGLE_QUOTED = SCALAR_STYLE.SINGLE_QUOTED;
+      SCALAR_STYLE_DOUBLE_QUOTED = SCALAR_STYLE.DOUBLE_QUOTED;
+      SCALAR_STYLE_LITERAL_BLOCK = SCALAR_STYLE.LITERAL_BLOCK;
+      SCALAR_STYLE_FOLDED_BLOCK = SCALAR_STYLE.FOLDED_BLOCK;
+      COLLECTION_STYLE_BLOCK = COLLECTION_STYLE.BLOCK;
+      COLLECTION_STYLE_FLOW = COLLECTION_STYLE.FLOW;
+      CHOMPING_CLIP = CHOMPING_MODE.CLIP;
+      CHOMPING_STRIP = CHOMPING_MODE.STRIP;
+      CHOMPING_KEEP = CHOMPING_MODE.KEEP;
     }
-  };
-  var EVENT_DOCUMENT = EVENT_ID.DOCUMENT;
-  var EVENT_SEQUENCE = EVENT_ID.SEQUENCE;
-  var EVENT_MAPPING = EVENT_ID.MAPPING;
-  var EVENT_SCALAR = EVENT_ID.SCALAR;
-  var EVENT_ALIAS = EVENT_ID.ALIAS;
-  var EVENT_POP = EVENT_ID.POP;
-  var SCALAR_STYLE_PLAIN = SCALAR_STYLE.PLAIN;
-  var SCALAR_STYLE_SINGLE_QUOTED = SCALAR_STYLE.SINGLE_QUOTED;
-  var SCALAR_STYLE_DOUBLE_QUOTED = SCALAR_STYLE.DOUBLE_QUOTED;
-  var SCALAR_STYLE_LITERAL_BLOCK = SCALAR_STYLE.LITERAL_BLOCK;
-  var SCALAR_STYLE_FOLDED_BLOCK = SCALAR_STYLE.FOLDED_BLOCK;
-  var COLLECTION_STYLE_BLOCK = COLLECTION_STYLE.BLOCK;
-  var COLLECTION_STYLE_FLOW = COLLECTION_STYLE.FLOW;
-  var CHOMPING_CLIP = CHOMPING_MODE.CLIP;
-  var CHOMPING_STRIP = CHOMPING_MODE.STRIP;
-  var CHOMPING_KEEP = CHOMPING_MODE.KEEP;
+  });
 
   // src/service/espanso-import.ts
+  var espanso_import_exports = {};
+  __export(espanso_import_exports, {
+    espansoLogicalId: () => espansoLogicalId,
+    mapDateFormat: () => mapDateFormat,
+    parseEspansoYaml: () => parseEspansoYaml,
+    rewriteBody: () => rewriteBody
+  });
   function asRecord(v) {
     return v && typeof v === "object" && !Array.isArray(v) ? v : null;
   }
@@ -5303,6 +2680,2863 @@ ${exception.mark.snippet}`;
     }
     if (items.length === 0 && issues.length === 0) issues.push("matches \u5217\u8868\u4E3A\u7A7A");
     return { items, issues };
+  }
+  var init_espanso_import = __esm({
+    "src/service/espanso-import.ts"() {
+      "use strict";
+      init_js_yaml();
+    }
+  });
+
+  // src/ui/dialog.ts
+  var import_siyuan2 = __toESM(require_stub_dom());
+
+  // src/ui/dialog-dom.ts
+  function getDialogBody(root) {
+    var _a;
+    return (_a = root.querySelector(".b3-dialog__body")) != null ? _a : root.querySelector(".b3-dialog__content");
+  }
+
+  // src/constants.ts
+  var PROTOCOL_NAME = "xiaolv-common";
+  var LIMITS = {
+    title: 512,
+    alias: 256,
+    tag: 64,
+    tags: 32,
+    category: 64,
+    summary: 240,
+    contentChars: 1e5,
+    queryChars: 200,
+    maxItems: 2e3,
+    maxDocs: 200,
+    maxFavorites: 500,
+    maxRecents: 200,
+    maxProviders: 32,
+    maxImportBytes: 4 * 1024 * 1024,
+    walkDepth: 8,
+    kernelTimeoutMs: 8e3,
+    askValueChars: 2e3,
+    maxUsage: 2e3,
+    maxAskFields: 16,
+    maxCustomTransforms: 10,
+    customNameChars: 20,
+    customPromptChars: 500
+  };
+  var EXPORT_SCHEMA_VERSION = 1;
+
+  // src/model/item.ts
+  var ITEM_TYPES = [
+    "text",
+    "markdown",
+    "url",
+    "code",
+    "image",
+    "asset",
+    "blockref",
+    "structure"
+  ];
+  var SOURCE_TYPES = [
+    "",
+    "selection",
+    "block",
+    "doc-fragment",
+    "clipboard",
+    "manual",
+    "resource",
+    "external"
+  ];
+  function isItemType(v) {
+    return typeof v === "string" && ITEM_TYPES.includes(v);
+  }
+  function isSafeHttpUrl(v) {
+    if (typeof v !== "string") return false;
+    const value = v.trim();
+    if (!/^https?:\/\//i.test(value)) return false;
+    try {
+      const parsed = new URL(value);
+      return (parsed.protocol === "http:" || parsed.protocol === "https:") && Boolean(parsed.hostname);
+    } catch {
+      return false;
+    }
+  }
+  function isSourceType(v) {
+    return typeof v === "string" && SOURCE_TYPES.includes(v);
+  }
+  var LOGICAL_ID_RE = /^xlc-[0-9a-z]{10,40}$/;
+  function isLogicalId(v) {
+    return typeof v === "string" && LOGICAL_ID_RE.test(v);
+  }
+
+  // src/model/variables.ts
+  var ASK_PATTERN = /\{\{xlc:ask:([^|}]+)(?:\|([^}]*))?\}\}/g;
+  function parseAskField(rawName, rawOptions) {
+    var _a, _b;
+    const name = rawName.trim().slice(0, LIMITS.tag);
+    if (!name) return null;
+    const options = (rawOptions != null ? rawOptions : "").split(",").map((s) => s.trim().slice(0, LIMITS.tag)).filter(Boolean).slice(0, 16);
+    if (options.length === 1 && ((_a = options[0]) == null ? void 0 : _a.toLowerCase()) === "date") return { name, kind: "date", options: [] };
+    if (options.length === 1 && ((_b = options[0]) == null ? void 0 : _b.toLowerCase()) === "textarea") return { name, kind: "textarea", options: [] };
+    if (options.length >= 2) return { name, kind: "select", options };
+    return { name, kind: "text", options: [] };
+  }
+  function askFieldTag(field) {
+    if (field.kind === "text") return `{{xlc:ask:${field.name}}}`;
+    if (field.kind === "select") return `{{xlc:ask:${field.name}|${field.options.join(",")}}}`;
+    return `{{xlc:ask:${field.name}|${field.kind}}}`;
+  }
+  function listAskFields(text) {
+    var _a;
+    if (!text) return [];
+    const fields = [];
+    const seen = /* @__PURE__ */ new Set();
+    for (const match of text.matchAll(ASK_PATTERN)) {
+      const field = parseAskField((_a = match[1]) != null ? _a : "", match[2]);
+      if (!field || seen.has(field.name)) continue;
+      seen.add(field.name);
+      fields.push(field);
+      if (fields.length >= 16) break;
+    }
+    return fields;
+  }
+  var CURSOR_TOKEN = "{{xlc:cursor}}";
+  function hasCursorToken(text) {
+    return text.includes(CURSOR_TOKEN);
+  }
+
+  // src/ui/variable-form.ts
+  var import_siyuan = __toESM(require_stub_dom());
+  var TYPE_BADGES = {
+    text: "TXT",
+    markdown: "MD",
+    url: "URL",
+    code: "CODE",
+    image: "IMG",
+    asset: "FILE",
+    blockref: "REF",
+    structure: "BLK"
+  };
+  function openVariableFillCard(options) {
+    var _a, _b;
+    const t = options.t;
+    const dialog = new import_siyuan.Dialog({
+      title: t("varFormTitle"),
+      content: "",
+      width: "min(440px, 92vw)",
+      height: "auto",
+      // 所有关闭路径（Esc/scrim）统一走 onCancel：上层搜索弹窗焦点回归（R128）；
+      // 按钮确认/取消已自行结算，不在此重复触发（R138 结算语义）
+      destroyCallback: () => {
+        var _a2;
+        if (!settled) (_a2 = options.onCancel) == null ? void 0 : _a2.call(options);
+      }
+    });
+    const container = dialog.element.querySelector(".b3-dialog__container");
+    if (container) container.classList.add("xlc-varform-host");
+    const body = getDialogBody(dialog.element);
+    if (!body) return;
+    body.innerHTML = "";
+    const root = document.createElement("div");
+    root.className = "xlc-varform";
+    const head = document.createElement("div");
+    head.className = "xlc-varform-head";
+    const badge = document.createElement("span");
+    badge.className = "xlc-badge xlc-badge--markdown";
+    badge.textContent = (_a = TYPE_BADGES[options.itemType]) != null ? _a : "TXT";
+    head.appendChild(badge);
+    const title = document.createElement("span");
+    title.className = "xlc-varform-title";
+    title.textContent = options.title || t("unknownType");
+    head.appendChild(title);
+    const escHint = document.createElement("span");
+    escHint.className = "xlc-kbd";
+    escHint.textContent = "Esc " + t("cancel");
+    head.appendChild(escHint);
+    root.appendChild(head);
+    const sub = document.createElement("div");
+    sub.className = "xlc-varform-sub";
+    sub.textContent = t("varFormSub", String(options.fields.length));
+    root.appendChild(sub);
+    const inputs = [];
+    const fieldsWrap = document.createElement("div");
+    fieldsWrap.className = "xlc-varform-fields";
+    for (const [fieldIndex, field] of options.fields.entries()) {
+      const wrap = document.createElement("label");
+      wrap.className = "xlc-varform-field";
+      const label = document.createElement("span");
+      label.className = "xlc-varform-label";
+      label.textContent = field.name;
+      const tag = document.createElement("span");
+      tag.className = "xlc-varform-tag";
+      tag.textContent = askFieldTag(field);
+      label.appendChild(tag);
+      wrap.appendChild(label);
+      const input = field.kind === "textarea" ? document.createElement("textarea") : document.createElement("input");
+      input.className = "b3-text-field";
+      if (field.kind === "textarea") {
+        input.rows = 3;
+        input.setAttribute("spellcheck", "false");
+      } else {
+        input.setAttribute("enterkeyhint", "done");
+      }
+      if (field.kind === "date") input.type = "date";
+      if (field.kind === "select") {
+        input.setAttribute("list", `xlc-varform-list-${fieldIndex}`);
+        const datalist = document.createElement("datalist");
+        datalist.id = `xlc-varform-list-${fieldIndex}`;
+        for (const opt of field.options) {
+          const option = document.createElement("option");
+          option.value = opt;
+          datalist.appendChild(option);
+        }
+        wrap.appendChild(datalist);
+      }
+      input.dataset.xlcVarField = field.name;
+      wrap.appendChild(input);
+      inputs.push(input);
+      fieldsWrap.appendChild(wrap);
+    }
+    root.appendChild(fieldsWrap);
+    const foot = document.createElement("div");
+    foot.className = "xlc-varform-foot";
+    const kbdHint = document.createElement("span");
+    kbdHint.className = "xlc-varform-hint";
+    kbdHint.textContent = options.fields.some((f) => f.kind === "textarea") ? t("varFormHintMultiline") : t("varFormHint");
+    foot.appendChild(kbdHint);
+    const cancelBtn = document.createElement("button");
+    cancelBtn.className = "b3-button";
+    cancelBtn.dataset.xlcControl = "variable.cancel";
+    cancelBtn.textContent = t("cancel");
+    foot.appendChild(cancelBtn);
+    const insertBtn = document.createElement("button");
+    insertBtn.className = "b3-button xlc-btn-primary";
+    insertBtn.textContent = t("insert");
+    foot.appendChild(insertBtn);
+    root.appendChild(foot);
+    body.appendChild(root);
+    const collect = () => {
+      var _a2;
+      const fills = {};
+      for (const input of inputs) {
+        const name = (_a2 = input.dataset.xlcVarField) != null ? _a2 : "";
+        if (name) fills[name] = input.value;
+      }
+      return fills;
+    };
+    let settled = false;
+    const confirm3 = () => {
+      if (settled) return;
+      settled = true;
+      dialog.destroy();
+      options.onConfirm(collect());
+    };
+    insertBtn.addEventListener("click", confirm3);
+    cancelBtn.addEventListener("click", () => {
+      var _a2;
+      if (settled) return;
+      settled = true;
+      dialog.destroy();
+      (_a2 = options.onCancel) == null ? void 0 : _a2.call(options);
+    });
+    root.addEventListener("keydown", (ev) => {
+      var _a2;
+      if (ev.isComposing || ev.keyCode === 229) return;
+      if (ev.key === "Enter" && !ev.altKey && !ev.ctrlKey && !ev.metaKey) {
+        if (ev.target.tagName === "BUTTON") return;
+        if (ev.target.tagName === "TEXTAREA") return;
+        const el = ev.target;
+        if (el instanceof HTMLInputElement && el.list) {
+          setTimeout(() => confirm3(), 0);
+          return;
+        }
+        ev.preventDefault();
+        confirm3();
+        return;
+      }
+      if (ev.key === "Tab") {
+        const focusables = Array.from(
+          root.querySelectorAll("input, textarea, button")
+        ).filter((el) => !el.hasAttribute("disabled"));
+        if (focusables.length === 0) return;
+        const index = focusables.indexOf(document.activeElement);
+        ev.preventDefault();
+        const next = ev.shiftKey ? (index - 1 + focusables.length) % focusables.length : (index + 1) % focusables.length;
+        (_a2 = focusables[next]) == null ? void 0 : _a2.focus();
+      }
+    });
+    (_b = inputs[0]) == null ? void 0 : _b.focus();
+  }
+  function buildVariableBar(t, getTarget) {
+    const bar = document.createElement("div");
+    bar.className = "xlc-varbar";
+    const cap = document.createElement("span");
+    cap.className = "xlc-varbar-cap";
+    cap.textContent = t("insertVariable");
+    bar.appendChild(cap);
+    const snippets = [
+      { id: "ask", text: "{{xlc:ask:\u5B57\u6BB5}}" },
+      { id: "ask.options", text: "{{xlc:ask:\u5B57\u6BB5|\u9009\u9879A,\u9009\u9879B}}" },
+      { id: "ask.textarea", text: "{{xlc:ask:\u5B57\u6BB5|textarea}}" },
+      { id: "snippet", text: "{{xlc:snippet:\u6807\u9898}}" },
+      { id: "cursor", text: "{{xlc:cursor}}" },
+      { id: "date", text: "{{xlc:date}}" },
+      { id: "date.offset", text: "{{xlc:date|+3d}}" },
+      { id: "random", text: "{{xlc:random|\u9009\u9879A,\u9009\u9879B}}" },
+      { id: "doc", text: "{{xlc:doc}}" },
+      { id: "clipboard", text: "{{xlc:clipboard}}" }
+    ];
+    for (const snippet of snippets) {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "xlc-varbtn";
+      btn.dataset.xlcControl = `capture.variable.${snippet.id}`;
+      btn.textContent = snippet.text;
+      btn.addEventListener("click", () => {
+        var _a, _b;
+        const el = getTarget();
+        const start = (_a = el.selectionStart) != null ? _a : el.value.length;
+        const end = (_b = el.selectionEnd) != null ? _b : start;
+        el.value = el.value.slice(0, start) + snippet.text + el.value.slice(end);
+        const caret = start + snippet.text.length;
+        el.focus();
+        el.setSelectionRange(caret, caret);
+        el.dispatchEvent(new Event("input", { bubbles: true }));
+      });
+      bar.appendChild(btn);
+    }
+    return bar;
+  }
+
+  // src/ui/dialog.ts
+  var TYPE_BADGES2 = {
+    text: "TXT",
+    markdown: "MD",
+    url: "URL",
+    code: "CODE",
+    image: "IMG",
+    asset: "FILE",
+    blockref: "REF",
+    structure: "BLK"
+  };
+  var TRANSFORM_KINDS = ["polish", "shorten", "formal", "translate-en", "bulletize"];
+  var _CommonSearchDialog = class _CommonSearchDialog {
+    constructor(deps) {
+      this.deps = deps;
+      this.dialog = null;
+      this.results = [];
+      this.providerRows = [];
+      this.activeProvider = -1;
+      this.aiResults = false;
+      this.activeIndex = 0;
+      this.searchSeq = 0;
+      this.previewSeq = 0;
+      this.currentScope = "all";
+      this.lastPreviewId = null;
+      /** 空状态文案（refresh 计算后交 renderList 渲染大空态；瞬态/错误仍走 status 行） */
+      this.emptyMessage = "";
+      /** 使用计数快照（refresh 时取自侧车；行 meta 与预览徽标展示用） */
+      this.usageCounts = /* @__PURE__ */ new Map();
+      /** 最近一次查询词（行标题命中高亮用；空串=不高亮） */
+      this.lastQueryText = "";
+      /** 动作菜单 document 监听兜底清理（destroy 时调用；防键盘关弹窗残留监听） */
+      this.menuDismiss = null;
+      this.inputDebounce = null;
+      this.longPressCancel = null;
+      /** IME 组合输入中（中文输入法组词期间跳过刷新，compositionend 后统一刷新） */
+      this.isComposing = false;
+      this.filterOptionsSeq = 0;
+      this.primaryBusy = false;
+      this.varFormOpen = false;
+      /** 大结果集只保留视口附近的行；窗口回调由 renderList 安装并在销毁/重绘时清理。 */
+      this.virtualListCleanup = null;
+      this.virtualEnsureIndex = null;
+      /** 宿主拒绝请求时覆盖旧列表，避免用户继续对过期结果执行写操作。 */
+      this.accessIssueMessage = null;
+      /** 普通点击 = 主动作（insert；blockref = 插入引用）。含变量时先弹填充卡片（F1）。
+       *  执行期防重入（R138）：双击行/按住 Enter 不得重复插入同一块。 */
+      /** AI 变换代次：连点两个变换时丢弃慢的旧结果（R138） */
+      this.transformSeq = 0;
+      /** 排序菜单关闭时刻：chip 的 click 在 pointerdown 关闭之后到达，不得立刻重开（R138 toggle） */
+      this.sortMenuClosedAt = 0;
+    }
+    open() {
+      const isMobile = this.deps.isMobile();
+      const dialog = new import_siyuan2.Dialog({
+        title: this.deps.t("pluginName"),
+        content: "",
+        // 桌面采用宽松密度，减少截断并让双栏预览一次展示更多内容；移动端仍由 sheet 占满视口。
+        width: isMobile ? "100vw" : "min(960px, 94vw)",
+        height: isMobile ? "100vh" : "min(820px, 92vh)",
+        destroyCallback: () => {
+          this.dialog = null;
+          this.deps.close();
+        }
+      });
+      this.dialog = dialog;
+      const content = this.buildDom(isMobile);
+      const body = getDialogBody(dialog.element);
+      if (body) {
+        body.innerHTML = "";
+        body.appendChild(content);
+        void this.refreshFilterOptions().then((changed) => {
+          if (changed) void this.refresh();
+        });
+      }
+      const container = this.dialog.element.querySelector(".b3-dialog__container");
+      if (container) container.classList.add(isMobile ? "xlc-sheet" : "xlc-dialog-host");
+      const input = this.dialog.element.querySelector(".xlc-search-input");
+      if (input) {
+        const last = this.deps.getLastQuery();
+        if (last) {
+          input.value = last;
+          this.currentScope = "all";
+          input.dispatchEvent(new Event("input", { bubbles: true }));
+        }
+        input.focus();
+      }
+      void this.refresh();
+    }
+    buildDom(isMobile) {
+      var _a, _b, _c, _d, _e, _f;
+      const root = document.createElement("div");
+      root.className = "xlc-dialog" + (isMobile ? " xlc-dialog--mobile" : "");
+      const top = document.createElement("div");
+      top.className = "xlc-top";
+      const topMain = document.createElement("div");
+      topMain.className = "xlc-top-main";
+      const searchBlock = document.createElement("div");
+      searchBlock.className = "xlc-search-block";
+      const search = document.createElement("div");
+      search.className = "xlc-search";
+      const qMark = document.createElement("span");
+      qMark.className = "xlc-search-icon";
+      qMark.setAttribute("aria-hidden", "true");
+      const input = document.createElement("input");
+      input.className = "b3-text-field xlc-search-input";
+      input.dataset.xlcControl = "search.input";
+      input.placeholder = this.deps.t("searchPlaceholder");
+      input.setAttribute("enterkeyhint", "search");
+      input.setAttribute("autocomplete", "off");
+      input.setAttribute("autocapitalize", "off");
+      input.setAttribute("autocorrect", "off");
+      input.setAttribute("spellcheck", "false");
+      input.setAttribute("role", "combobox");
+      input.setAttribute("aria-expanded", "true");
+      input.setAttribute("aria-label", this.deps.t("searchPlaceholder"));
+      const syncQMark = () => {
+        clearBtn.classList.toggle("xlc-search-clear--on", input.value.length > 0);
+      };
+      const clearBtn = document.createElement("button");
+      clearBtn.type = "button";
+      clearBtn.className = "xlc-search-clear";
+      clearBtn.dataset.xlcControl = "search.clear";
+      clearBtn.textContent = "\xD7";
+      clearBtn.setAttribute("aria-label", this.deps.t("clearSearch"));
+      clearBtn.addEventListener("click", () => {
+        input.value = "";
+        syncQMark();
+        input.focus();
+        input.dispatchEvent(new Event("input", { bubbles: true }));
+      });
+      input.addEventListener("input", () => {
+        syncQMark();
+        this.currentScope = "all";
+        this.syncScopeChips();
+        this.deps.setLastQuery(input.value.replace(/^\?+/, ""));
+        if (this.isComposing) return;
+        if (this.inputDebounce) clearTimeout(this.inputDebounce);
+        this.inputDebounce = setTimeout(() => void this.refresh(), 200);
+      });
+      input.addEventListener("compositionstart", () => {
+        this.isComposing = true;
+      });
+      input.addEventListener("compositionend", () => {
+        this.isComposing = false;
+        syncQMark();
+        this.currentScope = "all";
+        this.syncScopeChips();
+        if (this.inputDebounce) clearTimeout(this.inputDebounce);
+        this.inputDebounce = setTimeout(() => void this.refresh(), 50);
+      });
+      input.addEventListener("keydown", (e) => void this.onKeydown(e));
+      search.appendChild(qMark);
+      search.appendChild(input);
+      search.appendChild(clearBtn);
+      searchBlock.appendChild(search);
+      const searchHint = document.createElement("div");
+      searchHint.className = "xlc-search-hint";
+      searchHint.textContent = this.deps.t("searchHint");
+      searchBlock.appendChild(searchHint);
+      topMain.appendChild(searchBlock);
+      let kbdRow = null;
+      if (!isMobile) {
+        const isApple = /Mac|iPhone|iPad/i.test(navigator.platform || "");
+        kbdRow = document.createElement("div");
+        kbdRow.className = "xlc-kbdrow";
+        kbdRow.setAttribute("aria-label", this.deps.t("keyboardHelp"));
+        const kbdLabel = document.createElement("span");
+        kbdLabel.className = "xlc-kbdrow-label";
+        kbdLabel.textContent = this.deps.t("shortcutLabel");
+        kbdRow.appendChild(kbdLabel);
+        for (const hint of [
+          { key: "\u2191 \u2193", action: this.deps.t("kbdNav") },
+          { key: "Enter", action: this.deps.t("kbdEnter") },
+          { key: `${isApple ? "\u2318" : "Ctrl"} + Enter`, action: this.deps.t("kbdCopy") },
+          { key: `${isApple ? "\u2325" : "Alt"} + 1-9`, action: this.deps.t("kbdQuickInsert") },
+          { key: "Esc", action: this.deps.t("kbdClose") }
+        ]) {
+          const kbd = document.createElement("span");
+          kbd.className = "xlc-kbd xlc-kbd-hint";
+          kbd.title = `${hint.key}\uFF1A${hint.action}`;
+          const key = document.createElement("span");
+          key.className = "xlc-kbd-key";
+          key.textContent = hint.key;
+          const action = document.createElement("span");
+          action.className = "xlc-kbd-label";
+          action.textContent = hint.action;
+          kbd.append(key, action);
+          kbdRow.appendChild(kbd);
+        }
+        const topActions = document.createElement("div");
+        topActions.className = "xlc-top-actions";
+        const topNew = document.createElement("button");
+        topNew.type = "button";
+        topNew.className = "b3-button xlc-btn-primary xlc-top-new";
+        topNew.dataset.xlcControl = "search.new";
+        topNew.textContent = this.deps.t("quickNew");
+        topNew.setAttribute("aria-label", this.deps.t("newItem"));
+        topNew.addEventListener("click", () => this.deps.newItem());
+        topActions.appendChild(topNew);
+        topMain.appendChild(topActions);
+      }
+      top.appendChild(topMain);
+      if (kbdRow) top.appendChild(kbdRow);
+      root.appendChild(top);
+      const filters = document.createElement("div");
+      filters.className = "xlc-filters";
+      const typeSelect = document.createElement("select");
+      typeSelect.className = "b3-select xlc-type-select";
+      typeSelect.dataset.xlcControl = "filter.type";
+      typeSelect.setAttribute("aria-label", this.deps.t("type"));
+      const allOpt = document.createElement("option");
+      allOpt.value = "";
+      allOpt.textContent = this.deps.t("filterAllType");
+      typeSelect.appendChild(allOpt);
+      for (const t of ITEM_TYPES) {
+        const opt = document.createElement("option");
+        opt.value = t;
+        opt.textContent = this.deps.t(`type.${t}`);
+        typeSelect.appendChild(opt);
+      }
+      const savedFilters = this.deps.getFilters();
+      if (savedFilters.type) typeSelect.value = savedFilters.type;
+      typeSelect.addEventListener("change", () => {
+        var _a2, _b2;
+        this.deps.setFilters({
+          type: typeSelect.value,
+          tag: (_a2 = tagSelect == null ? void 0 : tagSelect.value) != null ? _a2 : "",
+          category: (_b2 = categorySelect == null ? void 0 : categorySelect.value) != null ? _b2 : ""
+        });
+        void this.refresh();
+      });
+      filters.appendChild(typeSelect);
+      const tagSelect = document.createElement("select");
+      tagSelect.className = "b3-select xlc-tag-select";
+      tagSelect.dataset.xlcControl = "filter.tag";
+      tagSelect.setAttribute("aria-label", this.deps.t("tags"));
+      tagSelect.disabled = true;
+      tagSelect.addEventListener("change", () => {
+        var _a2;
+        this.deps.setFilters({
+          type: typeSelect.value,
+          tag: tagSelect.value,
+          category: (_a2 = categorySelect == null ? void 0 : categorySelect.value) != null ? _a2 : ""
+        });
+        void this.refresh();
+      });
+      filters.appendChild(tagSelect);
+      const categorySelect = document.createElement("select");
+      categorySelect.className = "b3-select xlc-category-select";
+      categorySelect.dataset.xlcControl = "filter.category";
+      categorySelect.setAttribute("aria-label", this.deps.t("category"));
+      categorySelect.disabled = true;
+      categorySelect.addEventListener("change", () => {
+        this.deps.setFilters({ type: typeSelect.value, tag: tagSelect.value, category: categorySelect.value });
+        void this.refresh();
+      });
+      filters.appendChild(categorySelect);
+      for (const scope of ["favorites", "recent"]) {
+        const chip = document.createElement("button");
+        chip.className = "xlc-chip xlc-scope-chip";
+        chip.dataset.scope = scope;
+        chip.dataset.xlcControl = `filter.scope.${scope}`;
+        chip.textContent = (scope === "favorites" ? "\u2605 " : "\u{1F550} ") + this.deps.t(`filter${scope === "favorites" ? "Favorites" : "Recent"}`);
+        chip.addEventListener("click", () => {
+          this.currentScope = this.currentScope === scope ? "all" : scope;
+          this.syncScopeChips();
+          void this.refresh();
+        });
+        filters.appendChild(chip);
+      }
+      const aiBanner = document.createElement("span");
+      aiBanner.className = "xlc-chip xlc-ai-banner";
+      aiBanner.style.display = "none";
+      filters.insertBefore(aiBanner, filters.firstChild);
+      const sortChip = document.createElement("button");
+      sortChip.className = "xlc-chip xlc-sort-chip";
+      sortChip.dataset.xlcControl = "sort.open";
+      const paintSort = () => {
+        const sort = this.deps.getSort();
+        sortChip.textContent = "\u21C5 " + this.deps.t("sort") + "\uFF1A" + this.deps.t(`sort.${sort}`);
+        sortChip.title = this.deps.t(`sortHint.${sort}`);
+        sortChip.setAttribute("aria-label", `${this.deps.t("sort")}\uFF1A${this.deps.t(`sort.${sort}`)}\u3002${this.deps.t(`sortHint.${sort}`)}`);
+        sortChip.classList.toggle("xlc-chip--on", sort !== "manual");
+      };
+      paintSort();
+      sortChip.addEventListener("click", () => {
+        if (Date.now() - this.sortMenuClosedAt < 300) return;
+        this.showSortMenu(paintSort);
+      });
+      filters.appendChild(sortChip);
+      if (this.insertTarget) {
+        const targetBanner = document.createElement("span");
+        targetBanner.className = "xlc-chip xlc-target-banner";
+        targetBanner.textContent = "\u2913 " + this.deps.t("insertTargetBanner", this.insertTarget.hPath || this.insertTarget.docId);
+        filters.insertBefore(targetBanner, filters.firstChild);
+      } else {
+        const targetBanner = document.createElement("span");
+        targetBanner.className = "xlc-chip xlc-target-banner";
+        const hasEditor = (_c = (_b = (_a = this.deps).hasActiveEditor) == null ? void 0 : _b.call(_a)) != null ? _c : true;
+        const hasTarget = (_f = (_e = (_d = this.deps).hasInsertTarget) == null ? void 0 : _e.call(_d)) != null ? _f : hasEditor;
+        const fallbackKey = this.deps.isMobile() ? "insertMobileActionHint" : hasTarget ? "insertCurrentEditorBanner" : hasEditor ? "insertTargetUnavailableBanner" : "insertNoEditorBanner";
+        targetBanner.textContent = "\u2913 " + this.deps.t(fallbackKey);
+        targetBanner.setAttribute("role", "note");
+        targetBanner.setAttribute("aria-label", this.deps.t(fallbackKey));
+        filters.insertBefore(targetBanner, filters.firstChild);
+      }
+      root.appendChild(filters);
+      const status = document.createElement("div");
+      status.className = "xlc-status";
+      status.setAttribute("aria-live", "polite");
+      root.appendChild(status);
+      const bodyWrap = document.createElement("div");
+      bodyWrap.className = "xlc-body";
+      const list = document.createElement("div");
+      list.className = "xlc-list";
+      list.id = "xlc-search-results";
+      list.tabIndex = 0;
+      list.setAttribute("role", "listbox");
+      list.setAttribute("aria-label", this.deps.t("pluginName"));
+      input.setAttribute("aria-controls", list.id);
+      list.addEventListener("keydown", (e) => void this.onKeydown(e));
+      list.addEventListener("click", (e) => {
+        if (e.target.closest(".xlc-row-action")) return;
+        const row = e.target.closest("[data-xlc-index]");
+        if (!row) return;
+        const index = Number(row.dataset.xlcIndex);
+        const entry = this.results[index];
+        if (!entry) return;
+        if (isMobile) {
+          this.activeIndex = index;
+          this.activeProvider = -1;
+          this.paintActive();
+          this.schedulePreview(entry);
+          return;
+        }
+        void this.runPrimary(entry);
+      });
+      list.addEventListener("mouseover", (e) => {
+        if (isMobile) return;
+        const row = e.target.closest("[data-xlc-index]");
+        if (!row) return;
+        const entry = this.results[Number(row.dataset.xlcIndex)];
+        if (entry && this.activeIndex !== Number(row.dataset.xlcIndex)) {
+          this.activeIndex = Number(row.dataset.xlcIndex);
+          this.activeProvider = -1;
+          this.paintActive();
+          this.schedulePreview(entry);
+        }
+      });
+      this.attachLongPress(list, isMobile);
+      bodyWrap.appendChild(list);
+      if (!isMobile) {
+        const pane = document.createElement("div");
+        pane.className = "xlc-pane";
+        pane.appendChild(this.buildPaneHead());
+        const paneMeta = document.createElement("div");
+        paneMeta.className = "xlc-pane-meta";
+        paneMeta.style.display = "none";
+        pane.appendChild(paneMeta);
+        const paneVars = document.createElement("div");
+        paneVars.className = "xlc-pane-vars";
+        paneVars.style.display = "none";
+        pane.appendChild(paneVars);
+        const warn = document.createElement("div");
+        warn.className = "xlc-pane-warn";
+        warn.style.display = "none";
+        pane.appendChild(warn);
+        const paneBody = document.createElement("div");
+        paneBody.className = "xlc-pane-body xlc-pane-body--muted";
+        paneBody.textContent = this.deps.t("previewUnavailable");
+        pane.appendChild(paneBody);
+        pane.appendChild(this.buildPaneFoot());
+        bodyWrap.appendChild(pane);
+      }
+      root.appendChild(bodyWrap);
+      const footer = document.createElement("div");
+      footer.className = "xlc-footer";
+      const count = document.createElement("span");
+      count.className = "xlc-footer-count";
+      count.setAttribute("aria-live", "polite");
+      if (isMobile) {
+        const footBtns = document.createElement("div");
+        footBtns.className = "xlc-mobile-foot";
+        const newBtn = document.createElement("button");
+        newBtn.className = "b3-button";
+        newBtn.dataset.xlcControl = "search.new";
+        newBtn.textContent = this.deps.t("quickNew");
+        newBtn.addEventListener("click", () => this.deps.newItem());
+        footBtns.appendChild(newBtn);
+        const insertBtn = document.createElement("button");
+        insertBtn.className = "b3-button xlc-btn-primary xlc-mobile-insert";
+        insertBtn.dataset.xlcControl = "preview.mobile-primary";
+        insertBtn.textContent = this.deps.t(this.mobilePrimaryIsCopy() ? "copy" : "quickInsertSelected");
+        insertBtn.disabled = true;
+        if (this.mobilePrimaryIsCopy()) {
+          insertBtn.title = this.deps.t("insertMobileActionHint");
+          insertBtn.setAttribute("aria-label", this.deps.t("insertMobileActionHint"));
+        }
+        insertBtn.addEventListener("click", () => {
+          const entry = this.results[this.activeIndex];
+          if (entry) void this.runPrimary(entry);
+        });
+        footBtns.appendChild(insertBtn);
+        footer.appendChild(footBtns);
+        count.textContent = this.deps.t("usageHintMobile");
+      } else {
+        count.textContent = "";
+      }
+      footer.appendChild(count);
+      if (!isMobile) {
+        const claim = document.createElement("span");
+        claim.className = "xlc-footer-claim xlc-footer-claim--static";
+        claim.textContent = this.deps.t("dataTruth");
+        claim.title = this.deps.t("dataTruthHint");
+        claim.setAttribute("role", "note");
+        claim.setAttribute("aria-label", this.deps.t("dataTruthHint"));
+        footer.appendChild(claim);
+      }
+      const guide = document.createElement("button");
+      guide.type = "button";
+      guide.className = "b3-button b3-button--text xlc-btn-ghost xlc-footer-guide";
+      guide.dataset.xlcControl = "footer.help";
+      guide.textContent = "\u24D8 " + this.deps.t("usageGuideBtn");
+      guide.addEventListener("click", () => this.openUsageGuide());
+      footer.appendChild(guide);
+      const gear = document.createElement("button");
+      gear.className = "b3-button b3-button--text xlc-btn-ghost xlc-footer-gear";
+      gear.dataset.xlcControl = "footer.settings";
+      gear.textContent = "\u2699 " + this.deps.t("openSettings");
+      gear.addEventListener("click", () => {
+        this.destroy();
+        this.deps.openSetup();
+      });
+      footer.appendChild(gear);
+      root.appendChild(footer);
+      return root;
+    }
+    /** 打开一页内置使用说明（不离开搜索弹窗，适合首次使用与移动端）。 */
+    openUsageGuide() {
+      var _a;
+      const guideDialog = new import_siyuan2.Dialog({
+        title: this.deps.t("usageGuideTitle"),
+        content: "",
+        width: "min(600px, 92vw)",
+        height: "min(680px, 88vh)"
+      });
+      (_a = guideDialog.element.querySelector(".b3-dialog__container")) == null ? void 0 : _a.classList.add("xlc-form-host");
+      const body = getDialogBody(guideDialog.element);
+      if (!body) return;
+      body.innerHTML = "";
+      const root = document.createElement("div");
+      root.className = "xlc-form xlc-guide";
+      const intro = document.createElement("p");
+      intro.className = "xlc-form-hint xlc-guide-intro";
+      intro.textContent = this.deps.t("usageGuideIntro");
+      root.appendChild(intro);
+      const steps = document.createElement("ol");
+      steps.className = "xlc-guide-list";
+      const guideKeys = ["usageGuideAdd", "usageGuideSearch", this.deps.isMobile() ? "usageGuideInsertMobile" : "usageGuideInsert", "usageGuideOrganize"];
+      for (const key of guideKeys) {
+        const item = document.createElement("li");
+        item.textContent = this.deps.t(key);
+        steps.appendChild(item);
+      }
+      root.appendChild(steps);
+      const variables = document.createElement("p");
+      variables.className = "xlc-form-hint xlc-guide-vars";
+      variables.textContent = this.deps.t("usageGuideVariables");
+      root.appendChild(variables);
+      const actions = document.createElement("div");
+      actions.className = "xlc-form-actions";
+      const close = document.createElement("button");
+      close.type = "button";
+      close.className = "b3-button xlc-btn-primary";
+      close.dataset.xlcControl = "guide.close";
+      close.textContent = this.deps.t("close");
+      close.addEventListener("click", () => guideDialog.destroy());
+      actions.appendChild(close);
+      root.appendChild(actions);
+      body.appendChild(root);
+    }
+    buildPaneHead() {
+      const head = document.createElement("div");
+      head.className = "xlc-pane-head";
+      const title = document.createElement("span");
+      title.className = "xlc-pane-title";
+      head.appendChild(title);
+      const badge = document.createElement("span");
+      badge.className = "xlc-badge xlc-badge--ai xlc-pane-ai";
+      badge.style.display = "none";
+      badge.textContent = "\u2726 " + this.deps.t("aiFound");
+      head.appendChild(badge);
+      const usage = document.createElement("span");
+      usage.className = "xlc-badge xlc-badge--ai xlc-pane-usage";
+      usage.style.display = "none";
+      head.appendChild(usage);
+      return head;
+    }
+    buildPaneFoot() {
+      const foot = document.createElement("div");
+      foot.className = "xlc-pane-foot";
+      const insert = document.createElement("button");
+      insert.className = "b3-button xlc-btn-primary";
+      insert.textContent = this.deps.t("insert");
+      insert.dataset.xlcPaneAct = "insert";
+      insert.dataset.xlcControl = "preview.insert";
+      insert.addEventListener("click", () => {
+        var _a;
+        if (this.activeProvider >= 0) {
+          const row = this.providerRows[this.activeProvider];
+          if (row) void this.deps.insertProviderPayload(row.payload, (_a = this.insertTarget) != null ? _a : void 0);
+          return;
+        }
+        const entry = this.results[this.activeIndex];
+        if (entry) void this.runPrimary(entry);
+      });
+      const copy = document.createElement("button");
+      copy.className = "b3-button";
+      copy.textContent = this.deps.t("copy");
+      copy.dataset.xlcPaneAct = "copy";
+      copy.dataset.xlcControl = "preview.copy";
+      copy.addEventListener("click", () => {
+        if (this.activeProvider >= 0) {
+          const row = this.providerRows[this.activeProvider];
+          if (row) void this.deps.copyProviderPayload(row.payload);
+          return;
+        }
+        const entry = this.results[this.activeIndex];
+        if (entry) void this.deps.runAction(entry.id, "copy");
+      });
+      const aiBtn = document.createElement("button");
+      aiBtn.className = "b3-button xlc-btn-ai";
+      aiBtn.textContent = "\u2726 " + this.deps.t("aiTransform");
+      aiBtn.dataset.xlcPaneAct = "ai";
+      aiBtn.dataset.xlcControl = "preview.ai";
+      aiBtn.addEventListener("click", () => {
+        const entry = this.results[this.activeIndex];
+        if (entry) void this.showActionMenu(entry);
+      });
+      const spacer = document.createElement("span");
+      spacer.className = "xlc-foot-spacer";
+      const source = document.createElement("button");
+      source.className = "b3-button b3-button--text xlc-btn-ghost";
+      source.textContent = this.deps.t("openSource");
+      source.dataset.xlcPaneAct = "source";
+      source.dataset.xlcControl = "preview.source";
+      source.addEventListener("click", () => {
+        const entry = this.results[this.activeIndex];
+        if (entry) void this.deps.openSource(entry.id);
+      });
+      const edit = document.createElement("button");
+      edit.className = "b3-button b3-button--text xlc-btn-ghost";
+      edit.textContent = this.deps.t("edit");
+      edit.dataset.xlcPaneAct = "edit";
+      edit.dataset.xlcControl = "preview.edit";
+      edit.addEventListener("click", () => {
+        const entry = this.results[this.activeIndex];
+        if (entry) void this.deps.editItem(entry.id);
+      });
+      foot.appendChild(insert);
+      foot.appendChild(aiBtn);
+      foot.appendChild(copy);
+      foot.appendChild(spacer);
+      foot.appendChild(source);
+      foot.appendChild(edit);
+      return foot;
+    }
+    /** 重新加载标签/分类选项；成功时清理已经不存在的持久化筛选，失败时保留当前筛选并给出提示。 */
+    async refreshFilterOptions() {
+      var _a, _b;
+      const tagSelect = (_a = this.dialog) == null ? void 0 : _a.element.querySelector(".xlc-tag-select");
+      const categorySelect = (_b = this.dialog) == null ? void 0 : _b.element.querySelector(".xlc-category-select");
+      if (!tagSelect || !categorySelect) return false;
+      const seq = ++this.filterOptionsSeq;
+      const current = this.deps.getFilters();
+      tagSelect.disabled = true;
+      categorySelect.disabled = true;
+      tagSelect.title = "";
+      categorySelect.title = "";
+      tagSelect.replaceChildren();
+      categorySelect.replaceChildren();
+      const tagAll = document.createElement("option");
+      tagAll.value = "";
+      tagAll.textContent = this.deps.t("filterAllTags");
+      tagSelect.appendChild(tagAll);
+      const categoryAll = document.createElement("option");
+      categoryAll.value = "";
+      categoryAll.textContent = this.deps.t("filterAllCategories");
+      categorySelect.appendChild(categoryAll);
+      const [tagsResult, categoriesResult] = await Promise.allSettled([this.deps.getTags(), this.deps.getCategories()]);
+      if (seq !== this.filterOptionsSeq || !this.dialog) return false;
+      const tags = tagsResult.status === "fulfilled" ? Array.from(new Set(tagsResult.value.filter(Boolean))) : [];
+      const categories = categoriesResult.status === "fulfilled" ? Array.from(new Set(categoriesResult.value.filter(Boolean))) : [];
+      for (const tag of tags) {
+        const option = document.createElement("option");
+        option.value = tag;
+        option.textContent = tag;
+        tagSelect.appendChild(option);
+      }
+      for (const category of categories) {
+        const option = document.createElement("option");
+        option.value = category;
+        option.textContent = category;
+        categorySelect.appendChild(option);
+      }
+      if (tagsResult.status === "rejected") {
+        tagSelect.title = this.deps.t("kernelError", this.deps.t("tags"));
+        if (current.tag) {
+          const option = document.createElement("option");
+          option.value = current.tag;
+          option.textContent = current.tag;
+          tagSelect.appendChild(option);
+        }
+      }
+      if (categoriesResult.status === "rejected") {
+        categorySelect.title = this.deps.t("kernelError", this.deps.t("category"));
+        if (current.category) {
+          const option = document.createElement("option");
+          option.value = current.category;
+          option.textContent = current.category;
+          categorySelect.appendChild(option);
+        }
+      }
+      const nextTag = tagsResult.status === "fulfilled" ? current.tag && tags.includes(current.tag) ? current.tag : "" : current.tag;
+      const nextCategory = categoriesResult.status === "fulfilled" ? current.category && categories.includes(current.category) ? current.category : "" : current.category;
+      tagSelect.value = nextTag;
+      categorySelect.value = nextCategory;
+      tagSelect.disabled = false;
+      categorySelect.disabled = false;
+      const changed = tagsResult.status === "fulfilled" && nextTag !== current.tag || categoriesResult.status === "fulfilled" && nextCategory !== current.category;
+      if (changed) {
+        this.deps.setFilters({ type: current.type, tag: nextTag, category: nextCategory });
+      }
+      return changed;
+    }
+    attachLongPress(list, isMobile) {
+      let pressTimer;
+      let startY = 0;
+      let startX = 0;
+      const cancel = () => {
+        if (pressTimer) clearTimeout(pressTimer);
+        pressTimer = void 0;
+      };
+      this.longPressCancel = cancel;
+      list.addEventListener("contextmenu", cancel);
+      list.addEventListener("touchstart", (e) => {
+        var _a, _b, _c, _d;
+        startY = (_b = (_a = e.touches[0]) == null ? void 0 : _a.clientY) != null ? _b : 0;
+        startX = (_d = (_c = e.touches[0]) == null ? void 0 : _c.clientX) != null ? _d : 0;
+        const row = e.target.closest("[data-xlc-index]");
+        if (!row) return;
+        const entry = this.results[Number(row.dataset.xlcIndex)];
+        if (!entry) return;
+        cancel();
+        pressTimer = setTimeout(() => void this.showActionMenu(entry), 550);
+      }, { passive: true });
+      list.addEventListener("touchmove", (e) => {
+        var _a, _b, _c, _d;
+        const dy = Math.abs(((_b = (_a = e.touches[0]) == null ? void 0 : _a.clientY) != null ? _b : 0) - startY);
+        const dx = Math.abs(((_d = (_c = e.touches[0]) == null ? void 0 : _c.clientX) != null ? _d : 0) - startX);
+        if (Math.max(dx, dy) > 10) cancel();
+      }, { passive: true });
+      list.addEventListener("touchend", cancel, { passive: true });
+      list.addEventListener("touchcancel", cancel, { passive: true });
+      list.addEventListener("pointercancel", cancel, { passive: true });
+      list.addEventListener("contextmenu", (e) => {
+        e.preventDefault();
+        const row = e.target.closest("[data-xlc-index]");
+        const entry = row ? this.results[Number(row.dataset.xlcIndex)] : this.results[this.activeIndex];
+        if (entry) void this.showActionMenu(entry);
+      });
+      void isMobile;
+    }
+    syncScopeChips() {
+      var _a;
+      (_a = this.dialog) == null ? void 0 : _a.element.querySelectorAll(".xlc-scope-chip").forEach((chip) => {
+        chip.classList.toggle("xlc-chip--on", chip.dataset.scope === this.currentScope);
+      });
+    }
+    buildQuery() {
+      var _a, _b, _c, _d, _e, _f, _g, _h, _i;
+      const el = (_a = this.dialog) == null ? void 0 : _a.element;
+      const text = (_c = (_b = el == null ? void 0 : el.querySelector(".xlc-search-input")) == null ? void 0 : _b.value) != null ? _c : "";
+      const itemType = (_e = (_d = el == null ? void 0 : el.querySelector(".xlc-type-select")) == null ? void 0 : _d.value) != null ? _e : "";
+      const tag = (_g = (_f = el == null ? void 0 : el.querySelector(".xlc-tag-select")) == null ? void 0 : _f.value) != null ? _g : "";
+      const category = (_i = (_h = el == null ? void 0 : el.querySelector(".xlc-category-select")) == null ? void 0 : _h.value) != null ? _i : "";
+      return { text, itemType, tag, category, scope: this.currentScope };
+    }
+    async refresh() {
+      var _a, _b, _c, _d, _e, _f, _g, _h, _i;
+      const seq = ++this.searchSeq;
+      this.accessIssueMessage = null;
+      const query = this.buildQuery();
+      this.lastQueryText = query.text.trim();
+      this.usageCounts = new Map(Object.entries(this.deps.getUsage()).map(([id, u]) => [id, u.count]));
+      const list = (_a = this.dialog) == null ? void 0 : _a.element.querySelector(".xlc-list");
+      const status = (_b = this.dialog) == null ? void 0 : _b.element.querySelector(".xlc-status");
+      const footer = (_c = this.dialog) == null ? void 0 : _c.element.querySelector(".xlc-footer");
+      const aiBanner = (_d = this.dialog) == null ? void 0 : _d.element.querySelector(".xlc-ai-banner");
+      if (!list) return;
+      (_e = this.dialog) == null ? void 0 : _e.element.removeAttribute("data-xlc-access-issue");
+      if (status) {
+        status.textContent = "";
+        status.classList.remove("xlc-status--error");
+        status.setAttribute("role", "status");
+      }
+      const mobileInsert = (_f = this.dialog) == null ? void 0 : _f.element.querySelector(".xlc-mobile-insert");
+      if (mobileInsert) mobileInsert.disabled = true;
+      this.lastPreviewId = null;
+      list.classList.add("xlc-list--loading");
+      list.setAttribute("aria-busy", "true");
+      let total = 0;
+      let truncated = false;
+      let loading = false;
+      let loadError;
+      let directError = "";
+      try {
+        const text = query.text.trim();
+        if (text.startsWith("?") && text.length > 1) {
+          const aiResult = await this.deps.aiSemantic(text.slice(1), { itemType: (_g = query.itemType) != null ? _g : "", tag: (_h = query.tag) != null ? _h : "", category: (_i = query.category) != null ? _i : "", scope: this.currentScope });
+          if (seq !== this.searchSeq) return;
+          if (aiResult.ok) {
+            this.results = aiResult.entries;
+            this.aiResults = true;
+            total = aiResult.entries.length;
+          } else {
+            this.results = [];
+            this.aiResults = false;
+            directError = aiResult.message;
+          }
+          if (aiBanner) aiBanner.style.display = this.aiResults && this.results.length ? "" : "none";
+          if (aiBanner && this.aiResults) {
+            aiBanner.textContent = `\u2726 ${this.deps.t("aiResultCount", String(this.results.length))}`;
+          }
+        } else {
+          const result = await this.deps.search(query);
+          if (seq !== this.searchSeq) return;
+          this.results = result.entries;
+          total = result.total;
+          truncated = result.truncated;
+          loading = result.loading === true;
+          loadError = result.error;
+          this.aiResults = false;
+          if (aiBanner) aiBanner.style.display = "none";
+        }
+      } catch (err) {
+        if (seq !== this.searchSeq) return;
+        this.results = [];
+        this.providerRows = [];
+        this.activeIndex = 0;
+        this.activeProvider = -1;
+        this.aiResults = false;
+        this.emptyMessage = "";
+        if (aiBanner) aiBanner.style.display = "none";
+        if (status) {
+          status.textContent = this.deps.t("kernelError", err.message);
+          status.classList.add("xlc-status--error");
+        }
+        if (footer) {
+          const count = footer.querySelector(".xlc-footer-count");
+          if (count && !this.deps.isMobile()) count.textContent = "";
+        }
+        this.finishSearchLoad(list);
+        this.renderList(list);
+        return;
+      }
+      if (seq !== this.searchSeq) return;
+      this.activeIndex = 0;
+      this.activeProvider = -1;
+      if (status) {
+        this.emptyMessage = "";
+        const isError = Boolean(directError || loadError);
+        status.classList.toggle("xlc-status--error", isError);
+        if (directError) {
+          status.textContent = directError;
+        } else if (loadError) {
+          status.textContent = this.deps.t("kernelError", loadError);
+        } else if (this.results.length) {
+          status.textContent = "";
+        } else if (loading) {
+          status.textContent = this.deps.t("indexing");
+        } else {
+          status.textContent = "";
+          if (!query.text.trim() && this.currentScope === "favorites") {
+            this.emptyMessage = this.deps.t("emptyFavorites");
+          } else if (!query.text.trim() && this.currentScope === "recent") {
+            this.emptyMessage = this.deps.t("emptyRecent");
+          } else if (!query.text.trim() && this.currentScope === "all" && Boolean(query.itemType || query.tag || query.category)) {
+            this.emptyMessage = this.deps.t("emptyFiltered");
+          } else if (query.text.trim() && !query.text.trim().startsWith("?") && this.deps.aiEnabled()) {
+            this.emptyMessage = this.deps.t("semanticSuggestion");
+          } else if (total === 0 && !query.text.trim()) {
+            this.emptyMessage = this.deps.t("emptyLibrary");
+          } else {
+            this.emptyMessage = this.deps.t("empty");
+          }
+        }
+      }
+      if (footer) {
+        const count = footer.querySelector(".xlc-footer-count");
+        if (count && !this.deps.isMobile()) {
+          const sortSuffix = this.deps.getSort() === "frequent" ? ` \xB7 ${this.deps.t("sort.frequent")}` : "";
+          if (directError) {
+            count.textContent = "";
+            count.title = "";
+          } else {
+            const countLabel = this.aiResults ? this.deps.t("aiResultCount", String(total)) : this.deps.t("totalItems", String(total));
+            count.textContent = countLabel + (!this.aiResults ? sortSuffix : "") + (truncated ? " \u26A0" : "");
+            count.title = truncated ? this.deps.t("truncatedHint") : "";
+          }
+        }
+      }
+      this.providerRows = [];
+      const q = query.text.trim();
+      if (q && !q.startsWith("?")) {
+        try {
+          this.providerRows = await this.deps.providerSearch(q);
+        } catch {
+          this.providerRows = [];
+        }
+        if (seq !== this.searchSeq) return;
+      }
+      this.finishSearchLoad(list);
+      this.renderList(list);
+      this.updatePreview();
+    }
+    /** 收尾一次搜索刷新：解除列表加载反馈（成功与失败路径共用）。 */
+    finishSearchLoad(list) {
+      list.classList.remove("xlc-list--loading");
+      list.removeAttribute("aria-busy");
+    }
+    /** 菜单关闭后把焦点还给搜索框（键盘连续性；弹窗已销毁则静默忽略）。 */
+    restoreFocusToSearch() {
+      var _a, _b;
+      (_b = (_a = this.dialog) == null ? void 0 : _a.element.querySelector(".xlc-search-input")) == null ? void 0 : _b.focus();
+    }
+    /** 命中高亮：按字面子串（大小写不敏感）切分并注入 mark span；文本一律 textContent，绝不 innerHTML。 */
+    appendHighlighted(parent, text, query) {
+      const lowerText = text.toLowerCase();
+      const lowerQuery = query.toLowerCase();
+      let cursor = 0;
+      while (cursor <= text.length - lowerQuery.length) {
+        const at = lowerText.indexOf(lowerQuery, cursor);
+        if (at < 0) break;
+        if (at > cursor) parent.appendChild(document.createTextNode(text.slice(cursor, at)));
+        const mark = document.createElement("mark");
+        mark.className = "xlc-hit";
+        mark.textContent = text.slice(at, at + query.length);
+        parent.appendChild(mark);
+        cursor = at + query.length;
+      }
+      if (cursor < text.length) parent.appendChild(document.createTextNode(text.slice(cursor)));
+    }
+    /** 创建一行真实库条目。抽出后虚拟列表可以复用同一套交互与无障碍属性。 */
+    createEntryRow(entry, index) {
+      var _a, _b, _c;
+      const fav = this.deps.isFavorite(entry.id);
+      const row = document.createElement("div");
+      row.className = "xlc-row" + (index === this.activeIndex ? " xlc-row--active" : "") + (fav ? " xlc-row--fav" : "");
+      row.dataset.xlcControl = "item.row";
+      row.dataset.xlcIndex = String(index);
+      row.id = `xlc-result-${index}`;
+      row.setAttribute("role", "option");
+      row.setAttribute("aria-selected", index === this.activeIndex ? "true" : "false");
+      row.setAttribute("aria-posinset", String(index + 1));
+      row.setAttribute("aria-setsize", String(this.results.length));
+      const main = document.createElement("div");
+      main.className = "xlc-row-main";
+      const title = document.createElement("div");
+      title.className = "xlc-row-title";
+      if (index < 9) {
+        const ordinal = document.createElement("span");
+        ordinal.className = "xlc-row-ordinal";
+        ordinal.textContent = String(index + 1);
+        ordinal.title = this.deps.t("usageHint");
+        title.appendChild(ordinal);
+      }
+      const badge = document.createElement("span");
+      badge.className = `xlc-badge xlc-badge--${entry.itemType}`;
+      badge.textContent = (_a = TYPE_BADGES2[entry.itemType]) != null ? _a : "TXT";
+      badge.title = this.deps.t(`type.${entry.itemType}`);
+      badge.setAttribute("aria-label", this.deps.t(`type.${entry.itemType}`));
+      title.appendChild(badge);
+      const titleText = document.createElement("span");
+      titleText.className = "xlc-row-titletext";
+      const highlight = this.lastQueryText.length > 0 && !this.lastQueryText.startsWith("?") && !this.aiResults;
+      if (highlight) this.appendHighlighted(titleText, entry.title || this.deps.t("unknownType"), this.lastQueryText);
+      else titleText.textContent = entry.title || this.deps.t("unknownType");
+      title.appendChild(titleText);
+      if (((_b = entry.varCount) != null ? _b : 0) > 0) {
+        const varBadge = document.createElement("span");
+        varBadge.className = "xlc-badge xlc-badge--var";
+        varBadge.textContent = this.deps.t("varCountBadge", String(entry.varCount));
+        title.appendChild(varBadge);
+      }
+      if (this.deps.isSourceMissing(entry)) {
+        const warn = document.createElement("span");
+        warn.className = "xlc-row-warn";
+        warn.textContent = "\u26A0";
+        warn.title = this.deps.t("sourceMissing") + " \xB7 " + this.deps.t("sourceGone");
+        warn.setAttribute("aria-label", this.deps.t("sourceMissing"));
+        title.appendChild(warn);
+      }
+      main.appendChild(title);
+      const meta = document.createElement("div");
+      meta.className = "xlc-row-meta";
+      const useCount = (_c = this.usageCounts.get(entry.id)) != null ? _c : 0;
+      const joined = [entry.tags.join(" / "), entry.summary].filter(Boolean).join(" \xB7 ");
+      const metaBase = joined.length > 140 ? joined.slice(0, 140) + "\u2026" : joined;
+      meta.textContent = metaBase + (useCount > 0 ? ` \xB7 ${this.deps.t("useCount", String(useCount))}` : "");
+      main.appendChild(meta);
+      row.appendChild(main);
+      const star = document.createElement("button");
+      star.className = "b3-button b3-button--small xlc-row-action";
+      star.dataset.xlcControl = "item.favorite";
+      star.textContent = fav ? "\u2605" : "\u2606";
+      star.setAttribute("aria-label", fav ? this.deps.t("unfavorite") : this.deps.t("favorite"));
+      star.addEventListener("click", (e) => {
+        e.stopPropagation();
+        this.deps.toggleFavorite(entry.id);
+        star.textContent = this.deps.isFavorite(entry.id) ? "\u2605" : "\u2606";
+        void this.refreshPreservingPosition().then(() => this.restoreFocusToSearch());
+      });
+      row.appendChild(star);
+      return row;
+    }
+    renderList(list) {
+      var _a, _b, _c, _d;
+      (_a = this.virtualListCleanup) == null ? void 0 : _a.call(this);
+      this.virtualListCleanup = null;
+      this.virtualEnsureIndex = null;
+      list.innerHTML = "";
+      if (this.results.length === 0 && this.providerRows.length === 0 && this.emptyMessage) {
+        const empty = document.createElement("div");
+        empty.className = "xlc-empty";
+        const icon = document.createElement("div");
+        icon.className = "xlc-empty-icon";
+        icon.textContent = "\u2726";
+        empty.appendChild(icon);
+        const text = document.createElement("div");
+        text.className = "xlc-empty-text";
+        text.textContent = this.emptyMessage;
+        empty.appendChild(text);
+        if (this.accessIssueMessage) {
+          const retry = document.createElement("button");
+          retry.type = "button";
+          retry.className = "b3-button xlc-btn-primary xlc-empty-action";
+          retry.dataset.xlcControl = "access.retry";
+          retry.textContent = this.deps.t("retry");
+          retry.addEventListener("click", () => {
+            var _a2;
+            this.accessIssueMessage = null;
+            this.emptyMessage = "";
+            const status = (_a2 = this.dialog) == null ? void 0 : _a2.element.querySelector(".xlc-status");
+            if (status) {
+              status.textContent = "";
+              status.classList.remove("xlc-status--error");
+              status.setAttribute("role", "status");
+            }
+            void this.refresh();
+          });
+          empty.appendChild(retry);
+          list.appendChild(empty);
+          return;
+        }
+        const queryText = this.lastQueryText.trim();
+        if (queryText && !queryText.startsWith("?")) {
+          const titleHint = document.createElement("div");
+          titleHint.className = "xlc-empty-hint";
+          titleHint.textContent = this.deps.t("emptyQueryHint");
+          empty.appendChild(titleHint);
+          if (this.deps.aiEnabled()) {
+            const hint = document.createElement("div");
+            hint.className = "xlc-empty-hint";
+            hint.textContent = this.deps.t("aiSemanticHint");
+            empty.appendChild(hint);
+          }
+        } else if (queryText.startsWith("?")) {
+          const hint = document.createElement("div");
+          hint.className = "xlc-empty-hint";
+          hint.textContent = this.deps.t("semanticEmptyHint");
+          empty.appendChild(hint);
+        } else if (this.emptyMessage === this.deps.t("emptyFavorites")) {
+          const hint = document.createElement("div");
+          hint.className = "xlc-empty-hint";
+          hint.textContent = this.deps.t("emptyFavoritesSub");
+          empty.appendChild(hint);
+        } else if (this.emptyMessage === this.deps.t("emptyLibrary")) {
+          const hint = document.createElement("div");
+          hint.className = "xlc-empty-hint";
+          hint.textContent = this.deps.t("emptyLibrarySub");
+          empty.appendChild(hint);
+          const guide = document.createElement("button");
+          guide.type = "button";
+          guide.className = "b3-button xlc-btn-ghost xlc-empty-action";
+          guide.dataset.xlcAction = "help";
+          guide.dataset.xlcControl = "empty.help";
+          guide.textContent = "\u24D8 " + this.deps.t("usageGuideBtn");
+          guide.addEventListener("click", () => this.openUsageGuide());
+          empty.appendChild(guide);
+        }
+        if (this.emptyMessage === this.deps.t("emptyFiltered")) {
+          const clear = document.createElement("button");
+          clear.type = "button";
+          clear.className = "b3-button xlc-btn-ghost xlc-empty-action";
+          clear.dataset.xlcAction = "clear-filters";
+          clear.dataset.xlcControl = "empty.clear-filters";
+          clear.textContent = this.deps.t("clearFilters");
+          clear.addEventListener("click", () => {
+            var _a2;
+            this.deps.setFilters({ type: "", tag: "", category: "" });
+            (_a2 = this.dialog) == null ? void 0 : _a2.element.querySelectorAll(".xlc-type-select, .xlc-tag-select, .xlc-category-select").forEach((select) => {
+              select.value = "";
+            });
+            void this.refresh();
+          });
+          empty.appendChild(clear);
+        }
+        if (this.emptyMessage === this.deps.t("emptyLibrary") || this.emptyMessage === this.deps.t("emptyFiltered") || this.lastQueryText.trim()) {
+          const create = document.createElement("button");
+          create.type = "button";
+          create.className = "b3-button xlc-btn-primary xlc-empty-action";
+          create.dataset.xlcAction = "new-item";
+          create.dataset.xlcControl = "empty.new-item";
+          const query = this.lastQueryText.trim();
+          const fullTitleCandidate = query && !query.startsWith("?") ? query.slice(0, 120) : "";
+          const buttonTitle = fullTitleCandidate.length > 24 ? `${fullTitleCandidate.slice(0, 24)}\u2026` : fullTitleCandidate;
+          create.textContent = buttonTitle ? this.deps.t("newItemActionWithQuery", buttonTitle) : this.deps.t("newItemAction");
+          const accessibleLabel = fullTitleCandidate ? this.deps.t("newItemWithTitle", fullTitleCandidate) : this.deps.t("newItemAction");
+          create.setAttribute("aria-label", accessibleLabel);
+          create.title = accessibleLabel;
+          create.addEventListener("click", () => {
+            this.deps.newItem(fullTitleCandidate || void 0);
+          });
+          empty.appendChild(create);
+        }
+        list.appendChild(empty);
+      }
+      const grouping = this.currentScope === "all" && this.deps.getSort() !== "title";
+      const groupLabels = [];
+      if (grouping && this.results.length > 0) {
+        const isManual = this.deps.getSort() === "manual";
+        const favs = [];
+        const rest = [];
+        for (const e of this.results) {
+          if (isManual && e && this.deps.isFavorite(e.id)) favs.push(e);
+          else rest.push(e);
+        }
+        const byCat = /* @__PURE__ */ new Map();
+        const uncategorized = [];
+        for (const e of rest) {
+          const cat = (_b = e == null ? void 0 : e.category) != null ? _b : "";
+          if (!cat) {
+            uncategorized.push(e);
+            continue;
+          }
+          const bucket = (_c = byCat.get(cat)) != null ? _c : [];
+          bucket.push(e);
+          byCat.set(cat, bucket);
+        }
+        const catKeys = Array.from(byCat.keys()).sort((a, b) => a.localeCompare(b, "zh-Hans-CN"));
+        const ordered = [];
+        if (isManual && favs.length > 0) {
+          groupLabels.push({ label: "\u2605 " + this.deps.t("groupFavorites"), count: favs.length });
+          ordered.push(...favs);
+        }
+        for (const key of catKeys) {
+          const bucket = (_d = byCat.get(key)) != null ? _d : [];
+          groupLabels.push({ label: key, count: bucket.length });
+          ordered.push(...bucket);
+        }
+        if (uncategorized.length > 0) {
+          groupLabels.push({ label: this.deps.t("groupUncategorized"), count: uncategorized.length });
+          ordered.push(...uncategorized);
+        }
+        if (groupLabels.length > 1) {
+          this.results = ordered;
+        } else {
+          groupLabels.length = 0;
+        }
+      }
+      let headCursor = -1;
+      const headStarts = [];
+      let groupAcc = 0;
+      for (const g of groupLabels) {
+        headStarts.push(groupAcc);
+        groupAcc += g.count;
+      }
+      const placeGroupHead = (label, count) => {
+        const head = document.createElement("div");
+        head.className = "xlc-group-head";
+        head.dataset.xlcHead = "1";
+        head.setAttribute("aria-hidden", "true");
+        head.textContent = `${label} \xB7 ${count}`;
+        list.appendChild(head);
+      };
+      const canVirtualize = this.results.length > _CommonSearchDialog.VIRTUAL_THRESHOLD && groupLabels.length === 0 && this.providerRows.length === 0;
+      if (canVirtualize) {
+        const rowHeight = this.deps.isMobile() ? 64 : _CommonSearchDialog.VIRTUAL_ROW_HEIGHT;
+        const overscan = _CommonSearchDialog.VIRTUAL_OVERSCAN;
+        const topSpacer = document.createElement("div");
+        topSpacer.dataset.xlcSpacer = "top";
+        const bottomSpacer = document.createElement("div");
+        bottomSpacer.dataset.xlcSpacer = "bottom";
+        const renderWindow = (requestedIndex) => {
+          const viewport = Math.max(list.clientHeight || 480, rowHeight * 6);
+          const rawStart = requestedIndex === void 0 ? Math.floor(list.scrollTop / rowHeight) : Math.max(0, requestedIndex - overscan);
+          const visible = Math.ceil(viewport / rowHeight);
+          const start = Math.max(0, Math.min(rawStart, this.results.length - 1));
+          const end = Math.min(this.results.length, start + visible + overscan * 2);
+          topSpacer.style.height = `${start * rowHeight}px`;
+          bottomSpacer.style.height = `${Math.max(0, (this.results.length - end) * rowHeight)}px`;
+          list.replaceChildren(topSpacer);
+          for (let i = start; i < end; i++) {
+            const entry = this.results[i];
+            if (entry) list.appendChild(this.createEntryRow(entry, i));
+          }
+          list.appendChild(bottomSpacer);
+          this.paintActive();
+        };
+        const onScroll = () => renderWindow();
+        list.classList.add("xlc-list--virtual");
+        list.addEventListener("scroll", onScroll, { passive: true });
+        this.virtualListCleanup = () => {
+          list.removeEventListener("scroll", onScroll);
+          list.classList.remove("xlc-list--virtual");
+        };
+        this.virtualEnsureIndex = (index) => renderWindow(index);
+        renderWindow();
+      } else {
+        for (let i = 0; i < this.results.length; i++) {
+          while (headCursor + 1 < groupLabels.length && i === headStarts[headCursor + 1]) {
+            headCursor++;
+            const head = groupLabels[headCursor];
+            if (head) placeGroupHead(head.label, head.count);
+          }
+          const entry = this.results[i];
+          if (entry) list.appendChild(this.createEntryRow(entry, i));
+        }
+      }
+      if (this.providerRows.length > 0) {
+        const header = document.createElement("div");
+        header.className = "xlc-provider-header";
+        header.dataset.xlcHead = "1";
+        header.setAttribute("aria-hidden", "true");
+        header.textContent = "\u2726 " + this.deps.t("providerSection") + " \xB7 " + this.providerRows.length;
+        list.appendChild(header);
+        for (const row of this.providerRows) {
+          const el = document.createElement("div");
+          el.className = "xlc-row xlc-row--provider";
+          el.dataset.xlcVirtualId = row.virtualId;
+          el.id = `xlc-provider-${this.providerRows.indexOf(row)}`;
+          el.setAttribute("role", "option");
+          el.setAttribute("aria-selected", "false");
+          const main = document.createElement("div");
+          main.className = "xlc-row-main";
+          const title = document.createElement("div");
+          title.className = "xlc-row-title";
+          const badge = document.createElement("span");
+          badge.className = "xlc-badge xlc-badge--ai";
+          badge.textContent = row.providerName.length > 12 ? row.providerName.slice(0, 12) + "\u2026" : row.providerName;
+          badge.title = row.providerName;
+          title.appendChild(badge);
+          const titleText = document.createElement("span");
+          titleText.className = "xlc-row-titletext";
+          titleText.textContent = row.title || row.payload.slice(0, 40);
+          title.appendChild(titleText);
+          main.appendChild(title);
+          const meta = document.createElement("div");
+          meta.className = "xlc-row-meta";
+          meta.textContent = row.payload.slice(0, 120);
+          main.appendChild(meta);
+          el.appendChild(main);
+          el.addEventListener("click", () => void this.showProviderMenu(row, el));
+          el.addEventListener("contextmenu", (e) => {
+            e.preventDefault();
+            void this.showProviderMenu(row, el);
+          });
+          list.appendChild(el);
+        }
+      }
+      this.paintActive();
+      this.syncPaneActions();
+    }
+    /** 预览区动作随当前选中行同步；键盘切换/来源预检也必须更新按钮状态。 */
+    syncPaneActions() {
+      var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k, _l, _m, _n, _o, _p, _q, _r, _s, _t, _u, _v, _w, _x, _y, _z, _A, _B, _C;
+      const actionable = this.results.length > 0;
+      const scope = (_b = (_a = this.dialog) == null ? void 0 : _a.element) != null ? _b : document;
+      const targetBanner = scope.querySelector(".xlc-target-banner");
+      if (targetBanner && !this.insertTarget) {
+        const hasEditor = (_e = (_d = (_c = this.deps).hasActiveEditor) == null ? void 0 : _d.call(_c)) != null ? _e : true;
+        const hasTarget = (_h = (_g = (_f = this.deps).hasInsertTarget) == null ? void 0 : _g.call(_f)) != null ? _h : hasEditor;
+        const fallbackKey = this.deps.isMobile() ? "insertMobileActionHint" : hasTarget ? "insertCurrentEditorBanner" : hasEditor ? "insertTargetUnavailableBanner" : "insertNoEditorBanner";
+        targetBanner.textContent = "\u2913 " + this.deps.t(fallbackKey);
+        targetBanner.setAttribute("aria-label", this.deps.t(fallbackKey));
+      }
+      scope.querySelectorAll(".xlc-pane-foot .b3-button").forEach((btn) => {
+        var _a2, _b2;
+        if (this.activeProvider >= 0) {
+          const act2 = (_a2 = btn.dataset.xlcPaneAct) != null ? _a2 : "";
+          btn.disabled = this.primaryBusy || !(act2 === "insert" || act2 === "copy");
+          return;
+        }
+        const entry = this.results[this.activeIndex];
+        const act = (_b2 = btn.dataset.xlcPaneAct) != null ? _b2 : "";
+        const unavailable = !entry || act === "ai" && !this.deps.aiEnabled() || act === "source" && this.deps.isSourceMissing(entry);
+        btn.disabled = !actionable || unavailable || this.primaryBusy || this.varFormOpen;
+        btn.removeAttribute("title");
+        if (act === "ai" && !this.deps.aiEnabled()) btn.title = this.deps.t("aiDisabled");
+        if (act === "source" && entry && this.deps.isSourceMissing(entry)) btn.title = this.deps.t("sourceGone");
+      });
+      const insertBtn = scope.querySelector('[data-xlc-pane-act="insert"]');
+      if (insertBtn) {
+        const copyFallback = this.activeProvider >= 0 ? !this.insertTarget && (this.deps.isMobile() || !((_n = (_m = (_j = (_i = this.deps).hasInsertTarget) == null ? void 0 : _j.call(_i)) != null ? _m : (_l = (_k = this.deps).hasActiveEditor) == null ? void 0 : _l.call(_k)) != null ? _n : true)) : this.mobilePrimaryIsCopy() || !this.insertTarget && !((_t = (_s = (_p = (_o = this.deps).hasInsertTarget) == null ? void 0 : _p.call(_o)) != null ? _s : (_r = (_q = this.deps).hasActiveEditor) == null ? void 0 : _r.call(_q)) != null ? _t : true);
+        insertBtn.textContent = copyFallback ? this.deps.t("copy") : this.deps.t("insert");
+        const hint = this.deps.isMobile() && !this.insertTarget ? this.deps.t("insertMobileActionHint") : !this.insertTarget && !((_z = (_y = (_v = (_u = this.deps).hasInsertTarget) == null ? void 0 : _v.call(_u)) != null ? _y : (_x = (_w = this.deps).hasActiveEditor) == null ? void 0 : _x.call(_w)) != null ? _z : true) ? this.deps.t(((_C = (_B = (_A = this.deps).hasActiveEditor) == null ? void 0 : _B.call(_A)) != null ? _C : true) ? "insertTargetUnavailableCopied" : "insertNoEditor") : "";
+        insertBtn.title = hint;
+        if (hint) insertBtn.setAttribute("aria-label", hint);
+        else insertBtn.removeAttribute("aria-label");
+        insertBtn.setAttribute("aria-busy", this.primaryBusy ? "true" : "false");
+      }
+      const mobileInsert = scope.querySelector(".xlc-mobile-foot .xlc-btn-primary");
+      if (mobileInsert) {
+        mobileInsert.disabled = !actionable || this.primaryBusy || this.varFormOpen;
+        mobileInsert.textContent = this.deps.t(this.mobilePrimaryIsCopy() ? "copy" : "quickInsertSelected");
+        const hint = this.mobilePrimaryIsCopy() ? this.deps.t("insertMobileActionHint") : "";
+        mobileInsert.title = hint;
+        if (hint) mobileInsert.setAttribute("aria-label", hint);
+        else mobileInsert.removeAttribute("aria-label");
+        mobileInsert.setAttribute("aria-busy", this.primaryBusy ? "true" : "false");
+      }
+    }
+    mobilePrimaryIsCopy() {
+      return this.deps.isMobile() && !this.insertTarget;
+    }
+    async showProviderMenu(row, anchor) {
+      var _a, _b, _c, _d, _e, _f;
+      (_a = this.menuDismiss) == null ? void 0 : _a.call(this);
+      this.menuDismiss = null;
+      const menu = document.createElement("div");
+      menu.className = "xlc-menu";
+      menu.setAttribute("role", "menu");
+      menu.setAttribute("aria-label", row.providerName + " \xB7 " + this.deps.t("providerSection"));
+      const lbl = document.createElement("div");
+      lbl.className = "xlc-menu-lbl";
+      lbl.textContent = row.providerName + " \xB7 " + this.deps.t("providerSection");
+      menu.appendChild(lbl);
+      const sec = document.createElement("div");
+      sec.className = "xlc-menu-sec";
+      sec.appendChild(this.menuButton("\uFF0B", this.deps.t("providerInsert"), "xlc-menu-item", async () => {
+        var _a2;
+        const execution = this.deps.insertProviderPayload(row.payload, (_a2 = this.insertTarget) != null ? _a2 : void 0);
+        this.destroy();
+        await execution;
+      }));
+      sec.appendChild(this.menuButton("\u29C9", this.deps.t("providerCopy"), "xlc-menu-item", async () => {
+        this.destroy();
+        await this.deps.copyProviderPayload(row.payload);
+      }));
+      menu.appendChild(sec);
+      const host = (_e = (_d = (_b = this.dialog) == null ? void 0 : _b.element.querySelector(".xlc-dialog")) != null ? _d : (_c = this.dialog) == null ? void 0 : _c.element) != null ? _e : anchor;
+      host.appendChild(menu);
+      const dismiss = (e) => {
+        if (!menu.contains(e.target)) {
+          menu.remove();
+          if (this.menuDismiss === dismissMenu) this.menuDismiss = null;
+          document.removeEventListener("pointerdown", dismiss, true);
+          this.restoreFocusToSearch();
+        }
+      };
+      const dismissMenu = () => {
+        menu.remove();
+        document.removeEventListener("pointerdown", dismiss, true);
+      };
+      this.menuDismiss = dismissMenu;
+      document.addEventListener("pointerdown", dismiss, true);
+      menu.addEventListener("keydown", (e) => {
+        if (e.key === "Escape") {
+          e.preventDefault();
+          e.stopPropagation();
+          menu.remove();
+          if (this.menuDismiss === dismissMenu) this.menuDismiss = null;
+          document.removeEventListener("pointerdown", dismiss, true);
+          this.restoreFocusToSearch();
+        }
+      });
+      (_f = menu.querySelector(".xlc-menu-item")) == null ? void 0 : _f.focus();
+    }
+    /** 外部变更（动作菜单内删除/建副本等）后的列表同步入口（R138）。 */
+    refreshAfterExternalChange() {
+      void this.refreshPreservingPosition();
+    }
+    /** 鉴权/权限错误由统一内核处理器调用；旧列表失效后保留查询条件并提供显式重试。 */
+    showKernelAccessIssue(kind, message) {
+      var _a, _b, _c, _d;
+      ++this.searchSeq;
+      ++this.previewSeq;
+      if (this.inputDebounce) clearTimeout(this.inputDebounce);
+      this.inputDebounce = null;
+      this.accessIssueMessage = message;
+      this.emptyMessage = message;
+      this.results = [];
+      this.providerRows = [];
+      this.activeIndex = 0;
+      this.activeProvider = -1;
+      this.lastPreviewId = null;
+      const status = (_a = this.dialog) == null ? void 0 : _a.element.querySelector(".xlc-status");
+      if (status) {
+        status.textContent = this.deps.t(kind === "auth" ? "kernelAuthStatus" : "kernelPermissionStatus");
+        status.classList.add("xlc-status--error");
+        status.setAttribute("role", "alert");
+      }
+      const list = (_b = this.dialog) == null ? void 0 : _b.element.querySelector(".xlc-list");
+      if (list) {
+        list.classList.remove("xlc-list--loading");
+        list.setAttribute("aria-busy", "false");
+        this.renderList(list);
+      }
+      const count = (_c = this.dialog) == null ? void 0 : _c.element.querySelector(".xlc-footer-count");
+      if (count) count.textContent = "";
+      this.updatePreview();
+      (_d = this.dialog) == null ? void 0 : _d.element.setAttribute("data-xlc-access-issue", kind);
+    }
+    async refreshPreservingPosition() {
+      var _a, _b, _c;
+      const list = (_a = this.dialog) == null ? void 0 : _a.element.querySelector(".xlc-list");
+      const scrollTop = (_b = list == null ? void 0 : list.scrollTop) != null ? _b : 0;
+      const selectedId = (_c = this.results[this.activeIndex]) == null ? void 0 : _c.id;
+      await this.refreshFilterOptions();
+      await this.refresh();
+      if (selectedId) {
+        const next = this.results.findIndex((entry) => entry.id === selectedId);
+        if (next >= 0) this.activeIndex = next;
+      }
+      if (list) {
+        this.renderList(list);
+        list.scrollTop = scrollTop;
+      }
+      this.updatePreview();
+    }
+    /** 统一导航位：0..results.length-1 为库条目，之后为提供方行 */
+    setNav(pos) {
+      if (pos < this.results.length) {
+        this.activeIndex = pos;
+        this.activeProvider = -1;
+      } else {
+        this.activeIndex = Math.max(Math.min(pos, Math.max(this.results.length - 1, 0)), 0);
+        this.activeProvider = pos - this.results.length;
+      }
+    }
+    navPosition() {
+      return this.activeProvider >= 0 ? this.results.length + this.activeProvider : this.activeIndex;
+    }
+    paintActive() {
+      var _a, _b, _c;
+      const list = (_a = this.dialog) == null ? void 0 : _a.element.querySelector(".xlc-list");
+      if (!list) return;
+      const rows = Array.from(list.children).filter((el) => {
+        const node = el;
+        return !node.dataset.xlcHead && !node.dataset.xlcSpacer;
+      });
+      if (this.activeProvider < 0 && !rows.some((row) => row.dataset.xlcIndex === String(this.activeIndex))) {
+        (_b = this.virtualEnsureIndex) == null ? void 0 : _b.call(this, this.activeIndex);
+        return;
+      }
+      rows.forEach((child) => {
+        const resultIndex = child.dataset.xlcIndex;
+        const active3 = resultIndex !== void 0 ? this.activeProvider < 0 && Number(resultIndex) === this.activeIndex : this.activeProvider >= 0 && child.id === `xlc-provider-${this.activeProvider}`;
+        child.classList.toggle("xlc-row--active", active3);
+        child.setAttribute("aria-selected", active3 ? "true" : "false");
+      });
+      const active2 = this.activeProvider >= 0 ? rows.find((row) => row.id === `xlc-provider-${this.activeProvider}`) : rows.find((row) => row.dataset.xlcIndex === String(this.activeIndex));
+      const input = (_c = this.dialog) == null ? void 0 : _c.element.querySelector(".xlc-search-input");
+      if (active2 == null ? void 0 : active2.id) input == null ? void 0 : input.setAttribute("aria-activedescendant", active2.id);
+      else input == null ? void 0 : input.removeAttribute("aria-activedescendant");
+      active2 == null ? void 0 : active2.scrollIntoView({ block: "nearest" });
+    }
+    schedulePreview(entry) {
+      this.updatePreview(entry.id);
+    }
+    /** 变量提示行：从预览文本解析 ask 字段与光标标记并列出语法 chip（code/提供方行不展示）。 */
+    paintPaneVars(text, itemType) {
+      var _a;
+      const paneVars = (_a = this.dialog) == null ? void 0 : _a.element.querySelector(".xlc-pane-vars");
+      if (!paneVars) return;
+      const hasCursor = Boolean(text && hasCursorToken(text));
+      const fields = itemType && itemType !== "code" && itemType !== "provider" && text ? listAskFields(text) : [];
+      paneVars.textContent = "";
+      if (fields.length === 0 && !hasCursor) {
+        paneVars.style.display = "none";
+        return;
+      }
+      if (fields.length > 0) {
+        const label = document.createElement("span");
+        label.textContent = this.deps.t("paneVarsLabel", String(fields.length));
+        paneVars.appendChild(label);
+      }
+      for (const field of fields) {
+        const chip = document.createElement("code");
+        chip.textContent = askFieldTag(field);
+        paneVars.appendChild(chip);
+      }
+      if (hasCursor) {
+        const sep = document.createElement("span");
+        sep.textContent = (fields.length > 0 ? "\xB7 " : "") + this.deps.t("cursorHint");
+        paneVars.appendChild(sep);
+        const chip = document.createElement("code");
+        chip.textContent = "{{xlc:cursor}}";
+        paneVars.appendChild(chip);
+      }
+      paneVars.style.display = "flex";
+    }
+    /** 排序直选菜单（R108）：4 档可枚举、当前档 ✓，替代不可见的循环切换。 */
+    showSortMenu(paintSort) {
+      var _a, _b, _c, _d, _e, _f;
+      (_a = this.menuDismiss) == null ? void 0 : _a.call(this);
+      this.menuDismiss = null;
+      const modes = ["manual", "recent", "frequent", "title"];
+      const current = this.deps.getSort();
+      const menu = document.createElement("div");
+      menu.className = "xlc-menu xlc-menu--compact";
+      menu.setAttribute("role", "menu");
+      menu.setAttribute("aria-label", this.deps.t("sort"));
+      const lbl = document.createElement("div");
+      lbl.className = "xlc-menu-lbl";
+      lbl.textContent = this.deps.t("sort");
+      menu.appendChild(lbl);
+      const sec = document.createElement("div");
+      sec.className = "xlc-menu-sec";
+      for (const mode of modes) {
+        const option = this.menuButton(mode === current ? "\u2713" : " ", this.deps.t(`sort.${mode}`), "xlc-menu-item" + (mode === current ? " xlc-menu-item--on" : ""), async () => {
+          var _a2;
+          this.sortMenuClosedAt = Date.now();
+          (_a2 = this.menuDismiss) == null ? void 0 : _a2.call(this);
+          this.menuDismiss = null;
+          this.deps.setSort(mode);
+          paintSort();
+          this.restoreFocusToSearch();
+          void this.refresh();
+        });
+        option.title = this.deps.t(`sortHint.${mode}`);
+        sec.appendChild(option);
+      }
+      menu.appendChild(sec);
+      const host = (_e = (_d = (_b = this.dialog) == null ? void 0 : _b.element.querySelector(".xlc-dialog")) != null ? _d : (_c = this.dialog) == null ? void 0 : _c.element) != null ? _e : document.body;
+      host.appendChild(menu);
+      const dismiss = (e) => {
+        if (!menu.contains(e.target)) {
+          menu.remove();
+          this.sortMenuClosedAt = Date.now();
+          if (this.menuDismiss === dismissMenu) this.menuDismiss = null;
+          document.removeEventListener("pointerdown", dismiss, true);
+          this.restoreFocusToSearch();
+        }
+      };
+      const dismissMenu = () => {
+        menu.remove();
+        document.removeEventListener("pointerdown", dismiss, true);
+      };
+      this.menuDismiss = dismissMenu;
+      document.addEventListener("pointerdown", dismiss, true);
+      menu.addEventListener("keydown", (e) => {
+        if (e.key === "Escape") {
+          e.preventDefault();
+          e.stopPropagation();
+          menu.remove();
+          this.sortMenuClosedAt = Date.now();
+          if (this.menuDismiss === dismissMenu) this.menuDismiss = null;
+          document.removeEventListener("pointerdown", dismiss, true);
+          this.restoreFocusToSearch();
+        }
+      });
+      (_f = menu.querySelector(".xlc-menu-item")) == null ? void 0 : _f.focus();
+    }
+    /** 预览窗格元数据行（R108，Raycast Detail.Metadata 惯例）：类型徽标 + 分类/标签可点筛选 + 更新日期。 */
+    paintPaneMeta(entry) {
+      var _a, _b;
+      const meta = (_a = this.dialog) == null ? void 0 : _a.element.querySelector(".xlc-pane-meta");
+      if (!meta) return;
+      meta.textContent = "";
+      if (!entry) {
+        meta.style.display = "none";
+        return;
+      }
+      const typeBadge = document.createElement("span");
+      typeBadge.className = `xlc-badge xlc-badge--${entry.itemType}`;
+      typeBadge.textContent = (_b = TYPE_BADGES2[entry.itemType]) != null ? _b : "TXT";
+      meta.appendChild(typeBadge);
+      const setFilter = (patch) => {
+        var _a2, _b2, _c, _d;
+        const current = this.deps.getFilters();
+        const next = {
+          type: current.type,
+          tag: (_a2 = patch.tag) != null ? _a2 : current.tag,
+          category: (_b2 = patch.category) != null ? _b2 : current.category
+        };
+        this.deps.setFilters(next);
+        const tagSelect = (_c = this.dialog) == null ? void 0 : _c.element.querySelector(".xlc-tag-select");
+        const categorySelect = (_d = this.dialog) == null ? void 0 : _d.element.querySelector(".xlc-category-select");
+        if (tagSelect) tagSelect.value = next.tag;
+        if (categorySelect) categorySelect.value = next.category;
+        void this.refresh();
+      };
+      const toggleChip = (value, active2) => active2 === value ? "" : value;
+      const currentFilters = this.deps.getFilters();
+      if (entry.category) {
+        const cat = document.createElement("button");
+        cat.type = "button";
+        cat.className = "xlc-meta-chip" + (currentFilters.category === entry.category ? " xlc-meta-chip--on" : "");
+        cat.dataset.xlcControl = "preview.filter.category";
+        cat.textContent = entry.category;
+        cat.title = this.deps.t("category");
+        cat.setAttribute("aria-pressed", String(currentFilters.category === entry.category));
+        cat.addEventListener("click", () => setFilter({ category: toggleChip(entry.category, this.deps.getFilters().category) }));
+        meta.appendChild(cat);
+      }
+      const cleanTags = entry.tags.filter(Boolean);
+      const shownTags = cleanTags.slice(0, 3);
+      for (const tag of shownTags) {
+        const chip = document.createElement("button");
+        chip.type = "button";
+        chip.className = "xlc-meta-chip" + (currentFilters.tag === tag ? " xlc-meta-chip--on" : "");
+        chip.dataset.xlcControl = "preview.filter.tag";
+        chip.textContent = tag;
+        chip.title = this.deps.t("tags");
+        chip.setAttribute("aria-pressed", String(currentFilters.tag === tag));
+        chip.addEventListener("click", () => setFilter({ tag: toggleChip(tag, this.deps.getFilters().tag) }));
+        meta.appendChild(chip);
+      }
+      if (cleanTags.length > shownTags.length) {
+        const more = document.createElement("span");
+        more.className = "xlc-meta-chip xlc-meta-chip--static";
+        more.textContent = `+${cleanTags.length - shownTags.length}`;
+        meta.appendChild(more);
+      }
+      if (Number.isFinite(entry.updatedAt) && entry.updatedAt > 9466848e5) {
+        const date = document.createElement("span");
+        date.className = "xlc-pane-meta-date";
+        date.textContent = this.deps.t("updatedAtLabel", new Date(entry.updatedAt).toLocaleDateString());
+        meta.appendChild(date);
+      }
+      meta.style.display = "flex";
+    }
+    updatePreview(forceId) {
+      var _a, _b, _c, _d, _e, _f, _g;
+      const paneBody = (_a = this.dialog) == null ? void 0 : _a.element.querySelector(".xlc-pane-body");
+      const paneTitle = (_b = this.dialog) == null ? void 0 : _b.element.querySelector(".xlc-pane-title");
+      const paneWarn = (_c = this.dialog) == null ? void 0 : _c.element.querySelector(".xlc-pane-warn");
+      const paneAi = (_d = this.dialog) == null ? void 0 : _d.element.querySelector(".xlc-pane-ai");
+      const paneUsage = (_e = this.dialog) == null ? void 0 : _e.element.querySelector(".xlc-pane-usage");
+      if (!paneBody || !paneTitle || !paneWarn || !paneAi || !paneUsage) return;
+      this.syncPaneActions();
+      const paintUsageBadge = (entry2) => {
+        var _a2;
+        const count = entry2 ? (_a2 = this.usageCounts.get(entry2.id)) != null ? _a2 : 0 : 0;
+        if (this.aiResults || count <= 0) {
+          paneUsage.style.display = "none";
+          return;
+        }
+        paneUsage.textContent = `\u2726 ${this.deps.t("sort.frequent")} \xB7 ${this.deps.t("useCount", String(count))}`;
+        paneUsage.style.display = "inline-block";
+      };
+      if (this.activeProvider >= 0) {
+        const row = this.providerRows[this.activeProvider];
+        if (row) {
+          this.lastPreviewId = row.virtualId;
+          paneTitle.textContent = row.title || row.providerName;
+          paneAi.style.display = "none";
+          paneUsage.style.display = "none";
+          paneWarn.style.display = "none";
+          this.paintPaneMeta(void 0);
+          paneBody.classList.remove("xlc-pane-body--muted", "xlc-pane-body--code");
+          this.paintPaneVars(null, "provider");
+          paneBody.textContent = row.payload;
+          return;
+        }
+        this.activeProvider = -1;
+      }
+      const entry = this.results[this.activeIndex];
+      const id = (_f = forceId != null ? forceId : entry == null ? void 0 : entry.id) != null ? _f : null;
+      this.paintPaneMeta(entry);
+      if (!id) {
+        ++this.previewSeq;
+        this.lastPreviewId = "";
+        paneTitle.textContent = "";
+        paneAi.style.display = "none";
+        paneWarn.style.display = "none";
+        paneUsage.style.display = "none";
+        paneBody.classList.add("xlc-pane-body--muted");
+        paneBody.classList.remove("xlc-pane-body--code");
+        paneBody.textContent = this.deps.t("previewNoResult");
+        paneBody.scrollTop = 0;
+        this.paintPaneVars(null, void 0);
+        return;
+      }
+      if (!id || id === this.lastPreviewId) return;
+      const seq = ++this.previewSeq;
+      this.lastPreviewId = id;
+      if (paneTitle) paneTitle.textContent = (_g = entry == null ? void 0 : entry.title) != null ? _g : "";
+      if (paneAi) paneAi.style.display = this.aiResults ? "" : "none";
+      paintUsageBadge(entry);
+      if (paneWarn) {
+        const missing = Boolean(entry && this.deps.isSourceMissing(entry));
+        paneWarn.style.display = missing ? "" : "none";
+        if (missing) paneWarn.textContent = "\u26A0 " + this.deps.t("sourceGone");
+      }
+      this.paintPaneVars(null, entry == null ? void 0 : entry.itemType);
+      paneBody.classList.add("xlc-pane-body--muted");
+      paneBody.textContent = this.deps.t("loading");
+      void this.deps.preview(id).then((text) => {
+        if (seq !== this.previewSeq) return;
+        const finalText = text || this.deps.t("previewUnavailable");
+        paneBody.classList.toggle("xlc-pane-body--muted", finalText === this.deps.t("previewUnavailable"));
+        paneBody.textContent = finalText;
+        paneBody.scrollTop = 0;
+        paneBody.classList.toggle("xlc-pane-body--code", (entry == null ? void 0 : entry.itemType) === "code");
+        this.paintPaneVars(text, entry == null ? void 0 : entry.itemType);
+      }).catch(() => {
+        if (seq !== this.previewSeq) return;
+        paneBody.classList.add("xlc-pane-body--muted");
+        paneBody.textContent = this.deps.t("kernelError", "preview");
+        paneBody.classList.remove("xlc-pane-body--code");
+        this.paintPaneVars(null, entry == null ? void 0 : entry.itemType);
+      });
+    }
+    async runPrimary(entry) {
+      if (this.primaryBusy || this.varFormOpen) return;
+      await this.insertEntryWithVars(entry, (fills) => this.runActionFor(entry, fills));
+    }
+    runActionFor(entry, fills) {
+      if (this.insertTarget) {
+        const target = this.insertTarget;
+        return this.deps.insertToDoc(entry.id, target.docId, target.hPath, fills);
+      }
+      const mode = entry.itemType === "blockref" ? "insert-ref" : "insert";
+      return fills ? this.deps.runActionWithFills(entry.id, mode, fills) : this.deps.runAction(entry.id, mode);
+    }
+    /** F1：插入前询问变量（设置可关；无 ask 字段零打扰；code 条目不询问）。
+     *  perform 收到 fills（undefined=未触发询问，走原路径）。 */
+    async insertEntryWithVars(entry, perform, options) {
+      var _a, _b, _c;
+      if (this.varFormOpen || this.primaryBusy) return;
+      this.primaryBusy = true;
+      this.syncPaneActions();
+      const releaseBusy = () => {
+        this.primaryBusy = false;
+        this.syncPaneActions();
+      };
+      if (!this.deps.promptVariables()) {
+        try {
+          await perform();
+        } finally {
+          releaseBusy();
+        }
+        return;
+      }
+      let fields = [];
+      let previewFailed = false;
+      try {
+        const content = await this.deps.preview(entry.id);
+        fields = entry.itemType === "code" || !content ? [] : listAskFields(content);
+      } catch {
+        fields = [];
+        previewFailed = true;
+      }
+      if (fields.length === 0) {
+        if (previewFailed && ((_a = entry.varCount) != null ? _a : 0) > 0) {
+          const status = (_b = this.dialog) == null ? void 0 : _b.element.querySelector(".xlc-status");
+          if (status) {
+            status.textContent = this.deps.t("varParseFailed");
+            status.classList.add("xlc-status--error");
+          }
+        }
+        try {
+          const execution = perform();
+          (_c = options == null ? void 0 : options.beforePerform) == null ? void 0 : _c.call(options);
+          await execution;
+        } finally {
+          releaseBusy();
+        }
+        return;
+      }
+      if (this.varFormOpen) {
+        releaseBusy();
+        return;
+      }
+      this.varFormOpen = true;
+      this.syncPaneActions();
+      openVariableFillCard({
+        t: this.deps.t,
+        itemType: entry.itemType,
+        title: entry.title,
+        fields,
+        onConfirm: (fills) => {
+          this.varFormOpen = false;
+          this.syncPaneActions();
+          const execution = perform(fills);
+          if (options == null ? void 0 : options.beforePerform) options.beforePerform();
+          else this.destroy();
+          void execution.finally(() => {
+            releaseBusy();
+          });
+        },
+        // 取消/关闭（Esc/scrim/取消钮）后焦点回搜索框，与浮层菜单一致（R128）
+        onCancel: () => {
+          this.varFormOpen = false;
+          releaseBusy();
+          this.restoreFocusToSearch();
+        }
+      });
+    }
+    /** 菜单按钮统一构造：图标列 + 文本（createTextNode 注入，绝不 innerHTML） */
+    menuButton(icon, label, cls, run) {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = cls;
+      btn.setAttribute("role", "menuitem");
+      const ic = document.createElement("span");
+      ic.className = "xlc-menu-ic";
+      ic.textContent = icon;
+      btn.appendChild(ic);
+      btn.appendChild(document.createTextNode(label));
+      btn.addEventListener("click", () => void run());
+      return btn;
+    }
+    async showActionMenu(entry) {
+      var _a, _b, _c, _d, _e, _f;
+      (_a = this.menuDismiss) == null ? void 0 : _a.call(this);
+      this.menuDismiss = null;
+      const menu = document.createElement("div");
+      menu.className = "xlc-menu";
+      menu.setAttribute("role", "menu");
+      menu.setAttribute("aria-label", entry.title || this.deps.t("unknownType"));
+      const rebuild = (render) => {
+        menu.innerHTML = "";
+        render();
+      };
+      const buildDefault = () => {
+        const lbl = document.createElement("div");
+        lbl.className = "xlc-menu-lbl";
+        lbl.textContent = (entry.title || this.deps.t("unknownType")) + " \xB7 " + this.deps.t("actionsNoun");
+        menu.appendChild(lbl);
+        const previewBox = document.createElement("pre");
+        previewBox.className = "xlc-menu-preview xlc-menu-preview--muted";
+        previewBox.textContent = this.deps.t("previewUnavailable");
+        void this.deps.preview(entry.id).then((text) => {
+          if (text) {
+            previewBox.textContent = text.slice(0, 500);
+            previewBox.classList.remove("xlc-menu-preview--muted");
+          }
+        }).catch(() => {
+          previewBox.textContent = this.deps.t("kernelError", "preview");
+        });
+        const sec1 = document.createElement("div");
+        sec1.className = "xlc-menu-sec";
+        const addAction = (icon, label, run, cls = "xlc-menu-item", destroyBeforeRun = true) => {
+          sec1.appendChild(this.menuButton(icon, label, cls, async () => {
+            var _a2;
+            const execution = run();
+            if (destroyBeforeRun) this.destroy();
+            else {
+              (_a2 = this.menuDismiss) == null ? void 0 : _a2.call(this);
+              this.menuDismiss = null;
+            }
+            await execution;
+          }));
+        };
+        if (entry.itemType === "blockref") {
+          addAction("\uFF0B", this.deps.t("insertRef"), () => this.insertTarget ? this.deps.insertToDoc(entry.id, this.insertTarget.docId, this.insertTarget.hPath, void 0, "insert-ref") : this.deps.runAction(entry.id, "insert-ref"));
+          addAction("\u229E", this.deps.t("insertEmbed"), () => this.insertTarget ? this.deps.insertToDoc(entry.id, this.insertTarget.docId, this.insertTarget.hPath, void 0, "insert-embed") : this.deps.runAction(entry.id, "insert-embed"));
+          addAction("\u29C9", this.deps.t("insertCopy"), () => this.deps.runAction(entry.id, "copy-content"));
+        } else {
+          addAction("\uFF0B", this.deps.t("insert"), () => this.insertEntryWithVars(entry, (fills) => this.runActionFor(entry, fills), { beforePerform: () => this.destroy() }), "xlc-menu-item", false);
+          addAction("\u29C9", this.deps.t("copy"), () => this.deps.runAction(entry.id, "copy"));
+        }
+        menu.appendChild(sec1);
+        if (this.deps.aiEnabled()) {
+          const secAi = document.createElement("div");
+          secAi.className = "xlc-menu-sec xlc-menu-sec--ai";
+          const openTransform = (transformLabel, run) => {
+            const gen = ++this.transformSeq;
+            rebuild(() => buildTransformView(entry.title + " \xB7 " + transformLabel, transformLabel));
+            void runTransformView(run, gen);
+          };
+          for (const kind of TRANSFORM_KINDS) {
+            secAi.appendChild(this.menuButton("\u2726", this.deps.t(`tf.${kind}`), "xlc-menu-item xlc-menu-item--ai", () => {
+              openTransform(this.deps.t(`tf.${kind}`), async () => this.deps.aiTransform(entry.id, kind));
+            }));
+          }
+          for (const ct of this.deps.listCustomTransforms()) {
+            secAi.appendChild(this.menuButton("\u2726", ct.name, "xlc-menu-item xlc-menu-item--ai", () => {
+              openTransform(ct.name, async () => this.deps.aiTransformCustom(entry.id, ct.id));
+            }));
+          }
+          menu.appendChild(secAi);
+        }
+        const sec2 = document.createElement("div");
+        sec2.className = "xlc-menu-sec";
+        const addSilent = (icon, label, run, cls = "xlc-menu-item") => {
+          sec2.appendChild(this.menuButton(icon, label, cls, async () => {
+            var _a2;
+            (_a2 = this.menuDismiss) == null ? void 0 : _a2.call(this);
+            this.menuDismiss = null;
+            await run();
+          }));
+        };
+        addSilent("\u2197", this.deps.t("openSource"), () => this.deps.openSource(entry.id));
+        addSilent("\u270E", this.deps.t("edit"), () => this.deps.editItem(entry.id));
+        addSilent("\u29C9", this.deps.t("duplicateItem"), () => this.deps.duplicateItem(entry.id));
+        addSilent("\u{1F5D1}", this.deps.t("delete"), () => this.deps.deleteItem(entry.id), "xlc-menu-item xlc-menu-item--danger");
+        const toDocBtn = this.menuButton("\u2913", this.deps.t("insertToDoc"), "xlc-menu-item", () => {
+          var _a2;
+          let sec = menu.querySelector(".xlc-menu-pickdoc");
+          if (sec) {
+            sec.remove();
+            return;
+          }
+          sec = document.createElement("div");
+          sec.className = "xlc-menu-sec xlc-menu-pickdoc";
+          sec.style.flexDirection = "column";
+          const input = document.createElement("input");
+          input.className = "b3-text-field xlc-pickdoc-input";
+          input.dataset.xlcControl = "dialog.pickdoc.input";
+          input.placeholder = this.deps.t("insertToDocPick");
+          input.setAttribute("aria-label", this.deps.t("insertToDocPick"));
+          input.setAttribute("autocomplete", "off");
+          input.addEventListener("keydown", (ev) => {
+            ev.stopPropagation();
+            if (ev.key === "Enter" && !ev.isComposing) {
+              ev.preventDefault();
+              const first = sec.querySelector(".xlc-pickdoc-hit");
+              first == null ? void 0 : first.click();
+            }
+          });
+          sec.appendChild(input);
+          let seq = 0;
+          const searchStatus = document.createElement("div");
+          searchStatus.className = "xlc-pickdoc-empty";
+          searchStatus.setAttribute("role", "status");
+          searchStatus.setAttribute("aria-live", "polite");
+          sec.appendChild(searchStatus);
+          const runDocSearch = (keyword) => {
+            const mySeq = ++seq;
+            const k = keyword.trim();
+            sec.querySelectorAll(".xlc-pickdoc-hit").forEach((el) => el.remove());
+            sec.querySelectorAll(".xlc-pickdoc-empty").forEach((el) => el.remove());
+            if (!k) {
+              searchStatus.remove();
+              return;
+            }
+            if (!searchStatus.isConnected) sec.appendChild(searchStatus);
+            searchStatus.className = "xlc-pickdoc-empty";
+            searchStatus.textContent = this.deps.t("docPickerLoading");
+            searchStatus.setAttribute("aria-busy", "true");
+            void this.deps.searchDocs(k).then((hits) => {
+              if (mySeq !== seq) return;
+              searchStatus.setAttribute("aria-busy", "false");
+              if (hits.length === 0) {
+                searchStatus.className = "xlc-pickdoc-empty";
+                searchStatus.textContent = this.deps.t("docPickerEmpty");
+                return;
+              }
+              searchStatus.remove();
+              for (const hit of hits.slice(0, 5)) {
+                sec.appendChild(this.menuButton("\u2913", hit.hPath || hit.name || hit.id, "xlc-menu-item xlc-pickdoc-hit", async () => {
+                  var _a3;
+                  (_a3 = this.menuDismiss) == null ? void 0 : _a3.call(this);
+                  this.menuDismiss = null;
+                  await this.insertEntryWithVars(entry, (fills) => this.deps.insertToDoc(entry.id, hit.id, hit.hPath, fills));
+                }));
+              }
+            }).catch((err) => {
+              if (mySeq !== seq) return;
+              searchStatus.className = "xlc-pickdoc-empty xlc-status--error";
+              searchStatus.setAttribute("aria-busy", "false");
+              searchStatus.textContent = this.deps.t("kernelError", err instanceof Error ? err.message : String(err));
+              const retry = document.createElement("button");
+              retry.type = "button";
+              retry.className = "b3-button xlc-btn-ghost xlc-pickdoc-retry";
+              retry.dataset.xlcControl = "dialog.pickdoc.retry";
+              retry.textContent = this.deps.t("retry");
+              retry.addEventListener("click", () => runDocSearch(input.value));
+              searchStatus.appendChild(document.createTextNode(" "));
+              searchStatus.appendChild(retry);
+            });
+          };
+          input.addEventListener("input", () => {
+            runDocSearch(input.value);
+          });
+          const actions2 = menu.querySelectorAll(".xlc-menu-sec");
+          (_a2 = actions2[actions2.length - 1]) == null ? void 0 : _a2.before(sec);
+          input.focus();
+        });
+        sec2.appendChild(toDocBtn);
+        menu.appendChild(sec2);
+        menu.appendChild(previewBox);
+      };
+      const buildTransformView = (viewLabel, transformLabel) => {
+        const lbl = document.createElement("div");
+        lbl.className = "xlc-menu-lbl";
+        lbl.textContent = viewLabel;
+        menu.appendChild(lbl);
+        const box = document.createElement("pre");
+        box.className = "xlc-menu-preview xlc-menu-preview--muted";
+        box.textContent = this.deps.t("aiWorking");
+        menu.appendChild(box);
+        const sec = document.createElement("div");
+        sec.className = "xlc-menu-sec";
+        const resultButtons = [];
+        const syncReady = () => {
+          const ready = Boolean(box.dataset.transformed);
+          for (const b of resultButtons) b.disabled = !ready;
+        };
+        const insertBtn = this.menuButton("\uFF0B", this.deps.t("aiInsertTransformed"), "xlc-menu-item", async () => {
+          var _a2, _b2;
+          const transformed = (_a2 = box.dataset.transformed) != null ? _a2 : "";
+          if (!transformed) return;
+          const execution = this.deps.insertRaw(transformed, (_b2 = this.insertTarget) != null ? _b2 : void 0);
+          this.destroy();
+          await execution;
+        });
+        const copyBtn = this.menuButton("\u29C9", this.deps.t("aiCopyTransformed"), "xlc-menu-item", async () => {
+          var _a2;
+          const transformed = (_a2 = box.dataset.transformed) != null ? _a2 : "";
+          if (!transformed) return;
+          await this.deps.copyText(transformed);
+        });
+        resultButtons.push(insertBtn, copyBtn);
+        sec.appendChild(insertBtn);
+        sec.appendChild(copyBtn);
+        syncReady();
+        menu.syncTransformReady = syncReady;
+        sec.appendChild(this.menuButton("\u21A9", this.deps.t("aiInsertOriginal"), "xlc-menu-item", async () => {
+          const execution = this.runActionFor(entry);
+          this.destroy();
+          await execution;
+        }));
+        const saveBtn = this.menuButton("\u{1F5CE}", this.deps.t("saveTransformed"), "xlc-menu-item", async () => {
+          var _a2;
+          const transformed = (_a2 = box.dataset.transformed) != null ? _a2 : "";
+          if (!transformed) return;
+          this.destroy();
+          await this.deps.saveTransformed(entry.id, transformLabel, transformed);
+        });
+        resultButtons.push(saveBtn);
+        sec.appendChild(saveBtn);
+        syncReady();
+        menu.appendChild(sec);
+        const secBack = document.createElement("div");
+        secBack.className = "xlc-menu-sec";
+        secBack.appendChild(this.menuButton("\u2190", this.deps.t("more"), "xlc-menu-item", () => {
+          rebuild(buildDefault);
+        }));
+        menu.appendChild(secBack);
+        menu.applyTransform = (text) => {
+          var _a2;
+          box.dataset.transformed = text;
+          box.textContent = text.slice(0, 800);
+          box.classList.remove("xlc-menu-preview--muted");
+          (_a2 = menu.syncTransformReady) == null ? void 0 : _a2.call(menu);
+        };
+      };
+      const runTransformView = async (run, gen) => {
+        let result;
+        try {
+          result = await run();
+        } catch (err) {
+          result = { ok: false, message: this.deps.t("kernelError", err instanceof Error ? err.message : String(err)) };
+        }
+        if (gen !== this.transformSeq) return;
+        const apply = menu.applyTransform;
+        if (result.ok) {
+          apply == null ? void 0 : apply(result.text);
+        } else {
+          const box = menu.querySelector(".xlc-menu-preview");
+          if (box) {
+            box.textContent = result.message;
+            box.classList.add("xlc-status--error");
+            const retry = document.createElement("button");
+            retry.type = "button";
+            retry.className = "b3-button xlc-btn-ghost xlc-transform-retry";
+            retry.dataset.xlcControl = "dialog.transform.retry";
+            retry.textContent = this.deps.t("retry");
+            retry.addEventListener("click", () => {
+              const retryGen = ++this.transformSeq;
+              box.textContent = this.deps.t("aiWorking");
+              box.classList.remove("xlc-status--error");
+              retry.remove();
+              void runTransformView(run, retryGen);
+            });
+            box.appendChild(document.createTextNode(" "));
+            box.appendChild(retry);
+          }
+        }
+      };
+      rebuild(buildDefault);
+      const host = (_e = (_d = (_b = this.dialog) == null ? void 0 : _b.element.querySelector(".xlc-dialog")) != null ? _d : (_c = this.dialog) == null ? void 0 : _c.element) != null ? _e : document.body;
+      host.appendChild(menu);
+      const escHandler = (e) => {
+        var _a2;
+        if (e.key === "Escape") {
+          e.preventDefault();
+          e.stopPropagation();
+          (_a2 = this.menuDismiss) == null ? void 0 : _a2.call(this);
+          this.menuDismiss = null;
+          this.restoreFocusToSearch();
+        }
+      };
+      menu.addEventListener("keydown", escHandler);
+      const focusMenuItem = (offset) => {
+        const items = Array.from(menu.querySelectorAll(".xlc-menu-item"));
+        if (items.length === 0) return;
+        const current = items.indexOf(document.activeElement);
+        const next = items[((current + offset) % items.length + items.length) % items.length];
+        next == null ? void 0 : next.focus();
+      };
+      menu.addEventListener("keydown", (e) => {
+        if (e.key === "ArrowDown") {
+          e.preventDefault();
+          e.stopPropagation();
+          focusMenuItem(1);
+        } else if (e.key === "ArrowUp") {
+          e.preventDefault();
+          e.stopPropagation();
+          focusMenuItem(-1);
+        } else if (e.key === "Tab") {
+          e.preventDefault();
+          e.stopPropagation();
+          focusMenuItem(e.shiftKey ? -1 : 1);
+        }
+      });
+      const dismiss = (e) => {
+        if (!menu.contains(e.target)) {
+          menu.remove();
+          this.menuDismiss = null;
+          document.removeEventListener("pointerdown", dismiss, true);
+          this.restoreFocusToSearch();
+        }
+      };
+      this.menuDismiss = () => {
+        menu.remove();
+        document.removeEventListener("pointerdown", dismiss, true);
+      };
+      document.addEventListener("pointerdown", dismiss, true);
+      (_f = menu.querySelector(".xlc-menu-item")) == null ? void 0 : _f.focus();
+    }
+    async onKeydown(e) {
+      var _a, _b, _c, _d;
+      if (e.isComposing || e.keyCode === 229) return;
+      const list = (_a = this.dialog) == null ? void 0 : _a.element.querySelector(".xlc-list");
+      if (!list) return;
+      if (e.key === "ArrowDown") {
+        e.preventDefault();
+        const total = this.results.length + this.providerRows.length;
+        if (total > 0) this.setNav(Math.min(this.navPosition() + 1, total - 1));
+        this.paintActive();
+        this.updatePreview();
+      } else if (e.key === "ArrowUp") {
+        e.preventDefault();
+        this.setNav(Math.max(this.navPosition() - 1, 0));
+        this.paintActive();
+        this.updatePreview();
+      } else if (e.key === "Enter" && !e.ctrlKey && !e.metaKey) {
+        if ((_c = (_b = e.target).closest) == null ? void 0 : _c.call(_b, ".xlc-row-action")) return;
+        if (e.repeat) return;
+        e.preventDefault();
+        if (this.activeProvider >= 0) {
+          const row = this.providerRows[this.activeProvider];
+          if (row) {
+            const execution = this.deps.insertProviderPayload(row.payload, (_d = this.insertTarget) != null ? _d : void 0);
+            this.destroy();
+            await execution;
+          }
+          return;
+        }
+        const entry = this.results[this.activeIndex];
+        if (entry) await this.runPrimary(entry);
+      } else if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
+        e.preventDefault();
+        if (this.activeProvider >= 0) {
+          const row = this.providerRows[this.activeProvider];
+          if (row) await this.deps.copyProviderPayload(row.payload);
+          return;
+        }
+        const entry = this.results[this.activeIndex];
+        if (entry) await this.deps.runAction(entry.id, "copy");
+      } else if (e.key === "Escape") {
+        e.preventDefault();
+        this.destroy();
+      } else if (e.altKey && !e.ctrlKey && !e.metaKey && /^[1-9]$/.test(e.key)) {
+        if (e.repeat) return;
+        e.preventDefault();
+        const idx = Number(e.key) - 1;
+        const entry = this.results[idx];
+        if (entry) {
+          await this.runPrimary(entry);
+        }
+      }
+    }
+    destroy() {
+      var _a, _b, _c;
+      if (this.inputDebounce) clearTimeout(this.inputDebounce);
+      (_a = this.virtualListCleanup) == null ? void 0 : _a.call(this);
+      this.virtualListCleanup = null;
+      this.virtualEnsureIndex = null;
+      (_b = this.longPressCancel) == null ? void 0 : _b.call(this);
+      this.longPressCancel = null;
+      if (this.menuDismiss) {
+        this.menuDismiss();
+        this.menuDismiss = null;
+      }
+      (_c = this.dialog) == null ? void 0 : _c.destroy();
+      this.dialog = null;
+    }
+  };
+  // 搜索服务最多返回 100 条；80 以上即可明显减少首屏 DOM，同时保留小结果集的简单路径。
+  _CommonSearchDialog.VIRTUAL_THRESHOLD = 80;
+  _CommonSearchDialog.VIRTUAL_ROW_HEIGHT = 72;
+  _CommonSearchDialog.VIRTUAL_OVERSCAN = 8;
+  var CommonSearchDialog = _CommonSearchDialog;
+
+  // src/ui/settings-dialog.ts
+  var import_siyuan3 = __toESM(require_stub_dom());
+
+  // src/model/storage.ts
+  var CONFIG_VERSION = 1;
+
+  // src/model/transfer.ts
+  function toTimestamp(v) {
+    const n = Number(v);
+    return Number.isFinite(n) && n > 0 ? n : 0;
+  }
+  function validateImport(jsonText) {
+    const issues = [];
+    if (jsonText.length > LIMITS.maxImportBytes) {
+      return { ok: false, reason: "file-too-large", issues };
+    }
+    let obj;
+    try {
+      obj = JSON.parse(jsonText);
+    } catch (e) {
+      return { ok: false, reason: "json-parse", issues };
+    }
+    if (!obj || typeof obj !== "object" || Array.isArray(obj)) {
+      return { ok: false, reason: "not-an-object", issues };
+    }
+    const record = obj;
+    if (record.protocol !== PROTOCOL_NAME) {
+      return { ok: false, reason: "protocol-mismatch", issues };
+    }
+    const schemaVersion = record.schemaVersion;
+    if (schemaVersion !== EXPORT_SCHEMA_VERSION) {
+      return { ok: false, reason: "schema-version-unsupported", issues };
+    }
+    if (!Array.isArray(record.items)) {
+      return { ok: false, reason: "items-not-array", issues };
+    }
+    if (record.items.length > LIMITS.maxItems) {
+      return { ok: false, reason: "too-many-items", issues };
+    }
+    const knownTop = ["protocol", "schemaVersion", "exportedAt", "items"];
+    const unknownTopFields = Object.keys(record).filter((k) => !knownTop.includes(k));
+    const items = [];
+    const seenIds = /* @__PURE__ */ new Set();
+    record.items.forEach((raw, index) => {
+      const item = normalizeExportedItem(raw);
+      if (!item) {
+        issues.push({ index, reason: "invalid-item" });
+        return;
+      }
+      if (seenIds.has(item.id)) {
+        issues.push({ index, reason: "duplicate-id" });
+        return;
+      }
+      seenIds.add(item.id);
+      items.push(item);
+    });
+    return { ok: true, parsed: { schemaVersion: EXPORT_SCHEMA_VERSION, items, unknownTopFields }, issues };
+  }
+  function normalizeExportedItem(raw) {
+    var _a;
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+    const obj = raw;
+    if (!isLogicalId(obj.id)) return null;
+    if (typeof obj.kramdown !== "string" || obj.kramdown.length > LIMITS.contentChars) return null;
+    if (!isItemType(obj.itemType)) return null;
+    const sourceRaw = (_a = obj.source) != null ? _a : {};
+    const known = ["id", "itemType", "title", "alias", "tags", "category", "kramdown", "source", "url", "targetBlockId", "createdAt", "updatedAt"];
+    const extensions = /* @__PURE__ */ Object.create(null);
+    for (const [k, v] of Object.entries(obj)) {
+      if (!known.includes(k)) extensions[k] = v;
+    }
+    const str = (v, cap) => typeof v === "string" ? v.slice(0, cap) : "";
+    const tags = Array.isArray(obj.tags) ? obj.tags.filter((t) => typeof t === "string").slice(0, LIMITS.tags) : [];
+    const url = str(obj.url, 2048);
+    if (url && !isSafeHttpUrl(url)) return null;
+    return {
+      id: obj.id,
+      itemType: obj.itemType,
+      title: str(obj.title, LIMITS.title),
+      alias: str(obj.alias, LIMITS.alias),
+      tags,
+      category: str(obj.category, LIMITS.category),
+      kramdown: obj.kramdown,
+      source: {
+        sourceDocId: str(sourceRaw.sourceDocId, 32),
+        sourceBlockId: str(sourceRaw.sourceBlockId, 32),
+        sourceType: isSourceType(sourceRaw.sourceType) ? sourceRaw.sourceType : "external"
+      },
+      url,
+      targetBlockId: str(obj.targetBlockId, 32),
+      createdAt: toTimestamp(obj.createdAt),
+      updatedAt: toTimestamp(obj.updatedAt),
+      extensions: Object.keys(extensions).length ? extensions : void 0
+    };
+  }
+
+  // src/model/zip.ts
+  var CRC_TABLE = (() => {
+    const table = new Uint32Array(256);
+    for (let n = 0; n < 256; n++) {
+      let c = n;
+      for (let k = 0; k < 8; k++) c = c & 1 ? 3988292384 ^ c >>> 1 : c >>> 1;
+      table[n] = c >>> 0;
+    }
+    return table;
+  })();
+  function crc32(data) {
+    var _a;
+    let c = 0 ^ -1;
+    for (const byte of data) c = c >>> 8 ^ ((_a = CRC_TABLE[(c ^ byte) & 255]) != null ? _a : 0);
+    return (c ^ -1) >>> 0;
+  }
+  function dosDateTime() {
+    const time = 0;
+    const date = 2026 - 1980 << 9 | 1 << 5 | 1;
+    return { time, date };
+  }
+  function u16(arr, value) {
+    arr.push(value & 255, value >>> 8 & 255);
+  }
+  function u32(arr, value) {
+    arr.push(value & 255, value >>> 8 & 255, value >>> 16 & 255, value >>> 24 & 255);
+  }
+  function buildZip(entries) {
+    if (entries.length === 0) throw new Error("zip: no entries");
+    if (entries.length > 65535) throw new Error("zip: too many entries");
+    const { time, date } = dosDateTime();
+    const localParts = [];
+    const centralParts = [];
+    let offset = 0;
+    for (const entry of entries) {
+      if (!entry.name || entry.name.startsWith("/") || entry.name.includes("..") || entry.name.includes("\\")) {
+        throw new Error(`zip: unsafe entry name ${entry.name}`);
+      }
+      const nameBytes = new TextEncoder().encode(entry.name);
+      const crc = crc32(entry.data);
+      const local = [];
+      u32(local, 67324752);
+      u16(local, 20);
+      u16(local, 0);
+      u16(local, 0);
+      u16(local, time);
+      u16(local, date);
+      u32(local, crc);
+      u32(local, entry.data.length);
+      u32(local, entry.data.length);
+      u16(local, nameBytes.length);
+      u16(local, 0);
+      local.push(...nameBytes);
+      const headerOffset = offset;
+      localParts.push(local, Array.from(entry.data));
+      const central = [];
+      u32(central, 33639248);
+      u16(central, 20);
+      u16(central, 20);
+      u16(central, 0);
+      u16(central, 0);
+      u16(central, time);
+      u16(central, date);
+      u32(central, crc);
+      u32(central, entry.data.length);
+      u32(central, entry.data.length);
+      u16(central, nameBytes.length);
+      u16(central, 0);
+      u16(central, 0);
+      u16(central, 0);
+      u16(central, 0);
+      u32(central, 0);
+      u32(central, headerOffset);
+      central.push(...nameBytes);
+      centralParts.push(central);
+      offset += local.length + entry.data.length;
+    }
+    const centralStart = offset;
+    let centralSize = 0;
+    const out = [];
+    for (const part of localParts) out.push(...part);
+    for (const part of centralParts) {
+      out.push(...part);
+      centralSize += part.length;
+    }
+    const eocd = [];
+    u32(eocd, 101010256);
+    u16(eocd, 0);
+    u16(eocd, 0);
+    u16(eocd, entries.length);
+    u16(eocd, entries.length);
+    u32(eocd, centralSize);
+    u32(eocd, centralStart);
+    u16(eocd, 0);
+    out.push(...eocd);
+    return new Uint8Array(out);
+  }
+
+  // src/model/actions.ts
+  var ASSET_PATH_RE = /^(assets\/[^\s/][^\s]*|assets\/[^\s/])$/;
+  function isValidAssetPath(path) {
+    return ASSET_PATH_RE.test(path) && !path.includes("..");
+  }
+  function extractAssetPath(kramdown) {
+    const m = kramdown.match(/\]\((assets\/[^)\s]+)[^)]*\)/);
+    const path = m == null ? void 0 : m[1];
+    if (!path) return null;
+    return isValidAssetPath(path) ? path : null;
+  }
+
+  // src/service/export-markdown.ts
+  async function buildMarkdownExport(items, kramdownById, fetchAssetBytes, pack) {
+    var _a, _b;
+    const oneLine = (value) => value.replace(/[\r\n]+/g, " ").trim();
+    const entries = [];
+    const skippedAssets = [];
+    const assetEntries = /* @__PURE__ */ new Map();
+    const usedNames = /* @__PURE__ */ new Set(["items.md"]);
+    let assetCount = 0;
+    const varNames = [];
+    for (const item of items) {
+      if (item.itemType === "code") continue;
+      for (const field of listAskFields((_a = kramdownById.get(item.id)) != null ? _a : "")) {
+        if (!varNames.includes(field.name)) varNames.push(field.name);
+        if (varNames.length >= LIMITS.maxAskFields) break;
+      }
+      if (varNames.length >= LIMITS.maxAskFields) break;
+    }
+    const mdParts = [
+      "# \u5C0F\u9A74\u5E38\u7528\uFF08\u5185\u6D4B\u7248\uFF09 \xB7 \u6761\u76EE\u5BFC\u51FA",
+      "",
+      `> \u5BFC\u51FA\u81EA\u601D\u6E90\u63D2\u4EF6\u300C\u5C0F\u9A74\u5E38\u7528\uFF08\u5185\u6D4B\u7248\uFF09\u300D\uFF0C\u5171 ${items.length} \u6761\u3002\u8D44\u6E90\u4F4D\u4E8E assets/\uFF0C\u6761\u76EE\u5185\u94FE\u63A5\u4E3A\u76F8\u5BF9\u8DEF\u5F84\u3002`,
+      ""
+    ];
+    let totalLen = mdParts.reduce((n, p) => n + p.length, 0);
+    if (pack && pack.name.trim()) {
+      const manifest = [
+        `<!-- xlc-pack`,
+        `name: ${oneLine(pack.name).slice(0, LIMITS.title)}`,
+        `items: ${items.length}`,
+        varNames.length ? `vars: ${varNames.join(",")}` : "",
+        `-->`
+      ].filter(Boolean).join("\n");
+      mdParts.unshift(manifest, "");
+    }
+    for (const item of items) {
+      const kramdown = (_b = kramdownById.get(item.id)) != null ? _b : "";
+      const meta = [
+        `<!-- xlc-item`,
+        `id: ${item.id}`,
+        `type: ${item.itemType}`,
+        item.alias ? `alias: ${oneLine(item.alias)}` : "",
+        item.tags.length ? `tags: ${item.tags.map(oneLine).join(",")}` : "",
+        item.category ? `category: ${oneLine(item.category)}` : "",
+        item.source.sourceDocId ? `source-doc: ${oneLine(item.source.sourceDocId)}` : "",
+        item.source.sourceBlockId ? `source-block: ${oneLine(item.source.sourceBlockId)}` : "",
+        item.source.sourceType ? `source-type: ${oneLine(item.source.sourceType)}` : "",
+        item.url ? `url: ${oneLine(item.url)}` : "",
+        item.targetBlockId ? `target: ${oneLine(item.targetBlockId)}` : "",
+        `-->`
+      ].filter(Boolean).join("\n");
+      mdParts.push(`## ${oneLine(item.title || item.id)}`, "", meta, "", kramdown, "");
+      if (item.itemType === "image" || item.itemType === "asset") {
+        const assetPath = extractAssetPath(kramdown);
+        if (assetPath && !assetEntries.has(assetPath)) {
+          const bytes = await fetchAssetBytes(assetPath);
+          if (bytes && bytes.length > 0) {
+            const name = assetPath;
+            usedNames.add(name);
+            assetEntries.set(assetPath, { name, data: bytes });
+            assetCount++;
+          } else {
+            skippedAssets.push(assetPath);
+          }
+        }
+      }
+      totalLen += 6 + (item.title || item.id).length + meta.length + kramdown.length;
+      if (totalLen > LIMITS.contentChars) {
+        mdParts.push("", "> \uFF08\u5185\u5BB9\u8D85\u957F\uFF0C\u5BFC\u51FA\u5728\u6B64\u622A\u65AD\uFF09");
+        break;
+      }
+    }
+    entries.push({ name: "items.md", data: new TextEncoder().encode(mdParts.join("\n")) });
+    entries.push(...assetEntries.values());
+    return { entries, itemCount: items.length, assetCount, skippedAssets, varNames };
+  }
+
+  // src/service/import-markdown.ts
+  var ITEM_COMMENT_START = "<!-- xlc-item";
+  var ITEM_COMMENT_END = "-->";
+  var PACK_COMMENT_START = "<!-- xlc-pack";
+  var TITLE_RE = /^##\s+(.+)$/;
+  function parseMetadata(lines) {
+    const fields = /* @__PURE__ */ new Map();
+    let titleHint = "";
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed === ITEM_COMMENT_START || trimmed === ITEM_COMMENT_END) continue;
+      const idx = trimmed.indexOf(":");
+      if (idx <= 0) continue;
+      fields.set(trimmed.slice(0, idx).trim(), trimmed.slice(idx + 1).trim());
+    }
+    return { fields, titleHint };
+  }
+  function parsePackManifest(md, firstItemAt) {
+    var _a, _b;
+    const start = md.indexOf(PACK_COMMENT_START);
+    if (start === -1 || start > firstItemAt) return void 0;
+    const end = md.indexOf(ITEM_COMMENT_END, start);
+    if (end === -1) return void 0;
+    const fields = parseMetadata(md.slice(start + PACK_COMMENT_START.length, end).split("\n")).fields;
+    const name = ((_a = fields.get("name")) != null ? _a : "").slice(0, LIMITS.title);
+    const vars = ((_b = fields.get("vars")) != null ? _b : "").split(",").map((s) => s.trim()).filter(Boolean).slice(0, LIMITS.maxAskFields);
+    if (!name) return void 0;
+    return { name, vars };
+  }
+  function parseMarkdownPack(md) {
+    var _a, _b;
+    const items = [];
+    const issues = [];
+    const seenIds = /* @__PURE__ */ new Set();
+    if (!md || !md.includes(ITEM_COMMENT_START)) return { items, issues };
+    const firstItemAt = md.indexOf(ITEM_COMMENT_START);
+    const pack = parsePackManifest(md, firstItemAt);
+    const commentStarts = [];
+    const commentEnds = [];
+    let hasUnclosed = false;
+    let scan = 0;
+    while (true) {
+      const start = md.indexOf(ITEM_COMMENT_START, scan);
+      if (start === -1) break;
+      const end = md.indexOf(ITEM_COMMENT_END, start);
+      if (end === -1) {
+        hasUnclosed = true;
+        break;
+      }
+      commentStarts.push(start);
+      commentEnds.push(end + ITEM_COMMENT_END.length);
+      scan = start + ITEM_COMMENT_START.length;
+      if (commentStarts.length > LIMITS.maxItems) break;
+    }
+    const chunks = [];
+    for (let i = 0; i < commentStarts.length; i++) {
+      const itemStart = (_a = commentStarts[i]) != null ? _a : 0;
+      const lowerBound = i > 0 ? (_b = commentEnds[i - 1]) != null ? _b : 0 : 0;
+      const titleLineStart = md.lastIndexOf("\n## ", itemStart) + 1;
+      const chunkStart = Math.max(Math.min(titleLineStart, itemStart), lowerBound);
+      const nextCommentStart = commentStarts[i + 1];
+      const nextTitleStart = nextCommentStart === void 0 ? -1 : md.lastIndexOf("\n## ", nextCommentStart) + 1;
+      const chunkEnd = nextTitleStart > itemStart ? nextTitleStart : nextCommentStart != null ? nextCommentStart : md.length;
+      chunks.push(md.slice(chunkStart, chunkEnd));
+    }
+    chunks.forEach((chunk, index) => {
+      var _a2, _b2, _c, _d, _e, _f, _g, _h, _i, _j, _k;
+      const endIdx = chunk.indexOf(ITEM_COMMENT_END);
+      if (endIdx === -1) {
+        issues.push({ index, reason: "metadata-comment-unclosed" });
+        return;
+      }
+      const metaLines = chunk.slice(0, endIdx).split("\n");
+      const { fields } = parseMetadata(metaLines);
+      const id = (_a2 = fields.get("id")) != null ? _a2 : "";
+      if (!/^xlc-[0-9a-z]{10,40}$/.test(id)) {
+        issues.push({ index, reason: "invalid-id" });
+        return;
+      }
+      if (seenIds.has(id)) {
+        issues.push({ index, reason: "duplicate-id" });
+        return;
+      }
+      const itemType = (_b2 = fields.get("type")) != null ? _b2 : "text";
+      if (!isItemType(itemType)) {
+        issues.push({ index, reason: "invalid-item-type" });
+        return;
+      }
+      const url = (_c = fields.get("url")) != null ? _c : "";
+      if (url && !isSafeHttpUrl(url)) {
+        issues.push({ index, reason: "invalid-url" });
+        return;
+      }
+      let title = "";
+      const before = chunk.slice(0, chunk.indexOf(ITEM_COMMENT_START));
+      for (const line of before.split("\n")) {
+        const m = line.match(TITLE_RE);
+        const matched = m == null ? void 0 : m[1];
+        if (matched) title = matched.trim();
+      }
+      if (!title && fields.get("alias")) title = (_d = fields.get("alias")) != null ? _d : "";
+      const body = chunk.slice(endIdx + ITEM_COMMENT_END.length).replace(/^\s*\n/, "").replace(/\n\s*$/, "");
+      seenIds.add(id);
+      items.push({
+        id,
+        itemType,
+        title: title.slice(0, LIMITS.title),
+        alias: ((_e = fields.get("alias")) != null ? _e : "").slice(0, LIMITS.alias),
+        tags: ((_f = fields.get("tags")) != null ? _f : "").split(",").map((s) => s.trim()).filter(Boolean).slice(0, LIMITS.tags),
+        category: ((_g = fields.get("category")) != null ? _g : "").slice(0, LIMITS.category),
+        kramdown: body.slice(0, LIMITS.contentChars),
+        source: {
+          sourceDocId: (_h = fields.get("source-doc")) != null ? _h : "",
+          sourceBlockId: (_i = fields.get("source-block")) != null ? _i : "",
+          sourceType: (_j = fields.get("source-type")) != null ? _j : "external"
+        },
+        url,
+        targetBlockId: (_k = fields.get("target")) != null ? _k : "",
+        createdAt: 0,
+        updatedAt: Date.now()
+      });
+    });
+    if (hasUnclosed) issues.push({ index: commentStarts.length, reason: "metadata-comment-unclosed" });
+    return { items, issues, pack };
   }
 
   // src/model/pinyin.ts
@@ -5580,6 +5814,13 @@ ${exception.mark.snippet}`;
   ].join("\n");
 
   // src/ui/settings-dialog.ts
+  var activeSetupDialog = null;
+  var activeSettingsDialog = null;
+  var espansoParserPromise = null;
+  function loadEspansoParser() {
+    espansoParserPromise != null ? espansoParserPromise : espansoParserPromise = Promise.resolve().then(() => (init_espanso_import(), espanso_import_exports));
+    return espansoParserPromise;
+  }
   function buildSwitchRow(text, sub, checked, onChange) {
     const row = document.createElement("label");
     row.className = "xlc-setting-row";
@@ -5595,6 +5836,7 @@ ${exception.mark.snippet}`;
     const box = document.createElement("input");
     box.type = "checkbox";
     box.className = "xlc-switch";
+    box.dataset.xlcControl = `settings.switch.${text}`;
     box.checked = checked;
     box.addEventListener("change", () => onChange(box.checked));
     row.appendChild(cap);
@@ -5602,21 +5844,27 @@ ${exception.mark.snippet}`;
     return row;
   }
   function openSetupDialog(ctx, opts) {
-    var _a;
+    var _a, _b, _c;
+    if ((_a = activeSetupDialog == null ? void 0 : activeSetupDialog.element) == null ? void 0 : _a.isConnected) {
+      (_b = activeSetupDialog.element.querySelector("input, select, button")) == null ? void 0 : _b.focus();
+      return;
+    }
+    activeSetupDialog = null;
     const t = ctx.t;
     const dialog = new import_siyuan3.Dialog({
       title: t("setupTitle"),
       content: "",
-      width: "min(520px, 92vw)",
-      height: "min(680px, 90vh)"
+      width: "min(680px, 92vw)",
+      height: "min(820px, 92vh)"
       // 首次快速开始卡需要留出阅读空间，长屏仍保持视口内滚动（R175）
     });
-    (_a = dialog.element.querySelector(".b3-dialog__container")) == null ? void 0 : _a.classList.add("xlc-form-host", "xlc-settings-host");
+    activeSetupDialog = dialog;
+    (_c = dialog.element.querySelector(".b3-dialog__container")) == null ? void 0 : _c.classList.add("xlc-form-host", "xlc-settings-host", "xlc-setup-root-host");
     const body = getDialogBody(dialog.element);
     if (!body) return;
     body.innerHTML = "";
     const root = document.createElement("div");
-    root.className = "xlc-form";
+    root.className = "xlc-form xlc-setup";
     buildLibraryPickerSection(ctx, root, () => {
       var _a2;
       dialog.destroy();
@@ -5625,21 +5873,31 @@ ${exception.mark.snippet}`;
     body.appendChild(root);
   }
   function openSettingsDialog(ctx) {
-    var _a, _b;
+    var _a, _b, _c, _d;
+    if ((_a = activeSettingsDialog == null ? void 0 : activeSettingsDialog.element) == null ? void 0 : _a.isConnected) {
+      (_b = activeSettingsDialog.element.querySelector("input, select, button")) == null ? void 0 : _b.focus();
+      return;
+    }
+    activeSettingsDialog = null;
     const t = ctx.t;
     const dialog = new import_siyuan3.Dialog({
       title: t("openSettings"),
       content: "",
-      width: "min(560px, 92vw)",
-      height: "min(720px, 90vh)"
+      width: "min(720px, 92vw)",
+      height: "min(860px, 92vh)"
       // 固定高：展开/收起/提示行显隐不再顶跳弹窗（R146）
     });
-    (_a = dialog.element.querySelector(".b3-dialog__container")) == null ? void 0 : _a.classList.add("xlc-form-host", "xlc-settings-host");
+    activeSettingsDialog = dialog;
+    (_c = dialog.element.querySelector(".b3-dialog__container")) == null ? void 0 : _c.classList.add("xlc-form-host", "xlc-settings-host", "xlc-settings-root-host");
     const body = getDialogBody(dialog.element);
     if (!body) return;
     body.innerHTML = "";
     const root = document.createElement("div");
-    root.className = "xlc-form";
+    root.className = "xlc-form xlc-settings";
+    const intro = document.createElement("p");
+    intro.className = "xlc-page-intro";
+    intro.textContent = t("settingsIntro");
+    root.appendChild(intro);
     const libSec = document.createElement("div");
     libSec.className = "xlc-form-field xlc-card";
     const libLabel = document.createElement("span");
@@ -5652,6 +5910,7 @@ ${exception.mark.snippet}`;
     libStatus.textContent = cfg ? cfg.mode === "notebook" ? t("libModeNotebook", String(cfg.notebookIds.length)) : cfg.mode === "tree" ? t("libModeTree", String(cfg.containerDocIds.length)) : t("libModeDoc", String(cfg.containerDocIds.length)) : t("libraryNone");
     const changeBtn = document.createElement("button");
     changeBtn.className = "b3-button";
+    changeBtn.dataset.xlcControl = "settings.library.change";
     changeBtn.textContent = t("openSettingsChangeLib");
     changeBtn.setAttribute("aria-expanded", "false");
     const libRow = document.createElement("div");
@@ -5682,7 +5941,7 @@ ${exception.mark.snippet}`;
     libSec.appendChild(pickerHost);
     root.appendChild(libSec);
     if (cfg) {
-      const modeLabel = (_b = libStatus.textContent) != null ? _b : "";
+      const modeLabel = (_d = libStatus.textContent) != null ? _d : "";
       const setLocation = (location) => {
         statusText.textContent = `${modeLabel} \xB7 ${location}`;
       };
@@ -5718,8 +5977,8 @@ ${exception.mark.snippet}`;
     const dialog = new import_siyuan3.Dialog({
       title: t("packExportTitle"),
       content: "",
-      width: "min(460px, 92vw)",
-      height: "min(600px, 90vh)"
+      width: "min(580px, 92vw)",
+      height: "min(680px, 90vh)"
       // 固定高：分类切换不顶跳（R146）
     });
     (_a = dialog.element.querySelector(".b3-dialog__container")) == null ? void 0 : _a.classList.add("xlc-form-host", "xlc-settings-host");
@@ -5794,6 +6053,7 @@ ${exception.mark.snippet}`;
     actions.className = "xlc-form-actions";
     const cancelBtn = document.createElement("button");
     cancelBtn.className = "b3-button";
+    cancelBtn.dataset.xlcControl = "settings.pack-export.cancel";
     cancelBtn.textContent = t("cancel");
     cancelBtn.addEventListener("click", () => dialog.destroy());
     actions.appendChild(cancelBtn);
@@ -6026,6 +6286,7 @@ ${exception.mark.snippet}`;
     const modeSelect = document.createElement("select");
     modeSelect.className = "b3-select";
     modeSelect.id = "xlc-setup-mode";
+    modeSelect.dataset.xlcControl = "setup.mode";
     modeLabel.htmlFor = modeSelect.id;
     const modes = [
       { v: "new-doc", label: t("setupCreateNewDoc") },
@@ -6048,6 +6309,7 @@ ${exception.mark.snippet}`;
     pickerInput.className = "b3-text-field";
     pickerInput.placeholder = t("docPicker");
     pickerInput.setAttribute("aria-label", t("docPicker"));
+    pickerInput.dataset.xlcControl = "setup.docs.query";
     pickerWrap.appendChild(pickerInput);
     const pickerList = document.createElement("div");
     pickerList.className = "xlc-doclist";
@@ -6067,6 +6329,7 @@ ${exception.mark.snippet}`;
         const retryBtn = document.createElement("button");
         retryBtn.type = "button";
         retryBtn.className = "b3-button xlc-btn-ghost xlc-doclist-retry";
+        retryBtn.dataset.xlcControl = "setup.docs.retry";
         retryBtn.textContent = t("retry");
         retryBtn.addEventListener("click", retry);
         pickerList.appendChild(retryBtn);
@@ -6096,6 +6359,7 @@ ${exception.mark.snippet}`;
           const item = document.createElement("button");
           item.type = "button";
           item.className = "xlc-doclist-item";
+          item.dataset.xlcControl = "setup.doc.result";
           item.textContent = hit.hPath || hit.name || hit.id;
           if (hit.id === currentDocId) {
             pickedDoc = { id: hit.id, hPath: hit.hPath };
@@ -6129,6 +6393,7 @@ ${exception.mark.snippet}`;
     const nbSelect = document.createElement("select");
     nbSelect.className = "b3-select";
     nbSelect.id = "xlc-setup-notebook";
+    nbSelect.dataset.xlcControl = "setup.notebook";
     nbSelect.disabled = true;
     if ((existingConfig == null ? void 0 : existingConfig.mode) === "notebook" && existingConfig.notebookIds[0]) {
       nbSelect.dataset.currentNotebook = existingConfig.notebookIds[0];
@@ -6142,6 +6407,7 @@ ${exception.mark.snippet}`;
     const retryNotebooksBtn = document.createElement("button");
     retryNotebooksBtn.type = "button";
     retryNotebooksBtn.className = "b3-button xlc-btn-ghost xlc-setup-notebook-retry";
+    retryNotebooksBtn.dataset.xlcControl = "setup.notebook.retry";
     retryNotebooksBtn.textContent = t("retry");
     retryNotebooksBtn.style.display = "none";
     nbWrap.appendChild(retryNotebooksBtn);
@@ -6306,11 +6572,13 @@ ${exception.mark.snippet}`;
     const nameInput = document.createElement("input");
     nameInput.className = "b3-text-field";
     nameInput.id = "xlc-setup-newdoc";
+    nameInput.dataset.xlcControl = "setup.newdoc.title";
     nameLabel.htmlFor = nameInput.id;
     nameInput.value = t("setupNewDocName");
     nameRow.appendChild(nameInput);
     const createBtn = document.createElement("button");
     createBtn.className = "b3-button";
+    createBtn.dataset.xlcControl = "setup.newdoc.create";
     createBtn.style.whiteSpace = "nowrap";
     createBtn.textContent = t("create");
     createBtn.disabled = true;
@@ -6384,6 +6652,7 @@ ${exception.mark.snippet}`;
     if (opts == null ? void 0 : opts.onDismiss) {
       const dismissBtn = document.createElement("button");
       dismissBtn.className = "b3-button xlc-btn-ghost";
+      dismissBtn.dataset.xlcControl = "setup.later";
       dismissBtn.textContent = t("setupLater");
       dismissBtn.addEventListener("click", () => {
         var _a;
@@ -6393,6 +6662,7 @@ ${exception.mark.snippet}`;
     }
     const nextBtn = document.createElement("button");
     nextBtn.className = "b3-button xlc-btn-primary";
+    nextBtn.dataset.xlcControl = "setup.next";
     nextBtn.textContent = t("setupNext");
     nextBtn.disabled = true;
     nextBtn.addEventListener("click", () => {
@@ -6440,11 +6710,13 @@ ${exception.mark.snippet}`;
     step2Actions.className = "xlc-form-actions";
     const backBtn = document.createElement("button");
     backBtn.className = "b3-button xlc-btn-ghost";
+    backBtn.dataset.xlcControl = "setup.back";
     backBtn.textContent = t("setupBack");
     backBtn.addEventListener("click", () => gotoStep(1));
     step2Actions.appendChild(backBtn);
     const finishBtn = document.createElement("button");
     finishBtn.className = "b3-button xlc-btn-primary";
+    finishBtn.dataset.xlcControl = "setup.finish";
     finishBtn.textContent = t("setupFinish");
     finishBtn.addEventListener("click", () => {
       const mode = modeSelect.value;
@@ -6593,6 +6865,7 @@ ${exception.mark.snippet}`;
         row.className = "xlc-ct-row";
         const nameInput = document.createElement("input");
         nameInput.className = "b3-text-field xlc-ct-name";
+        nameInput.dataset.xlcControl = `settings.ai.custom-transform.name.${ct.id}`;
         nameInput.placeholder = t("customTransformName");
         nameInput.setAttribute("aria-label", t("customTransformName"));
         nameInput.value = ct.name;
@@ -6604,6 +6877,7 @@ ${exception.mark.snippet}`;
         row.appendChild(nameInput);
         const promptInput = document.createElement("input");
         promptInput.className = "b3-text-field xlc-ct-prompt";
+        promptInput.dataset.xlcControl = `settings.ai.custom-transform.prompt.${ct.id}`;
         promptInput.placeholder = t("customTransformPrompt");
         promptInput.setAttribute("aria-label", t("customTransformPrompt"));
         promptInput.value = ct.prompt;
@@ -6616,6 +6890,7 @@ ${exception.mark.snippet}`;
         const delBtn = document.createElement("button");
         delBtn.type = "button";
         delBtn.className = "b3-button xlc-btn-ghost xlc-ct-del";
+        delBtn.dataset.xlcControl = `settings.ai.custom-transform.delete.${ct.id}`;
         delBtn.textContent = t("delete");
         delBtn.addEventListener("click", () => {
           (0, import_siyuan3.confirm)(t("delete") + " \xB7 " + t("customTransformSection"), t("ctDeleteConfirm", ct.name), () => {
@@ -6640,6 +6915,7 @@ ${exception.mark.snippet}`;
     addCtBtn = document.createElement("button");
     addCtBtn.type = "button";
     addCtBtn.className = "b3-button";
+    addCtBtn.dataset.xlcControl = "settings.ai.custom-transform.add";
     addCtBtn.style.alignSelf = "flex-start";
     addCtBtn.textContent = t("customTransformAdd");
     addCtBtn.addEventListener("click", () => {
@@ -6713,47 +6989,89 @@ ${exception.mark.snippet}`;
     const cfg = ctx.getConfig();
     libRow.textContent = `${t("librarySection")}\uFF1A${cfg ? cfg.mode === "notebook" ? t("libModeNotebook", String(cfg.notebookIds.length)) : cfg.mode === "tree" ? t("libModeTree", String(cfg.containerDocIds.length)) : t("libModeDoc", String(cfg.containerDocIds.length)) : t("libraryNone")}`;
     dataSec.appendChild(libRow);
+    const operationStatus = document.createElement("div");
+    operationStatus.className = "xlc-operation-status";
+    operationStatus.hidden = true;
+    operationStatus.setAttribute("role", "status");
+    operationStatus.setAttribute("aria-live", "polite");
+    dataSec.appendChild(operationStatus);
+    const setOperationStatus = (state, message = "", retry) => {
+      operationStatus.dataset.state = state;
+      operationStatus.hidden = state === "idle";
+      operationStatus.replaceChildren();
+      if (message) {
+        const text = document.createElement("span");
+        text.className = state === "error" ? "xlc-form-error" : "xlc-form-hint";
+        text.textContent = message;
+        operationStatus.appendChild(text);
+      }
+      if (retry && state === "error") {
+        const retryBtn = document.createElement("button");
+        retryBtn.type = "button";
+        retryBtn.className = "b3-button xlc-btn-ghost xlc-operation-retry";
+        retryBtn.dataset.xlcControl = "settings.data.retry";
+        retryBtn.textContent = t("retry");
+        retryBtn.addEventListener("click", retry);
+        operationStatus.appendChild(retryBtn);
+      }
+    };
     const dataBtns = document.createElement("div");
     dataBtns.style.display = "flex";
     dataBtns.style.gap = "8px";
     dataBtns.style.flexWrap = "wrap";
-    const mkBtn = (label, onClick) => {
+    const mkBtn = (label, onClick, control) => {
       const btn = document.createElement("button");
+      btn.type = "button";
       btn.className = "b3-button";
       btn.textContent = label;
+      if (control) btn.dataset.xlcControl = control;
       if (onClick) btn.addEventListener("click", onClick);
       dataBtns.appendChild(btn);
       return btn;
     };
-    const withFlight = (btn, run, flightLabel) => {
+    const withFlight = (btn, run, opts = {}) => {
       btn.addEventListener("click", () => {
-        var _a;
+        var _a, _b;
         if (btn.disabled) return;
         btn.disabled = true;
         const original = (_a = btn.textContent) != null ? _a : "";
-        if (flightLabel) btn.textContent = flightLabel;
-        void Promise.resolve().then(run).catch(() => void 0).finally(() => {
+        btn.setAttribute("aria-busy", "true");
+        if (opts.flightLabel) btn.textContent = opts.flightLabel;
+        setOperationStatus("loading", (_b = opts.loading) != null ? _b : t("loading"));
+        void Promise.resolve().then(run).then((result) => {
+          var _a2, _b2, _c, _d;
+          const value = result != null ? result : {};
+          if (value.status === "empty") {
+            setOperationStatus("empty", (_b2 = (_a2 = value.message) != null ? _a2 : opts.empty) != null ? _b2 : t("empty"));
+          } else if (value.message || opts.success) {
+            setOperationStatus("success", (_d = (_c = value.message) != null ? _c : opts.success) != null ? _d : "");
+          } else {
+            setOperationStatus("idle");
+          }
+        }).catch((err) => {
+          var _a2, _b2;
+          const message = (_b2 = (_a2 = opts.formatError) == null ? void 0 : _a2.call(opts, err)) != null ? _b2 : t("kernelError", err instanceof Error ? err.message : String(err));
+          ctx.notify("error", message);
+          setOperationStatus("error", message, () => btn.click());
+        }).finally(() => {
           btn.disabled = false;
-          if (flightLabel) btn.textContent = original;
+          btn.removeAttribute("aria-busy");
+          if (opts.flightLabel) btn.textContent = original;
         });
       });
     };
-    const reindexBtn = mkBtn(t("reindexBtn"), () => {
-      reindexBtn.disabled = true;
-      reindexBtn.textContent = t("indexing");
-      void ctx.library.reindex().then((idx) => {
-        var _a;
-        (_a = ctx.refreshSearch) == null ? void 0 : _a.call(ctx);
-        ctx.notify("info", idx.truncated ? t("reindexTruncated", String(LIMITS.maxItems)) : t("reindexDone", String(idx.entries.length)));
-      }).catch((err) => {
-        ctx.notify("error", t("kernelError", err.message));
-      }).finally(() => {
-        reindexBtn.disabled = false;
-        reindexBtn.textContent = t("reindexBtn");
-      });
-    });
-    const clearRecentsBtn = mkBtn(ctx.state.recents.length ? t("clearRecents") : t("clearRecentsEmpty"), () => {
-      if (ctx.state.recents.length === 0) return;
+    const reindexBtn = mkBtn(t("reindexBtn"), void 0, "settings.data.reindex");
+    withFlight(reindexBtn, async () => {
+      var _a;
+      const idx = await ctx.library.reindex();
+      const message = idx.truncated ? t("reindexTruncated", String(LIMITS.maxItems)) : t("reindexDone", String(idx.entries.length));
+      (_a = ctx.refreshSearch) == null ? void 0 : _a.call(ctx);
+      ctx.notify("info", message);
+      return { message };
+    }, { flightLabel: t("indexing"), loading: t("indexing") });
+    const clearRecentsBtn = mkBtn(ctx.state.recents.length ? t("clearRecents") : t("clearRecentsEmpty"), void 0, "settings.data.clearRecents");
+    clearRecentsBtn.addEventListener("click", () => {
+      if (ctx.state.recents.length === 0 || clearRecentsBtn.disabled) return;
       (0, import_siyuan3.confirm)("\u26A0\uFE0F " + t("clearRecents"), t("clearRecentsConfirm"), () => {
         var _a;
         ctx.state.recents = [];
@@ -6762,83 +7080,138 @@ ${exception.mark.snippet}`;
         clearRecentsBtn.textContent = t("clearRecentsEmpty");
         clearRecentsBtn.disabled = true;
         ctx.notify("info", t("clearRecentsDone"));
+        setOperationStatus("success", t("clearRecentsDone"));
       });
     });
     clearRecentsBtn.disabled = ctx.state.recents.length === 0;
     if (ctx.state.ai.enabled) {
-      const auditBtn = mkBtn("\u2726 " + t("tagAuditBtn"));
+      const auditBtn = mkBtn("\u2726 " + t("tagAuditBtn"), void 0, "settings.data.tagAudit");
       withFlight(auditBtn, async () => {
-        await runTagAudit(ctx).catch((err) => {
-          ctx.notify("error", t("kernelError", err instanceof Error ? err.message : String(err)));
-        });
-      }, "\u2726 " + t("aiWorking"));
+        const result = await runTagAudit(ctx);
+        return result === "empty" ? { status: "empty", message: t("tagAuditTooFew") } : void 0;
+      }, { flightLabel: "\u2726 " + t("aiWorking"), loading: t("aiWorking"), formatError: (err) => err instanceof Error ? err.message : String(err) });
     }
-    const exportBtn = mkBtn(t("exportBtn"));
+    const exportBtn = mkBtn(t("exportBtn"), void 0, "settings.data.export");
     withFlight(exportBtn, async () => {
-      try {
-        const json = await ctx.exportBundle();
-        const count = JSON.parse(json).items.length;
-        if (count === 0) {
-          ctx.notify("error", t("emptyLibrary"));
-          return;
-        }
-        const blob = new Blob([json], { type: "application/json" });
-        const a = document.createElement("a");
-        a.href = URL.createObjectURL(blob);
-        a.download = `xiaolv-common-export-${(/* @__PURE__ */ new Date()).toISOString().slice(0, 10)}.json`;
-        a.click();
-        setTimeout(() => URL.revokeObjectURL(a.href), 4e3);
-        ctx.notify("info", t("exportDone", String(count)));
-      } catch (err) {
-        ctx.notify("error", t("kernelError", err instanceof Error ? err.message : String(err)));
+      const json = await ctx.exportBundle();
+      const count = JSON.parse(json).items.length;
+      if (count === 0) {
+        return { status: "empty", message: t("exportEmpty") };
       }
-    }, t("indexing"));
-    const packBtn = mkBtn(t("packBtn"));
+      const blob = new Blob([json], { type: "application/json" });
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = `xiaolv-common-export-${(/* @__PURE__ */ new Date()).toISOString().slice(0, 10)}.json`;
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(a.href), 4e3);
+      const message = t("exportDone", String(count));
+      ctx.notify("info", message);
+      return { message };
+    }, { flightLabel: t("indexing"), loading: t("indexing") });
+    const packBtn = mkBtn(t("packBtn"), void 0, "settings.data.packExport");
     withFlight(packBtn, async () => {
-      try {
-        await openPackExportDialog(ctx);
-      } catch (err) {
-        ctx.notify("error", t("kernelError", err instanceof Error ? err.message : String(err)));
-      }
-    });
+      await openPackExportDialog(ctx);
+      return { message: t("packExportTitle") };
+    }, { flightLabel: t("loading"), loading: t("loading") });
     const importBtn = mkBtn(t("importBtn"), () => {
+      var _a;
+      if (importBtn.disabled) return;
+      const originalLabel = (_a = importBtn.textContent) != null ? _a : "";
+      let finished = false;
+      let focusTimer = null;
+      let onFocus;
+      const finish = () => {
+        if (finished) return;
+        finished = true;
+        importBtn.disabled = false;
+        importBtn.textContent = originalLabel;
+        importBtn.removeAttribute("aria-busy");
+        window.removeEventListener("focus", onFocus);
+        if (focusTimer !== null) window.clearTimeout(focusTimer);
+      };
+      onFocus = () => {
+        focusTimer = window.setTimeout(finish, 350);
+      };
+      importBtn.disabled = true;
+      importBtn.setAttribute("aria-busy", "true");
+      importBtn.textContent = t("loading");
+      setOperationStatus("loading", t("loading"));
+      window.addEventListener("focus", onFocus, { once: true });
       const fileInput = document.createElement("input");
       fileInput.type = "file";
+      fileInput.dataset.xlcControl = "settings.import.file";
       fileInput.accept = ".json,application/json,.md,text/markdown";
       fileInput.addEventListener("change", () => {
-        var _a;
-        const file = (_a = fileInput.files) == null ? void 0 : _a[0];
-        if (!file) return;
+        var _a2;
+        const file = (_a2 = fileInput.files) == null ? void 0 : _a2[0];
+        if (!file) {
+          finish();
+          return;
+        }
         if (file.size > LIMITS.maxImportBytes) {
-          ctx.notify("error", t("importFailed", t("importReasonTooLarge")));
+          const message = t("importFailed", t("importReasonTooLarge"));
+          ctx.notify("error", message);
+          setOperationStatus("error", message, () => importBtn.click());
+          finish();
           return;
         }
         void file.text().then((text) => {
-          var _a2;
+          var _a3;
           const isMd = /\.md$/i.test(file.name);
           if (isMd) {
             const parsed = parseMarkdownPack(text);
             if (parsed.items.length === 0) {
-              ctx.notify("error", t("importFailed", t("importReasonNoMeta")));
+              const message = t("importFailed", t("importReasonNoMeta"));
+              ctx.notify("error", message);
+              setOperationStatus("error", message, () => importBtn.click());
+              finish();
               return;
             }
             openImportPolicyDialog(ctx, { items: parsed.items, pack: parsed.pack }, parsed.issues, { kind: "markdown-pack", items: parsed.items });
+            setOperationStatus("success", t("importPreview", String(parsed.items.length), String(parsed.issues.length)));
+            finish();
             return;
           }
           const validation = validateImport(text);
           if (!validation.ok || !validation.parsed) {
-            ctx.notify("error", t("importFailed", (_a2 = validation.reason) != null ? _a2 : t("importReasonUnknown")));
+            const message = t("importFailed", (_a3 = validation.reason) != null ? _a3 : t("importReasonUnknown"));
+            ctx.notify("error", message);
+            setOperationStatus("error", message, () => importBtn.click());
+            finish();
             return;
           }
           openImportPolicyDialog(ctx, validation.parsed, validation.issues, { kind: "json", text });
+          setOperationStatus("success", t("importPreview", String(validation.parsed.items.length), String(validation.issues.length)));
+          finish();
         }).catch((err) => {
-          ctx.notify("error", t("importFailed", err instanceof Error ? err.message : String(err)));
+          const message = t("importFailed", err instanceof Error ? err.message : String(err));
+          ctx.notify("error", message);
+          setOperationStatus("error", message, () => importBtn.click());
+          finish();
         });
+      });
+      fileInput.addEventListener("cancel", () => {
+        finish();
+        setOperationStatus("idle");
       });
       fileInput.click();
     });
-    void importBtn;
-    void mkBtn(t("espansoImportBtn"), () => openEspansoImportDialog(ctx));
+    importBtn.dataset.xlcControl = "settings.data.import";
+    const espansoBtn = mkBtn(t("espansoImportBtn"), void 0, "settings.data.espansoImport");
+    let espansoOpen = false;
+    espansoBtn.addEventListener("click", () => {
+      if (espansoOpen || espansoBtn.disabled) return;
+      espansoOpen = true;
+      espansoBtn.disabled = true;
+      espansoBtn.setAttribute("aria-busy", "true");
+      setOperationStatus("loading", t("loading"));
+      openEspansoImportDialog(ctx, () => {
+        espansoOpen = false;
+        espansoBtn.disabled = false;
+        espansoBtn.removeAttribute("aria-busy");
+        setOperationStatus("idle");
+      });
+    });
     dataSec.appendChild(dataBtns);
     const templateRow = document.createElement("div");
     templateRow.className = "xlc-setting-row xlc-template-import-row";
@@ -6850,30 +7223,50 @@ ${exception.mark.snippet}`;
     templateBtn.type = "button";
     templateBtn.className = "b3-button";
     templateBtn.textContent = t("promptPackBtn");
+    templateBtn.dataset.xlcControl = "settings.data.templateImport";
     templateBtn.addEventListener("click", () => {
+      var _a;
+      if (templateBtn.disabled) return;
+      templateBtn.disabled = true;
+      templateBtn.setAttribute("aria-busy", "true");
+      const originalLabel = (_a = templateBtn.textContent) != null ? _a : "";
+      templateBtn.textContent = t("loading");
+      setOperationStatus("loading", t("loading"));
       const parsed = parseMarkdownPack(PROMPT_PACK_MD);
       if (parsed.items.length === 0) {
-        ctx.notify("error", t("importFailed", t("importReasonPackEmpty")));
+        const message = t("importFailed", t("importReasonPackEmpty"));
+        ctx.notify("error", message);
+        setOperationStatus("error", message, () => templateBtn.click());
+        templateBtn.disabled = false;
+        templateBtn.removeAttribute("aria-busy");
+        templateBtn.textContent = originalLabel;
         return;
       }
       openImportPolicyDialog(ctx, { items: parsed.items, pack: parsed.pack }, parsed.issues, { kind: "markdown-pack", items: parsed.items });
+      setOperationStatus("success", t("importPreview", String(parsed.items.length), String(parsed.issues.length)));
+      templateBtn.disabled = false;
+      templateBtn.removeAttribute("aria-busy");
+      templateBtn.textContent = originalLabel;
     });
     templateRow.appendChild(templateBtn);
     dataSec.appendChild(templateRow);
     root.appendChild(dataSec);
   }
-  function openEspansoImportDialog(ctx) {
+  function openEspansoImportDialog(ctx, onClose) {
     const t = ctx.t;
     const dialog = new import_siyuan3.Dialog({
       title: t("espansoTitle"),
       content: "",
-      width: "min(560px, 92vw)",
-      height: "min(600px, 86vh)"
+      width: "min(680px, 92vw)",
+      height: "min(680px, 86vh)"
     });
     const container = dialog.element.querySelector(".b3-dialog__container");
     if (container) container.classList.add("xlc-form-host", "xlc-settings-host");
     const body = getDialogBody(dialog.element);
-    if (!body) return;
+    if (!body) {
+      onClose == null ? void 0 : onClose();
+      return;
+    }
     body.innerHTML = "";
     const root = document.createElement("div");
     root.className = "xlc-form";
@@ -6883,6 +7276,7 @@ ${exception.mark.snippet}`;
     root.appendChild(hint);
     const ta = document.createElement("textarea");
     ta.className = "b3-text-field";
+    ta.dataset.xlcControl = "settings.espanso.text";
     ta.rows = 10;
     ta.placeholder = t("espansoPlaceholder");
     ta.setAttribute("spellcheck", "false");
@@ -6897,24 +7291,46 @@ ${exception.mark.snippet}`;
     foot.style.gap = "8px";
     const cancelBtn = document.createElement("button");
     cancelBtn.className = "b3-button";
+    cancelBtn.dataset.xlcControl = "settings.espanso.cancel";
     cancelBtn.textContent = t("cancel");
     foot.appendChild(cancelBtn);
     const nextBtn = document.createElement("button");
     nextBtn.className = "b3-button xlc-btn-primary";
+    nextBtn.dataset.xlcControl = "settings.espanso.next";
     nextBtn.textContent = t("setupNext");
     nextBtn.disabled = true;
     foot.appendChild(nextBtn);
     root.appendChild(foot);
     body.appendChild(root);
+    let released = false;
+    const release = () => {
+      if (released) return;
+      released = true;
+      observer == null ? void 0 : observer.disconnect();
+      onClose == null ? void 0 : onClose();
+    };
+    let observer = null;
+    observer = typeof MutationObserver === "undefined" ? null : new MutationObserver(() => {
+      if (!dialog.element.isConnected) release();
+    });
+    observer == null ? void 0 : observer.observe(document.body, { childList: true, subtree: true });
     let parsedItems = [];
     let parsedText = null;
-    const runParse = () => {
+    const runParse = async () => {
       const sourceText = ta.value;
       parsedItems = [];
       parsedText = null;
       nextBtn.disabled = true;
       preview.textContent = "";
-      const result = parseEspansoYaml(sourceText);
+      let parser;
+      try {
+        parser = await loadEspansoParser();
+      } catch (err) {
+        preview.textContent = t("importFailed", err.message.slice(0, 120));
+        return;
+      }
+      if (sourceText !== ta.value || !dialog.element.isConnected) return;
+      const result = parser.parseEspansoYaml(sourceText);
       if (result.items.length === 0) {
         preview.textContent = result.issues.length ? result.issues.slice(0, 5).join("\n") : t("espansoNone");
         return;
@@ -6934,12 +7350,18 @@ ${exception.mark.snippet}`;
       parsedText = null;
       nextBtn.disabled = true;
       preview.textContent = "";
-      parseTimer = setTimeout(runParse, 400);
+      parseTimer = setTimeout(() => {
+        void runParse();
+      }, 400);
     });
-    cancelBtn.addEventListener("click", () => dialog.destroy());
+    cancelBtn.addEventListener("click", () => {
+      dialog.destroy();
+      release();
+    });
     nextBtn.addEventListener("click", () => {
       if (nextBtn.disabled || parsedItems.length === 0 || parsedText !== ta.value) return;
       dialog.destroy();
+      release();
       openImportPolicyDialog(
         ctx,
         { items: parsedItems.map((i) => ({ id: i.id, title: i.title })) },
@@ -6956,31 +7378,29 @@ ${exception.mark.snippet}`;
     try {
       idx = await ctx.library.ensureIndex();
     } catch (err) {
-      ctx.notify("error", t("kernelError", err instanceof Error ? err.message : String(err)));
-      return;
+      throw new Error(t("kernelError", err instanceof Error ? err.message : String(err)));
     }
     const tags = collectTags(idx.entries);
     if (tags.length < 2) {
       ctx.notify("info", t("tagAuditTooFew"));
-      return;
+      return "empty";
     }
     let suggestions;
     try {
       suggestions = await ctx.ai.tagAudit(tags);
     } catch (err) {
-      ctx.notify("error", ctx.aiErrorText(err));
-      return;
+      throw new Error(ctx.aiErrorText(err));
     }
     const dialog = new import_siyuan3.Dialog({
       title: t("tagAuditTitle"),
       content: "",
-      width: "min(520px, 92vw)",
-      height: "min(520px, 84vh)"
+      width: "min(620px, 92vw)",
+      height: "min(600px, 84vh)"
       // 固定高：建议清单增长不顶跳（R146）
     });
     (_a = dialog.element.querySelector(".b3-dialog__container")) == null ? void 0 : _a.classList.add("xlc-form-host", "xlc-settings-host");
     const body = getDialogBody(dialog.element);
-    if (!body) return;
+    if (!body) throw new Error(t("kernelError", "\u65E0\u6CD5\u6253\u5F00\u4F53\u68C0\u7ED3\u679C"));
     body.innerHTML = "";
     const wrap = document.createElement("div");
     wrap.className = "xlc-form";
@@ -7007,11 +7427,13 @@ ${exception.mark.snippet}`;
     actions.className = "xlc-form-actions";
     const close = document.createElement("button");
     close.className = "b3-button";
+    close.dataset.xlcControl = "settings.tag-audit.close";
     close.textContent = t("close");
     close.addEventListener("click", () => dialog.destroy());
     actions.appendChild(close);
     wrap.appendChild(actions);
     body.appendChild(wrap);
+    return suggestions.length === 0 ? "empty" : "shown";
   }
   function openImportPolicyDialog(ctx, parsed, issues, source) {
     var _a;
@@ -7019,8 +7441,8 @@ ${exception.mark.snippet}`;
     const dialog = new import_siyuan3.Dialog({
       title: t("importPolicyTitle"),
       content: "",
-      width: "min(440px, 92vw)",
-      height: "min(560px, 86vh)"
+      width: "min(540px, 92vw)",
+      height: "min(640px, 86vh)"
       // 固定高：策略卡片高度稳定（R146）
     });
     (_a = dialog.element.querySelector(".b3-dialog__container")) == null ? void 0 : _a.classList.add("xlc-form-host", "xlc-settings-host");
@@ -7052,23 +7474,56 @@ ${exception.mark.snippet}`;
     preview.className = "xlc-form-hint";
     preview.textContent = t("importPreview", String(parsed.items.length), String(issues.length));
     wrap.appendChild(preview);
-    const run = (policy) => {
-      dialog.destroy();
-      const promise = source.kind === "json" ? ctx.importBundleText(source.text, policy) : ctx.importMarkdownItems(source.items, policy);
-      void promise.then((receipt) => {
-        var _a2;
+    const receiptHint = document.createElement("p");
+    receiptHint.className = "xlc-form-hint";
+    receiptHint.setAttribute("role", "status");
+    receiptHint.setAttribute("aria-live", "polite");
+    receiptHint.textContent = t("importReceiptHint");
+    const policyCards = [];
+    const run = async (policy) => {
+      var _a2;
+      if (policyCards.some((card) => card.disabled)) return;
+      policyCards.forEach((card) => {
+        card.disabled = true;
+        card.setAttribute("aria-busy", "true");
+      });
+      receiptHint.dataset.state = "loading";
+      receiptHint.textContent = t("loading");
+      try {
+        const receipt = source.kind === "json" ? await ctx.importBundleText(source.text, policy) : await ctx.importMarkdownItems(source.items, policy);
         (_a2 = ctx.refreshSearch) == null ? void 0 : _a2.call(ctx);
-        ctx.notify(receipt.failed > 0 ? "error" : "info", t(
+        const message = t(
           "importDone",
           String(receipt.created),
           String(receipt.skipped),
           String(receipt.overwritten),
           String(receipt.renamed),
           String(receipt.failed)
-        ));
-      }).catch((err) => {
-        ctx.notify("error", t("importRunFailed", err.message));
-      });
+        );
+        receiptHint.dataset.state = receipt.failed > 0 ? "error" : "success";
+        receiptHint.textContent = message;
+        ctx.notify(receipt.failed > 0 ? "error" : "info", message);
+      } catch (err) {
+        const message = t("importRunFailed", err instanceof Error ? err.message : String(err));
+        receiptHint.dataset.state = "error";
+        receiptHint.replaceChildren();
+        const error = document.createElement("span");
+        error.className = "xlc-form-error";
+        error.textContent = message;
+        receiptHint.appendChild(error);
+        const retryBtn = document.createElement("button");
+        retryBtn.type = "button";
+        retryBtn.className = "b3-button xlc-btn-ghost xlc-operation-retry";
+        retryBtn.dataset.xlcControl = "settings.import.retry";
+        retryBtn.textContent = t("retry");
+        retryBtn.addEventListener("click", () => void run(policy));
+        receiptHint.appendChild(retryBtn);
+        ctx.notify("error", message);
+        policyCards.forEach((card) => {
+          card.disabled = false;
+          card.removeAttribute("aria-busy");
+        });
+      }
     };
     const policyList = document.createElement("div");
     policyList.className = "xlc-policy-list";
@@ -7094,13 +7549,12 @@ ${exception.mark.snippet}`;
       descEl.textContent = desc;
       text.appendChild(descEl);
       card.appendChild(text);
-      card.addEventListener("click", () => run(policy));
+      card.dataset.xlcControl = `settings.import.policy.${policy}`;
+      card.addEventListener("click", () => void run(policy));
+      policyCards.push(card);
       policyList.appendChild(card);
     }
     wrap.appendChild(policyList);
-    const receiptHint = document.createElement("p");
-    receiptHint.className = "xlc-form-hint";
-    receiptHint.textContent = t("importReceiptHint");
     wrap.appendChild(receiptHint);
     body.appendChild(wrap);
   }
@@ -7112,6 +7566,7 @@ ${exception.mark.snippet}`;
   }
   var TOAST_TITLE_MAX = 48;
   var shortTitle = (title) => title.length > TOAST_TITLE_MAX ? `${title.slice(0, TOAST_TITLE_MAX)}\u2026` : title;
+  var newWriteKey = (scope) => `xlc-${scope}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 12)}`.slice(0, 120);
   function classifyLinkTarget(href) {
     const h = (href != null ? href : "").trim();
     if (isSafeHttpUrl(h)) return { kind: "url", value: h };
@@ -7250,7 +7705,7 @@ ${exception.mark.snippet}`;
           markdown: content,
           title: firstLine.slice(0, 512),
           source: { sourceType: "clipboard" }
-        });
+        }, { idempotencyKey: newWriteKey("clipboard") });
       } catch (err) {
         this.deps.notify("error", this.deps.t("kernelError", err instanceof Error ? err.message : String(err)));
         return;
@@ -7373,13 +7828,14 @@ ${exception.mark.snippet}`;
       const t = this.deps.t;
       let closed = false;
       let saving = false;
+      const formWriteKey = newWriteKey("form");
       let tidySeq = 0;
       let draftSeq = 0;
       const dialog = new import_siyuan4.Dialog({
         title: t("newItem"),
         content: "",
-        width: "min(460px, 92vw)",
-        height: "min(720px, 90vh)",
+        width: "min(620px, 92vw)",
+        height: "min(860px, 92vh)",
         destroyCallback: () => {
           closed = true;
           this.formOpen = false;
@@ -7396,7 +7852,11 @@ ${exception.mark.snippet}`;
       }
       body.innerHTML = "";
       const form = document.createElement("div");
-      form.className = "xlc-form";
+      form.className = "xlc-form xlc-capture";
+      const intro = document.createElement("p");
+      intro.className = "xlc-page-intro";
+      intro.textContent = t("captureIntro");
+      form.appendChild(intro);
       const field = (label, value, isArea, cls, parent) => {
         const wrap = document.createElement("label");
         wrap.className = "xlc-form-field";
@@ -7424,6 +7884,7 @@ ${exception.mark.snippet}`;
       typeWrap.appendChild(typeLabel2);
       const typeSelect = document.createElement("select");
       typeSelect.className = "b3-select xlc-form-type";
+      typeSelect.dataset.xlcControl = "capture.type";
       for (const it of ["text", "markdown", "url", "code", "image", "asset", "blockref", "structure"]) {
         const opt = document.createElement("option");
         opt.value = it;
@@ -7434,19 +7895,32 @@ ${exception.mark.snippet}`;
       typeWrap.appendChild(typeSelect);
       metaRow.appendChild(typeWrap);
       const contentEl = field(t("contentLabel"), defaultText, true, "xlc-form-content");
+      contentEl.dataset.xlcControl = "capture.content";
+      const contentWrap = contentEl.parentElement;
+      const contentError = document.createElement("span");
+      contentError.className = "xlc-form-error";
+      contentError.id = "xlc-capture-content-error";
+      contentError.setAttribute("role", "alert");
+      contentError.hidden = true;
+      contentWrap.appendChild(contentError);
       const varbar = buildVariableBar(t, () => contentEl);
       contentEl.parentElement.after(varbar);
       const titleEl = field(t("title"), (_d = overrides == null ? void 0 : overrides.title) != null ? _d : "", false, "xlc-form-title");
+      titleEl.dataset.xlcControl = "capture.title";
       form.appendChild(metaRow);
       const aliasEl = field(t("alias"), "", false, "xlc-form-alias", metaRow);
+      aliasEl.dataset.xlcControl = "capture.alias";
+      metaRow.insertBefore(aliasEl.parentElement, typeWrap);
       const tagRow = document.createElement("div");
       tagRow.className = "xlc-form-row";
       const tagsEl = field(t("tags"), "", false, "xlc-form-tags", tagRow);
+      tagsEl.dataset.xlcControl = "capture.tags";
       const tagsHint = document.createElement("span");
       tagsHint.className = "xlc-form-hint";
       tagsHint.textContent = t("tagsHint");
       tagsEl.parentElement.appendChild(tagsHint);
       const categoryEl = field(t("category"), "", false, "xlc-form-category", tagRow);
+      categoryEl.dataset.xlcControl = "capture.category";
       categoryEl.parentElement.classList.add("xlc-form-field--fixed");
       form.appendChild(tagRow);
       const hint = document.createElement("div");
@@ -7459,11 +7933,21 @@ ${exception.mark.snippet}`;
           hint.textContent = `${t("captureHint")} \xB7 ${t("captureHintLib", name)}`;
         }).catch(() => void 0);
       }
-      const flagContentError = () => {
+      const flagContentError = (message) => {
         contentEl.classList.add("xlc-input--error");
+        contentEl.setAttribute("aria-invalid", "true");
+        contentEl.setAttribute("aria-describedby", contentError.id);
+        contentError.textContent = message;
+        contentError.hidden = false;
         contentEl.focus();
       };
-      contentEl.addEventListener("input", () => contentEl.classList.remove("xlc-input--error"));
+      contentEl.addEventListener("input", () => {
+        contentEl.classList.remove("xlc-input--error");
+        contentEl.removeAttribute("aria-invalid");
+        contentEl.removeAttribute("aria-describedby");
+        contentError.hidden = true;
+        contentError.textContent = "";
+      });
       const sugrow = document.createElement("div");
       sugrow.className = "xlc-sugrow";
       sugrow.style.display = "none";
@@ -7471,6 +7955,7 @@ ${exception.mark.snippet}`;
       sugrow.appendChild(sugText);
       const adoptBtn = document.createElement("button");
       adoptBtn.className = "xlc-sugrow-adopt";
+      adoptBtn.dataset.xlcControl = "capture.ai.suggestion.adopt";
       let suggestions = {};
       const applySuggestions = () => {
         var _a2;
@@ -7491,32 +7976,61 @@ ${exception.mark.snippet}`;
           const tidyBtn = document.createElement("button");
           tidyBtn.className = "xlc-form-ai";
           tidyBtn.type = "button";
+          tidyBtn.dataset.xlcControl = "capture.ai.tidy";
           tidyBtn.textContent = "\u2726 " + t("aiTidy");
+          const tidyFailure = document.createElement("div");
+          tidyFailure.className = "xlc-ai-failure";
+          tidyFailure.hidden = true;
+          const tidyFailureMessage = document.createElement("span");
+          tidyFailureMessage.className = "xlc-form-error";
+          tidyFailureMessage.dataset.xlcControl = "capture.ai.tidy.error";
+          tidyFailureMessage.setAttribute("role", "alert");
+          tidyFailureMessage.setAttribute("aria-live", "assertive");
+          tidyFailure.appendChild(tidyFailureMessage);
+          const tidyRetryBtn = document.createElement("button");
+          tidyRetryBtn.type = "button";
+          tidyRetryBtn.className = "xlc-form-ai xlc-ai-retry";
+          tidyRetryBtn.dataset.xlcControl = "capture.ai.tidy.retry";
+          tidyRetryBtn.textContent = t("retry");
+          tidyFailure.appendChild(tidyRetryBtn);
+          contentEl.parentElement.appendChild(tidyFailure);
           let tidyBusy = false;
           const syncTidyButton = () => {
             tidyBtn.disabled = tidyBusy || !contentEl.value.trim();
           };
           contentEl.addEventListener("input", syncTidyButton);
           syncTidyButton();
-          tidyBtn.addEventListener("click", () => {
+          const clearTidyFailure = () => {
+            tidyFailure.hidden = true;
+            tidyFailureMessage.textContent = "";
+          };
+          const showTidyFailure = (message) => {
+            tidyFailureMessage.textContent = message || t("aiTransport");
+            tidyFailure.hidden = false;
+          };
+          const runTidy = () => {
             if (closed || tidyBusy) return;
             const value = contentEl.value.trim();
             if (!value) {
               this.deps.notify("error", t("invalidItem"));
               return;
             }
+            clearTidyFailure();
+            suggestions = {};
+            sugText.textContent = "";
+            sugrow.style.display = "none";
             const request = ++tidySeq;
             tidyBusy = true;
             syncTidyButton();
             tidyBtn.textContent = t("aiWorking");
             void this.deps.aiTidy(value).then((result) => {
-              var _a2, _b2;
+              var _a2;
               if (closed || request !== tidySeq) return;
               tidyBtn.textContent = "\u2726 " + t("aiTidy");
               tidyBusy = false;
               syncTidyButton();
               if (!result.ok) {
-                this.deps.notify("error", result.message);
+                showTidyFailure(result.message);
                 return;
               }
               suggestions = result;
@@ -7530,8 +8044,9 @@ ${exception.mark.snippet}`;
                 sugText.appendChild(titleEl2);
               }
               const parts = [
-                ((_a2 = result.tags) == null ? void 0 : _a2.length) ? result.tags.join("/") : "",
-                (_b2 = result.category) != null ? _b2 : ""
+                result.alias ? `${t("alias")}\uFF1A${result.alias}` : "",
+                ((_a2 = result.tags) == null ? void 0 : _a2.length) ? `${t("tags")}\uFF1A${result.tags.join("/")}` : "",
+                result.category ? `${t("category")}\uFF1A${result.category}` : ""
               ].filter(Boolean);
               if (parts.length) {
                 const tail = document.createElement("span");
@@ -7544,9 +8059,11 @@ ${exception.mark.snippet}`;
               tidyBtn.textContent = "\u2726 " + t("aiTidy");
               tidyBusy = false;
               syncTidyButton();
-              this.deps.notify("error", err instanceof Error ? err.message : t("aiTransport"));
+              showTidyFailure(err instanceof Error ? err.message : t("aiTransport"));
             });
-          });
+          };
+          tidyBtn.addEventListener("click", runTidy);
+          tidyRetryBtn.addEventListener("click", runTidy);
           contentLabel.appendChild(tidyBtn);
         }
         const draftWrap = document.createElement("div");
@@ -7558,19 +8075,45 @@ ${exception.mark.snippet}`;
         const draftBtn = document.createElement("button");
         draftBtn.type = "button";
         draftBtn.className = "xlc-form-ai";
+        draftBtn.dataset.xlcControl = "capture.ai.draft.generate";
         draftBtn.textContent = "\u2726 " + t("aiDraftDesc");
         draftLabel.appendChild(draftBtn);
         const draftInput = document.createElement("input");
         draftInput.className = "b3-text-field";
+        draftInput.dataset.xlcControl = "capture.ai.draft.description";
         draftInput.placeholder = t("aiDraftDesc");
         draftWrap.appendChild(draftInput);
+        const draftFailure = document.createElement("div");
+        draftFailure.className = "xlc-ai-failure";
+        draftFailure.hidden = true;
+        const draftFailureMessage = document.createElement("span");
+        draftFailureMessage.className = "xlc-form-error";
+        draftFailureMessage.dataset.xlcControl = "capture.ai.draft.error";
+        draftFailureMessage.setAttribute("role", "alert");
+        draftFailureMessage.setAttribute("aria-live", "assertive");
+        draftFailure.appendChild(draftFailureMessage);
+        const draftRetryBtn = document.createElement("button");
+        draftRetryBtn.type = "button";
+        draftRetryBtn.className = "xlc-form-ai xlc-ai-retry";
+        draftRetryBtn.dataset.xlcControl = "capture.ai.draft.retry";
+        draftRetryBtn.textContent = t("retry");
+        draftFailure.appendChild(draftRetryBtn);
+        draftWrap.appendChild(draftFailure);
         let draftBusy = false;
         draftBtn.disabled = true;
         const syncDraftButton = () => {
           draftBtn.disabled = draftBusy || !draftInput.value.trim();
         };
         draftInput.addEventListener("input", syncDraftButton);
-        draftBtn.addEventListener("click", () => {
+        const clearDraftFailure = () => {
+          draftFailure.hidden = true;
+          draftFailureMessage.textContent = "";
+        };
+        const showDraftFailure = (message) => {
+          draftFailureMessage.textContent = message || t("aiTransport");
+          draftFailure.hidden = false;
+        };
+        const runDraft = () => {
           if (closed || draftBusy) return;
           const desc = draftInput.value.trim();
           if (!desc) {
@@ -7579,6 +8122,7 @@ ${exception.mark.snippet}`;
             return;
           }
           if (draftBtn.disabled) return;
+          clearDraftFailure();
           draftBusy = true;
           syncDraftButton();
           const request = ++draftSeq;
@@ -7589,7 +8133,7 @@ ${exception.mark.snippet}`;
             draftBusy = false;
             syncDraftButton();
             if (!result.ok) {
-              this.deps.notify("error", result.message);
+              showDraftFailure(result.message);
               return;
             }
             const contentBox = contentEl;
@@ -7607,15 +8151,18 @@ ${exception.mark.snippet}`;
             draftBtn.textContent = "\u2726 " + t("aiDraftDesc");
             draftBusy = false;
             syncDraftButton();
-            this.deps.notify("error", err instanceof Error ? err.message : t("aiTransport"));
+            showDraftFailure(err instanceof Error ? err.message : t("aiTransport"));
           });
-        });
+        };
+        draftBtn.addEventListener("click", runDraft);
+        draftRetryBtn.addEventListener("click", runDraft);
         form.insertBefore(draftWrap, form.firstChild);
       }
       const actions = document.createElement("div");
       actions.className = "xlc-form-actions";
       const cancelBtn = document.createElement("button");
       cancelBtn.className = "b3-button";
+      cancelBtn.dataset.xlcControl = "capture.cancel";
       cancelBtn.textContent = t("cancel");
       cancelBtn.addEventListener("click", () => {
         closed = true;
@@ -7625,6 +8172,7 @@ ${exception.mark.snippet}`;
       });
       const saveBtn = document.createElement("button");
       saveBtn.className = "b3-button xlc-btn-primary";
+      saveBtn.dataset.xlcControl = "capture.save";
       saveBtn.textContent = t("save");
       const submitOnEnter = (el) => {
         el.addEventListener("keydown", (ev) => {
@@ -7640,8 +8188,8 @@ ${exception.mark.snippet}`;
         if (closed || saving) return;
         const contentValue = contentEl.value;
         if (!contentValue.trim() && !(typeSelect.value === "blockref" && (overrides == null ? void 0 : overrides.targetBlockId))) {
-          flagContentError();
-          this.deps.notify("error", t("invalidItem"));
+          flagContentError(t("captureContentRequired"));
+          this.deps.notify("error", t("captureContentRequired"));
           return;
         }
         const type = typeSelect.value;
@@ -7655,8 +8203,8 @@ ${exception.mark.snippet}`;
         } else if (type === "url") {
           markdown = contentValue.trim();
           if (!isSafeHttpUrl(markdown)) {
-            flagContentError();
-            this.deps.notify("error", t("invalidItem"));
+            flagContentError(t("captureUrlInvalid"));
+            this.deps.notify("error", t("captureUrlInvalid"));
             return;
           }
         }
@@ -7686,7 +8234,7 @@ ${exception.mark.snippet}`;
               sourceBlockId: sourceBlockId != null ? sourceBlockId : "",
               sourceType: (_a2 = overrides == null ? void 0 : overrides.sourceType) != null ? _a2 : sourceBlockId ? "selection" : "manual"
             } : void 0
-          }).then((result) => {
+          }, { idempotencyKey: formWriteKey }).then((result) => {
             saving = false;
             if (result.ok) {
               closed = true;
@@ -7743,6 +8291,7 @@ ${exception.mark.snippet}`;
     discoveryTitle: "\u4ECE\u5F53\u524D\u6587\u6863\u53D1\u73B0",
     discoveryTitleNotebook: "\u4ECE\u5F53\u524D\u7B14\u8BB0\u672C\u53D1\u73B0",
     discoveryTitleGeneral: "\u53D1\u73B0\u5DF2\u6709\u5185\u5BB9",
+    discoveryTitleTree: "\u4ECE\u6307\u5B9A\u6587\u6863\u6811\u53D1\u73B0\u5E38\u7528\u8BED",
     discoveryScope: "\u626B\u63CF\u8303\u56F4",
     discoveryStartDocument: "\u5165\u53E3\u6587\u6863",
     discoveryScopeDocument: "\u5F53\u524D\u6587\u6863",
@@ -7750,14 +8299,22 @@ ${exception.mark.snippet}`;
     discoveryScopeTree: "\u6307\u5B9A\u6587\u6863\u6811",
     discoveryScopeSelectedNotebook: "\u6307\u5B9A\u7B14\u8BB0\u672C",
     discoveryScopeAllNotebooks: "\u5168\u90E8\u7B14\u8BB0\u672C\uFF08\u9AD8\u7EA7\uFF09",
+    discoveryScopeUnavailable: "\u5F53\u524D\u73AF\u5883\u6682\u4E0D\u53EF\u7528\u6B64\u626B\u63CF\u8303\u56F4",
     discoveryScopeTreeHint: "\u626B\u63CF\u6240\u9009\u6839\u6587\u6863\u53CA\u5176\u4E0B\u7EA7\u6587\u6863\u9876\u5C42\u5757\uFF1B\u52A0\u5165\u5185\u5BB9\u53EA\u590D\u5236\u5230\u4E13\u7528\u5E93\u3002",
     discoveryScopeSelectedNotebookHint: "\u626B\u63CF\u6240\u9009\u7B14\u8BB0\u672C\u7684\u6587\u6863\u9876\u5C42\u5757\uFF1B\u52A0\u5165\u5185\u5BB9\u53EA\u590D\u5236\u5230\u4E13\u7528\u5E93\u3002",
+    discoveryScopeLockedForUndo: "\u5F53\u524D\u4ECD\u6709\u53EF\u64A4\u9500\u7684\u6536\u5F55\u6279\u6B21\uFF1B\u8BF7\u5148\u64A4\u9500\u6216\u5173\u95ED\u672C\u7A97\u53E3\uFF0C\u518D\u66F4\u6362\u626B\u63CF\u8303\u56F4\u3002",
     discoverySelectTree: "\u8F93\u5165\u5173\u952E\u8BCD\u67E5\u627E\u6587\u6863\u6811\u6839\u6587\u6863",
+    discoverySelectTreeRoot: "\u8BF7\u9009\u62E9\u6587\u6863\u6811\u6839\u6587\u6863",
+    discoveryNoDocsFound: "\u6CA1\u6709\u627E\u5230\u5339\u914D\u7684\u6587\u6863",
+    discoveryNoNotebooks: "\u5F53\u524D\u6CA1\u6709\u53EF\u626B\u63CF\u7684\u7B14\u8BB0\u672C",
     discoverySelectNotebook: "\u9009\u62E9\u8981\u626B\u63CF\u7684\u7B14\u8BB0\u672C",
     discoverySearch: "\u641C\u7D22",
+    discoverySearchingDocs: "\u6B63\u5728\u641C\u7D22\u6587\u6863\u2026",
+    discoveryNotebookLoading: "\u6B63\u5728\u8BFB\u53D6\u7B14\u8BB0\u672C\u5217\u8868\u2026",
+    discoveryRetryNotebooks: "\u91CD\u8BD5\u52A0\u8F7D\u7B14\u8BB0\u672C",
     discoveryAllWarning: "\u4E0A\u9650\uFF1A%s \u4E2A\u7B14\u8BB0\u672C\u3001%s \u7BC7\u6587\u6863\u3001%s \u5C42\u76EE\u5F55\u3001%s \u4E2A\u5757\u3001%s \u4E2A\u5019\u9009\u3001\u5355\u5757 %s \u5B57\u7B26\u3001\u5019\u9009\u6587\u672C\u7D2F\u8BA1 %s \u5B57\u7B26\u3001%s \u79D2\u3002\u6587\u6863\u548C\u5757\u6309\u987A\u5E8F\u8BFB\u53D6\uFF1B\u8DEF\u5F84\u67E5\u8BE2\u4E0E\u91CD\u590D\u6838\u9A8C\u6700\u591A 4 \u8DEF\u5E76\u53D1\u3002\u53EA\u8BFB\u626B\u63CF\uFF0C\u4E0D\u4F1A\u81EA\u52A8\u6536\u5F55\u3002",
     discoveryConfirmAll: "\u6211\u786E\u8BA4\u5F00\u59CB\u626B\u63CF\u6240\u6709\u53EF\u641C\u7D22\u7B14\u8BB0\u672C",
-    discoveryTargetRequired: "\u8BF7\u5148\u9009\u62E9\u626B\u63CF\u8303\u56F4",
+    discoveryTargetRequired: "\u8BF7\u5148\u9009\u62E9\u6216\u786E\u8BA4\u626B\u63CF\u76EE\u6807",
     discoverySearchFailed: "\u6587\u6863\u641C\u7D22\u5931\u8D25\uFF1A%s",
     discoveryNotebookLoadFailed: "\u7B14\u8BB0\u672C\u5217\u8868\u52A0\u8F7D\u5931\u8D25\uFF1A%s",
     discoveryErrors: "\u626B\u63CF\u6216\u5185\u5BB9\u5E93\u91CD\u590D\u6838\u9A8C\u5931\u8D25 %s \u5904\uFF0C\u5DF2\u4FDD\u7559\u5176\u4ED6\u7ED3\u679C",
@@ -7773,6 +8330,11 @@ ${exception.mark.snippet}`;
     discoveryPreviousPage: "\u4E0A\u4E00\u9875",
     discoveryNextPage: "\u4E0B\u4E00\u9875",
     discoveryAddAll: "\u52A0\u5165\u672C\u9875\u9009\u4E2D\u9879",
+    discoveryDefaultCategory: "\u9ED8\u8BA4\u5206\u7C7B",
+    discoveryUnsortedCategory: "\u5F85\u6574\u7406",
+    discoveryDefaultCategoryHint: "\u65B0\u6536\u5F55\u9879\u9ED8\u8BA4\u4F7F\u7528\u6B64\u5206\u7C7B\uFF1B\u9884\u89C8\u4E2D\u53EF\u5355\u72EC\u4FEE\u6539\u5F53\u524D\u6761\u76EE\u3002",
+    discoveryCandidateCategory: "\u672C\u6761\u5206\u7C7B",
+    discoveryUseDefaultCategory: "\u6062\u590D\u9ED8\u8BA4",
     discoveryRescanKeepsUndo: "\u8BF7\u5148\u64A4\u9500\u6216\u5173\u95ED\u672C\u6279\u6B21\uFF0C\u518D\u91CD\u65B0\u626B\u63CF\u3002",
     discoveryCloseKeepsUndo: "\u672C\u6B21\u53D1\u73B0\u4ECD\u6709\u53EF\u64A4\u9500\u7684\u6536\u5F55\u6279\u6B21\u3002\u5173\u95ED\u4F1A\u4E22\u5931\u64A4\u9500\u5165\u53E3\uFF1B\u4ECD\u8981\u5173\u95ED\u5417\uFF1F",
     discoveryScopeHintDocument: "\u53EA\u8BFB\u53D6\u5F53\u524D\u6587\u6863\u7684\u9876\u5C42\u5757\uFF1B\u6536\u5F55\u524D\u53EF\u9884\u89C8\uFF0C\u539F\u6587\u4E0D\u4F1A\u88AB\u4FEE\u6539\u3002",
@@ -7816,12 +8378,30 @@ ${exception.mark.snippet}`;
     discoveryTypeAll: "\u5168\u90E8\u7C7B\u578B",
     discoverySearchPlaceholder: "\u7B5B\u9009\u6807\u9898\u3001\u6458\u8981\u6216\u6765\u6E90",
     discoveryNoCandidates: "\u6CA1\u6709\u7B26\u5408\u6761\u4EF6\u7684\u5019\u9009",
+    discoveryEmptyScope: "\u6B64\u8303\u56F4\u6CA1\u6709\u53D1\u73B0\u53EF\u6536\u5F55\u7684\u5019\u9009\u3002",
+    discoveryScanningCandidates: "\u6B63\u5728\u626B\u63CF\uFF0C\u5019\u9009\u5B8C\u6210\u540E\u4F1A\u663E\u793A\u5728\u8FD9\u91CC\u3002",
+    discoveryAwaitingScan: "\u9009\u62E9\u626B\u63CF\u8303\u56F4\u548C\u76EE\u6807\u540E\uFF0C\u5F00\u59CB\u626B\u63CF\u5373\u53EF\u67E5\u770B\u5019\u9009\u3002",
+    discoveryScanIncompleteEmpty: "\u626B\u63CF\u672A\u5B8C\u6210\uFF0C\u5F53\u524D\u6CA1\u6709\u5019\u9009\u7ED3\u679C\uFF1B\u53EF\u4EE5\u91CD\u8BD5\u3002",
+    discoveryScanStoppedEmpty: "\u626B\u63CF\u5DF2\u505C\u6B62\uFF0C\u5C1A\u672A\u4FDD\u7559\u5019\u9009\uFF1B\u53EF\u4EE5\u91CD\u65B0\u626B\u63CF\u3002",
+    discoveryClearFilters: "\u6E05\u9664\u7B5B\u9009",
     discoveryPreviewTitle: "\u5019\u9009\u9884\u89C8",
-    discoveryPreviewEmpty: "\u9009\u62E9\u5DE6\u4FA7\u5019\u9009\u540E\u67E5\u770B\u6B63\u6587\uFF1B\u6536\u5F55\u524D\u4F1A\u518D\u6B21\u6821\u9A8C\u6765\u6E90\u3002",
+    discoveryPreviewEmpty: "\u9009\u62E9\u4E00\u6761\u5019\u9009\u540E\u67E5\u770B\u6B63\u6587\uFF1B\u6536\u5F55\u524D\u4F1A\u518D\u6B21\u6821\u9A8C\u6765\u6E90\u3002",
     discoveryPreviewLoading: "\u6B63\u5728\u8BFB\u53D6\u5019\u9009\u6B63\u6587\u2026",
+    discoveryPreviewRetry: "\u91CD\u65B0\u8BFB\u53D6\u9884\u89C8",
+    discoveryPreviewUnavailable: "\u5019\u9009\u9884\u89C8\u672A\u80FD\u8BFB\u53D6\uFF0C\u8BF7\u91CD\u8BD5\uFF1B\u539F\u7B14\u8BB0\u672A\u4FEE\u6539\u3002",
+    discoverySourceChanged: "\u6765\u6E90\u5185\u5BB9\u6216\u6240\u5728\u8303\u56F4\u5DF2\u53D8\u5316\uFF0C\u8BF7\u91CD\u65B0\u8BFB\u53D6\u9884\u89C8\u540E\u518D\u6536\u5F55\uFF1B\u5FC5\u8981\u65F6\u91CD\u65B0\u626B\u63CF\u3002",
+    discoverySourceUnavailable: "\u6765\u6E90\u6216\u626B\u63CF\u76EE\u6807\u5DF2\u4E0D\u53EF\u7528\uFF0C\u8BF7\u68C0\u67E5\u539F\u7B14\u8BB0\u540E\u91CD\u65B0\u626B\u63CF\u3002",
+    discoveryContentTooLong: "\u6765\u6E90\u6B63\u6587\u8D85\u8FC7\u5355\u6761\u5185\u5BB9\u4E0A\u9650\uFF0C\u8BF7\u7F29\u77ED\u5185\u5BB9\u540E\u91CD\u65B0\u8BFB\u53D6\u9884\u89C8\u3002",
+    discoveryLibraryCheckIncomplete: "\u5185\u5BB9\u5E93\u91CD\u590D\u6838\u9A8C\u672A\u5B8C\u6210\uFF0C\u8BF7\u68C0\u67E5\u5185\u5BB9\u5E93\u72B6\u6001\u540E\u91CD\u8BD5\u3002",
+    discoveryOperationConflict: "\u5F53\u524D\u64CD\u4F5C\u72B6\u6001\u53D1\u751F\u53D8\u5316\uFF0C\u8BF7\u7B49\u5F85\u6B63\u5728\u8FDB\u884C\u7684\u64CD\u4F5C\u7ED3\u675F\u540E\u91CD\u8BD5\u3002",
+    discoveryInvalidInput: "\u626B\u63CF\u76EE\u6807\u6216\u5019\u9009\u72B6\u6001\u65E0\u6548\uFF0C\u8BF7\u91CD\u65B0\u9009\u62E9\u76EE\u6807\u6216\u91CD\u65B0\u626B\u63CF\u3002",
+    discoveryKernelError: "\u601D\u6E90\u8BF7\u6C42\u672A\u5B8C\u6210\uFF0C\u8BF7\u68C0\u67E5\u8FDE\u63A5\u540E\u91CD\u8BD5\u3002",
+    discoveryUndoAvailable: "\u672C\u6B21\u6536\u5F55\u4ECD\u53EF\u64A4\u9500\uFF1B\u5173\u95ED\u7A97\u53E3\u540E\u5C06\u5931\u53BB\u8FD9\u91CC\u7684\u64A4\u9500\u5165\u53E3\u3002",
+    discoveryAddingSingle: "\u6B63\u5728\u6821\u9A8C\u6765\u6E90\u5E76\u52A0\u5165\u5E38\u7528\u5E93\u2026",
+    discoveryAddingBatch: "\u6B63\u5728\u6536\u5F55\u9009\u4E2D\u9879\uFF1A%s / %s",
     discoveryAdd: "\u52A0\u5165\u5E38\u7528\u5E93",
     discoveryAddSelected: "\u52A0\u5165\u9009\u4E2D\u9879",
-    discoveryForceSameContent: "\u5141\u8BB8\u6536\u5F55\u5185\u5BB9\u76F8\u540C\u7684\u5019\u9009",
+    discoveryForceSameContent: "\u6279\u91CF\u5141\u8BB8\u6536\u5F55\u5185\u5BB9\u76F8\u540C\u7684\u5019\u9009",
     discoverySelected: "\u5DF2\u9009 %s \u9879",
     discoveryClose: "\u5173\u95ED",
     discoveryClosePendingWrites: "\u6709\u6536\u5F55\u6B63\u5728\u5199\u5165\u5185\u5BB9\u5E93\u3002\u8BF7\u7B49\u5F85\u6536\u5F55\u56DE\u6267\uFF0C\u5FC5\u8981\u65F6\u5148\u64A4\u9500\u672C\u6279\u65B0\u589E\uFF0C\u518D\u5173\u95ED\u6B64\u7A97\u53E3\u3002",
@@ -7881,6 +8461,7 @@ ${exception.mark.snippet}`;
       this.scopeHint = null;
       this.scopeTarget = null;
       this.targetDocId = "";
+      this.initialTreeRootId = "";
       this.targetNotebookId = "";
       this.allConfirmed = false;
       this.scopeLoadSeq = 0;
@@ -7891,23 +8472,35 @@ ${exception.mark.snippet}`;
       this.filterType = null;
       this.filterText = null;
       this.forceSameContent = null;
+      this.defaultCategoryInput = null;
+      this.candidateCategoryInput = null;
+      this.resetCategoryButton = null;
       this.session = null;
       this.sessionId = null;
       this.candidates = /* @__PURE__ */ new Map();
       this.selected = /* @__PURE__ */ new Set();
       this.previewed = /* @__PURE__ */ new Set();
+      this.categoryOverrides = /* @__PURE__ */ new Map();
       this.activeKey = null;
       this.scanSeq = 0;
       this.previewSeq = 0;
       this.actionBusy = false;
       this.closed = false;
       this.cancelRequested = false;
+      this.scanState = "idle";
       this.filter = {
         status: "all",
         type: "all",
         text: ""
       };
-      this.scope = options.scope === "notebook" && deps.service.discoverCurrentNotebook ? "notebook" : "document";
+      this.scope = options.scope === "tree" && deps.service.discoverTree && deps.searchDocs ? "tree" : options.scope === "notebook" && deps.service.discoverCurrentNotebook ? "notebook" : "document";
+      if (this.scope === "tree" && options.initialTreeRootId) {
+        this.targetDocId = options.initialTreeRootId;
+        this.initialTreeRootId = options.initialTreeRootId;
+      }
+    }
+    titleKey() {
+      return this.scope === "notebook" ? "discoveryTitleNotebook" : this.scope === "tree" ? "discoveryTitleTree" : this.scope === "document" ? "discoveryTitle" : "discoveryTitleGeneral";
     }
     tx(key, ...args) {
       var _a;
@@ -7920,10 +8513,10 @@ ${exception.mark.snippet}`;
       if (this.dialog) return;
       this.closed = false;
       const dialog = new import_siyuan5.Dialog({
-        title: (_a = this.options.title) != null ? _a : this.tx(this.scope === "notebook" ? "discoveryTitleNotebook" : "discoveryTitleGeneral"),
+        title: (_a = this.options.title) != null ? _a : this.tx(this.titleKey()),
         content: "",
-        width: "min(820px, 94vw)",
-        height: "min(700px, 88vh)",
+        width: "min(1040px, 94vw)",
+        height: "min(840px, 92vh)",
         disableClose: true,
         destroyCallback: () => {
           var _a2, _b2, _c, _d, _e;
@@ -7931,7 +8524,7 @@ ${exception.mark.snippet}`;
           this.closed = true;
           const closed = this.deps.service.closeSession((_a2 = this.sessionId) != null ? _a2 : void 0);
           if (!closed.ok) {
-            (_c = (_b2 = this.deps).notify) == null ? void 0 : _c.call(_b2, "error", closed.reason === "conflict" ? this.tx("discoveryClosePendingWrites") : closed.message);
+            (_c = (_b2 = this.deps).notify) == null ? void 0 : _c.call(_b2, "error", closed.reason === "conflict" ? this.tx("discoveryClosePendingWrites") : this.failureMessage(closed));
           }
           this.session = null;
           this.sessionId = null;
@@ -7959,7 +8552,7 @@ ${exception.mark.snippet}`;
         if (this.undoableBatchIds.size && !window.confirm(this.tx("discoveryCloseKeepsUndo"))) return false;
         const closed = this.deps.service.closeSession((_a = this.sessionId) != null ? _a : void 0);
         if (!closed.ok) {
-          const message = closed.reason === "conflict" ? this.tx("discoveryClosePendingWrites") : closed.message;
+          const message = closed.reason === "conflict" ? this.tx("discoveryClosePendingWrites") : this.failureMessage(closed);
           this.setReceipt(message, true);
           (_c = (_b = this.deps).notify) == null ? void 0 : _c.call(_b, "error", message);
           return false;
@@ -7984,7 +8577,7 @@ ${exception.mark.snippet}`;
       heading.className = "xlc-discovery-heading";
       const title = document.createElement("h2");
       title.className = "xlc-form-title";
-      title.textContent = this.tx(this.scope === "notebook" ? "discoveryTitleNotebook" : "discoveryTitle");
+      title.textContent = this.tx(this.titleKey());
       heading.appendChild(title);
       const scopeRow = document.createElement("div");
       scopeRow.className = "xlc-discovery-scope-row";
@@ -7993,6 +8586,7 @@ ${exception.mark.snippet}`;
       scopeLabel.textContent = `${this.tx("discoveryScope")}\uFF1A`;
       this.scopeSelect = document.createElement("select");
       this.scopeSelect.className = "b3-select xlc-discovery-scope-select";
+      this.scopeSelect.dataset.xlcControl = "discovery.scope";
       this.scopeSelect.setAttribute("aria-label", this.tx("discoveryScope"));
       const documentOption = document.createElement("option");
       documentOption.value = "document";
@@ -8013,26 +8607,57 @@ ${exception.mark.snippet}`;
         option.value = value;
         option.textContent = this.tx(key);
         option.disabled = !enabled;
-        if (!enabled) option.title = this.tx("discoveryNotebookUnavailable");
+        if (!enabled) option.title = this.tx("discoveryScopeUnavailable");
         this.scopeSelect.appendChild(option);
       }
       this.scopeSelect.value = this.scope;
       this.scopeSelect.addEventListener("change", () => {
-        var _a;
+        var _a, _b, _c;
         const nextScope = (_a = this.scopeSelect) == null ? void 0 : _a.value;
         if (nextScope === this.scope) return;
+        if (this.actionBusy || ((_b = this.root) == null ? void 0 : _b.getAttribute("aria-busy")) === "true") {
+          this.scopeSelect.value = this.scope;
+          return;
+        }
+        if (this.undoableBatchIds.size) {
+          this.scopeSelect.value = this.scope;
+          this.setStatus(this.tx("discoveryRescanKeepsUndo"));
+          return;
+        }
+        if (this.sessionId) {
+          const closed = this.deps.service.closeSession(this.sessionId);
+          if (!closed.ok) {
+            this.scopeSelect.value = this.scope;
+            const message = closed.reason === "conflict" ? this.tx("discoveryClosePendingWrites") : this.failureMessage(closed);
+            this.setReceipt(message, true);
+            return;
+          }
+        }
+        this.previewSeq++;
+        this.session = null;
+        this.sessionId = null;
+        this.candidates.clear();
+        this.selected.clear();
+        this.previewed.clear();
+        this.categoryOverrides.clear();
+        this.activeKey = null;
+        this.page = 0;
+        this.scanState = "idle";
         this.scope = nextScope;
-        title.textContent = this.tx(this.scope === "document" ? "discoveryTitle" : this.scope === "notebook" ? "discoveryTitleNotebook" : "discoveryTitleGeneral");
+        title.textContent = this.tx(this.titleKey());
+        (_c = this.list) == null ? void 0 : _c.setAttribute("aria-label", this.tx(this.titleKey()));
         if (this.scopeHint) this.scopeHint.textContent = this.scopeHintText();
         this.targetDocId = "";
         this.targetNotebookId = "";
         this.allConfirmed = false;
+        this.syncCandidateCategory();
+        this.setReceipt("");
+        if (this.preview) this.preview.textContent = this.tx("discoveryPreviewEmpty");
+        this.renderList();
         this.renderScopeTarget();
         if (this.scope === "document" || this.scope === "notebook") void this.scan();
-        else {
-          this.setStatus(this.tx("discoveryTargetRequired"));
-          this.scanButton && (this.scanButton.disabled = true);
-        }
+        else if (this.scope !== "selected-notebook") this.setStatus(this.tx("discoveryTargetRequired"));
+        this.updateSelectionState();
       });
       scopeLabel.appendChild(this.scopeSelect);
       scopeRow.appendChild(scopeLabel);
@@ -8073,8 +8698,7 @@ ${exception.mark.snippet}`;
       this.scanButton.textContent = this.tx("discoveryCancelScan");
       this.scanButton.dataset.xlcDiscoveryAction = "cancel-scan";
       this.scanButton.addEventListener("click", () => {
-        var _a;
-        if (((_a = this.root) == null ? void 0 : _a.getAttribute("aria-busy")) === "true") this.cancelScan();
+        if (this.scanState === "scanning") this.cancelScan();
         else void this.scan();
       });
       statusRow.appendChild(this.scanButton);
@@ -8087,6 +8711,7 @@ ${exception.mark.snippet}`;
       filters.appendChild(filterLabel);
       this.filterStatus = document.createElement("select");
       this.filterStatus.className = "b3-select";
+      this.filterStatus.dataset.xlcControl = "discovery.filter.status";
       this.filterStatus.setAttribute("aria-label", this.tx("discoveryFilter"));
       for (const status of STATUS_KEYS) {
         const option = document.createElement("option");
@@ -8103,6 +8728,7 @@ ${exception.mark.snippet}`;
       filters.appendChild(this.filterStatus);
       this.filterType = document.createElement("select");
       this.filterType.className = "b3-select";
+      this.filterType.dataset.xlcControl = "discovery.filter.type";
       this.filterType.setAttribute("aria-label", this.tx("discoveryType"));
       const typeAll = document.createElement("option");
       typeAll.value = "all";
@@ -8123,6 +8749,7 @@ ${exception.mark.snippet}`;
       filters.appendChild(this.filterType);
       this.filterText = document.createElement("input");
       this.filterText.className = "b3-text-field";
+      this.filterText.dataset.xlcControl = "discovery.filter.text";
       this.filterText.placeholder = this.tx("discoverySearchPlaceholder");
       this.filterText.setAttribute("aria-label", this.tx("discoverySearchPlaceholder"));
       this.filterText.addEventListener("input", () => {
@@ -8133,18 +8760,81 @@ ${exception.mark.snippet}`;
       });
       filters.appendChild(this.filterText);
       root.appendChild(filters);
+      const categorySettings = document.createElement("div");
+      categorySettings.className = "xlc-discovery-category-settings";
+      const defaultCategoryLabel = document.createElement("label");
+      defaultCategoryLabel.className = "xlc-form-label";
+      defaultCategoryLabel.textContent = this.tx("discoveryDefaultCategory");
+      defaultCategoryLabel.htmlFor = "xlc-discovery-default-category";
+      this.defaultCategoryInput = document.createElement("input");
+      this.defaultCategoryInput.type = "text";
+      this.defaultCategoryInput.className = "b3-text-field";
+      this.defaultCategoryInput.value = this.tx("discoveryUnsortedCategory");
+      this.defaultCategoryInput.maxLength = 64;
+      this.defaultCategoryInput.id = "xlc-discovery-default-category";
+      this.defaultCategoryInput.dataset.xlcDiscoveryAction = "default-category";
+      this.defaultCategoryInput.setAttribute("aria-label", this.tx("discoveryDefaultCategory"));
+      this.defaultCategoryInput.addEventListener("input", () => {
+        var _a, _b;
+        const key = this.activeKey;
+        if (key && !this.categoryOverrides.has(key) && this.candidateCategoryInput) {
+          this.candidateCategoryInput.value = (_b = (_a = this.defaultCategoryInput) == null ? void 0 : _a.value) != null ? _b : "";
+        }
+      });
+      categorySettings.appendChild(defaultCategoryLabel);
+      categorySettings.appendChild(this.defaultCategoryInput);
+      const defaultCategoryHint = document.createElement("span");
+      defaultCategoryHint.className = "xlc-form-hint";
+      defaultCategoryHint.textContent = this.tx("discoveryDefaultCategoryHint");
+      categorySettings.appendChild(defaultCategoryHint);
+      root.appendChild(categorySettings);
       const content = document.createElement("div");
       content.className = "xlc-discovery-content";
       this.list = document.createElement("div");
       this.list.className = "xlc-discovery-list";
-      this.list.setAttribute("role", "listbox");
-      this.list.setAttribute("aria-label", this.tx("discoveryTitle"));
+      this.list.setAttribute("role", "region");
+      this.list.setAttribute("aria-label", this.tx(this.titleKey()));
       content.appendChild(this.list);
       const pane = document.createElement("section");
       pane.className = "xlc-discovery-preview";
       const paneTitle = document.createElement("h3");
       paneTitle.textContent = this.tx("discoveryPreviewTitle");
       pane.appendChild(paneTitle);
+      const candidateCategoryRow = document.createElement("div");
+      candidateCategoryRow.className = "xlc-discovery-candidate-category";
+      const candidateCategoryLabel = document.createElement("label");
+      candidateCategoryLabel.className = "xlc-form-label";
+      candidateCategoryLabel.textContent = this.tx("discoveryCandidateCategory");
+      candidateCategoryLabel.htmlFor = "xlc-discovery-candidate-category";
+      this.candidateCategoryInput = document.createElement("input");
+      this.candidateCategoryInput.type = "text";
+      this.candidateCategoryInput.className = "b3-text-field";
+      this.candidateCategoryInput.disabled = true;
+      this.candidateCategoryInput.maxLength = 64;
+      this.candidateCategoryInput.id = "xlc-discovery-candidate-category";
+      this.candidateCategoryInput.dataset.xlcDiscoveryAction = "candidate-category";
+      this.candidateCategoryInput.setAttribute("aria-label", this.tx("discoveryCandidateCategory"));
+      this.candidateCategoryInput.addEventListener("input", () => {
+        var _a, _b;
+        if (!this.activeKey) return;
+        this.categoryOverrides.set(this.activeKey, (_b = (_a = this.candidateCategoryInput) == null ? void 0 : _a.value) != null ? _b : "");
+        this.updateCategoryResetState();
+      });
+      candidateCategoryRow.appendChild(candidateCategoryLabel);
+      candidateCategoryRow.appendChild(this.candidateCategoryInput);
+      this.resetCategoryButton = document.createElement("button");
+      this.resetCategoryButton.type = "button";
+      this.resetCategoryButton.className = "b3-button xlc-btn-ghost";
+      this.resetCategoryButton.textContent = this.tx("discoveryUseDefaultCategory");
+      this.resetCategoryButton.dataset.xlcDiscoveryAction = "category-reset";
+      this.resetCategoryButton.disabled = true;
+      this.resetCategoryButton.addEventListener("click", () => {
+        if (!this.activeKey || this.actionBusy) return;
+        this.categoryOverrides.delete(this.activeKey);
+        this.syncCandidateCategory();
+      });
+      candidateCategoryRow.appendChild(this.resetCategoryButton);
+      pane.appendChild(candidateCategoryRow);
       this.preview = document.createElement("pre");
       this.preview.className = "xlc-discovery-preview-body";
       this.preview.textContent = this.tx("discoveryPreviewEmpty");
@@ -8160,6 +8850,7 @@ ${exception.mark.snippet}`;
       forceLabel.className = "xlc-discovery-force";
       this.forceSameContent = document.createElement("input");
       this.forceSameContent.type = "checkbox";
+      this.forceSameContent.dataset.xlcControl = "discovery.allow-same-content";
       this.forceSameContent.addEventListener("change", () => this.renderList());
       forceLabel.appendChild(this.forceSameContent);
       const forceText = document.createElement("span");
@@ -8176,9 +8867,12 @@ ${exception.mark.snippet}`;
       root.appendChild(footer);
       this.receipt = document.createElement("div");
       this.receipt.className = "xlc-discovery-receipt";
+      this.receipt.setAttribute("role", "status");
+      this.receipt.setAttribute("aria-live", "polite");
+      this.receipt.setAttribute("aria-atomic", "true");
       this.receipt.style.display = "none";
       root.appendChild(this.receipt);
-      this.setScanningState(true);
+      this.setScanningState(false);
       this.renderList();
     }
     statusLabel(status) {
@@ -8191,60 +8885,111 @@ ${exception.mark.snippet}`;
       this.status.classList.toggle("xlc-status--error", isError);
     }
     setScanningState(scanning) {
-      var _a;
       if (!scanning) this.cancelRequested = false;
-      (_a = this.root) == null ? void 0 : _a.setAttribute("aria-busy", String(scanning));
+      this.updateScopeControlState();
+    }
+    scopeControlsLocked() {
+      return this.scanState === "scanning" || this.actionBusy || this.undoableBatchIds.size > 0;
+    }
+    /** Loading/empty states belong to each target control; operation locks only overlay them. */
+    setTargetDisabled(control, disabled) {
+      control.dataset.xlcTargetDisabled = String(disabled);
+      this.updateScopeControlState();
+    }
+    updateScopeControlState() {
+      var _a;
+      const scanning = this.scanState === "scanning";
+      const locked = this.undoableBatchIds.size > 0;
+      (_a = this.root) == null ? void 0 : _a.setAttribute("aria-busy", String(scanning || this.actionBusy));
       if (this.scanButton) {
-        this.scanButton.disabled = this.actionBusy || (scanning ? this.cancelRequested : this.missingScopeTarget());
+        this.scanButton.disabled = this.actionBusy || (scanning ? this.cancelRequested : locked || this.missingScopeTarget());
         this.scanButton.textContent = scanning ? this.tx(this.cancelRequested ? "discoveryStopping" : "discoveryCancelScan") : this.tx("discoveryRetry");
         this.scanButton.dataset.xlcDiscoveryAction = scanning ? "cancel-scan" : "retry-scan";
       }
-      if (this.filterStatus) this.filterStatus.disabled = scanning;
-      if (this.filterType) this.filterType.disabled = scanning;
-      if (this.filterText) this.filterText.disabled = scanning;
-      if (this.scopeSelect) this.scopeSelect.disabled = scanning || this.actionBusy;
+      if (this.filterStatus) this.filterStatus.disabled = scanning || this.actionBusy;
+      if (this.filterType) this.filterType.disabled = scanning || this.actionBusy;
+      if (this.filterText) this.filterText.disabled = scanning || this.actionBusy;
+      if (this.scopeSelect) {
+        this.scopeSelect.disabled = scanning || this.actionBusy || locked;
+        this.scopeSelect.title = locked ? this.tx("discoveryScopeLockedForUndo") : "";
+      }
       if (this.scopeTarget) this.scopeTarget.querySelectorAll("input, select, button").forEach((control) => {
-        control.disabled = scanning || this.actionBusy;
+        control.disabled = scanning || this.actionBusy || locked || control.dataset.xlcTargetDisabled === "true";
       });
+      if (this.forceSameContent) this.forceSameContent.disabled = scanning || this.actionBusy || !this.sessionId;
     }
     scopeHintText() {
-      if (this.scope === "document") return this.tx("discoveryScopeHintDocument");
-      if (this.scope === "notebook") return this.tx("discoveryScopeHintNotebook");
-      if (this.scope === "tree") return this.tx("discoveryScopeTreeHint");
-      if (this.scope === "selected-notebook") return this.tx("discoveryScopeSelectedNotebookHint");
-      if (this.scope === "all-notebooks") return this.tx("discoveryAllWarning", "20", "200", "8", "2,000", "500", "100,000", "2,000,000", "60");
-      return this.tx("discoveryScopeHintDocument");
+      const hint = this.scope === "document" ? this.tx("discoveryScopeHintDocument") : this.scope === "notebook" ? this.tx("discoveryScopeHintNotebook") : this.scope === "tree" ? this.tx("discoveryScopeTreeHint") : this.scope === "selected-notebook" ? this.tx("discoveryScopeSelectedNotebookHint") : this.tx("discoveryAllWarning", "20", "200", "8", "2,000", "500", "100,000", "2,000,000", "60");
+      return this.undoableBatchIds.size ? `${hint} ${this.tx("discoveryScopeLockedForUndo")}` : hint;
     }
     renderScopeTarget() {
       const target = this.scopeTarget;
       if (!target) return;
-      const seq = ++this.scopeLoadSeq;
+      this.scopeLoadSeq++;
       target.textContent = "";
       if (this.scope === "tree") {
         const input = document.createElement("input");
         input.type = "search";
         input.className = "b3-text-field";
+        input.dataset.xlcControl = "discovery.tree.query";
         input.placeholder = this.tx("discoverySelectTree");
         input.setAttribute("aria-label", this.tx("discoverySelectTree"));
         const search = document.createElement("button");
         search.type = "button";
         search.className = "b3-button xlc-btn-ghost";
+        search.dataset.xlcControl = "discovery.tree.search";
         search.textContent = this.tx("discoverySearch");
         const results = document.createElement("select");
         results.className = "b3-select";
+        results.dataset.xlcControl = "discovery.tree.result";
         results.setAttribute("aria-label", this.tx("discoverySelectTree"));
         results.addEventListener("change", () => {
+          if (this.scopeControlsLocked()) {
+            results.value = this.targetDocId;
+            return;
+          }
           this.targetDocId = results.value;
-          if (this.scanButton) this.scanButton.disabled = !this.targetDocId;
+          this.updateScopeControlState();
           if (this.targetDocId) void this.scan();
+        });
+        if (this.initialTreeRootId) {
+          const placeholder = document.createElement("option");
+          placeholder.value = "";
+          placeholder.textContent = this.tx("discoverySelectTreeRoot");
+          results.appendChild(placeholder);
+          const root = document.createElement("option");
+          root.value = this.initialTreeRootId;
+          root.textContent = this.options.sourcePath || this.initialTreeRootId;
+          results.appendChild(root);
+          results.value = this.initialTreeRootId;
+          results.hidden = false;
+          this.initialTreeRootId = "";
+        }
+        input.addEventListener("input", () => {
+          if (this.scopeControlsLocked()) return;
+          this.targetDocId = "";
+          results.textContent = "";
+          results.hidden = true;
+          this.scopeLoadSeq++;
+          this.setTargetDisabled(search, !input.value.trim());
+          this.setStatus(this.tx("discoveryTargetRequired"));
         });
         search.addEventListener("click", () => {
           const keyword = input.value.trim();
-          if (!keyword || !this.deps.searchDocs) return;
-          search.disabled = true;
+          if (!keyword || !this.deps.searchDocs || this.scopeControlsLocked()) return;
+          this.targetDocId = "";
+          results.textContent = "";
+          results.hidden = true;
+          this.setTargetDisabled(search, true);
+          const requestSeq = ++this.scopeLoadSeq;
+          this.setStatus(this.tx("discoverySearchingDocs"));
           void this.deps.searchDocs(keyword).then((docs) => {
-            if (seq !== this.scopeLoadSeq || this.closed) return;
+            if (requestSeq !== this.scopeLoadSeq || this.closed) return;
             results.textContent = "";
+            const placeholder = document.createElement("option");
+            placeholder.value = "";
+            placeholder.textContent = this.tx("discoverySelectTreeRoot");
+            results.appendChild(placeholder);
             for (const doc of docs) {
               const option = document.createElement("option");
               option.value = doc.id;
@@ -8252,46 +8997,82 @@ ${exception.mark.snippet}`;
               results.appendChild(option);
             }
             results.hidden = docs.length === 0;
-            this.setStatus(docs.length ? this.tx("discoveryTargetRequired") : this.tx("discoveryNoCandidates"));
+            this.setStatus(docs.length ? this.tx("discoveryTargetRequired") : this.tx("discoveryNoDocsFound"));
           }).catch((error) => {
-            if (seq === this.scopeLoadSeq) this.setStatus(this.tx("discoverySearchFailed", error instanceof Error ? error.message : String(error)), true);
+            if (requestSeq === this.scopeLoadSeq && !this.closed) this.setStatus(this.tx("discoverySearchFailed", this.errorMessage(error)), true);
           }).finally(() => {
-            search.disabled = false;
+            if (requestSeq === this.scopeLoadSeq && !this.closed) this.setTargetDisabled(search, !input.value.trim());
           });
         });
-        results.hidden = true;
+        results.hidden = !this.targetDocId;
         target.append(input, search, results);
+        this.setTargetDisabled(search, true);
         return;
       }
       if (this.scope === "selected-notebook") {
         const select = document.createElement("select");
         select.className = "b3-select";
+        select.dataset.xlcControl = "discovery.notebook.select";
         select.setAttribute("aria-label", this.tx("discoverySelectNotebook"));
+        select.dataset.xlcTargetDisabled = "true";
         select.disabled = true;
         const placeholder = document.createElement("option");
         placeholder.value = "";
         placeholder.textContent = this.tx("discoverySelectNotebook");
         select.appendChild(placeholder);
-        target.appendChild(select);
         if (!this.deps.listNotebooks) return;
-        void this.deps.listNotebooks().then((notebooks) => {
-          if (seq !== this.scopeLoadSeq || this.closed) return;
-          for (const notebook of notebooks) {
-            const option = document.createElement("option");
-            option.value = notebook.id;
-            option.textContent = notebook.name;
-            select.appendChild(option);
-          }
-          select.disabled = notebooks.length === 0;
-          this.setStatus(notebooks.length ? this.tx("discoveryTargetRequired") : this.tx("discoveryNoCandidates"));
-        }).catch((error) => {
-          if (seq === this.scopeLoadSeq) this.setStatus(this.tx("discoveryNotebookLoadFailed", error instanceof Error ? error.message : String(error)), true);
-        });
+        const retry = document.createElement("button");
+        retry.type = "button";
+        retry.className = "b3-button xlc-btn-ghost xlc-discovery-retry-notebooks";
+        retry.textContent = this.tx("discoveryRetryNotebooks");
+        retry.dataset.xlcDiscoveryAction = "retry-notebooks";
+        retry.hidden = true;
+        target.append(select, retry);
         select.addEventListener("change", () => {
+          if (this.scopeControlsLocked()) {
+            select.value = this.targetNotebookId;
+            return;
+          }
           this.targetNotebookId = select.value;
-          if (this.scanButton) this.scanButton.disabled = !this.targetNotebookId;
+          this.updateScopeControlState();
           if (this.targetNotebookId) void this.scan();
         });
+        const loadNotebooks = async () => {
+          var _a, _b;
+          if (this.scopeControlsLocked()) return;
+          const requestSeq = ++this.scopeLoadSeq;
+          this.targetNotebookId = "";
+          this.setTargetDisabled(select, true);
+          select.textContent = "";
+          const pending = document.createElement("option");
+          pending.value = "";
+          pending.textContent = this.tx("discoverySelectNotebook");
+          select.appendChild(pending);
+          retry.hidden = true;
+          this.setTargetDisabled(retry, true);
+          this.setStatus(this.tx("discoveryNotebookLoading"));
+          try {
+            const notebooks = await ((_b = (_a = this.deps).listNotebooks) == null ? void 0 : _b.call(_a));
+            if (requestSeq !== this.scopeLoadSeq || this.closed || !notebooks) return;
+            for (const notebook of notebooks) {
+              const option = document.createElement("option");
+              option.value = notebook.id;
+              option.textContent = notebook.name;
+              select.appendChild(option);
+            }
+            this.setTargetDisabled(select, notebooks.length === 0);
+            retry.hidden = notebooks.length > 0;
+            this.setStatus(notebooks.length ? this.tx("discoveryTargetRequired") : this.tx("discoveryNoNotebooks"));
+          } catch (error) {
+            if (requestSeq !== this.scopeLoadSeq || this.closed) return;
+            this.setStatus(this.tx("discoveryNotebookLoadFailed", this.errorMessage(error)), true);
+            retry.hidden = false;
+          } finally {
+            if (requestSeq === this.scopeLoadSeq && !this.closed) this.setTargetDisabled(retry, false);
+          }
+        };
+        retry.addEventListener("click", () => void loadNotebooks());
+        void loadNotebooks();
         return;
       }
       if (this.scope === "all-notebooks") {
@@ -8299,15 +9080,20 @@ ${exception.mark.snippet}`;
         label.className = "xlc-discovery-all-confirm";
         const checkbox = document.createElement("input");
         checkbox.type = "checkbox";
+        checkbox.dataset.xlcControl = "discovery.all-notebooks.confirm";
         const text = document.createElement("span");
         text.textContent = this.tx("discoveryConfirmAll");
         checkbox.addEventListener("change", () => {
+          if (this.scopeControlsLocked()) {
+            checkbox.checked = this.allConfirmed;
+            return;
+          }
           this.allConfirmed = checkbox.checked;
-          if (this.scanButton) this.scanButton.disabled = !this.allConfirmed;
+          this.updateScopeControlState();
         });
         label.append(checkbox, text);
         target.appendChild(label);
-        if (this.scanButton) this.scanButton.disabled = true;
+        this.updateScopeControlState();
       }
     }
     async scan() {
@@ -8323,18 +9109,21 @@ ${exception.mark.snippet}`;
       if (this.sessionId) {
         const closed = this.deps.service.closeSession(this.sessionId);
         if (!closed.ok) {
-          const message = closed.reason === "conflict" ? this.tx("discoveryClosePendingWrites") : closed.message;
+          const message = closed.reason === "conflict" ? this.tx("discoveryClosePendingWrites") : this.failureMessage(closed);
           this.setReceipt(message, true);
           (_b = (_a = this.deps).notify) == null ? void 0 : _b.call(_a, "error", message);
           return;
         }
       }
+      this.scanState = "scanning";
       this.session = null;
       this.sessionId = null;
       this.candidates.clear();
       this.selected.clear();
       this.previewed.clear();
+      this.categoryOverrides.clear();
       this.activeKey = null;
+      this.syncCandidateCategory();
       this.setScanningState(true);
       const scanningKey = this.scope === "document" ? "discoveryScanningDocument" : this.scope === "notebook" ? "discoveryScanningNotebook" : this.scope === "tree" ? "discoveryScanningTree" : this.scope === "selected-notebook" ? "discoveryScanningSelectedNotebook" : "discoveryScanningAllNotebooks";
       this.setStatus(this.tx(scanningKey));
@@ -8371,8 +9160,10 @@ ${exception.mark.snippet}`;
       if (this.closed) return;
       if (seq !== this.scanSeq) return;
       if (!result.ok && result.reason === "cancelled") {
+        const stoppedByUser = this.cancelRequested;
+        this.scanState = "cancelled";
         this.setScanningState(false);
-        if (this.cancelRequested) {
+        if (stoppedByUser) {
           const message = this.tx("discoveryStoppedNoResults");
           this.setStatus(message);
           this.showRetryReceipt(message);
@@ -8380,18 +9171,23 @@ ${exception.mark.snippet}`;
           this.setStatus(this.tx("discoveryRetry"));
           this.showRetryReceipt(this.tx("discoveryRetry"));
         }
+        this.renderList();
         return;
       }
       if (!result.ok) {
+        this.scanState = "failed";
         this.setScanningState(false);
-        this.setStatus(this.failureMessage(result), true);
-        this.showRetryReceipt(this.tx("discoveryScanFailed", result.message || this.tx("discoveryUnknown")));
+        const message = this.tx("discoveryScanFailed", this.failureMessage(result));
+        this.setStatus(message, true);
+        this.showRetryReceipt(message);
+        this.renderList();
         return;
       }
       this.session = result.data;
       this.sessionId = result.data.id;
       this.candidates = new Map(result.data.candidates.map((candidate) => [candidate.key, candidate]));
       this.page = 0;
+      this.scanState = "ready";
       this.setScanningState(false);
       const suffix = result.data.truncated && !result.data.stopped ? ` \xB7 ${this.tx("discoveryTruncated")}` : "";
       const stoppedSuffix = result.data.stopped ? ` \xB7 ${this.tx("discoveryStopped", String(result.data.candidates.length))}` : "";
@@ -8415,7 +9211,7 @@ ${exception.mark.snippet}`;
         return this.tx((_a2 = limitKeys[reason]) != null ? _a2 : "discoveryTruncated");
       }).join("\u3001")}` : "";
       this.setStatus(`${this.tx("discoveryScanned", String(result.data.scannedBlocks), String(result.data.candidates.length))}${docsSuffix}${notebooksSuffix} \xB7 ${this.tx("discoverySkipped", String(result.data.skippedEmpty))}${skippedLong}${suffix}${reasons}${stoppedSuffix}${errorSuffix}`);
-      if (result.data.errors.length) this.setReceipt(result.data.errors.map((error) => `${error.sourcePath || "\u626B\u63CF\u8303\u56F4"}\uFF1A${error.message}`).join("\n"), true);
+      if (result.data.errors.length) this.setReceipt(result.data.errors.map((error) => `${error.sourcePath || this.tx("discoveryScope")}\uFF1A${this.errorMessage(error.message)}`).join("\n"), true);
       this.renderList();
     }
     missingScopeTarget() {
@@ -8434,7 +9230,7 @@ ${exception.mark.snippet}`;
       const text = document.createElement("span");
       text.textContent = message;
       this.receipt.appendChild(text);
-      this.scanButton.disabled = false;
+      this.updateScopeControlState();
     }
     matches(candidate) {
       if (this.filter.status !== "all" && candidate.status !== this.filter.status) return false;
@@ -8447,6 +9243,7 @@ ${exception.mark.snippet}`;
       return candidate.status === "candidate" || candidate.status === "same-content" || candidate.status === "library-unverified";
     }
     renderList() {
+      var _a;
       const list = this.list;
       if (!list) return;
       list.textContent = "";
@@ -8454,18 +9251,41 @@ ${exception.mark.snippet}`;
       const pages = Math.max(1, Math.ceil(visible.length / this.pageSize));
       this.page = Math.max(0, Math.min(this.page, pages - 1));
       const pageItems = visible.slice(this.page * this.pageSize, (this.page + 1) * this.pageSize);
+      const results = document.createElement("div");
+      results.setAttribute("role", "list");
+      results.setAttribute("aria-label", this.tx(this.titleKey()));
       if (!visible.length) {
         const empty = document.createElement("div");
         empty.className = "xlc-discovery-empty";
-        empty.textContent = this.tx("discoveryNoCandidates");
-        list.appendChild(empty);
+        empty.setAttribute("role", "listitem");
+        const scanning = ((_a = this.root) == null ? void 0 : _a.getAttribute("aria-busy")) === "true";
+        const hasFilters = this.filter.status !== "all" || this.filter.type !== "all" || !!this.filter.text;
+        empty.textContent = scanning ? this.tx("discoveryScanningCandidates") : this.scanState === "failed" ? this.tx("discoveryScanIncompleteEmpty") : this.scanState === "cancelled" ? this.tx("discoveryScanStoppedEmpty") : this.candidates.size === 0 && this.scanState === "ready" ? this.tx("discoveryEmptyScope") : this.candidates.size === 0 ? this.tx("discoveryAwaitingScan") : this.tx("discoveryNoCandidates");
+        results.appendChild(empty);
+        if (!scanning && this.candidates.size > 0 && hasFilters) {
+          const clear = document.createElement("button");
+          clear.type = "button";
+          clear.className = "b3-button xlc-btn-ghost";
+          clear.textContent = this.tx("discoveryClearFilters");
+          clear.dataset.xlcDiscoveryAction = "clear-filters";
+          clear.addEventListener("click", () => {
+            this.filter = { status: "all", type: "all", text: "" };
+            if (this.filterStatus) this.filterStatus.value = "all";
+            if (this.filterType) this.filterType.value = "all";
+            if (this.filterText) this.filterText.value = "";
+            this.page = 0;
+            this.renderList();
+          });
+          empty.appendChild(clear);
+        }
       }
       for (const candidate of pageItems) {
         const row = document.createElement("div");
         row.className = "xlc-discovery-row";
         row.dataset.xlcDiscoveryKey = candidate.key;
-        row.setAttribute("role", "option");
-        row.setAttribute("aria-selected", String(this.activeKey === candidate.key));
+        row.setAttribute("role", "listitem");
+        row.tabIndex = 0;
+        row.setAttribute("aria-label", `${candidate.title} \xB7 ${candidate.sourcePath} \xB7 ${this.statusLabel(candidate.status)}`);
         row.classList.toggle("xlc-discovery-row--active", this.activeKey === candidate.key);
         row.classList.toggle("xlc-discovery-row--disabled", !this.canAdd(candidate));
         row.addEventListener("click", (event) => {
@@ -8473,8 +9293,14 @@ ${exception.mark.snippet}`;
           if (target.closest("button, input")) return;
           void this.selectCandidate(candidate.key);
         });
+        row.addEventListener("keydown", (event) => {
+          if (event.target !== row || event.key !== "Enter" && event.key !== " ") return;
+          event.preventDefault();
+          void this.selectCandidate(candidate.key);
+        });
         const checkbox = document.createElement("input");
         checkbox.type = "checkbox";
+        checkbox.dataset.xlcControl = "discovery.candidate.select";
         checkbox.checked = this.selected.has(candidate.key);
         checkbox.disabled = this.actionBusy || !this.canAdd(candidate);
         checkbox.setAttribute("aria-label", `${this.tx("discoveryAdd")}\uFF1A${candidate.title}`);
@@ -8514,57 +9340,99 @@ ${exception.mark.snippet}`;
         add.addEventListener("click", () => void this.addOne(candidate.key, false));
         side.appendChild(add);
         row.appendChild(side);
-        list.appendChild(row);
+        results.appendChild(row);
       }
+      list.appendChild(results);
       if (visible.length > this.pageSize) {
         const pager = document.createElement("div");
         pager.className = "xlc-discovery-pager";
+        pager.setAttribute("role", "navigation");
+        pager.setAttribute("aria-label", this.tx("discoveryPagination"));
+        const pageLabel = document.createElement("span");
+        pageLabel.className = "xlc-discovery-page-label";
+        pageLabel.setAttribute("aria-current", "page");
+        pageLabel.setAttribute("role", "status");
+        pageLabel.setAttribute("aria-live", "polite");
+        pageLabel.setAttribute("aria-atomic", "true");
         const previous = document.createElement("button");
         previous.type = "button";
         previous.className = "b3-button xlc-btn-ghost";
+        previous.dataset.xlcControl = "discovery.page.previous";
         previous.textContent = this.tx("discoveryPreviousPage");
         previous.disabled = this.page === 0 || this.actionBusy;
-        previous.addEventListener("click", () => {
-          this.page--;
-          this.renderList();
-        });
-        const label = document.createElement("span");
-        label.textContent = this.tx("discoveryResultsPage", String(this.page + 1), String(pages));
+        previous.addEventListener("click", () => this.changePage(-1, "previous"));
+        pageLabel.textContent = this.tx("discoveryResultsPage", String(this.page + 1), String(pages));
         const next = document.createElement("button");
         next.type = "button";
         next.className = "b3-button xlc-btn-ghost";
+        next.dataset.xlcControl = "discovery.page.next";
         next.textContent = this.tx("discoveryNextPage");
         next.disabled = this.page >= pages - 1 || this.actionBusy;
-        next.addEventListener("click", () => {
-          this.page++;
-          this.renderList();
-        });
-        pager.append(previous, label, next);
+        next.addEventListener("click", () => this.changePage(1, "next"));
+        pager.append(previous, pageLabel, next);
         list.appendChild(pager);
       }
       this.updateSelectionState();
     }
+    changePage(delta, direction) {
+      var _a, _b;
+      this.page += delta;
+      this.renderList();
+      const preferred = (_a = this.list) == null ? void 0 : _a.querySelector(`[data-xlc-control="discovery.page.${direction}"]`);
+      const fallback = (_b = this.list) == null ? void 0 : _b.querySelector(`[data-xlc-control="discovery.page.${direction === "next" ? "previous" : "next"}"]`);
+      const target = preferred && !preferred.disabled ? preferred : fallback && !fallback.disabled ? fallback : this.list;
+      if (target === this.list && this.list) this.list.tabIndex = -1;
+      target == null ? void 0 : target.focus();
+    }
     updateSelectionState() {
       var _a;
       const count = this.selected.size;
+      this.updateScopeControlState();
       if (this.closeButton) this.closeButton.disabled = this.actionBusy;
       if (this.selectedLabel) this.selectedLabel.textContent = this.tx("discoverySelected", String(count));
-      if (this.scopeSelect) this.scopeSelect.disabled = this.actionBusy || ((_a = this.root) == null ? void 0 : _a.getAttribute("aria-busy")) === "true";
+      if (this.scopeHint) this.scopeHint.textContent = this.scopeHintText();
       if (this.addSelectedButton) {
         this.addSelectedButton.disabled = this.actionBusy || !this.sessionId || count === 0;
       }
+      if (this.defaultCategoryInput) this.defaultCategoryInput.disabled = this.actionBusy;
+      if (this.candidateCategoryInput) this.candidateCategoryInput.disabled = this.actionBusy || !this.activeKey || !this.sessionId;
+      this.updateCategoryResetState();
+      (_a = this.receipt) == null ? void 0 : _a.querySelectorAll("button").forEach((button) => {
+        button.disabled = this.actionBusy;
+      });
+    }
+    getCategory(key) {
+      var _a, _b, _c;
+      return this.categoryOverrides.has(key) ? (_a = this.categoryOverrides.get(key)) != null ? _a : "" : (_c = (_b = this.defaultCategoryInput) == null ? void 0 : _b.value) != null ? _c : this.tx("discoveryUnsortedCategory");
+    }
+    syncCandidateCategory() {
+      if (this.candidateCategoryInput) {
+        this.candidateCategoryInput.value = this.activeKey ? this.getCategory(this.activeKey) : "";
+      }
+      this.updateCategoryResetState();
+    }
+    updateCategoryResetState() {
+      if (!this.resetCategoryButton) return;
+      this.resetCategoryButton.disabled = this.actionBusy || !this.activeKey || !this.categoryOverrides.has(this.activeKey);
     }
     async selectCandidate(key, allowBusy = false) {
       const candidate = this.candidates.get(key);
       if (!candidate || !this.sessionId || this.actionBusy && !allowBusy) return;
       this.activeKey = key;
+      this.syncCandidateCategory();
       this.renderList();
       if (this.preview) this.preview.textContent = this.tx("discoveryPreviewLoading");
+      this.previewed.delete(key);
       const seq = ++this.previewSeq;
-      const result = await this.deps.service.previewCandidate(this.sessionId, key);
+      let result;
+      try {
+        result = await this.deps.service.previewCandidate(this.sessionId, key);
+      } catch (error) {
+        result = { ok: false, reason: "kernel-error", message: this.errorMessage(error) };
+      }
       if (this.closed || seq !== this.previewSeq) return;
       if (!result.ok) {
-        this.handleFailure(result);
+        this.handleFailure(result, key, true);
         return;
       }
       this.applyPreview(result.data);
@@ -8576,7 +9444,7 @@ ${exception.mark.snippet}`;
       (_a = this.session) == null ? void 0 : _a.candidates.splice(0, this.session.candidates.length, ...this.candidates.values());
       if (this.preview && this.activeKey === data.candidate.key) this.preview.textContent = data.markdown;
       this.renderList();
-      this.setReceipt(data.contentComparisonComplete ? "" : this.tx("discoveryStatusUnverified"));
+      this.setReceipt(!data.contentComparisonComplete ? this.tx("discoveryStatusUnverified") : this.undoableBatchIds.size ? this.tx("discoveryUndoAvailable") : "");
     }
     async ensurePreview(key) {
       if (this.previewed.has(key)) return true;
@@ -8584,27 +9452,33 @@ ${exception.mark.snippet}`;
       return this.previewed.has(key);
     }
     async addOne(key, allowSameContent) {
+      var _a, _b;
       if (!this.sessionId || this.actionBusy) return;
       const candidate = this.candidates.get(key);
       if (!candidate || !this.canAdd(candidate)) return;
+      const previousStatus = (_b = (_a = this.status) == null ? void 0 : _a.textContent) != null ? _b : "";
       this.actionBusy = true;
+      this.setStatus(this.tx("discoveryAddingSingle"));
       this.updateSelectionState();
       this.renderList();
       try {
         if (!await this.ensurePreview(key) || !this.sessionId) return;
-        const result = await this.deps.service.addCandidate(this.sessionId, key, { allowSameContent });
+        const result = await this.deps.service.addCandidate(this.sessionId, key, { allowSameContent, category: this.getCategory(key) });
         if (!result.ok) {
-          this.handleFailure(result);
+          this.handleFailure(result, key);
           return;
         }
         this.handleAddResult(key, result.data);
+      } catch (error) {
+        this.handleFailure({ ok: false, reason: "kernel-error", message: this.errorMessage(error) }, key);
       } finally {
         this.actionBusy = false;
         this.renderList();
+        if (this.sessionId) this.setStatus(previousStatus);
       }
     }
     async addSelected() {
-      var _a;
+      var _a, _b, _c, _d;
       if (!this.sessionId || this.actionBusy || this.selected.size === 0) return;
       const sessionId = this.sessionId;
       const batchStart = this.deps.service.beginAddBatch(sessionId);
@@ -8613,16 +9487,20 @@ ${exception.mark.snippet}`;
         return;
       }
       const batchId = batchStart.data.batchId;
+      const previousStatus = (_b = (_a = this.status) == null ? void 0 : _a.textContent) != null ? _b : "";
       this.actionBusy = true;
       this.updateSelectionState();
       this.renderList();
       const keys = Array.from(this.selected);
+      const categories = new Map(keys.map((key) => [key, this.getCategory(key)]));
+      const allowSameContent = ((_c = this.forceSameContent) == null ? void 0 : _c.checked) === true;
       let added = 0;
       let skipped = 0;
       let failed = 0;
       const details = [];
       try {
-        for (const key of keys) {
+        for (const [index, key] of keys.entries()) {
+          this.setStatus(this.tx("discoveryAddingBatch", String(index + 1), String(keys.length)));
           if (!this.sessionId || this.sessionId !== sessionId) break;
           const candidate = this.candidates.get(key);
           if (!candidate || !this.canAdd(candidate)) {
@@ -8631,12 +9509,13 @@ ${exception.mark.snippet}`;
           }
           if (!await this.ensurePreview(key) || !this.sessionId || this.sessionId !== sessionId) {
             failed++;
-            details.push(`${candidate.title}\uFF1A${this.tx("discoveryReceiptFailed", this.tx("discoveryPreviewEmpty"))}`);
+            details.push(`${candidate.title}\uFF1A${this.tx("discoveryPreviewUnavailable")}`);
             continue;
           }
           const result = await this.deps.service.addCandidate(this.sessionId, key, {
-            allowSameContent: ((_a = this.forceSameContent) == null ? void 0 : _a.checked) === true,
-            batchId
+            allowSameContent,
+            batchId,
+            category: (_d = categories.get(key)) != null ? _d : this.tx("discoveryUnsortedCategory")
           });
           if (!result.ok) {
             if (result.reason === "session-expired") {
@@ -8645,7 +9524,8 @@ ${exception.mark.snippet}`;
               break;
             }
             failed++;
-            details.push(`${candidate.title}\uFF1A${result.message}`);
+            if (result.reason === "source-changed" || result.reason === "invalid-input") this.previewed.delete(key);
+            details.push(`${candidate.title}\uFF1A${this.failureMessage(result)}`);
             continue;
           }
           if (result.data.status === "added") {
@@ -8658,20 +9538,22 @@ ${exception.mark.snippet}`;
         }
       } catch (error) {
         failed++;
-        details.push(error instanceof Error ? error.message : String(error));
+        details.push(this.errorMessage(error));
       } finally {
         const finish = this.deps.service.finishAddBatch(sessionId, batchId);
         if (!finish.ok) {
           failed++;
-          details.push(finish.message);
+          details.push(this.failureMessage(finish));
         }
         this.actionBusy = false;
         this.renderList();
+        if (this.sessionId) this.setStatus(previousStatus);
       }
       const summary = `${this.tx("discoveryReceiptBatch", String(added), String(skipped), String(failed))}${details.length ? `
 ${details.join("\n")}` : ""}`;
       if (added > 0) this.undoableBatchIds.add(batchId);
       this.setReceipt(summary, failed > 0, added > 0 ? [batchId] : []);
+      this.updateSelectionState();
     }
     handleAddResult(key, result, showReceipt = true) {
       var _a, _b, _c, _d;
@@ -8712,30 +9594,72 @@ ${details.join("\n")}` : ""}`;
       force.textContent = `${this.tx("discoveryAdd")}\uFF08${title}\uFF09`;
       force.dataset.xlcDiscoveryAction = "force-same-content";
       force.addEventListener("click", () => {
-        if (this.forceSameContent) this.forceSameContent.checked = true;
         void this.addOne(key, true);
       });
       this.receipt.appendChild(document.createTextNode(" "));
       this.receipt.appendChild(force);
     }
-    handleFailure(result) {
+    handleFailure(result, candidateKey, previewFailure = false) {
       var _a, _b;
       if (result.reason === "session-expired") {
+        this.previewSeq++;
         this.session = null;
         this.sessionId = null;
+        this.candidates.clear();
         this.selected.clear();
+        this.previewed.clear();
+        this.categoryOverrides.clear();
+        this.undoableBatchIds.clear();
+        this.activeKey = null;
+        this.scanState = "failed";
+        this.syncCandidateCategory();
+        if (this.preview) this.preview.textContent = this.tx("discoverySessionExpired");
         this.setStatus(this.tx("discoverySessionExpired"), true);
         this.showRetryReceipt();
         this.renderList();
         return;
       }
-      this.setReceipt(result.message || this.tx("discoveryUnknown"), true);
-      (_b = (_a = this.deps).notify) == null ? void 0 : _b.call(_a, "error", result.message || this.tx("discoveryUnknown"));
+      const message = this.failureMessage(result);
+      const retryPreview = candidateKey && (previewFailure || result.reason === "source-changed" || result.reason === "invalid-input");
+      if (retryPreview) {
+        this.previewed.delete(candidateKey);
+        if (this.preview && this.activeKey === candidateKey) this.preview.textContent = message;
+      }
+      this.setReceipt(message, true);
+      if (retryPreview && this.receipt) {
+        const retry = document.createElement("button");
+        retry.type = "button";
+        retry.className = "b3-button xlc-btn-ghost";
+        retry.textContent = this.tx("discoveryPreviewRetry");
+        retry.dataset.xlcDiscoveryAction = "retry-preview";
+        retry.disabled = this.actionBusy;
+        retry.addEventListener("click", () => void this.selectCandidate(candidateKey));
+        this.receipt.appendChild(retry);
+      }
+      (_b = (_a = this.deps).notify) == null ? void 0 : _b.call(_a, "error", message);
     }
     failureMessage(result) {
-      if (result.reason === "not-configured") return this.tx("discoveryNotConfigured");
-      if (result.reason === "session-expired") return this.tx("discoverySessionExpired");
-      return this.tx("discoveryScanFailed", result.message || this.tx("discoveryUnknown"));
+      const keys = {
+        "not-configured": "discoveryNotConfigured",
+        "library-document": "discoveryLibraryDocument",
+        "library-boundary-unknown": "discoveryBoundaryUnknown",
+        "invalid-response": "discoveryInvalidResponse",
+        "invalid-input": "discoveryInvalidInput",
+        "not-found": "discoverySourceUnavailable",
+        "source-changed": "discoverySourceChanged",
+        "content-too-long": "discoveryContentTooLong",
+        "library-check-incomplete": "discoveryLibraryCheckIncomplete",
+        "session-expired": "discoverySessionExpired",
+        conflict: "discoveryOperationConflict",
+        timeout: "timeout",
+        cancelled: "discoveryScanStoppedEmpty"
+      };
+      const key = result.reason ? keys[result.reason] : void 0;
+      return key ? this.tx(key) : this.errorMessage(result.message);
+    }
+    errorMessage(error) {
+      const message = error instanceof Error ? error.message : typeof error === "string" ? error : "";
+      return /[\u3400-\u9fff]/.test(message) ? message : this.tx("discoveryKernelError");
     }
     async undoBatch(batchId) {
       var _a, _b, _c, _d, _e;
@@ -8748,13 +9672,14 @@ ${details.join("\n")}` : ""}`;
       try {
         const result = await this.deps.service.undoBatch(sessionId, batchId);
         if (!result.ok) {
-          this.setReceipt(result.message || this.tx("discoveryUnknown"), true, [batchId], "discoveryUndoReceiptTitle");
-          (_b = (_a = this.deps).notify) == null ? void 0 : _b.call(_a, "error", result.message || this.tx("discoveryUnknown"));
+          const message = this.failureMessage(result);
+          this.setReceipt(message, true, [batchId], "discoveryUndoReceiptTitle");
+          (_b = (_a = this.deps).notify) == null ? void 0 : _b.call(_a, "error", message);
           return;
         }
         this.showUndoResult(result.data);
       } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
+        const message = this.errorMessage(error);
         this.setReceipt(message, true, [batchId], "discoveryUndoReceiptTitle");
         (_d = (_c = this.deps).notify) == null ? void 0 : _d.call(_c, "error", message);
       } finally {
@@ -8789,7 +9714,7 @@ ${details.join("\n")}` : ""}`;
       };
       const lines = [this.tx("discoveryUndoDone", String(result.deleted), String(result.skipped.length), String(result.failed.length))];
       for (const item of result.skipped) lines.push(`${item.title}\uFF1A${this.tx((_e = skipKey[item.reason]) != null ? _e : "discoveryUnknown")}`);
-      for (const item of result.failed) lines.push(`${item.title}\uFF1A${this.tx("discoveryUndoDeleteFailed", item.message)}`);
+      for (const item of result.failed) lines.push(`${item.title}\uFF1A${this.tx("discoveryUndoDeleteFailed", this.errorMessage(item.message))}`);
       const retryable = result.skipped.some((item) => item.reason !== "not-found") || result.failed.length > 0;
       if (!retryable) this.undoableBatchIds.delete(result.batchId);
       this.setReceipt(result.alreadyUndone ? this.tx("discoveryUndoAlreadyDone") : lines.join("\n"), false, retryable ? [result.batchId] : [], "discoveryUndoReceiptTitle");
@@ -8839,14 +9764,36 @@ ${details.join("\n")}` : ""}`;
     "xlc-demo0000004": "\uFF08\u5F15\u7528\u8BED\u6CD5\u9884\u89C8\uFF09((20240101120002-bbbbbbb '\u4EA7\u54C1\u9700\u6C42\u6A21\u677F'))",
     "xlc-demo0000005": "https://wiki.example.com/sla"
   };
+  var LARGE_ENTRIES = Array.from({ length: 100 }, (_, index) => {
+    const base = ENTRIES[index % ENTRIES.length];
+    return {
+      ...base,
+      id: `xlc-window-${String(index + 1).padStart(3, "0")}`,
+      blockId: `2024010113${String(index).padStart(4, "0")}-window`,
+      title: `\u7A97\u53E3\u6D4B\u8BD5\u6761\u76EE ${String(index + 1).padStart(3, "0")}`,
+      alias: "",
+      category: "",
+      summary: `\u7528\u4E8E\u865A\u62DF\u5217\u8868\u952E\u76D8\u56DE\u5F52\u7684\u7B2C ${index + 1} \u6761\u7ED3\u679C`,
+      sourceBlockId: `2024010114${String(index).padStart(4, "0")}-window`,
+      varCount: 0
+    };
+  });
   var discoveryController = null;
+  var captureCreatedItems = [];
+  var captureAiTidyCalls = [];
+  var captureAiDraftCalls = [];
+  var deferredTidyResponse = null;
+  var lastSearchDialog = null;
   var T = (key, ...args) => {
     var _a;
     const map = {
       pluginName: "\u5C0F\u9A74\u5E38\u7528\uFF08\u5185\u6D4B\u7248\uFF09",
+      settingsIntro: "\u7BA1\u7406\u5185\u5BB9\u5E93\u3001\u590D\u7528\u504F\u597D\u548C\u6570\u636E\u3002\u5E93\u5185\u5185\u5BB9\u4F1A\u4FDD\u7559\u5728\u601D\u6E90\u6587\u6863\u4E2D\uFF0C\u5E76\u53EF\u7EE7\u7EED\u7F16\u8F91\u3002",
+      captureIntro: "\u5148\u653E\u5165\u60F3\u8981\u590D\u7528\u7684\u5185\u5BB9\uFF0C\u518D\u8865\u5145\u6807\u9898\u548C\u5206\u7C7B\uFF0C\u4E4B\u540E\u53EF\u4EE5\u66F4\u5FEB\u627E\u5230\u5B83\u3002",
       discoveryTitle: "\u4ECE\u5F53\u524D\u6587\u6863\u53D1\u73B0",
       discoveryTitleNotebook: "\u4ECE\u5F53\u524D\u7B14\u8BB0\u672C\u53D1\u73B0",
       discoveryTitleGeneral: "\u53D1\u73B0\u5DF2\u6709\u5185\u5BB9",
+      discoveryTitleTree: "\u4ECE\u6B64\u6587\u6863\u53D1\u73B0\u5E38\u7528\u8BED",
       discoveryScope: "\u626B\u63CF\u8303\u56F4",
       discoveryScopeDocument: "\u5F53\u524D\u6587\u6863",
       discoveryScopeNotebook: "\u5F53\u524D\u7B14\u8BB0\u672C",
@@ -8858,9 +9805,16 @@ ${details.join("\n")}` : ""}`;
       discoverySelectTree: "\u8F93\u5165\u5173\u952E\u8BCD\u67E5\u627E\u6587\u6863\u6811\u6839\u6587\u6863",
       discoverySelectNotebook: "\u9009\u62E9\u8981\u626B\u63CF\u7684\u7B14\u8BB0\u672C",
       discoverySearch: "\u641C\u7D22",
+      discoveryFromTreeMenu: "\u4ECE\u6B64\u6587\u6863\u53D1\u73B0\u5E38\u7528\u8BED",
+      discoverySelectTreeRoot: "\u8BF7\u9009\u62E9\u6587\u6863\u6811\u6839\u6587\u6863",
+      discoverySearchingDocs: "\u6B63\u5728\u641C\u7D22\u6587\u6863\u2026",
+      discoveryNoDocsFound: "\u6CA1\u6709\u627E\u5230\u5339\u914D\u7684\u6587\u6863",
+      discoveryNoNotebooks: "\u5F53\u524D\u6CA1\u6709\u53EF\u626B\u63CF\u7684\u7B14\u8BB0\u672C",
+      discoveryNotebookLoading: "\u6B63\u5728\u8BFB\u53D6\u7B14\u8BB0\u672C\u5217\u8868\u2026",
+      discoveryRetryNotebooks: "\u91CD\u8BD5\u52A0\u8F7D\u7B14\u8BB0\u672C",
       discoveryAllWarning: "\u4E0A\u9650\uFF1A%s \u4E2A\u7B14\u8BB0\u672C\u3001%s \u7BC7\u6587\u6863\u3001%s \u5C42\u76EE\u5F55\u3001%s \u4E2A\u5757\u3001%s \u4E2A\u5019\u9009\u3001\u5355\u5757 %s \u5B57\u7B26\u3001\u5019\u9009\u6587\u672C\u7D2F\u8BA1 %s \u5B57\u7B26\u3001%s \u79D2\u3002\u6587\u6863\u548C\u5757\u6309\u987A\u5E8F\u8BFB\u53D6\uFF1B\u8DEF\u5F84\u67E5\u8BE2\u4E0E\u91CD\u590D\u6838\u9A8C\u6700\u591A 4 \u8DEF\u5E76\u53D1\u3002\u53EA\u8BFB\u626B\u63CF\uFF0C\u4E0D\u4F1A\u81EA\u52A8\u6536\u5F55\u3002",
       discoveryConfirmAll: "\u6211\u786E\u8BA4\u5F00\u59CB\u626B\u63CF\u6240\u6709\u53EF\u641C\u7D22\u7B14\u8BB0\u672C",
-      discoveryTargetRequired: "\u8BF7\u5148\u9009\u62E9\u626B\u63CF\u8303\u56F4",
+      discoveryTargetRequired: "\u8BF7\u5148\u9009\u62E9\u6216\u786E\u8BA4\u626B\u63CF\u76EE\u6807",
       discoverySearchFailed: "\u6587\u6863\u641C\u7D22\u5931\u8D25\uFF1A%s",
       discoveryNotebookLoadFailed: "\u7B14\u8BB0\u672C\u5217\u8868\u52A0\u8F7D\u5931\u8D25\uFF1A%s",
       discoveryErrors: "\u626B\u63CF\u6216\u5185\u5BB9\u5E93\u91CD\u590D\u6838\u9A8C\u5931\u8D25 %s \u5904\uFF0C\u5DF2\u4FDD\u7559\u5176\u4ED6\u7ED3\u679C",
@@ -8923,6 +9877,11 @@ ${details.join("\n")}` : ""}`;
       discoveryPreviewLoading: "\u6B63\u5728\u8BFB\u53D6\u5019\u9009\u6B63\u6587\u2026",
       discoveryAdd: "\u52A0\u5165\u5E38\u7528\u5E93",
       discoveryAddSelected: "\u52A0\u5165\u9009\u4E2D\u9879",
+      discoveryDefaultCategory: "\u9ED8\u8BA4\u5206\u7C7B",
+      discoveryUnsortedCategory: "\u5F85\u6574\u7406",
+      discoveryDefaultCategoryHint: "\u65B0\u6536\u5F55\u9879\u9ED8\u8BA4\u4F7F\u7528\u6B64\u5206\u7C7B\uFF1B\u9884\u89C8\u4E2D\u53EF\u5355\u72EC\u4FEE\u6539\u5F53\u524D\u6761\u76EE\u3002",
+      discoveryCandidateCategory: "\u672C\u6761\u5206\u7C7B",
+      discoveryUseDefaultCategory: "\u6062\u590D\u9ED8\u8BA4",
       discoveryForceSameContent: "\u5141\u8BB8\u6536\u5F55\u5185\u5BB9\u76F8\u540C\u7684\u5019\u9009",
       discoverySelected: "\u5DF2\u9009 %s \u9879",
       discoveryClose: "\u5173\u95ED",
@@ -8947,6 +9906,10 @@ ${details.join("\n")}` : ""}`;
       discoveryNotConfigured: "\u5C1A\u672A\u914D\u7F6E\u5E38\u7528\u5185\u5BB9\u5E93\uFF0C\u65E0\u6CD5\u6536\u5F55\u5019\u9009\u3002",
       searchPlaceholder: "\u641C\u7D22\u6807\u9898\u3001\u522B\u540D\u3001\u6807\u7B7E\u3001\u5206\u7C7B\u548C\u6B63\u6587\u6458\u8981",
       searchHint: "\u8F93\u5165 ? \u52A0\u63CF\u8FF0\uFF0C\u6309\u542B\u4E49\u641C\u7D22\uFF08\u9700\u5728\u672C\u63D2\u4EF6\u8BBE\u7F6E\u4E2D\u542F\u7528 AI\uFF09",
+      kernelAuthRequired: "\u601D\u6E90\u62D2\u7EDD\u4E86\u5F53\u524D\u8BF7\u6C42\uFF0C\u767B\u5F55\u72B6\u6001\u53EF\u80FD\u5DF2\u5931\u6548\u3002\u8BF7\u91CD\u65B0\u767B\u5F55\u540E\u91CD\u8BD5\uFF1B\u5F53\u524D\u641C\u7D22\u6761\u4EF6\u5DF2\u4FDD\u7559\u3002",
+      kernelPermissionDenied: "\u5F53\u524D\u64CD\u4F5C\u65E0\u6743\u8BBF\u95EE\u6240\u9009\u5185\u5BB9\u3002\u8BF7\u68C0\u67E5\u6743\u9650\u540E\u91CD\u8BD5\uFF1B\u5F53\u524D\u641C\u7D22\u6761\u4EF6\u5DF2\u4FDD\u7559\u3002",
+      kernelAuthStatus: "\u767B\u5F55\u72B6\u6001\u5931\u6548",
+      kernelPermissionStatus: "\u8BBF\u95EE\u6743\u9650\u4E0D\u8DB3",
       type: "\u7C7B\u578B",
       tags: "\u6807\u7B7E",
       tagsHint: "\u9017\u53F7\u5206\u9694",
@@ -8987,6 +9950,8 @@ ${details.join("\n")}` : ""}`;
       openSource: "\u6253\u5F00\u6765\u6E90",
       edit: "\u7F16\u8F91",
       delete: "\u5220\u9664",
+      favorite: "\u6536\u85CF",
+      unfavorite: "\u53D6\u6D88\u6536\u85CF",
       insertRef: "\u63D2\u5165\u5F15\u7528",
       insertEmbed: "\u63D2\u5165\u5D4C\u5165",
       insertCopy: "\u590D\u5236\u5185\u5BB9",
@@ -8997,6 +9962,7 @@ ${details.join("\n")}` : ""}`;
       aiFound: "AI \u8BED\u4E49\u641C\u7D22",
       aiWorking: "AI \u5904\u7406\u4E2D\u2026",
       aiOriginalPreserved: "\u539F\u6587\u672A\u88AB\u4FEE\u6539",
+      aiTransport: "AI \u8C03\u7528\u5931\u8D25\uFF0C\u8BF7\u68C0\u67E5\u6A21\u578B\u914D\u7F6E\u6216\u8FDE\u63A5\u540E\u91CD\u8BD5\u3002",
       insertNoEditor: "\u5F53\u524D\u6CA1\u6709\u6D3B\u52A8\u7F16\u8F91\u5668\uFF0C\u5DF2\u590D\u5236\u5230\u526A\u8D34\u677F\uFF0C\u53EF\u624B\u52A8\u7C98\u8D34",
       insertFailed: "\u63D2\u5165\u5931\u8D25",
       insertToDocFailed: "\u76EE\u6807\u6587\u6863\u63D2\u5165\u5931\u8D25",
@@ -9019,6 +9985,8 @@ ${details.join("\n")}` : ""}`;
       cancel: "\u53D6\u6D88",
       confirm: "\u786E\u5B9A",
       invalidItem: "\u6761\u76EE\u6570\u636E\u65E0\u6548",
+      captureContentRequired: "\u8BF7\u586B\u5199\u8981\u4FDD\u5B58\u7684\u5185\u5BB9\u3002",
+      captureUrlInvalid: "\u8BF7\u8F93\u5165\u6709\u6548\u7684 http \u6216 https \u94FE\u63A5\u3002",
       aiTidy: "AI \u6574\u7406",
       aiDraft: "AI \u8349\u7A3F",
       aiDraftDesc: "\u63CF\u8FF0\u4F60\u60F3\u8981\u7684\u5185\u5BB9\uFF0CAI \u751F\u6210\u8349\u7A3F",
@@ -9239,19 +10207,25 @@ ${details.join("\n")}` : ""}`;
     var _a, _b;
     const aiOn = (_a = overrides.aiEnabled) != null ? _a : true;
     let activeFilters = { ...(_b = overrides.filters) != null ? _b : { type: "", tag: "", category: "" } };
+    const favorites = /* @__PURE__ */ new Set(["xlc-demo0000001"]);
     return {
       t: (key, ...args) => key === "newItemAction" && overrides.newItemAction ? overrides.newItemAction : T(key, ...args),
       search: async (query) => {
-        var _a2, _b2;
+        var _a2, _b2, _c;
         const w = window;
         w.__xlcSearchCalls = ((_a2 = w.__xlcSearchCalls) != null ? _a2 : 0) + 1;
+        const q = typeof query === "string" ? { text: query } : query;
+        const queries = (_b2 = window.__xlcQueries) != null ? _b2 : [];
+        queries.push({ ...q });
+        window.__xlcQueries = queries;
         if (overrides.empty) return { entries: [], truncated: false, total: 0 };
-        const text = typeof query === "string" ? query : (_b2 = query == null ? void 0 : query.text) != null ? _b2 : "";
-        const q = text.trim();
-        let entries = !q || q.startsWith("?") ? ENTRIES : ENTRIES.filter((e) => {
+        const sourceEntries = overrides.largeResults ? LARGE_ENTRIES : ENTRIES;
+        const text = typeof query === "string" ? query : (_c = query == null ? void 0 : query.text) != null ? _c : "";
+        const searchText = text.trim();
+        let entries = !searchText || searchText.startsWith("?") ? sourceEntries : sourceEntries.filter((e) => {
           var _a3;
           const hay = [e.title, e.alias, e.summary, e.category, ...(_a3 = e.tags) != null ? _a3 : []].join(" ").toLowerCase();
-          return hay.includes(q.toLowerCase());
+          return hay.includes(searchText.toLowerCase());
         });
         if (typeof query !== "string") {
           if (query.itemType) entries = entries.filter((entry) => entry.itemType === query.itemType);
@@ -9272,7 +10246,8 @@ ${details.join("\n")}` : ""}`;
       runAction: async (itemId, mode) => {
         var _a2;
         const w = window;
-        ((_a2 = w.__xlcActions) != null ? _a2 : w.__xlcActions = []).push({ id: itemId, mode });
+        const observedMode = overrides.mobile && !overrides.insertTarget ? "copy" : mode;
+        ((_a2 = w.__xlcActions) != null ? _a2 : w.__xlcActions = []).push({ id: itemId, mode: observedMode });
         if (overrides.actionDelayMs) await new Promise((resolve) => setTimeout(resolve, overrides.actionDelayMs));
         return { ok: true, message: "inserted" };
       },
@@ -9280,13 +10255,28 @@ ${details.join("\n")}` : ""}`;
         window.__xlcLastFills = fills;
         return { ok: true, message: "inserted" };
       },
-      openSource: async () => ({ ok: true, message: "opened" }),
-      editItem: async () => {
+      openSource: async (itemId) => {
+        var _a2;
+        const w = window;
+        ((_a2 = w.__xlcOpenedSources) != null ? _a2 : w.__xlcOpenedSources = []).push(itemId);
+        return { ok: true, message: "opened" };
+      },
+      editItem: async (itemId) => {
+        var _a2;
+        const w = window;
+        ((_a2 = w.__xlcEditedItems) != null ? _a2 : w.__xlcEditedItems = []).push(itemId);
       },
       deleteItem: async () => {
       },
-      toggleFavorite: () => true,
-      isFavorite: (id) => id === "xlc-demo0000001",
+      toggleFavorite: (itemId) => {
+        var _a2;
+        const w = window;
+        ((_a2 = w.__xlcFavoriteToggles) != null ? _a2 : w.__xlcFavoriteToggles = []).push(itemId);
+        if (favorites.has(itemId)) favorites.delete(itemId);
+        else favorites.add(itemId);
+        return favorites.has(itemId);
+      },
+      isFavorite: (id) => favorites.has(id),
       insertRaw: async () => true,
       copyText: async (text) => {
         window.__xlcCopied = text;
@@ -9296,7 +10286,12 @@ ${details.join("\n")}` : ""}`;
       setSort: () => {
       },
       searchDocs: async (k) => k ? [{ id: "20240101120001-hijklmn", hPath: "/\u5E38\u7528\u5185\u5BB9\u5E93", name: "\u5E38\u7528\u5185\u5BB9\u5E93" }] : [],
-      insertToDoc: async () => true,
+      insertToDoc: async (itemId, docId, hPath) => {
+        var _a2;
+        const w = window;
+        ((_a2 = w.__xlcDocActions) != null ? _a2 : w.__xlcDocActions = []).push({ id: itemId, docId, hPath });
+        return true;
+      },
       duplicateItem: async () => {
       },
       saveTransformed: async () => {
@@ -9313,8 +10308,7 @@ ${details.join("\n")}` : ""}`;
       setLastQuery: () => {
       },
       insertTarget: null,
-      openSetup: () => {
-      },
+      openSetup: () => window.XlcHarness.openSettings(),
       promptVariables: () => true,
       getUsage: () => ({
         "xlc-demo0000001": { count: 32, lastAt: 400 },
@@ -9323,7 +10317,10 @@ ${details.join("\n")}` : ""}`;
         "xlc-demo0000005": { count: 4, lastAt: 100 }
       }),
       newItem: (titleCandidate) => {
+        var _a2;
         document.body.dataset.xlcNewItemTitle = titleCandidate != null ? titleCandidate : "";
+        document.body.dataset.xlcNewItemCalls = String(Number((_a2 = document.body.dataset.xlcNewItemCalls) != null ? _a2 : 0) + 1);
+        window.XlcHarness.openCapture();
       },
       providerSearch: async (query) => query.includes("\u5DE5\u4F5C\u53F0") ? [
         { virtualId: "pv:xiaolv-speed-switch:1", providerId: "xiaolv-speed-switch", providerName: "\u5C0F\u9A74\u96F7\u5207", title: "\u5F53\u524D\u5DE5\u4F5C\u53F0", payload: "\u5FEB\u901F\u56DE\u5230\u5DE5\u4F5C\u53F0\u5E03\u5C40\uFF08\u63D0\u4F9B\u65B9\u6F14\u793A\u6570\u636E\uFF09" },
@@ -9354,6 +10351,7 @@ ${details.join("\n")}` : ""}`;
     openDialog(overrides) {
       var _a;
       const dialog = new CommonSearchDialog(makeDeps(overrides));
+      lastSearchDialog = dialog;
       if (overrides == null ? void 0 : overrides.insertTarget) dialog.insertTarget = overrides.insertTarget;
       dialog.open();
       const input = document.querySelector(".xlc-search-input");
@@ -9362,6 +10360,10 @@ ${details.join("\n")}` : ""}`;
         input.dispatchEvent(new Event("input"));
       }
       return dialog;
+    },
+    triggerAccessIssue(kind = "auth") {
+      const key = kind === "auth" ? "kernelAuthRequired" : "kernelPermissionDenied";
+      lastSearchDialog == null ? void 0 : lastSearchDialog.showKernelAccessIssue(kind, T(key));
     },
     openSettings(mode = "doc") {
       const ctx = {
@@ -9454,10 +10456,12 @@ ${details.join("\n")}` : ""}`;
           },
           createLibraryDoc: async () => ({ ok: true, data: { docId: "20240101120001-hijklmn" } }),
           searchDocs: async (k) => {
+            var _a, _b, _c, _d, _e;
             docSearchRequests++;
-            if (options == null ? void 0 : options.docSearchDelayMs) await new Promise((resolve) => setTimeout(resolve, options.docSearchDelayMs));
+            const delay = (_c = (_b = (_a = options == null ? void 0 : options.docSearchDelayByKeyword) == null ? void 0 : _a[k]) != null ? _b : options == null ? void 0 : options.docSearchDelayMs) != null ? _c : 0;
+            if (delay) await new Promise((resolve) => setTimeout(resolve, delay));
             if ((options == null ? void 0 : options.docSearchErrorOnce) && docSearchRequests === 1) return { ok: false, reason: "kernel-error", message: "offline" };
-            return k ? { ok: true, data: [{ id: "20240101120001-hijklmn", hPath: "/\u5E38\u7528\u5185\u5BB9\u5E93", box: "nb", name: "\u5E38\u7528\u5185\u5BB9\u5E93" }] } : { ok: true, data: [] };
+            return k ? { ok: true, data: [{ id: "20240101120001-hijklmn", hPath: (_e = (_d = options == null ? void 0 : options.docSearchPathByKeyword) == null ? void 0 : _d[k]) != null ? _e : "/\u5E38\u7528\u5185\u5BB9\u5E93", box: "nb", name: "\u5E38\u7528\u5185\u5BB9\u5E93" }] } : { ok: true, data: [] };
           },
           getDocPath: async () => "/\u5E38\u7528\u5185\u5BB9\u5E93",
           reindex: async () => ({ entries: [], items: /* @__PURE__ */ new Map(), truncated: false, docsScanned: 0, errors: [], builtAt: 1 })
@@ -9483,7 +10487,9 @@ ${details.join("\n")}` : ""}`;
       };
       openSetupDialog(ctx);
     },
-    openCapture(aiOn = true, aiDelayMs = 0) {
+    openCapture(aiOn = true, aiDelayMs = 0, options) {
+      let tidyCall = 0;
+      let draftCall = 0;
       const capture = new CaptureDialog({
         t: T,
         getSelectionText: () => ({ text: "", blockId: null }),
@@ -9491,6 +10497,8 @@ ${details.join("\n")}` : ""}`;
         readClipboardText: async () => "",
         createItem: async (input) => {
           var _a;
+          captureCreatedItems.push(input);
+          document.body.dataset.xlcCaptureCreatedItems = JSON.stringify(captureCreatedItems);
           return { ok: true, message: (_a = input.title) != null ? _a : "item", itemId: "xlc-new000000001" };
         },
         notify: () => {
@@ -9499,11 +10507,31 @@ ${details.join("\n")}` : ""}`;
         exportDocContent: async () => ({ hPath: "/\u5E38\u7528\u5185\u5BB9\u5E93", content: "# \u5185\u5BB9" }),
         aiEnabled: () => aiOn,
         aiTidy: async (content) => {
+          tidyCall++;
+          if (options == null ? void 0 : options.deferTidy) {
+            return await new Promise((resolve) => {
+              deferredTidyResponse = resolve;
+              document.body.dataset.xlcDeferredTidyPending = "true";
+            });
+          }
           if (aiDelayMs) await new Promise((resolve) => setTimeout(resolve, aiDelayMs));
-          return { ok: true, title: "AI \u5EFA\u8BAE " + content.slice(0, 6), tags: ["AI"] };
+          captureAiTidyCalls.push(content);
+          document.body.dataset.xlcCaptureAiTidyCalls = JSON.stringify(captureAiTidyCalls);
+          if ((options == null ? void 0 : options.tidyFailureCall) === tidyCall) {
+            if (options.tidyFailureKind === "throw") throw new Error("AI \u6574\u7406\u8BF7\u6C42\u6682\u65F6\u5931\u8D25\uFF0C\u8BF7\u91CD\u8BD5\u3002");
+            return { ok: false, message: "AI \u6574\u7406\u8BF7\u6C42\u6682\u65F6\u5931\u8D25\uFF0C\u8BF7\u91CD\u8BD5\u3002" };
+          }
+          return { ok: true, title: "AI \u5EFA\u8BAE " + content.slice(0, 6), alias: "AI \u522B\u540D", tags: ["AI", "\u6A21\u677F"], category: "AI \u6A21\u677F" };
         },
         aiDraft: async (desc) => {
+          draftCall++;
           if (aiDelayMs) await new Promise((resolve) => setTimeout(resolve, aiDelayMs));
+          captureAiDraftCalls.push(desc);
+          document.body.dataset.xlcCaptureAiDraftCalls = JSON.stringify(captureAiDraftCalls);
+          if ((options == null ? void 0 : options.draftFailureCall) === draftCall) {
+            if (options.draftFailureKind === "throw") throw new Error("AI \u8349\u7A3F\u8BF7\u6C42\u6682\u65F6\u5931\u8D25\uFF0C\u8BF7\u91CD\u8BD5\u3002");
+            return { ok: false, message: "AI \u8349\u7A3F\u8BF7\u6C42\u6682\u65F6\u5931\u8D25\uFF0C\u8BF7\u91CD\u8BD5\u3002" };
+          }
           return { ok: true, text: "\u8349\u7A3F\uFF08" + desc + "\uFF09" };
         },
         findDuplicate: async () => null,
@@ -9523,50 +10551,67 @@ ${details.join("\n")}` : ""}`;
       const issues = [{ line: 3, reason: "bad shape" }, { line: 7, reason: "bad shape" }, { line: 11, reason: "bad shape" }];
       openImportPolicyDialog(ctx, parsed, issues, { kind: "json", text: "{}" });
     },
-    openDiscovery() {
+    openDiscovery(options) {
       let sessionId = "discovery-harness";
       let stopRequested = false;
-      const candidates = [
+      let notebookRequests = 0;
+      let treeSearchRequests = 0;
+      const sampleCandidates = [
         { key: "candidate-1", sourceDocId: "20240101120001-hijklmn", sourceBlockId: "20240101120002-bbbbbbb", sourcePath: "/\u9879\u76EE\u7B14\u8BB0", itemType: "markdown", title: "\u5BA2\u6237\u5EF6\u671F\u56DE\u590D", summary: "\u5173\u4E8E\u4EA4\u4ED8\u5EF6\u671F\u7684\u8BF4\u660E", status: "candidate" },
         { key: "candidate-2", sourceDocId: "20240101120001-hijklmn", sourceBlockId: "20240101120003-ccccccc", sourcePath: "/\u9879\u76EE\u7B14\u8BB0", itemType: "text", title: "\u6536\u4EF6\u5730\u5740", summary: "\u90AE\u5BC4\u5730\u5740\u6A21\u677F", status: "same-content", match: { itemId: "xlc-existing0001", title: "\u5DF2\u6709\u6536\u4EF6\u5730\u5740" } }
       ];
+      const candidates = (options == null ? void 0 : options.candidateCount) ? Array.from({ length: options.candidateCount }, (_, index) => ({
+        key: `page-candidate-${String(index + 1).padStart(4, "0")}`,
+        sourceDocId: "20240101120001-hijklmn",
+        sourceBlockId: `2024010112${String(index + 2).padStart(4, "0")}-bbbbbbb`,
+        sourcePath: "/\u9879\u76EE\u7B14\u8BB0",
+        itemType: "markdown",
+        title: `\u5206\u9875\u5019\u9009 ${String(index + 1).padStart(3, "0")}`,
+        summary: "\u7528\u4E8E\u9A8C\u8BC1\u5019\u9009\u5206\u9875\u4E0E\u952E\u76D8\u7126\u70B9\u6062\u590D\u3002",
+        status: "candidate"
+      })) : sampleCandidates;
       const makeView = (scope, stopped = false) => ({ id: sessionId, scope, sourceDocId: "20240101120001-hijklmn", sourcePath: "/\u9879\u76EE\u7B14\u8BB0", candidates: candidates.map((candidate) => ({ ...candidate })), scannedBlocks: 4, scannedDocs: 1, scannedNotebooks: scope === "all-notebooks" ? 2 : 1, skippedEmpty: 1, skippedLong: 0, truncated: stopped, stopped, truncationReasons: stopped ? ["cancelled"] : [], errors: [] });
       const service = {
         discoverCurrentDocument: async () => ({ ok: true, data: makeView("document") }),
-        discoverCurrentNotebook: async (_docId, options) => {
+        discoverCurrentNotebook: async (_docId, options2) => {
           var _a, _b;
           stopRequested = false;
-          (_a = options == null ? void 0 : options.onProgress) == null ? void 0 : _a.call(options, { phase: "enumerating", scannedDocs: 0, scannedBlocks: 0, discoveredDocs: 3 });
-          (_b = options == null ? void 0 : options.onProgress) == null ? void 0 : _b.call(options, { phase: "scanning", scannedDocs: 1, scannedBlocks: 4, discoveredDocs: 3, totalDocs: 3 });
+          (_a = options2 == null ? void 0 : options2.onProgress) == null ? void 0 : _a.call(options2, { phase: "enumerating", scannedDocs: 0, scannedBlocks: 0, discoveredDocs: 3 });
+          (_b = options2 == null ? void 0 : options2.onProgress) == null ? void 0 : _b.call(options2, { phase: "scanning", scannedDocs: 1, scannedBlocks: 4, discoveredDocs: 3, totalDocs: 3 });
           await new Promise((resolve) => setTimeout(resolve, 80));
           return { ok: true, data: { ...makeView("notebook", stopRequested), scannedBlocks: 12, scannedDocs: 3, skippedEmpty: 2 } };
         },
-        discoverTree: async () => {
+        discoverTree: async (docId) => {
           document.body.dataset.xlcDiscoveryScopeUsed = "tree";
+          document.body.dataset.xlcDiscoveryTargetDoc = docId;
           return { ok: true, data: makeView("tree") };
         },
-        discoverNotebook: async () => {
+        discoverNotebook: async (notebookId) => {
           document.body.dataset.xlcDiscoveryScopeUsed = "selected-notebook";
+          document.body.dataset.xlcDiscoveryTargetNotebook = notebookId;
           return { ok: true, data: makeView("notebook") };
         },
-        discoverAllNotebooks: async (options) => {
-          document.body.dataset.xlcDiscoveryScopeUsed = (options == null ? void 0 : options.confirmed) ? "all-confirmed" : "all-unconfirmed";
-          return (options == null ? void 0 : options.confirmed) ? { ok: true, data: makeView("all-notebooks") } : { ok: false, reason: "invalid-input", message: "confirmation required" };
+        discoverAllNotebooks: async (options2) => {
+          document.body.dataset.xlcDiscoveryScopeUsed = (options2 == null ? void 0 : options2.confirmed) ? "all-confirmed" : "all-unconfirmed";
+          return (options2 == null ? void 0 : options2.confirmed) ? { ok: true, data: makeView("all-notebooks") } : { ok: false, reason: "invalid-input", message: "confirmation required" };
         },
         previewCandidate: async (_id, key) => {
           var _a;
           const candidate = (_a = candidates.find((item) => item.key === key)) != null ? _a : candidates[0];
           return { ok: true, data: { candidate: { ...candidate }, markdown: key === "candidate-2" ? "\u6536\u4EF6\u4EBA\uFF1A{{xlc:ask:\u6536\u4EF6\u4EBA}}\n\u5730\u5740\uFF1A{{xlc:ask:\u5730\u5740|textarea}}" : "\u60A8\u597D\uFF0C\u5173\u4E8E\u672C\u671F\u4EA4\u4ED8\u5EF6\u671F\uFF0C\u6211\u4EEC\u6DF1\u8868\u6B49\u610F\u3002", contentComparisonComplete: true } };
         },
-        addCandidate: async (_id, key, options) => {
-          var _a, _b;
-          const candidate = (_a = candidates.find((item) => item.key === key)) != null ? _a : candidates[0];
-          if (candidate.status === "same-content" && !(options == null ? void 0 : options.allowSameContent)) {
+        addCandidate: async (_id, key, options2) => {
+          var _a, _b, _c;
+          const recorded = (_a = window.__xlcDiscoveryCategories) != null ? _a : [];
+          recorded.push({ key, category: options2 == null ? void 0 : options2.category });
+          window.__xlcDiscoveryCategories = recorded;
+          const candidate = (_b = candidates.find((item) => item.key === key)) != null ? _b : candidates[0];
+          if (candidate.status === "same-content" && !(options2 == null ? void 0 : options2.allowSameContent)) {
             return { ok: true, data: { status: "same-content", itemId: "xlc-existing0001", title: "\u5DF2\u6709\u6536\u4EF6\u5730\u5740" } };
           }
           await new Promise((resolve) => setTimeout(resolve, 120));
           const id = key === "candidate-2" ? "xlc-discovered0002" : "xlc-discovered0001";
-          return { ok: true, data: { status: "added", item: { id, title: candidate.title }, batchId: (_b = options == null ? void 0 : options.batchId) != null ? _b : "batch-harness" } };
+          return { ok: true, data: { status: "added", item: { id, title: candidate.title }, batchId: (_c = options2 == null ? void 0 : options2.batchId) != null ? _c : "batch-harness" } };
         },
         beginAddBatch: () => ({ ok: true, data: { batchId: "batch-harness" } }),
         finishAddBatch: (_id, batchId) => ({ ok: true, data: { batchId, added: 2, discarded: false } }),
@@ -9599,12 +10644,34 @@ ${details.join("\n")}` : ""}`;
         notify: (_kind, message) => {
           document.body.dataset.xlcDiscoveryNotice = message;
         },
-        listNotebooks: async () => [{ id: "20240101", name: "\u7B14\u8BB0\u672C\u4E00" }, { id: "20240102", name: "\u7B14\u8BB0\u672C\u4E8C" }],
-        searchDocs: async (keyword) => keyword ? [{ id: "20240101120001-hijklmn", hPath: "/\u9879\u76EE\u7B14\u8BB0", box: "20240101", name: "\u9879\u76EE\u7B14\u8BB0" }] : []
-      }, { docId: "20240101120001-hijklmn", sourcePath: "/\u9879\u76EE\u7B14\u8BB0" });
+        listNotebooks: async () => {
+          notebookRequests++;
+          if ((options == null ? void 0 : options.notebookLoadErrorOnce) && notebookRequests === 1) throw new Error("offline");
+          if (options == null ? void 0 : options.emptyNotebookList) return [];
+          return [{ id: "20240101", name: "\u7B14\u8BB0\u672C\u4E00" }, { id: "20240102", name: "\u7B14\u8BB0\u672C\u4E8C" }];
+        },
+        searchDocs: async (keyword) => {
+          treeSearchRequests++;
+          document.body.dataset.xlcDiscoveryTreeSearchRequests = String(treeSearchRequests);
+          if (keyword === "\u65E7\u9879\u76EE") await new Promise((resolve) => setTimeout(resolve, 100));
+          if (keyword === "\u9879\u76EE") return [{ id: "20240101120001-hijklmn", hPath: "/\u9879\u76EE\u7B14\u8BB0", box: "20240101", name: "\u9879\u76EE\u7B14\u8BB0" }];
+          if (keyword === "\u65B0\u9879\u76EE") return [{ id: "20240102120001-qrstuvw", hPath: "/\u65B0\u9879\u76EE", box: "20240102", name: "\u65B0\u9879\u76EE" }];
+          return [];
+        }
+      }, {
+        docId: "20240101120001-hijklmn",
+        sourcePath: "/\u9879\u76EE\u7B14\u8BB0",
+        scope: (options == null ? void 0 : options.initialTreeRoot) ? "tree" : void 0,
+        initialTreeRootId: (options == null ? void 0 : options.initialTreeRoot) ? "20240101120001-hijklmn" : void 0,
+        title: (options == null ? void 0 : options.initialTreeRoot) ? "\u4ECE\u6B64\u6587\u6863\u53D1\u73B0\u5E38\u7528\u8BED" : void 0
+      });
     },
     closeDiscovery() {
       if ((discoveryController == null ? void 0 : discoveryController.close()) !== false) discoveryController = null;
+    },
+    completeDeferredTidy() {
+      deferredTidyResponse == null ? void 0 : deferredTidyResponse({ ok: true, title: "\u8FDF\u5230\u7684\u65E7\u5EFA\u8BAE", alias: "\u65E7\u522B\u540D", tags: ["\u65E7\u6807\u7B7E"], category: "\u65E7\u5206\u7C7B" });
+      deferredTidyResponse = null;
     }
   };
 })();

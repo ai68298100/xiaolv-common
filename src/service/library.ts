@@ -153,11 +153,34 @@ export interface SourceHealth {
 export interface LibraryServiceOptions {
     /** 二进制资源探针。/api/file/getFile 不是 fetchSyncPost 信封端点，生产环境必须注入同源 fetch 探针。 */
     probeAsset?: (path: string) => Promise<boolean>;
+    /** 写操作成功后通知受影响的逻辑条目；用于精确失效 UI 侧可丢弃缓存。 */
+    onItemsChanged?: (itemIds: readonly string[]) => void;
+}
+
+/** 写入操作选项：UI 锁按钮只是第一道防线，服务层用 key 把同一提交去重。 */
+export interface WriteOptions {
+    batchToken?: string;
+    idempotencyKey?: string;
 }
 
 export class LibraryService {
     private config: LibraryConfig | null = null;
     private index: IndexBuildResult | null = null;
+    /**
+     * 写操作按条目/逻辑 ID 串行化。UI 已经锁按钮，但协议调用方、重复快捷键和
+     * 两个弹窗仍可能同时写同一块；队列保证失败不会让后一个请求覆盖回滚状态。
+     */
+    private readonly writeLocks = new Map<string, Promise<void>>();
+    /** IDs created during this service lifetime; survives cache invalidation until a config switch. */
+    private readonly createdLogicalIds = new Set<string>();
+    /** 已完成的幂等写回执；短期保留可防止网络重试/双击在锁释放后再次落块。 */
+    private readonly idempotencyReceipts = new Map<string, Receipt<{item: CommonItem}>>();
+    private readonly updateReceipts = new Map<string, Receipt<{item: CommonItem}>>();
+    private readonly removeReceipts = new Map<string, Receipt<{blockId: string}>>();
+    /** 成功的文档追加回执；仅调用方提供幂等键时启用。 */
+    private readonly appendReceipts = new Map<string, boolean>();
+    /** 首次设置创建文档的幂等回执，避免确认弹窗/宿主重试产生多个库文档。 */
+    private readonly libraryDocReceipts = new Map<string, Receipt<{docId: string}>>();
     private readonly options: LibraryServiceOptions;
     private readonly conditionalDeleteGrants = new WeakMap<CommonItem, {
         batchToken: string;
@@ -170,12 +193,46 @@ export class LibraryService {
         this.options = options;
     }
 
+    private notifyItemsChanged(itemIds: readonly string[]): void {
+        if (itemIds.length === 0 || !this.options.onItemsChanged) return;
+        try {
+            this.options.onItemsChanged([...new Set(itemIds)]);
+        } catch {
+            // 缓存通知是可丢弃的旁路，不得让已成功的宿主写入变成失败回执。
+        }
+    }
+
+    private rememberReceipt<T>(cache: Map<string, T>, key: string, receipt: T): void {
+        cache.set(key, receipt);
+        while (cache.size > 256) {
+            const oldest = cache.keys().next().value as string | undefined;
+            if (!oldest) break;
+            cache.delete(oldest);
+        }
+    }
+
+    private withWriteLock<T>(key: string, action: () => Promise<T>): Promise<T> {
+        const previous = this.writeLocks.get(key) ?? Promise.resolve();
+        const current = previous.then(action);
+        const tail = current.then(() => undefined, () => undefined);
+        this.writeLocks.set(key, tail);
+        return current.finally(() => {
+            if (this.writeLocks.get(key) === tail) this.writeLocks.delete(key);
+        });
+    }
+
     getConfig(): LibraryConfig | null {
         return this.config ? {...this.config} : null;
     }
 
     setConfig(config: LibraryConfig): void {
         this.config = {...config};
+        this.createdLogicalIds.clear();
+        this.idempotencyReceipts.clear();
+        this.updateReceipts.clear();
+        this.removeReceipts.clear();
+        this.appendReceipts.clear();
+        this.libraryDocReceipts.clear();
         this.invalidateIndex(); // 库配置变化必须重建索引
     }
 
@@ -256,19 +313,33 @@ export class LibraryService {
     }
 
     /** 创建库文档（首次引导；UI 层负责先向用户确认）。返回新文档 ID。 */
-    async createLibraryDoc(notebookId: string, title: string): Promise<Receipt<{docId: string}>> {
+    async createLibraryDoc(notebookId: string, title: string, options: WriteOptions = {}): Promise<Receipt<{docId: string}>> {
         if (!notebookId || !title.trim()) return fail("invalid-input", "notebook/title required");
-        try {
-            const docId = parseDocId(await this.kernel.request("createDocWithMd", {
-                notebook: notebookId,
-                path: "/" + title.trim().replace(/\//g, "-"),
-                markdown: `# ${title.trim()}\n\n`,
-            }));
-            if (!docId) return fail("kernel-error", "createDocWithMd returned no id");
-            return ok({docId});
-        } catch (err) {
-            return toFailureReceipt(err);
-        }
+        const normalizedTitle = title.trim();
+        const idempotencyKey = typeof options.idempotencyKey === "string" && options.idempotencyKey.length >= 8
+            && options.idempotencyKey.length <= 128 ? options.idempotencyKey : "";
+        const receiptKey = idempotencyKey ? `${notebookId}:${idempotencyKey}` : "";
+        const key = `library-doc:${notebookId}:${normalizedTitle}`;
+        const action = async (): Promise<Receipt<{docId: string}>> => {
+            if (receiptKey) {
+                const previous = this.libraryDocReceipts.get(receiptKey);
+                if (previous) return previous;
+            }
+            try {
+                const docId = parseDocId(await this.kernel.request("createDocWithMd", {
+                    notebook: notebookId,
+                    path: "/" + normalizedTitle.replace(/\//g, "-"),
+                    markdown: `# ${normalizedTitle}\n\n`,
+                }, {idempotencyKey: idempotencyKey || undefined, maxRetries: 0}));
+                if (!docId) return fail("kernel-error", "createDocWithMd returned no id");
+                const receipt = ok({docId});
+                if (receiptKey) this.libraryDocReceipts.set(receiptKey, receipt);
+                return receipt;
+            } catch (err) {
+                return toFailureReceipt(err);
+            }
+        };
+        return this.withWriteLock(key, action);
     }
 
     /** 列出笔记本根下的一级文档，供首跑校验真实可写落点。 */
@@ -291,7 +362,10 @@ export class LibraryService {
         const k = keyword.trim().slice(0, 96);
         if (!k) return ok([]);
         try {
-            return ok(parseDocSearch(await this.kernel.request("searchDocs", {k})));
+            return ok(parseDocSearch(await this.kernel.request("searchDocs", {k}, {
+                latest: true,
+                raceKey: "library.searchDocs",
+            })));
         } catch (err) {
             return toFailureReceipt(err);
         }
@@ -307,16 +381,41 @@ export class LibraryService {
         }
     }
 
-    /** 追加内容到指定文档（「插入到指定文档」用；官方 appendBlock） */
-    async appendToDoc(markdown: string, docId: string): Promise<boolean> {
+    /** 追加内容到指定文档（「插入到指定文档」用；官方 appendBlock）。
+     * 默认允许用户有意重复插入；调用方可传稳定幂等键保护网络重试/双击。
+     * 同一文档的写入串行，避免宿主并发追加时顺序和失败反馈不确定。
+     */
+    async appendToDoc(markdown: string, docId: string, options: WriteOptions = {}): Promise<boolean> {
         if (!markdown.trim()) return false;
         if (!isBlockId(docId)) return false;
-        await this.kernel.request("appendBlock", {
-            data: markdown.slice(0, LIMITS.contentChars),
-            dataType: "markdown",
-            parentID: docId,
-        });
-        return true;
+        const idempotencyKey = typeof options.idempotencyKey === "string" && options.idempotencyKey.length >= 8
+            && options.idempotencyKey.length <= 128 ? options.idempotencyKey : "";
+        const receiptKey = idempotencyKey ? `${docId}:${idempotencyKey}` : "";
+        if (receiptKey && this.appendReceipts.has(receiptKey)) return true;
+        const action = async (): Promise<boolean> => {
+            if (receiptKey && this.appendReceipts.has(receiptKey)) return true;
+            try {
+                await this.kernel.request("appendBlock", {
+                    data: markdown.slice(0, LIMITS.contentChars),
+                    dataType: "markdown",
+                    parentID: docId,
+                }, {idempotencyKey: idempotencyKey || undefined, maxRetries: 0});
+                if (idempotencyKey) {
+                    this.appendReceipts.set(receiptKey, true);
+                    while (this.appendReceipts.size > 256) {
+                        const oldest = this.appendReceipts.keys().next().value as string | undefined;
+                        if (!oldest) break;
+                        this.appendReceipts.delete(oldest);
+                    }
+                }
+                return true;
+            } catch {
+                // Boolean insertion callers render contextual failure states;
+                // never leak a rejected host promise into the UI event loop.
+                return false;
+            }
+        };
+        return this.withWriteLock(`append:${docId}`, action);
     }
 
     /** 整文档导出为 Markdown（「捕获当前文档」用） */
@@ -616,14 +715,44 @@ export class LibraryService {
 
     // ---- CRUD ----
 
-    async createItem(input: NewItemInput, libraryDocId?: string, options: {batchToken?: string} = {}): Promise<Receipt<{item: CommonItem}>> {
+    async createItem(input: NewItemInput, libraryDocId?: string, options: WriteOptions = {}): Promise<Receipt<{item: CommonItem}>> {
+        // logicalId 是导入/协议写入使用的幂等键；同一键的并发请求必须共享串行队列。
+        // 缺省 logicalId 仍按原语义生成一次性条目，由调用方在重试时传回稳定 ID。
+        const logicalKey = typeof input.logicalId === "string" && isLogicalId(input.logicalId)
+            ? `item:${input.logicalId}`
+            : "";
+        const idempotencyKey = typeof options.idempotencyKey === "string" && options.idempotencyKey.length >= 8
+            && options.idempotencyKey.length <= 128 ? options.idempotencyKey : "";
+        if (idempotencyKey) {
+            const previous = this.idempotencyReceipts.get(idempotencyKey);
+            if (previous) return previous;
+        }
+        const key = idempotencyKey ? `idempotency:${idempotencyKey}` : logicalKey;
+        const action = async (): Promise<Receipt<{item: CommonItem}>> => {
+            if (idempotencyKey) {
+                const completed = this.idempotencyReceipts.get(idempotencyKey);
+                if (completed) return completed;
+            }
+            const receipt = await this.createItemUnlocked(input, libraryDocId, options);
+            if (idempotencyKey && receipt.ok) {
+                // 有界保存 256 个最近回执；失败不缓存，用户可修正后重试。
+                this.rememberReceipt(this.idempotencyReceipts, idempotencyKey, receipt);
+            }
+            return receipt;
+        };
+        return key ? this.withWriteLock(key, action) : action();
+    }
+
+    private async createItemUnlocked(input: NewItemInput, libraryDocId?: string, options: WriteOptions = {}): Promise<Receipt<{item: CommonItem}>> {
         const targetDoc = libraryDocId ?? await this.resolveWriteDoc();
         if (!targetDoc || !isBlockId(targetDoc)) return fail("invalid-input", "no library doc");
         const now = Date.now();
         let logicalId = input.logicalId ?? newLogicalId(now);
         if (!/^xlc-[0-9a-z]{10,40}$/.test(logicalId)) logicalId = newLogicalId(now);
         // 防御：同逻辑 ID 已存在 → 明确冲突（调用方应走 updateItem/先删后建），绝不静默双块
-        if (this.index?.items.has(logicalId)) {
+        // index 会在每次写入后失效；同时检查本实例刚创建过的 ID，避免导入重试
+        // 因缓存失效而再次 append。外部已有条目仍由已构建索引的冲突检查覆盖。
+        if (this.createdLogicalIds.has(logicalId) || this.index?.items.has(logicalId)) {
             return fail("conflict", `logical id already exists: ${logicalId}`);
         }
         const attrs: Record<string, string> = {
@@ -654,7 +783,7 @@ export class LibraryService {
                 data: input.markdown.slice(0, LIMITS.contentChars),
                 dataType: "markdown",
                 parentID: targetDoc,
-            });
+            }, {idempotencyKey: options.idempotencyKey, maxRetries: 0});
         } catch (err) {
             return toFailureReceipt(err);
         }
@@ -681,6 +810,7 @@ export class LibraryService {
             blockType: input.itemType === "code" ? "c" : input.itemType === "structure" ? "super" : "p",
         });
         if (!item) return fail("kernel-error", "created item failed normalization");
+        this.createdLogicalIds.add(logicalId);
         if (typeof options.batchToken === "string" && options.batchToken.length >= 16 && options.batchToken.length <= 128) {
             this.conditionalDeleteGrants.set(item, {
                 batchToken: options.batchToken,
@@ -690,6 +820,7 @@ export class LibraryService {
             });
         }
         this.invalidateIndex();
+        this.notifyItemsChanged([item.id]);
         return ok({item});
     }
 
@@ -717,7 +848,24 @@ export class LibraryService {
         return resolved;
     }
 
-    async updateItem(itemId: string, patch: Partial<Pick<NewItemInput, "title" | "alias" | "tags" | "category" | "markdown" | "url" | "targetBlockId">>): Promise<Receipt<{item: CommonItem}>> {
+    async updateItem(itemId: string, patch: Partial<Pick<NewItemInput, "title" | "alias" | "tags" | "category" | "markdown" | "url" | "targetBlockId">>, options: WriteOptions = {}): Promise<Receipt<{item: CommonItem}>> {
+        const idempotencyKey = options.idempotencyKey && options.idempotencyKey.length >= 8 && options.idempotencyKey.length <= 128
+            ? options.idempotencyKey : "";
+        const receiptKey = idempotencyKey ? `${itemId}:${idempotencyKey}` : "";
+        const key = receiptKey ? `idempotency:${receiptKey}` : `item:${itemId}`;
+        const action = async (): Promise<Receipt<{item: CommonItem}>> => {
+            if (receiptKey) {
+                const previous = this.updateReceipts.get(receiptKey);
+                if (previous) return previous;
+            }
+            const receipt = await this.updateItemUnlocked(itemId, patch, options);
+            if (receiptKey && receipt.ok) this.rememberReceipt(this.updateReceipts, receiptKey, receipt);
+            return receipt;
+        };
+        return this.withWriteLock(key, action);
+    }
+
+    private async updateItemUnlocked(itemId: string, patch: Partial<Pick<NewItemInput, "title" | "alias" | "tags" | "category" | "markdown" | "url" | "targetBlockId">>, options: WriteOptions = {}): Promise<Receipt<{item: CommonItem}>> {
         // 注：不含 itemType——类型变化需删旧建新（见 applyOverwriteImport），原地改类型会语义错位
         const got = await this.getItem(itemId);
         if (!got.ok) return {ok: false, reason: got.reason, message: got.message};
@@ -749,40 +897,64 @@ export class LibraryService {
             if (typeof patch.markdown === "string" && patch.markdown) {
                 oldMarkdown = parseKramdown(await this.kernel.request("getBlockKramdown", {id: item.blockId}))?.kramdown;
             }
-            await this.kernel.request("setBlockAttrs", {id: item.blockId, attrs});
+            await this.kernel.request("setBlockAttrs", {id: item.blockId, attrs}, {idempotencyKey: options.idempotencyKey, maxRetries: 0});
             if (typeof patch.markdown === "string" && patch.markdown) {
                 await this.kernel.request("updateBlock", {
                     data: patch.markdown.slice(0, LIMITS.contentChars),
                     dataType: "markdown",
                     id: item.blockId,
-                });
+                }, {idempotencyKey: options.idempotencyKey ? `${options.idempotencyKey}:body` : undefined, maxRetries: 0});
             }
         } catch (err) {
             // updateBlock 失败时恢复属性和正文，避免出现“新元数据 + 旧正文”的半更新状态。
+            let rollbackFailed = false;
             if (oldAttrs) {
-                try { await this.kernel.request("setBlockAttrs", {id: item.blockId, attrs: oldAttrs}); } catch { /* best effort */ }
+                try { await this.kernel.request("setBlockAttrs", {id: item.blockId, attrs: oldAttrs}, {maxRetries: 0}); } catch { rollbackFailed = true; }
             }
             if (oldMarkdown !== undefined) {
                 try {
-                    await this.kernel.request("updateBlock", {data: oldMarkdown, dataType: "markdown", id: item.blockId});
-                } catch { /* best effort */ }
+                    await this.kernel.request("updateBlock", {data: oldMarkdown, dataType: "markdown", id: item.blockId}, {maxRetries: 0});
+                } catch { rollbackFailed = true; }
+            }
+            if (rollbackFailed) {
+                return fail("kernel-error", `${(err as Error)?.message || String(err)}; rollback failed and item state may be partially updated`);
             }
             return toFailureReceipt(err);
         }
         this.invalidateIndex();
+        this.notifyItemsChanged([itemId]);
         const refreshed = await this.getItem(itemId);
         return refreshed.ok ? ok({item: refreshed.data}) : {ok: false, reason: refreshed.reason, message: refreshed.message};
     }
 
-    async removeItem(itemId: string): Promise<Receipt<{blockId: string}>> {
+    async removeItem(itemId: string, options: WriteOptions = {}): Promise<Receipt<{blockId: string}>> {
+        const idempotencyKey = options.idempotencyKey && options.idempotencyKey.length >= 8 && options.idempotencyKey.length <= 128
+            ? options.idempotencyKey : "";
+        const receiptKey = idempotencyKey ? `${itemId}:${idempotencyKey}` : "";
+        const key = receiptKey ? `idempotency:${receiptKey}` : `item:${itemId}`;
+        const action = async (): Promise<Receipt<{blockId: string}>> => {
+            if (receiptKey) {
+                const previous = this.removeReceipts.get(receiptKey);
+                if (previous) return previous;
+            }
+            const receipt = await this.removeItemUnlocked(itemId, options);
+            if (receiptKey && receipt.ok) this.rememberReceipt(this.removeReceipts, receiptKey, receipt);
+            return receipt;
+        };
+        return this.withWriteLock(key, action);
+    }
+
+    private async removeItemUnlocked(itemId: string, options: WriteOptions = {}): Promise<Receipt<{blockId: string}>> {
         const got = await this.getItem(itemId);
         if (!got.ok) return got;
         try {
-            await this.kernel.request("deleteBlock", {id: got.data.blockId});
+            await this.kernel.request("deleteBlock", {id: got.data.blockId}, {idempotencyKey: options.idempotencyKey, maxRetries: 0});
         } catch (err) {
             return toFailureReceipt(err);
         }
+        this.createdLogicalIds.delete(got.data.id);
         this.invalidateIndex();
+        this.notifyItemsChanged([got.data.id]);
         return ok({blockId: got.data.blockId});
     }
 
@@ -792,6 +964,10 @@ export class LibraryService {
      * and body are read twice immediately before deletion to avoid removing later edits.
      */
     async removeItemsIfUnchanged(batchToken: string, inputs: ConditionalDeleteInput[]): Promise<Receipt<ConditionalDeleteOutcome[]>> {
+        return this.withWriteLock(`batch:${batchToken}`, () => this.removeItemsIfUnchangedUnlocked(batchToken, inputs));
+    }
+
+    private async removeItemsIfUnchangedUnlocked(batchToken: string, inputs: ConditionalDeleteInput[]): Promise<Receipt<ConditionalDeleteOutcome[]>> {
         if (typeof batchToken !== "string" || batchToken.length < 16 || batchToken.length > 128
             || !Array.isArray(inputs) || inputs.length > LIMITS.maxItems) {
             return fail("invalid-input", "conditional delete batch exceeds the supported limit");
@@ -881,7 +1057,10 @@ export class LibraryService {
                 });
             }
         }
-        if (deletedAny) this.invalidateIndex();
+        if (deletedAny) {
+            this.invalidateIndex();
+            this.notifyItemsChanged(outcomes.filter((outcome): outcome is Extract<ConditionalDeleteOutcome, {status: "deleted"}> => outcome.status === "deleted").map((outcome) => outcome.itemId));
+        }
         return ok(outcomes);
     }
 
@@ -900,6 +1079,10 @@ export class LibraryService {
 
     /** 清除来源引用（用户显式操作；空串删除自定义属性，条目本体不受影响） */
     async clearSource(itemId: string): Promise<Receipt<{item: CommonItem}>> {
+        return this.withWriteLock(`item:${itemId}`, () => this.clearSourceUnlocked(itemId));
+    }
+
+    private async clearSourceUnlocked(itemId: string): Promise<Receipt<{item: CommonItem}>> {
         const got = await this.getItem(itemId);
         if (!got.ok) return {ok: false, reason: got.reason, message: got.message};
         try {
@@ -911,6 +1094,7 @@ export class LibraryService {
             return toFailureReceipt(err);
         }
         this.invalidateIndex();
+        this.notifyItemsChanged([itemId]);
         const refreshed = await this.getItem(itemId);
         return refreshed.ok ? ok({item: refreshed.data}) : {ok: false, reason: refreshed.reason, message: refreshed.message};
     }
@@ -918,6 +1102,10 @@ export class LibraryService {
     /** 恢复来源：把指定文档/块设为条目新来源（用户显式操作，非自动改写）。
      *  未提供 sourceBlockId 时显式清空旧块引用（防止残留指向旧位置的失效 src-block）。 */
     async relinkSource(itemId: string, source: {sourceDocId: string; sourceBlockId?: string}): Promise<Receipt<{item: CommonItem}>> {
+        return this.withWriteLock(`item:${itemId}`, () => this.relinkSourceUnlocked(itemId, source));
+    }
+
+    private async relinkSourceUnlocked(itemId: string, source: {sourceDocId: string; sourceBlockId?: string}): Promise<Receipt<{item: CommonItem}>> {
         if (!isBlockId(source.sourceDocId)) return fail("invalid-input", "sourceDocId invalid");
         const got = await this.getItem(itemId);
         if (!got.ok) return {ok: false, reason: got.reason, message: got.message};
@@ -933,6 +1121,7 @@ export class LibraryService {
             return toFailureReceipt(err);
         }
         this.invalidateIndex();
+        this.notifyItemsChanged([itemId]);
         const refreshed = await this.getItem(itemId);
         return refreshed.ok ? ok({item: refreshed.data}) : {ok: false, reason: refreshed.reason, message: refreshed.message};
     }

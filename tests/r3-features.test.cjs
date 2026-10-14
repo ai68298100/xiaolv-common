@@ -131,6 +131,35 @@ test("updateItem：markdown 变更走 updateBlock（内容编辑链路）", asyn
     assert.match(upd.payload.data, /```js/);
 });
 
+test("updateItem：快照恢复失败时回执明确说明状态可能部分更新", async () => {
+    const calls = [];
+    const B1 = "20240101120000-aaaaaaa";
+    let attrWrites = 0;
+    const kernel = {
+        request(endpoint, payload = {}) {
+            calls.push({endpoint, payload});
+            if (endpoint === "getChildBlocks") return Promise.resolve([{id: B1, type: "p"}]);
+            if (endpoint === "batchGetBlockAttrs") return Promise.resolve({[B1]: {"custom-xlc-id": "xlc-editrollback1", "custom-xlc-title": "旧标题"}});
+            if (endpoint === "getBlockAttrs") return Promise.resolve({"custom-xlc-id": "xlc-editrollback1", "custom-xlc-title": "旧标题"});
+            if (endpoint === "getBlockKramdown") return Promise.resolve({id: B1, kramdown: "旧正文"});
+            if (endpoint === "setBlockAttrs") {
+                attrWrites++;
+                if (attrWrites === 2) return Promise.reject(new Error("rollback attrs unavailable"));
+            }
+            if (endpoint === "updateBlock") return Promise.reject(new Error("update body failed"));
+            return Promise.resolve(null);
+        },
+    };
+    const service = new libModule.LibraryService(kernel);
+    service.setConfig({mode: "doc", notebookIds: [], containerDocIds: ["20240101120001-hijklmn"], createdDocIds: [], configuredAt: 1});
+    const result = await service.updateItem("xlc-editrollback1", {title: "新标题", markdown: "新正文"});
+    assert.equal(result.ok, false);
+    assert.equal(result.reason, "kernel-error");
+    assert.match(result.message, /rollback failed/);
+    assert.match(result.message, /state may be partially updated/);
+    assert.ok(calls.some((call) => call.endpoint === "updateBlock" && call.payload.data === "旧正文"), "body snapshot rollback was attempted");
+});
+
 test("exportDocContent：形状校验与非法 ID 拒绝", async () => {
     const kernel = {
         request(endpoint, payload = {}) {
@@ -162,6 +191,44 @@ test("R4：appendToDoc 走 appendBlock；空内容/非法 ID 拒绝", async () =
     assert.equal(await service.appendToDoc("   ", "20240101120001-hijklmn"), false);
     assert.equal(await service.appendToDoc("hello", "junk"), false);
     assert.equal(calls.length, 1, "rejected inputs must not hit kernel");
+});
+
+test("appendToDoc：幂等重试复用成功结果，失败返回可观察的 false", async () => {
+    const calls = [];
+    let rejectWrite = false;
+    const kernel = {
+        request(endpoint, payload = {}) {
+            calls.push({endpoint, payload});
+            if (rejectWrite) return Promise.reject(new Error("network unavailable"));
+            return Promise.resolve([{doOperations: [{id: "20240101120009-xxxxxxxx"}]}]);
+        },
+    };
+    const service = new libModule.LibraryService(kernel);
+    const options = {idempotencyKey: "append-doc-submit-001"};
+    assert.equal(await service.appendToDoc("hello", "20240101120001-hijklmn", options), true);
+    assert.equal(await service.appendToDoc("hello", "20240101120001-hijklmn", options), true);
+    assert.equal(calls.length, 1, "same document and key must not append twice");
+    rejectWrite = true;
+    assert.equal(await service.appendToDoc("retry me", "20240101120002-bbbbbbb", options), false);
+});
+
+test("createLibraryDoc：同一幂等提交重试返回同一文档；不同提交可再次创建", async () => {
+    let creates = 0;
+    const kernel = {
+        request(endpoint) {
+            if (endpoint === "createDocWithMd") return Promise.resolve(`2024010112000${++creates}-ddddddd`);
+            return Promise.resolve(null);
+        },
+    };
+    const service = new libModule.LibraryService(kernel);
+    const options = {idempotencyKey: "setup-library-submit-001"};
+    const first = await service.createLibraryDoc("20240101", "常用语库", options);
+    const retry = await service.createLibraryDoc("20240101", "常用语库", options);
+    const newIntent = await service.createLibraryDoc("20240101", "常用语库");
+    assert.equal(first.ok, true);
+    assert.deepEqual(retry, first);
+    assert.equal(newIntent.ok, true);
+    assert.equal(creates, 2, "a fresh create intent without the old key must not reuse a stale document ID");
 });
 
 test("R5：tree 模式 BFS 多层展开（root+3 层子文档；第 4 层不展开）", async () => {

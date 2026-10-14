@@ -10,9 +10,9 @@ A quick-recall content launcher for SiYuan Notes: turn frequently used content �
 
 > Runs fully standalone (no dependency on other Lv plugins), and exposes the `xiaolv-common/v1` protocol for sibling plugins.
 
-> **Released: v0.4.0 (2026-10-11)** · [Download the latest release](https://github.com/ai68298100/xiaolv-common/releases/latest) · The current workspace contains unreleased phase-three work for “dedicated library + on-demand discovery.”
+> **Released: v0.4.1 (2026-10-14)** · [Download the latest release](https://github.com/ai68298100/xiaolv-common/releases/latest) · This release includes the token convergence, desktop/mobile density refinements, on-demand discovery, and lazy-loading path fixes.
 
-## Unreleased workspace changes
+## This release (v0.4.1)
 
 Overall: keep the dedicated library as the default work set while letting users discover existing content from documents, trees, or notebooks and copy selected items into the library.
 
@@ -41,7 +41,7 @@ Limits: discovery never adds items automatically or changes source notes; scanni
 2. **Metadata lives in user-visible block attributes** (`custom-xlc-id/-type/-title/-alias/-tags/-category/-src-doc/-src-block/-url/-target/-created/-updated`), editable from SiYuan's attribute panel.
 3. **Sidecar storage** (favorites / recents / sort / providers) is versioned, rebuildable and migratable.
 4. **No SQL**: traversal via `getChildBlocks` (document order), invalidation via `checkBlocksExist`, content via `getBlockKramdown`. See ADR 0003 for the embed-block boundary.
-5. **Honest capability declarations**: anything not verified on a real device degrades explicitly (e.g. mobile insert falls back to clipboard copy with a notice).
+5. **Honest capability declarations**: anything not verified on a real device is labeled accordingly. On mobile, no-target actions fall back to clipboard copy; insertion with a selected target remains unverified on a real device.
 
 ## AI features (off by default — ADR 0005)
 
@@ -53,6 +53,8 @@ Powered by the model **you** configured in SiYuan Settings → AI; the plugin st
 | **AI draft** | describe what you need → draft lands in the form | description (same toggle) |
 | **AI transform** | action menu ✦ polish / shorten / formalize / translate / bulletize → preview, then insert-transformed / copy / insert-original (**original never modified**) | item content (same toggle) |
 | **AI semantic search** | type `?` + description in the search box → results flagged "AI-picked" | **metadata only** (title/alias/tags/category/summary; never content or source ids) |
+
+If AI tidy or draft generation fails, the form keeps a readable error beside the action and offers retry using the latest content or description. Automated checks cover UI recovery; real-model and Electron-host acceptance remain pending.
 
 Also built-in: **dynamic placeholders** `{{xlc:date}} / {{xlc:time}} / {{xlc:datetime}} / {{xlc:weekday}} / {{xlc:title}} / {{xlc:doc}} / {{xlc:path}} / {{xlc:clipboard}}` replaced at insert/copy time (stored content always keeps the template; `xlc:` namespace never collides with SiYuan templates).
 
@@ -97,7 +99,7 @@ Missing assets: insert/open fail honestly, copy-link still works. Deleted source
 After choosing a library, build it in this order:
 
 1. **Capture**: save a selection from the context menu, use Quick capture for the clipboard, or click **＋ New** in the panel. To reuse existing notes, choose **Discover common phrases from current document** from the editor context menu or command palette, preview candidates, then add the ones you want. Add a clear title, tags, and category so later searches can find it.
-2. **Reuse**: open the top-bar panel, press `Enter` to insert and `Ctrl/⌘+Enter` to copy. On mobile, tap to insert and long-press for more actions. Favorites and Frequent sort keep high-use items close.
+2. **Reuse**: open the top-bar panel, press `Enter` to insert and `Ctrl/⌘+Enter` to copy. On mobile, tap an item to select it and update the preview; use the bottom action to insert when a target is available, or copy as an explicit fallback when no target is available. Long-press opens more actions. Favorites and Frequent sort keep high-use items close.
 3. **Template**: write `{{xlc:ask:field}}` for a value requested on insert and `{{xlc:ask:field|A,B}}` for a dropdown. Date and clipboard placeholders expand only when called; the stored template stays unchanged.
 4. **Organize**: start with categories such as support, email, address, contacts, prompts, writing, and development. Settings → AI assistant → **Import prompt scene pack** provides 16 editable examples, including a usage guide, email signature, address, and contact card. Import is explicit and goes through the duplicate policy; it never writes silently.
 
@@ -137,7 +139,7 @@ Protocol docs: [AGENTS.md](AGENTS.md) (dev protocol) · [ROADMAP.md](ROADMAP.md)
 
 ## Known limitations (honest list)
 
-- **Desktop/Android real-host acceptance not completed yet** (kernel token + device session pending, see BLOCKERS B-001/B-002/B-003): mobile insert degrades to clipboard copy; bitmap image copy degrades to a markdown link.
+- **Desktop/Android real-host acceptance not completed yet** (kernel token + device session pending, see BLOCKERS B-001/B-002/B-003): mobile actions without a target degrade to clipboard copy; insertion with a selected target is not yet device-verified. Bitmap image copy degrades to a markdown link.
 - Pinyin search ships with tiny-pinyin (local annotation, toggleable, ADR 0004/R5).
 - Tree mode expands root + 3 child-document levels; item index caps at 2000 (truncation is flagged, data stays safe in the library).
 - Import conflict detection is by stable logical id (no content-level diff).

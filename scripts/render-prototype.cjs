@@ -21,8 +21,15 @@ try {
     await page.screenshot({path: path.join(OUT, "prototype-all.png"), fullPage: true});
     // 单屏：按 section 裁剪
     const sections = await page.locator("body > section").all();
-    const names = ["spec", "desktop-dialog", "action-menu", "capture-form", "variable-form", "settings", "setup", "mobile-sheet", "import-policy"];
+    // 搜索空态和发现页都是独立 section，名称数组必须和 DOM 顺序一一对应。
+    const names = ["spec", "desktop-dialog", "empty-state", "action-menu", "capture-form", "variable-form", "settings", "setup", "mobile-sheet", "import-policy", "discovery", "state-matrix"];
     for (let i = 0; i < sections.length && i < names.length; i++) {
+        if (names[i] === "state-matrix") {
+            await page.setViewportSize({width: 1600, height: 2400});
+            const frame = sections[i].locator(".state-matrix-frame");
+            await frame.screenshot({path: path.join(OUT, "prototype-state-matrix.png")});
+            continue;
+        }
         await sections[i].screenshot({path: path.join(OUT, `prototype-${names[i]}.png`)});
     }
     await browser.close();

@@ -110,6 +110,15 @@ export class CommonSearchDialog {
     private filterOptionsSeq = 0;
     private primaryBusy = false;
     private varFormOpen = false;
+    /** 大结果集只保留视口附近的行；窗口回调由 renderList 安装并在销毁/重绘时清理。 */
+    private virtualListCleanup: (() => void) | null = null;
+    private virtualEnsureIndex: ((index: number) => void) | null = null;
+    /** 宿主拒绝请求时覆盖旧列表，避免用户继续对过期结果执行写操作。 */
+    private accessIssueMessage: string | null = null;
+    // 搜索服务最多返回 100 条；80 以上即可明显减少首屏 DOM，同时保留小结果集的简单路径。
+    private static readonly VIRTUAL_THRESHOLD = 80;
+    private static readonly VIRTUAL_ROW_HEIGHT = 72;
+    private static readonly VIRTUAL_OVERSCAN = 8;
 
     constructor(private readonly deps: DialogDeps) {}
 
@@ -120,8 +129,9 @@ export class CommonSearchDialog {
         const dialog = new Dialog({
             title: this.deps.t("pluginName"),
             content: "",
-            width: isMobile ? "100vw" : "min(760px, 94vw)",
-            height: isMobile ? "100vh" : "min(600px, 84vh)",
+            // 桌面采用宽松密度，减少截断并让双栏预览一次展示更多内容；移动端仍由 sheet 占满视口。
+            width: isMobile ? "100vw" : "min(960px, 94vw)",
+            height: isMobile ? "100vh" : "min(820px, 92vh)",
             destroyCallback: () => {
                 this.dialog = null;
                 this.deps.close();
@@ -171,6 +181,7 @@ export class CommonSearchDialog {
         qMark.setAttribute("aria-hidden", "true");
         const input = document.createElement("input");
         input.className = "b3-text-field xlc-search-input";
+        input.dataset.xlcControl = "search.input";
         input.placeholder = this.deps.t("searchPlaceholder");
         // 移动端软键盘细节：回车=搜索、关拉丁自动更正；关自动填充（自定义候选弹层之上不叠浏览器浮层）
         input.setAttribute("enterkeyhint", "search");
@@ -189,6 +200,7 @@ export class CommonSearchDialog {
         const clearBtn = document.createElement("button");
         clearBtn.type = "button";
         clearBtn.className = "xlc-search-clear";
+        clearBtn.dataset.xlcControl = "search.clear";
         clearBtn.textContent = "×";
         clearBtn.setAttribute("aria-label", this.deps.t("clearSearch"));
         clearBtn.addEventListener("click", () => {
@@ -268,6 +280,7 @@ export class CommonSearchDialog {
             const topNew = document.createElement("button");
             topNew.type = "button";
             topNew.className = "b3-button xlc-btn-primary xlc-top-new";
+            topNew.dataset.xlcControl = "search.new";
             topNew.textContent = this.deps.t("quickNew");
             topNew.setAttribute("aria-label", this.deps.t("newItem"));
             topNew.addEventListener("click", () => this.deps.newItem());
@@ -283,6 +296,7 @@ export class CommonSearchDialog {
         filters.className = "xlc-filters";
         const typeSelect = document.createElement("select");
         typeSelect.className = "b3-select xlc-type-select";
+        typeSelect.dataset.xlcControl = "filter.type";
         typeSelect.setAttribute("aria-label", this.deps.t("type"));
         const allOpt = document.createElement("option");
         allOpt.value = "";
@@ -309,6 +323,7 @@ export class CommonSearchDialog {
 
         const tagSelect = document.createElement("select");
         tagSelect.className = "b3-select xlc-tag-select";
+        tagSelect.dataset.xlcControl = "filter.tag";
         tagSelect.setAttribute("aria-label", this.deps.t("tags"));
         tagSelect.disabled = true;
         tagSelect.addEventListener("change", () => {
@@ -324,6 +339,7 @@ export class CommonSearchDialog {
         // 分类筛选（F4，原型屏 1：类型/标签/分类三下拉）
         const categorySelect = document.createElement("select");
         categorySelect.className = "b3-select xlc-category-select";
+        categorySelect.dataset.xlcControl = "filter.category";
         categorySelect.setAttribute("aria-label", this.deps.t("category"));
         categorySelect.disabled = true;
         categorySelect.addEventListener("change", () => {
@@ -336,6 +352,7 @@ export class CommonSearchDialog {
             const chip = document.createElement("button");
             chip.className = "xlc-chip xlc-scope-chip";
             chip.dataset.scope = scope;
+            chip.dataset.xlcControl = `filter.scope.${scope}`;
             chip.textContent = (scope === "favorites" ? "★ " : "🕐 ") + this.deps.t(`filter${scope === "favorites" ? "Favorites" : "Recent"}`);
             chip.addEventListener("click", () => {
                 this.currentScope = this.currentScope === scope ? "all" : scope;
@@ -352,6 +369,7 @@ export class CommonSearchDialog {
         // 排序 chip：点击弹直选菜单（4 档可枚举，当前档 ✓；替代不可见的循环切换）
         const sortChip = document.createElement("button");
         sortChip.className = "xlc-chip xlc-sort-chip";
+        sortChip.dataset.xlcControl = "sort.open";
         const paintSort = (): void => {
             const sort = this.deps.getSort();
             sortChip.textContent = "⇅ " + this.deps.t("sort") + "：" + this.deps.t(`sort.${sort}`);
@@ -409,8 +427,17 @@ export class CommonSearchDialog {
             if ((e.target as HTMLElement).closest(".xlc-row-action")) return;
             const row = (e.target as HTMLElement).closest<HTMLElement>("[data-xlc-index]");
             if (!row) return;
-            const entry = this.results[Number(row.dataset.xlcIndex)];
-            if (entry) void this.runPrimary(entry);
+            const index = Number(row.dataset.xlcIndex);
+            const entry = this.results[index];
+            if (!entry) return;
+            if (isMobile) {
+                this.activeIndex = index;
+                this.activeProvider = -1;
+                this.paintActive();
+                this.schedulePreview(entry);
+                return;
+            }
+            void this.runPrimary(entry);
         });
         // 悬停更新预览（触屏设备无 hover 不受影响）
         list.addEventListener("mouseover", (e) => {
@@ -467,11 +494,13 @@ export class CommonSearchDialog {
             footBtns.className = "xlc-mobile-foot";
             const newBtn = document.createElement("button");
             newBtn.className = "b3-button";
+            newBtn.dataset.xlcControl = "search.new";
             newBtn.textContent = this.deps.t("quickNew");
             newBtn.addEventListener("click", () => this.deps.newItem());
             footBtns.appendChild(newBtn);
             const insertBtn = document.createElement("button");
             insertBtn.className = "b3-button xlc-btn-primary xlc-mobile-insert";
+            insertBtn.dataset.xlcControl = "preview.mobile-primary";
             insertBtn.textContent = this.deps.t(this.mobilePrimaryIsCopy() ? "copy" : "quickInsertSelected");
             insertBtn.disabled = true;
             if (this.mobilePrimaryIsCopy()) {
@@ -503,12 +532,14 @@ export class CommonSearchDialog {
         const guide = document.createElement("button");
         guide.type = "button";
         guide.className = "b3-button b3-button--text xlc-btn-ghost xlc-footer-guide";
+        guide.dataset.xlcControl = "footer.help";
         guide.textContent = "ⓘ " + this.deps.t("usageGuideBtn");
         guide.addEventListener("click", () => this.openUsageGuide());
         footer.appendChild(guide);
         // 设置入口双端可达（移动端无顶栏/命令面板，此处是唯一设置路径）
         const gear = document.createElement("button");
         gear.className = "b3-button b3-button--text xlc-btn-ghost xlc-footer-gear";
+        gear.dataset.xlcControl = "footer.settings";
         gear.textContent = "⚙ " + this.deps.t("openSettings");
         gear.addEventListener("click", () => {
             this.destroy();
@@ -524,8 +555,8 @@ export class CommonSearchDialog {
         const guideDialog = new Dialog({
             title: this.deps.t("usageGuideTitle"),
             content: "",
-            width: "min(520px, 92vw)",
-            height: "min(520px, 84vh)",
+            width: "min(600px, 92vw)",
+            height: "min(680px, 88vh)",
         });
         guideDialog.element.querySelector(".b3-dialog__container")?.classList.add("xlc-form-host");
         const body = getDialogBody(guideDialog.element);
@@ -555,6 +586,7 @@ export class CommonSearchDialog {
         const close = document.createElement("button");
         close.type = "button";
         close.className = "b3-button xlc-btn-primary";
+        close.dataset.xlcControl = "guide.close";
         close.textContent = this.deps.t("close");
         close.addEventListener("click", () => guideDialog.destroy());
         actions.appendChild(close);
@@ -588,6 +620,7 @@ export class CommonSearchDialog {
         insert.className = "b3-button xlc-btn-primary";
         insert.textContent = this.deps.t("insert");
         insert.dataset.xlcPaneAct = "insert";
+        insert.dataset.xlcControl = "preview.insert";
         insert.addEventListener("click", () => {
             // 提供方行激活：插入的是 payload（与 Enter 键路径一致），不是库条目（R138 错位修复）
             if (this.activeProvider >= 0) {
@@ -602,6 +635,7 @@ export class CommonSearchDialog {
         copy.className = "b3-button";
         copy.textContent = this.deps.t("copy");
         copy.dataset.xlcPaneAct = "copy";
+        copy.dataset.xlcControl = "preview.copy";
         copy.addEventListener("click", () => {
             if (this.activeProvider >= 0) {
                 const row = this.providerRows[this.activeProvider];
@@ -616,6 +650,7 @@ export class CommonSearchDialog {
         aiBtn.className = "b3-button xlc-btn-ai";
         aiBtn.textContent = "✦ " + this.deps.t("aiTransform");
         aiBtn.dataset.xlcPaneAct = "ai";
+        aiBtn.dataset.xlcControl = "preview.ai";
         aiBtn.addEventListener("click", () => {
             const entry = this.results[this.activeIndex];
             if (entry) void this.showActionMenu(entry);
@@ -626,6 +661,7 @@ export class CommonSearchDialog {
         source.className = "b3-button b3-button--text xlc-btn-ghost";
         source.textContent = this.deps.t("openSource");
         source.dataset.xlcPaneAct = "source";
+        source.dataset.xlcControl = "preview.source";
         source.addEventListener("click", () => {
             const entry = this.results[this.activeIndex];
             if (entry) void this.deps.openSource(entry.id);
@@ -634,6 +670,7 @@ export class CommonSearchDialog {
         edit.className = "b3-button b3-button--text xlc-btn-ghost";
         edit.textContent = this.deps.t("edit");
         edit.dataset.xlcPaneAct = "edit";
+        edit.dataset.xlcControl = "preview.edit";
         edit.addEventListener("click", () => {
             const entry = this.results[this.activeIndex];
             if (entry) void this.deps.editItem(entry.id);
@@ -771,6 +808,7 @@ export class CommonSearchDialog {
 
     private async refresh(): Promise<void> {
         const seq = ++this.searchSeq;
+        this.accessIssueMessage = null;
         const query = this.buildQuery();
         // 命中高亮快照（renderList 用；AI 语义找结果不高亮——匹配依据是语义而非字面）
         this.lastQueryText = query.text.trim();
@@ -781,6 +819,12 @@ export class CommonSearchDialog {
         const footer = this.dialog?.element.querySelector<HTMLElement>(".xlc-footer");
         const aiBanner = this.dialog?.element.querySelector<HTMLElement>(".xlc-ai-banner");
         if (!list) return;
+        this.dialog?.element.removeAttribute("data-xlc-access-issue");
+        if (status) {
+            status.textContent = "";
+            status.classList.remove("xlc-status--error");
+            status.setAttribute("role", "status");
+        }
         const mobileInsert = this.dialog?.element.querySelector<HTMLButtonElement>(".xlc-mobile-insert");
         if (mobileInsert) mobileInsert.disabled = true;
         this.lastPreviewId = null;
@@ -945,7 +989,88 @@ export class CommonSearchDialog {
         if (cursor < text.length) parent.appendChild(document.createTextNode(text.slice(cursor)));
     }
 
+    /** 创建一行真实库条目。抽出后虚拟列表可以复用同一套交互与无障碍属性。 */
+    private createEntryRow(entry: SearchEntry, index: number): HTMLElement {
+        const fav = this.deps.isFavorite(entry.id);
+        const row = document.createElement("div");
+        row.className = "xlc-row"
+            + (index === this.activeIndex ? " xlc-row--active" : "")
+            + (fav ? " xlc-row--fav" : "");
+        row.dataset.xlcControl = "item.row";
+        row.dataset.xlcIndex = String(index);
+        row.id = `xlc-result-${index}`;
+        row.setAttribute("role", "option");
+        row.setAttribute("aria-selected", index === this.activeIndex ? "true" : "false");
+        row.setAttribute("aria-posinset", String(index + 1));
+        row.setAttribute("aria-setsize", String(this.results.length));
+
+        const main = document.createElement("div");
+        main.className = "xlc-row-main";
+        const title = document.createElement("div");
+        title.className = "xlc-row-title";
+        if (index < 9) {
+            const ordinal = document.createElement("span");
+            ordinal.className = "xlc-row-ordinal";
+            ordinal.textContent = String(index + 1);
+            ordinal.title = this.deps.t("usageHint");
+            title.appendChild(ordinal);
+        }
+        const badge = document.createElement("span");
+        badge.className = `xlc-badge xlc-badge--${entry.itemType}`;
+        badge.textContent = TYPE_BADGES[entry.itemType] ?? "TXT";
+        badge.title = this.deps.t(`type.${entry.itemType}`);
+        badge.setAttribute("aria-label", this.deps.t(`type.${entry.itemType}`));
+        title.appendChild(badge);
+        const titleText = document.createElement("span");
+        titleText.className = "xlc-row-titletext";
+        const highlight = this.lastQueryText.length > 0
+            && !this.lastQueryText.startsWith("?")
+            && !this.aiResults;
+        if (highlight) this.appendHighlighted(titleText, entry.title || this.deps.t("unknownType"), this.lastQueryText);
+        else titleText.textContent = entry.title || this.deps.t("unknownType");
+        title.appendChild(titleText);
+        if ((entry.varCount ?? 0) > 0) {
+            const varBadge = document.createElement("span");
+            varBadge.className = "xlc-badge xlc-badge--var";
+            varBadge.textContent = this.deps.t("varCountBadge", String(entry.varCount));
+            title.appendChild(varBadge);
+        }
+        if (this.deps.isSourceMissing(entry)) {
+            const warn = document.createElement("span");
+            warn.className = "xlc-row-warn";
+            warn.textContent = "⚠";
+            warn.title = this.deps.t("sourceMissing") + " · " + this.deps.t("sourceGone");
+            warn.setAttribute("aria-label", this.deps.t("sourceMissing"));
+            title.appendChild(warn);
+        }
+        main.appendChild(title);
+        const meta = document.createElement("div");
+        meta.className = "xlc-row-meta";
+        const useCount = this.usageCounts.get(entry.id) ?? 0;
+        const joined = [entry.tags.join(" / "), entry.summary].filter(Boolean).join(" · ");
+        const metaBase = joined.length > 140 ? joined.slice(0, 140) + "…" : joined;
+        meta.textContent = metaBase + (useCount > 0 ? ` · ${this.deps.t("useCount", String(useCount))}` : "");
+        main.appendChild(meta);
+        row.appendChild(main);
+        const star = document.createElement("button");
+        star.className = "b3-button b3-button--small xlc-row-action";
+        star.dataset.xlcControl = "item.favorite";
+        star.textContent = fav ? "★" : "☆";
+        star.setAttribute("aria-label", fav ? this.deps.t("unfavorite") : this.deps.t("favorite"));
+        star.addEventListener("click", (e) => {
+            e.stopPropagation();
+            this.deps.toggleFavorite(entry.id);
+            star.textContent = this.deps.isFavorite(entry.id) ? "★" : "☆";
+            void this.refreshPreservingPosition().then(() => this.restoreFocusToSearch());
+        });
+        row.appendChild(star);
+        return row;
+    }
+
     private renderList(list: HTMLElement): void {
+        this.virtualListCleanup?.();
+        this.virtualListCleanup = null;
+        this.virtualEnsureIndex = null;
         list.innerHTML = "";
         // 大空态（无结果且无提供方行；图标 + 主文案 + ? 语义找提示）
         if (this.results.length === 0 && this.providerRows.length === 0 && this.emptyMessage) {
@@ -959,6 +1084,27 @@ export class CommonSearchDialog {
             text.className = "xlc-empty-text";
             text.textContent = this.emptyMessage;
             empty.appendChild(text);
+            if (this.accessIssueMessage) {
+                const retry = document.createElement("button");
+                retry.type = "button";
+                retry.className = "b3-button xlc-btn-primary xlc-empty-action";
+                retry.dataset.xlcControl = "access.retry";
+                retry.textContent = this.deps.t("retry");
+                retry.addEventListener("click", () => {
+                    this.accessIssueMessage = null;
+                    this.emptyMessage = "";
+                    const status = this.dialog?.element.querySelector<HTMLElement>(".xlc-status");
+                    if (status) {
+                        status.textContent = "";
+                        status.classList.remove("xlc-status--error");
+                        status.setAttribute("role", "status");
+                    }
+                    void this.refresh();
+                });
+                empty.appendChild(retry);
+                list.appendChild(empty);
+                return;
+            }
             // 普通关键词无结果且 AI 已开启时，补充明确的语义搜索入口；
             // 不依赖空态主文案做分支，避免中英文文案相同导致空库/筛选态误显示 AI 提示。
             const queryText = this.lastQueryText.trim();
@@ -995,6 +1141,7 @@ export class CommonSearchDialog {
                 guide.type = "button";
                 guide.className = "b3-button xlc-btn-ghost xlc-empty-action";
                 guide.dataset.xlcAction = "help";
+                guide.dataset.xlcControl = "empty.help";
                 guide.textContent = "ⓘ " + this.deps.t("usageGuideBtn");
                 guide.addEventListener("click", () => this.openUsageGuide());
                 empty.appendChild(guide);
@@ -1004,6 +1151,7 @@ export class CommonSearchDialog {
                 clear.type = "button";
                 clear.className = "b3-button xlc-btn-ghost xlc-empty-action";
                 clear.dataset.xlcAction = "clear-filters";
+                clear.dataset.xlcControl = "empty.clear-filters";
                 clear.textContent = this.deps.t("clearFilters");
                 clear.addEventListener("click", () => {
                     this.deps.setFilters({type: "", tag: "", category: ""});
@@ -1022,6 +1170,7 @@ export class CommonSearchDialog {
                 create.type = "button";
                 create.className = "b3-button xlc-btn-primary xlc-empty-action";
                 create.dataset.xlcAction = "new-item";
+                create.dataset.xlcControl = "empty.new-item";
                 const query = this.lastQueryText.trim();
                 const fullTitleCandidate = query && !query.startsWith("?") ? query.slice(0, 120) : "";
         const buttonTitle = fullTitleCandidate.length > 24
@@ -1104,95 +1253,54 @@ export class CommonSearchDialog {
             head.textContent = `${label} · ${count}`;
             list.appendChild(head);
         };
-        for (let i = 0; i < this.results.length; i++) {
-            while (headCursor + 1 < groupLabels.length && i === headStarts[headCursor + 1]) {
-                headCursor++;
-                const head = groupLabels[headCursor];
-                if (head) placeGroupHead(head.label, head.count);
+        // 查询结果超过阈值时启用固定行高的窗口渲染；分组/提供方仍保留完整 DOM，避免改变其语义顺序。
+        const canVirtualize = this.results.length > CommonSearchDialog.VIRTUAL_THRESHOLD
+            && groupLabels.length === 0
+            && this.providerRows.length === 0;
+        if (canVirtualize) {
+            const rowHeight = this.deps.isMobile() ? 64 : CommonSearchDialog.VIRTUAL_ROW_HEIGHT;
+            const overscan = CommonSearchDialog.VIRTUAL_OVERSCAN;
+            const topSpacer = document.createElement("div");
+            topSpacer.dataset.xlcSpacer = "top";
+            const bottomSpacer = document.createElement("div");
+            bottomSpacer.dataset.xlcSpacer = "bottom";
+            const renderWindow = (requestedIndex?: number): void => {
+                const viewport = Math.max(list.clientHeight || 480, rowHeight * 6);
+                const rawStart = requestedIndex === undefined
+                    ? Math.floor(list.scrollTop / rowHeight)
+                    : Math.max(0, requestedIndex - overscan);
+                const visible = Math.ceil(viewport / rowHeight);
+                const start = Math.max(0, Math.min(rawStart, this.results.length - 1));
+                const end = Math.min(this.results.length, start + visible + overscan * 2);
+                topSpacer.style.height = `${start * rowHeight}px`;
+                bottomSpacer.style.height = `${Math.max(0, (this.results.length - end) * rowHeight)}px`;
+                list.replaceChildren(topSpacer);
+                for (let i = start; i < end; i++) {
+                    const entry = this.results[i];
+                    if (entry) list.appendChild(this.createEntryRow(entry, i));
+                }
+                list.appendChild(bottomSpacer);
+                this.paintActive();
+            };
+            const onScroll = (): void => renderWindow();
+            list.classList.add("xlc-list--virtual");
+            list.addEventListener("scroll", onScroll, {passive: true});
+            this.virtualListCleanup = () => {
+                list.removeEventListener("scroll", onScroll);
+                list.classList.remove("xlc-list--virtual");
+            };
+            this.virtualEnsureIndex = (index: number) => renderWindow(index);
+            renderWindow();
+        } else {
+            for (let i = 0; i < this.results.length; i++) {
+                while (headCursor + 1 < groupLabels.length && i === headStarts[headCursor + 1]) {
+                    headCursor++;
+                    const head = groupLabels[headCursor];
+                    if (head) placeGroupHead(head.label, head.count);
+                }
+                const entry = this.results[i];
+                if (entry) list.appendChild(this.createEntryRow(entry, i));
             }
-            const entry = this.results[i];
-            if (!entry) continue;
-            const fav = this.deps.isFavorite(entry.id);
-            const row = document.createElement("div");
-            row.className = "xlc-row"
-                + (i === this.activeIndex ? " xlc-row--active" : "")
-                + (fav ? " xlc-row--fav" : "");
-            row.dataset.xlcIndex = String(i);
-            row.id = `xlc-result-${i}`;
-            row.setAttribute("role", "option");
-            row.setAttribute("aria-selected", i === this.activeIndex ? "true" : "false");
-
-            const main = document.createElement("div");
-            main.className = "xlc-row-main";
-            const title = document.createElement("div");
-            title.className = "xlc-row-title";
-            if (i < 9) {
-                const ordinal = document.createElement("span");
-                ordinal.className = "xlc-row-ordinal";
-                ordinal.textContent = String(i + 1);
-                ordinal.title = this.deps.t("usageHint");
-                title.appendChild(ordinal);
-            }
-        const badge = document.createElement("span");
-            badge.className = `xlc-badge xlc-badge--${entry.itemType}`;
-            badge.textContent = TYPE_BADGES[entry.itemType] ?? "TXT";
-        badge.title = this.deps.t(`type.${entry.itemType}`);
-        badge.setAttribute("aria-label", this.deps.t(`type.${entry.itemType}`));
-            title.appendChild(badge);
-            const titleText = document.createElement("span");
-            titleText.className = "xlc-row-titletext";
-            const highlight = this.lastQueryText.length > 0
-                && !this.lastQueryText.startsWith("?")
-                && !this.aiResults;
-            if (highlight) {
-                // 命中高亮：让「为什么出这条」一眼可见（AI 语义找不高亮——匹配依据非字面）
-                this.appendHighlighted(titleText, entry.title || this.deps.t("unknownType"), this.lastQueryText);
-            } else {
-                titleText.textContent = entry.title || this.deps.t("unknownType");
-            }
-            title.appendChild(titleText);
-            // 变量徽标（F1；写入期快照，行为以插入时现场内容为准）
-            if ((entry.varCount ?? 0) > 0) {
-                const varBadge = document.createElement("span");
-                varBadge.className = "xlc-badge xlc-badge--var";
-                varBadge.textContent = this.deps.t("varCountBadge", String(entry.varCount));
-                title.appendChild(varBadge);
-            }
-            // 收藏态由右侧星标按钮承载（原型同款：金色常驻），标题内不再重复 ★
-            main.appendChild(title);
-            const meta = document.createElement("div");
-            meta.className = "xlc-row-meta";
-            // 使用次数（F3 展示，原型屏 1：meta 尾部「· N 次」；先截断正文再拼计数，保证计数恒可见）
-            const useCount = this.usageCounts.get(entry.id) ?? 0;
-            const joined = [entry.tags.join(" / "), entry.summary].filter(Boolean).join(" · ");
-            const metaBase = joined.length > 140 ? joined.slice(0, 140) + "…" : joined; // 截断留省略号（R139）
-            meta.textContent = metaBase + (useCount > 0 ? ` · ${this.deps.t("useCount", String(useCount))}` : "");
-            main.appendChild(meta);
-            row.appendChild(main);
-
-            if (this.deps.isSourceMissing(entry)) {
-                // 行内只留 ⚠ 图标徽标（完整说明在预览窗格横幅；tooltip 兜底）
-                const warn = document.createElement("span");
-                warn.className = "xlc-row-warn";
-                warn.textContent = "⚠";
-                warn.title = this.deps.t("sourceMissing") + " · " + this.deps.t("sourceGone");
-                warn.setAttribute("aria-label", this.deps.t("sourceMissing"));
-                title.appendChild(warn);
-            }
-
-            const star = document.createElement("button");
-            star.className = "b3-button b3-button--small xlc-row-action";
-            star.textContent = fav ? "★" : "☆";
-            star.setAttribute("aria-label", fav ? this.deps.t("unfavorite") : this.deps.t("favorite"));
-            star.addEventListener("click", (e) => {
-                e.stopPropagation();
-                this.deps.toggleFavorite(entry.id);
-                star.textContent = this.deps.isFavorite(entry.id) ? "★" : "☆";
-                // 重渲染会移除焦点所在按钮：焦点显式回归搜索框，避免键盘导航断线（R138）
-                void this.refreshPreservingPosition().then(() => this.restoreFocusToSearch());
-            });
-            row.appendChild(star);
-            list.appendChild(row);
         }
         // 提供方分区（pv: 虚拟行；点击弹小菜单=插入/复制 payload；不进键盘导航）
         if (this.providerRows.length > 0) {
@@ -1363,6 +1471,39 @@ export class CommonSearchDialog {
         void this.refreshPreservingPosition();
     }
 
+    /** 鉴权/权限错误由统一内核处理器调用；旧列表失效后保留查询条件并提供显式重试。 */
+    public showKernelAccessIssue(kind: "auth" | "permission", message: string): void {
+        ++this.searchSeq;
+        ++this.previewSeq;
+        if (this.inputDebounce) clearTimeout(this.inputDebounce);
+        this.inputDebounce = null;
+        this.accessIssueMessage = message;
+        this.emptyMessage = message;
+        this.results = [];
+        this.providerRows = [];
+        this.activeIndex = 0;
+        this.activeProvider = -1;
+        this.lastPreviewId = null;
+
+        const status = this.dialog?.element.querySelector<HTMLElement>(".xlc-status");
+        if (status) {
+            status.textContent = this.deps.t(kind === "auth" ? "kernelAuthStatus" : "kernelPermissionStatus");
+            status.classList.add("xlc-status--error");
+            status.setAttribute("role", "alert");
+        }
+        const list = this.dialog?.element.querySelector<HTMLElement>(".xlc-list");
+        if (list) {
+            list.classList.remove("xlc-list--loading");
+            list.setAttribute("aria-busy", "false");
+            this.renderList(list);
+        }
+        const count = this.dialog?.element.querySelector<HTMLElement>(".xlc-footer-count");
+        if (count) count.textContent = "";
+        this.updatePreview();
+        // keep kind in the API so UI variants may differentiate auth recovery from permission recovery.
+        this.dialog?.element.setAttribute("data-xlc-access-issue", kind);
+    }
+
     private async refreshPreservingPosition(): Promise<void> {
         const list = this.dialog?.element.querySelector<HTMLElement>(".xlc-list");
         const scrollTop = list?.scrollTop ?? 0;
@@ -1399,16 +1540,28 @@ export class CommonSearchDialog {
         const list = this.dialog?.element.querySelector<HTMLElement>(".xlc-list");
         if (!list) return;
         // 分组头不参与导航（F4-lite）：只遍历真实行
-        const rows = Array.from(list.children).filter((el) => !(el as HTMLElement).dataset.xlcHead) as HTMLElement[];
-        rows.forEach((child, i) => {
-            const isReal = i < this.results.length;
-            const active = isReal
-                ? this.activeProvider < 0 && i === this.activeIndex
-                : this.activeProvider >= 0 && i - this.results.length === this.activeProvider;
+        const rows = Array.from(list.children).filter((el) => {
+            const node = el as HTMLElement;
+            return !node.dataset.xlcHead && !node.dataset.xlcSpacer;
+        }) as HTMLElement[];
+        // 键盘移动到窗口外的条目时先把它带入窗口，再重新绘制活动态。
+        if (this.activeProvider < 0 && !rows.some((row) => row.dataset.xlcIndex === String(this.activeIndex))) {
+            this.virtualEnsureIndex?.(this.activeIndex);
+            return;
+        }
+        rows.forEach((child) => {
+            // 虚拟窗口中的 rows 只是当前可见片段，不能用局部数组序号匹配全局 activeIndex。
+            // 提供方行没有 data-xlc-index，使用稳定的 provider id 单独匹配。
+            const resultIndex = child.dataset.xlcIndex;
+            const active = resultIndex !== undefined
+                ? this.activeProvider < 0 && Number(resultIndex) === this.activeIndex
+                : this.activeProvider >= 0 && child.id === `xlc-provider-${this.activeProvider}`;
             child.classList.toggle("xlc-row--active", active);
             child.setAttribute("aria-selected", active ? "true" : "false");
         });
-        const active = rows[this.navPosition()] as HTMLElement | undefined;
+        const active = this.activeProvider >= 0
+            ? rows.find((row) => row.id === `xlc-provider-${this.activeProvider}`)
+            : rows.find((row) => row.dataset.xlcIndex === String(this.activeIndex));
         const input = this.dialog?.element.querySelector<HTMLInputElement>(".xlc-search-input");
         if (active?.id) input?.setAttribute("aria-activedescendant", active.id);
         else input?.removeAttribute("aria-activedescendant");
@@ -1550,6 +1703,7 @@ export class CommonSearchDialog {
             const cat = document.createElement("button");
             cat.type = "button";
             cat.className = "xlc-meta-chip" + (currentFilters.category === entry.category ? " xlc-meta-chip--on" : "");
+            cat.dataset.xlcControl = "preview.filter.category";
             cat.textContent = entry.category;
             cat.title = this.deps.t("category");
             cat.setAttribute("aria-pressed", String(currentFilters.category === entry.category));
@@ -1563,6 +1717,7 @@ export class CommonSearchDialog {
             const chip = document.createElement("button");
             chip.type = "button";
             chip.className = "xlc-meta-chip" + (currentFilters.tag === tag ? " xlc-meta-chip--on" : "");
+            chip.dataset.xlcControl = "preview.filter.tag";
             chip.textContent = tag;
             chip.title = this.deps.t("tags");
             chip.setAttribute("aria-pressed", String(currentFilters.tag === tag));
@@ -1685,8 +1840,8 @@ export class CommonSearchDialog {
 
     private runActionFor(entry: SearchEntry, fills?: Record<string, string>): Promise<unknown> {
         // 定向插入模式（文档树入口）：插入到指定文档而非活动编辑器
-        if (this.deps.insertTarget) {
-            const target = this.deps.insertTarget;
+        if (this.insertTarget) {
+            const target = this.insertTarget;
             return this.deps.insertToDoc(entry.id, target.docId, target.hPath, fills);
         }
         const mode: InsertMode = entry.itemType === "blockref" ? "insert-ref" : "insert";
@@ -1832,11 +1987,11 @@ export class CommonSearchDialog {
                 }));
             };
             if (entry.itemType === "blockref") {
-                addAction("＋", this.deps.t("insertRef"), () => this.deps.insertTarget
-                    ? this.deps.insertToDoc(entry.id, this.deps.insertTarget.docId, this.deps.insertTarget.hPath, undefined, "insert-ref")
+                addAction("＋", this.deps.t("insertRef"), () => this.insertTarget
+                    ? this.deps.insertToDoc(entry.id, this.insertTarget.docId, this.insertTarget.hPath, undefined, "insert-ref")
                     : this.deps.runAction(entry.id, "insert-ref"));
-                addAction("⊞", this.deps.t("insertEmbed"), () => this.deps.insertTarget
-                    ? this.deps.insertToDoc(entry.id, this.deps.insertTarget.docId, this.deps.insertTarget.hPath, undefined, "insert-embed")
+                addAction("⊞", this.deps.t("insertEmbed"), () => this.insertTarget
+                    ? this.deps.insertToDoc(entry.id, this.insertTarget.docId, this.insertTarget.hPath, undefined, "insert-embed")
                     : this.deps.runAction(entry.id, "insert-embed"));
                 addAction("⧉", this.deps.t("insertCopy"), () => this.deps.runAction(entry.id, "copy-content"));
             } else {
@@ -1897,6 +2052,7 @@ export class CommonSearchDialog {
                 sec.style.flexDirection = "column";
                 const input = document.createElement("input");
                 input.className = "b3-text-field xlc-pickdoc-input";
+                input.dataset.xlcControl = "dialog.pickdoc.input";
                 input.placeholder = this.deps.t("insertToDocPick");
                 input.setAttribute("aria-label", this.deps.t("insertToDocPick"));
                 input.setAttribute("autocomplete", "off");
@@ -1911,22 +2067,34 @@ export class CommonSearchDialog {
                 });
                 sec.appendChild(input);
                 let seq = 0;
-                input.addEventListener("input", () => {
+                const searchStatus = document.createElement("div");
+                searchStatus.className = "xlc-pickdoc-empty";
+                searchStatus.setAttribute("role", "status");
+                searchStatus.setAttribute("aria-live", "polite");
+                sec.appendChild(searchStatus);
+                const runDocSearch = (keyword: string): void => {
                     const mySeq = ++seq;
-                    const k = input.value.trim();
+                    const k = keyword.trim();
                     sec!.querySelectorAll(".xlc-pickdoc-hit").forEach((el) => el.remove());
                     sec!.querySelectorAll(".xlc-pickdoc-empty").forEach((el) => el.remove());
-                    if (!k) return;
+                    if (!k) {
+                        searchStatus.remove();
+                        return;
+                    }
+                    if (!searchStatus.isConnected) sec!.appendChild(searchStatus);
+                    searchStatus.className = "xlc-pickdoc-empty";
+                    searchStatus.textContent = this.deps.t("docPickerLoading");
+                    searchStatus.setAttribute("aria-busy", "true");
                     void this.deps.searchDocs(k).then((hits) => {
                         if (mySeq !== seq) return;
+                        searchStatus.setAttribute("aria-busy", "false");
                         // 无匹配反馈（R120）：不再静默无反应
                         if (hits.length === 0) {
-                            const empty = document.createElement("div");
-                            empty.className = "xlc-pickdoc-empty";
-                            empty.textContent = this.deps.t("docPickerEmpty");
-                            sec!.appendChild(empty);
+                            searchStatus.className = "xlc-pickdoc-empty";
+                            searchStatus.textContent = this.deps.t("docPickerEmpty");
                             return;
                         }
+                        searchStatus.remove();
                         for (const hit of hits.slice(0, 5)) {
                             sec!.appendChild(this.menuButton("⤓", hit.hPath || hit.name || hit.id, "xlc-menu-item xlc-pickdoc-hit", async () => {
                                 this.menuDismiss?.();
@@ -1934,14 +2102,23 @@ export class CommonSearchDialog {
                                 await this.insertEntryWithVars(entry, (fills) => this.deps.insertToDoc(entry.id, hit.id, hit.hPath, fills));
                             }));
                         }
-                        // 文档搜索失败静默降级（关键词保留可重试；Esc 由菜单层处理，R123）
                     }).catch((err) => {
                         if (mySeq !== seq) return;
-                        const error = document.createElement("div");
-                        error.className = "xlc-pickdoc-empty xlc-status--error";
-                        error.textContent = this.deps.t("kernelError", err instanceof Error ? err.message : String(err));
-                        sec!.appendChild(error);
+                        searchStatus.className = "xlc-pickdoc-empty xlc-status--error";
+                        searchStatus.setAttribute("aria-busy", "false");
+                        searchStatus.textContent = this.deps.t("kernelError", err instanceof Error ? err.message : String(err));
+                        const retry = document.createElement("button");
+                        retry.type = "button";
+                        retry.className = "b3-button xlc-btn-ghost xlc-pickdoc-retry";
+                        retry.dataset.xlcControl = "dialog.pickdoc.retry";
+                        retry.textContent = this.deps.t("retry");
+                        retry.addEventListener("click", () => runDocSearch(input.value));
+                        searchStatus.appendChild(document.createTextNode(" "));
+                        searchStatus.appendChild(retry);
                     });
+                };
+                input.addEventListener("input", () => {
+                    runDocSearch(input.value);
                 });
                 const actions2 = menu.querySelectorAll(".xlc-menu-sec");
                 actions2[actions2.length - 1]?.before(sec);
@@ -2021,14 +2198,36 @@ export class CommonSearchDialog {
         };
 
         const runTransformView = async (run: () => Promise<{ok: true; text: string} | {ok: false; message: string}>, gen: number): Promise<void> => {
-            const result = await run();
+            let result: {ok: true; text: string} | {ok: false; message: string};
+            try {
+                result = await run();
+            } catch (err) {
+                result = {ok: false, message: this.deps.t("kernelError", err instanceof Error ? err.message : String(err))};
+            }
             if (gen !== this.transformSeq) return; // 连点两个变换：先返回的旧结果直接丢弃（R138）
             const apply = (menu as HTMLElement & {applyTransform?: (text: string) => void}).applyTransform;
             if (result.ok) {
                 apply?.(result.text);
             } else {
                 const box = menu.querySelector<HTMLElement>(".xlc-menu-preview");
-                if (box) box.textContent = result.message;
+                if (box) {
+                    box.textContent = result.message;
+                    box.classList.add("xlc-status--error");
+                    const retry = document.createElement("button");
+                    retry.type = "button";
+                    retry.className = "b3-button xlc-btn-ghost xlc-transform-retry";
+                    retry.dataset.xlcControl = "dialog.transform.retry";
+                    retry.textContent = this.deps.t("retry");
+                    retry.addEventListener("click", () => {
+                        const retryGen = ++this.transformSeq;
+                        box.textContent = this.deps.t("aiWorking");
+                        box.classList.remove("xlc-status--error");
+                        retry.remove();
+                        void runTransformView(run, retryGen);
+                    });
+                    box.appendChild(document.createTextNode(" "));
+                    box.appendChild(retry);
+                }
             }
         };
 
@@ -2148,6 +2347,9 @@ export class CommonSearchDialog {
 
     destroy(): void {
         if (this.inputDebounce) clearTimeout(this.inputDebounce);
+        this.virtualListCleanup?.();
+        this.virtualListCleanup = null;
+        this.virtualEnsureIndex = null;
         this.longPressCancel?.();
         this.longPressCancel = null;
         if (this.menuDismiss) {

@@ -1,7 +1,7 @@
 // xiaolv-common/v1 协议模型：跨插件联动的稳定类型与能力协商。
 // 原则（需求六.8）：最小稳定接口；未知字段保留透传；未知能力忽略；版本不匹配明确拒绝。
 import {LIMITS, PROTOCOL_NAME, PROTOCOL_VERSION} from "../constants";
-import {CommonItem, CommonItemRef, ItemType, isItemType, isSafeHttpUrl} from "./item";
+import {CommonItem, CommonItemRef, ItemType, isItemType, isLogicalId, isSafeHttpUrl} from "./item";
 import {SearchQuery} from "./search";
 import {InsertPlan} from "./actions";
 import {ProviderRecord} from "./storage";
@@ -137,6 +137,10 @@ export function descriptorToRecord(d: ProviderDescriptor, now: number): Provider
 export interface SaveInput {
     itemType: ImportableItemType;
     markdown: string;
+    /** 可选幂等键；重试时复用同一逻辑 ID，避免重复创建块。 */
+    logicalId?: string;
+    /** 同一提交的重试键；服务层只在合法长度范围内使用。 */
+    idempotencyKey?: string;
     title?: string;
     alias?: string;
     tags?: string[];
@@ -159,12 +163,16 @@ export function normalizeSaveInput(raw: unknown): {ok: true; input: SaveInput} |
     const str = (v: unknown, cap: number): string | undefined => (typeof v === "string" ? v.slice(0, cap) : undefined);
     const url = str(obj.url, 2048);
     if (url && !isSafeHttpUrl(url)) return {ok: false, reason: "url invalid"};
+    const logicalId = obj.logicalId === undefined ? undefined : str(obj.logicalId, 64);
+    if (obj.logicalId !== undefined && (!logicalId || !isLogicalId(logicalId))) return {ok: false, reason: "logicalId invalid"};
     const srcRaw = (obj.source ?? {}) as Record<string, unknown>;
     return {
         ok: true,
         input: {
             itemType: rawItemType,
             markdown: obj.markdown,
+            logicalId,
+            idempotencyKey: str(obj.idempotencyKey, 128),
             title: str(obj.title, 512),
             alias: str(obj.alias, 256),
             tags: Array.isArray(obj.tags) ? obj.tags.filter((t): t is string => typeof t === "string").map((tg) => tg.slice(0, LIMITS.tag)).slice(0, 32) : undefined,

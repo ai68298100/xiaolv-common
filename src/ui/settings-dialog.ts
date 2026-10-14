@@ -8,7 +8,6 @@ import {validateImport, ConflictPolicy, ImportIssue, ImportReceipt, ExportedItem
 import {buildZip} from "../model/zip";
 import {buildMarkdownExport} from "../service/export-markdown";
 import {parseMarkdownPack} from "../service/import-markdown";
-import {parseEspansoYaml} from "../service/espanso-import";
 import {LibraryService} from "../service/library";
 import {AiAssistant} from "../service/ai";
 import {ProviderRegistry} from "../service/providers";
@@ -17,6 +16,18 @@ import {collectTags} from "../model/search";
 import {PROMPT_PACK_MD} from "../service/prompt-pack";
 
 type TFn = (key: string, ...args: string[]) => string;
+
+// 设置/首次引导是单实例浮层。入口可能同时来自命令面板、空态和移动端底栏；
+// 复用已打开的实例可避免重复点击堆积多个遮罩层，并保持焦点与当前表单状态。
+let activeSetupDialog: Dialog | null = null;
+let activeSettingsDialog: Dialog | null = null;
+
+// Espanso 解析器连同 js-yaml 仅在用户打开导入窗口时需要；保持设置首屏不加载重型 YAML 依赖。
+let espansoParserPromise: Promise<typeof import("../service/espanso-import")> | null = null;
+function loadEspansoParser(): Promise<typeof import("../service/espanso-import")> {
+    espansoParserPromise ??= import("../service/espanso-import");
+    return espansoParserPromise;
+}
 
 /** 开关行统一构造（文本+说明在左，开关右贴；input 语义不变） */
 function buildSwitchRow(text: string, sub: string | null, checked: boolean, onChange: (value: boolean) => void): HTMLLabelElement {
@@ -35,6 +46,7 @@ function buildSwitchRow(text: string, sub: string | null, checked: boolean, onCh
     const box = document.createElement("input");
     box.type = "checkbox";
     box.className = "xlc-switch";
+    box.dataset.xlcControl = `settings.switch.${text}`;
     box.checked = checked;
     box.addEventListener("change", () => onChange(box.checked));
     row.appendChild(cap);
@@ -70,19 +82,25 @@ export interface SetupDialogOptions {
 
 /** 首次引导（仅库选择，两步式；完整设置见 openSettingsDialog） */
 export function openSetupDialog(ctx: SettingsUiContext, opts?: SetupDialogOptions): void {
+    if (activeSetupDialog?.element?.isConnected) {
+        activeSetupDialog.element.querySelector<HTMLElement>("input, select, button")?.focus();
+        return;
+    }
+    activeSetupDialog = null;
     const t = ctx.t;
     const dialog = new Dialog({
         title: t("setupTitle"),
         content: "",
-        width: "min(520px, 92vw)",
-        height: "min(680px, 90vh)", // 首次快速开始卡需要留出阅读空间，长屏仍保持视口内滚动（R175）
+        width: "min(680px, 92vw)",
+        height: "min(820px, 92vh)", // 首次快速开始卡需要留出阅读空间，长屏仍保持视口内滚动（R175）
     });
-    dialog.element.querySelector(".b3-dialog__container")?.classList.add("xlc-form-host", "xlc-settings-host");
+    activeSetupDialog = dialog;
+    dialog.element.querySelector(".b3-dialog__container")?.classList.add("xlc-form-host", "xlc-settings-host", "xlc-setup-root-host");
     const body = getDialogBody(dialog.element);
     if (!body) return;
     body.innerHTML = "";
     const root = document.createElement("div");
-    root.className = "xlc-form";
+    root.className = "xlc-form xlc-setup";
     buildLibraryPickerSection(ctx, root, () => {
         dialog.destroy();
         opts?.onConfigured?.();
@@ -92,19 +110,29 @@ export function openSetupDialog(ctx: SettingsUiContext, opts?: SetupDialogOption
 
 /** 完整设置：库管理（含更改库）+ AI + 搜索 + 数据 */
 export function openSettingsDialog(ctx: SettingsUiContext): void {
+    if (activeSettingsDialog?.element?.isConnected) {
+        activeSettingsDialog.element.querySelector<HTMLElement>("input, select, button")?.focus();
+        return;
+    }
+    activeSettingsDialog = null;
     const t = ctx.t;
     const dialog = new Dialog({
         title: t("openSettings"),
         content: "",
-        width: "min(560px, 92vw)",
-        height: "min(720px, 90vh)", // 固定高：展开/收起/提示行显隐不再顶跳弹窗（R146）
+        width: "min(720px, 92vw)",
+        height: "min(860px, 92vh)", // 固定高：展开/收起/提示行显隐不再顶跳弹窗（R146）
     });
-    dialog.element.querySelector(".b3-dialog__container")?.classList.add("xlc-form-host", "xlc-settings-host");
+    activeSettingsDialog = dialog;
+    dialog.element.querySelector(".b3-dialog__container")?.classList.add("xlc-form-host", "xlc-settings-host", "xlc-settings-root-host");
     const body = getDialogBody(dialog.element);
     if (!body) return;
     body.innerHTML = "";
     const root = document.createElement("div");
-    root.className = "xlc-form";
+    root.className = "xlc-form xlc-settings";
+    const intro = document.createElement("p");
+    intro.className = "xlc-page-intro";
+    intro.textContent = t("settingsIntro");
+    root.appendChild(intro);
 
     // 库管理：状态行 + 「更改内容库」展开选择器（分区卡片）
     const libSec = document.createElement("div");
@@ -123,6 +151,7 @@ export function openSettingsDialog(ctx: SettingsUiContext): void {
         : t("libraryNone");
     const changeBtn = document.createElement("button");
     changeBtn.className = "b3-button";
+    changeBtn.dataset.xlcControl = "settings.library.change";
     changeBtn.textContent = t("openSettingsChangeLib");
     changeBtn.setAttribute("aria-expanded", "false");
     // 原型屏 5：状态与按钮同行（状态左、按钮右贴）
@@ -193,8 +222,8 @@ async function openPackExportDialog(ctx: SettingsUiContext): Promise<void> {
     const dialog = new Dialog({
         title: t("packExportTitle"),
         content: "",
-        width: "min(460px, 92vw)",
-        height: "min(600px, 90vh)", // 固定高：分类切换不顶跳（R146）
+        width: "min(580px, 92vw)",
+        height: "min(680px, 90vh)", // 固定高：分类切换不顶跳（R146）
     });
     dialog.element.querySelector(".b3-dialog__container")?.classList.add("xlc-form-host", "xlc-settings-host");
     const body = getDialogBody(dialog.element);
@@ -278,6 +307,7 @@ async function openPackExportDialog(ctx: SettingsUiContext): Promise<void> {
     actions.className = "xlc-form-actions";
     const cancelBtn = document.createElement("button");
     cancelBtn.className = "b3-button";
+    cancelBtn.dataset.xlcControl = "settings.pack-export.cancel";
     cancelBtn.textContent = t("cancel");
     cancelBtn.addEventListener("click", () => dialog.destroy());
     actions.appendChild(cancelBtn);
@@ -537,6 +567,7 @@ function buildLibraryPickerSection(ctx: SettingsUiContext, root: HTMLElement, on
     const modeSelect = document.createElement("select");
     modeSelect.className = "b3-select";
     modeSelect.id = "xlc-setup-mode";
+    modeSelect.dataset.xlcControl = "setup.mode";
     modeLabel.htmlFor = modeSelect.id;
     const modes: Array<{v: "new-doc" | "doc" | "tree" | "notebook"; label: string}> = [
         {v: "new-doc", label: t("setupCreateNewDoc")},
@@ -561,6 +592,7 @@ function buildLibraryPickerSection(ctx: SettingsUiContext, root: HTMLElement, on
     pickerInput.className = "b3-text-field";
     pickerInput.placeholder = t("docPicker");
     pickerInput.setAttribute("aria-label", t("docPicker"));
+    pickerInput.dataset.xlcControl = "setup.docs.query";
     pickerWrap.appendChild(pickerInput);
     const pickerList = document.createElement("div");
     pickerList.className = "xlc-doclist";
@@ -580,6 +612,7 @@ function buildLibraryPickerSection(ctx: SettingsUiContext, root: HTMLElement, on
             const retryBtn = document.createElement("button");
             retryBtn.type = "button";
             retryBtn.className = "b3-button xlc-btn-ghost xlc-doclist-retry";
+            retryBtn.dataset.xlcControl = "setup.docs.retry";
             retryBtn.textContent = t("retry");
             retryBtn.addEventListener("click", retry);
             pickerList.appendChild(retryBtn);
@@ -609,6 +642,7 @@ function buildLibraryPickerSection(ctx: SettingsUiContext, root: HTMLElement, on
                 const item = document.createElement("button");
                 item.type = "button";
                 item.className = "xlc-doclist-item";
+                item.dataset.xlcControl = "setup.doc.result";
                 item.textContent = hit.hPath || hit.name || hit.id;
                 if (hit.id === currentDocId) {
                     pickedDoc = {id: hit.id, hPath: hit.hPath};
@@ -644,6 +678,7 @@ function buildLibraryPickerSection(ctx: SettingsUiContext, root: HTMLElement, on
     const nbSelect = document.createElement("select");
     nbSelect.className = "b3-select";
     nbSelect.id = "xlc-setup-notebook";
+    nbSelect.dataset.xlcControl = "setup.notebook";
     nbSelect.disabled = true;
     if (existingConfig?.mode === "notebook" && existingConfig.notebookIds[0]) {
         nbSelect.dataset.currentNotebook = existingConfig.notebookIds[0];
@@ -657,6 +692,7 @@ function buildLibraryPickerSection(ctx: SettingsUiContext, root: HTMLElement, on
     const retryNotebooksBtn = document.createElement("button");
     retryNotebooksBtn.type = "button";
     retryNotebooksBtn.className = "b3-button xlc-btn-ghost xlc-setup-notebook-retry";
+    retryNotebooksBtn.dataset.xlcControl = "setup.notebook.retry";
     retryNotebooksBtn.textContent = t("retry");
     retryNotebooksBtn.style.display = "none";
     nbWrap.appendChild(retryNotebooksBtn);
@@ -819,11 +855,13 @@ function buildLibraryPickerSection(ctx: SettingsUiContext, root: HTMLElement, on
     const nameInput = document.createElement("input");
     nameInput.className = "b3-text-field";
     nameInput.id = "xlc-setup-newdoc";
+    nameInput.dataset.xlcControl = "setup.newdoc.title";
     nameLabel.htmlFor = nameInput.id;
     nameInput.value = t("setupNewDocName");
     nameRow.appendChild(nameInput);
     const createBtn = document.createElement("button");
     createBtn.className = "b3-button";
+    createBtn.dataset.xlcControl = "setup.newdoc.create";
     createBtn.style.whiteSpace = "nowrap";
     createBtn.textContent = t("create");
     createBtn.disabled = true;
@@ -900,12 +938,14 @@ function buildLibraryPickerSection(ctx: SettingsUiContext, root: HTMLElement, on
     if (opts?.onDismiss) {
         const dismissBtn = document.createElement("button");
         dismissBtn.className = "b3-button xlc-btn-ghost";
+        dismissBtn.dataset.xlcControl = "setup.later";
         dismissBtn.textContent = t("setupLater");
         dismissBtn.addEventListener("click", () => opts.onDismiss?.());
         step1Actions.appendChild(dismissBtn);
     }
     const nextBtn = document.createElement("button");
     nextBtn.className = "b3-button xlc-btn-primary";
+    nextBtn.dataset.xlcControl = "setup.next";
     nextBtn.textContent = t("setupNext");
     nextBtn.disabled = true;
     nextBtn.addEventListener("click", () => {
@@ -958,11 +998,13 @@ function buildLibraryPickerSection(ctx: SettingsUiContext, root: HTMLElement, on
     step2Actions.className = "xlc-form-actions";
     const backBtn = document.createElement("button");
     backBtn.className = "b3-button xlc-btn-ghost";
+    backBtn.dataset.xlcControl = "setup.back";
     backBtn.textContent = t("setupBack");
     backBtn.addEventListener("click", () => gotoStep(1));
     step2Actions.appendChild(backBtn);
     const finishBtn = document.createElement("button");
     finishBtn.className = "b3-button xlc-btn-primary";
+    finishBtn.dataset.xlcControl = "setup.finish";
     finishBtn.textContent = t("setupFinish");
     finishBtn.addEventListener("click", () => {
         const mode = modeSelect.value as LibraryConfig["mode"];
@@ -1119,6 +1161,7 @@ function buildAiSection(ctx: SettingsUiContext, root: HTMLElement): void {
             row.className = "xlc-ct-row";
             const nameInput = document.createElement("input");
             nameInput.className = "b3-text-field xlc-ct-name";
+            nameInput.dataset.xlcControl = `settings.ai.custom-transform.name.${ct.id}`;
             nameInput.placeholder = t("customTransformName");
             nameInput.setAttribute("aria-label", t("customTransformName"));
             nameInput.value = ct.name;
@@ -1130,6 +1173,7 @@ function buildAiSection(ctx: SettingsUiContext, root: HTMLElement): void {
             row.appendChild(nameInput);
             const promptInput = document.createElement("input");
             promptInput.className = "b3-text-field xlc-ct-prompt";
+            promptInput.dataset.xlcControl = `settings.ai.custom-transform.prompt.${ct.id}`;
             promptInput.placeholder = t("customTransformPrompt");
             promptInput.setAttribute("aria-label", t("customTransformPrompt"));
             promptInput.value = ct.prompt;
@@ -1142,6 +1186,7 @@ function buildAiSection(ctx: SettingsUiContext, root: HTMLElement): void {
             const delBtn = document.createElement("button");
             delBtn.type = "button";
             delBtn.className = "b3-button xlc-btn-ghost xlc-ct-del";
+            delBtn.dataset.xlcControl = `settings.ai.custom-transform.delete.${ct.id}`;
             delBtn.textContent = t("delete");
             delBtn.addEventListener("click", () => {
                 // 危险操作对齐惯例：确认 + 回执（名称+指令一键即失，且不可恢复，R138）
@@ -1167,6 +1212,7 @@ function buildAiSection(ctx: SettingsUiContext, root: HTMLElement): void {
     addCtBtn = document.createElement("button");
     addCtBtn.type = "button";
     addCtBtn.className = "b3-button";
+    addCtBtn.dataset.xlcControl = "settings.ai.custom-transform.add";
     addCtBtn.style.alignSelf = "flex-start";
     addCtBtn.textContent = t("customTransformAdd");
     addCtBtn.addEventListener("click", () => {
@@ -1249,53 +1295,94 @@ function buildDataSection(ctx: SettingsUiContext, root: HTMLElement): void {
                 : t("libModeDoc", String(cfg.containerDocIds.length)))
         : t("libraryNone")}`;
     dataSec.appendChild(libRow);
+    // 数据动作统一使用可访问状态行，避免只依赖 toast：加载会锁定按钮，失败提供重试，
+    // 空结果和成功都在动作区附近保留可观测反馈。
+    const operationStatus = document.createElement("div");
+    operationStatus.className = "xlc-operation-status";
+    operationStatus.hidden = true;
+    operationStatus.setAttribute("role", "status");
+    operationStatus.setAttribute("aria-live", "polite");
+    dataSec.appendChild(operationStatus);
+    const setOperationStatus = (state: "loading" | "success" | "error" | "empty" | "idle", message = "", retry?: () => void): void => {
+        operationStatus.dataset.state = state;
+        operationStatus.hidden = state === "idle";
+        operationStatus.replaceChildren();
+        if (message) {
+            const text = document.createElement("span");
+            text.className = state === "error" ? "xlc-form-error" : "xlc-form-hint";
+            text.textContent = message;
+            operationStatus.appendChild(text);
+        }
+        if (retry && state === "error") {
+            const retryBtn = document.createElement("button");
+            retryBtn.type = "button";
+            retryBtn.className = "b3-button xlc-btn-ghost xlc-operation-retry";
+            retryBtn.dataset.xlcControl = "settings.data.retry";
+            retryBtn.textContent = t("retry");
+            retryBtn.addEventListener("click", retry);
+            operationStatus.appendChild(retryBtn);
+        }
+    };
     const dataBtns = document.createElement("div");
     dataBtns.style.display = "flex";
     dataBtns.style.gap = "8px";
     dataBtns.style.flexWrap = "wrap";
-    const mkBtn = (label: string, onClick?: () => void): HTMLButtonElement => {
+    const mkBtn = (label: string, onClick?: () => void, control?: string): HTMLButtonElement => {
         const btn = document.createElement("button");
+        btn.type = "button";
         btn.className = "b3-button";
         btn.textContent = label;
+        if (control) btn.dataset.xlcControl = control;
         if (onClick) btn.addEventListener("click", onClick);
         dataBtns.appendChild(btn);
         return btn;
     };
-    // 异步按钮飞行态（R121，与 R110 保存钮一致）：执行期间禁用防连击与无反馈等待；
-    // run 内部自带错误回执，外层仅兜底
-    const withFlight = (btn: HTMLButtonElement, run: () => Promise<unknown>, flightLabel?: string): void => {
+    // 异步按钮统一飞行态：执行期间禁用防连击，失败时保留可重试入口。
+    const withFlight = (btn: HTMLButtonElement, run: () => Promise<{status?: "empty"; message?: string} | void>, opts: {flightLabel?: string; loading?: string; success?: string; empty?: string; formatError?: (err: unknown) => string} = {}): void => {
         btn.addEventListener("click", () => {
             if (btn.disabled) return;
             btn.disabled = true;
-            // 飞行态文案（R121 对齐 reindexBtn）：长操作期间不只禁用，还要「看得见在忙」（R138）
             const original = btn.textContent ?? "";
-            if (flightLabel) btn.textContent = flightLabel;
+            btn.setAttribute("aria-busy", "true");
+            if (opts.flightLabel) btn.textContent = opts.flightLabel;
+            setOperationStatus("loading", opts.loading ?? t("loading"));
             void Promise.resolve()
                 .then(run)
-                .catch(() => undefined)
+                .then((result) => {
+                    const value = result ?? {};
+                    if (value.status === "empty") {
+                        setOperationStatus("empty", value.message ?? opts.empty ?? t("empty"));
+                    } else if (value.message || opts.success) {
+                        setOperationStatus("success", value.message ?? opts.success ?? "");
+                    } else {
+                        setOperationStatus("idle");
+                    }
+                })
+                .catch((err: unknown) => {
+                    const message = opts.formatError?.(err) ?? t("kernelError", err instanceof Error ? err.message : String(err));
+                    ctx.notify("error", message);
+                    setOperationStatus("error", message, () => btn.click());
+                })
                 .finally(() => {
                     btn.disabled = false;
-                    if (flightLabel) btn.textContent = original;
+                    btn.removeAttribute("aria-busy");
+                    if (opts.flightLabel) btn.textContent = original;
                 });
         });
     };
-    const reindexBtn = mkBtn(t("reindexBtn"), () => {
-        reindexBtn.disabled = true;
-        reindexBtn.textContent = t("indexing");
-        void ctx.library.reindex().then((idx) => {
-            ctx.refreshSearch?.();
-            ctx.notify("info", idx.truncated
-                ? t("reindexTruncated", String(LIMITS.maxItems))
-                : t("reindexDone", String(idx.entries.length)));
-        }).catch((err) => {
-            ctx.notify("error", t("kernelError", (err as Error).message));
-        }).finally(() => {
-            reindexBtn.disabled = false;
-            reindexBtn.textContent = t("reindexBtn");
-        });
-    });
-    const clearRecentsBtn = mkBtn(ctx.state.recents.length ? t("clearRecents") : t("clearRecentsEmpty"), () => {
-        if (ctx.state.recents.length === 0) return;
+    const reindexBtn = mkBtn(t("reindexBtn"), undefined, "settings.data.reindex");
+    withFlight(reindexBtn, async () => {
+        const idx = await ctx.library.reindex();
+        const message = idx.truncated
+            ? t("reindexTruncated", String(LIMITS.maxItems))
+            : t("reindexDone", String(idx.entries.length));
+        ctx.refreshSearch?.();
+        ctx.notify("info", message);
+        return {message};
+    }, {flightLabel: t("indexing"), loading: t("indexing")});
+    const clearRecentsBtn = mkBtn(ctx.state.recents.length ? t("clearRecents") : t("clearRecentsEmpty"), undefined, "settings.data.clearRecents");
+    clearRecentsBtn.addEventListener("click", () => {
+        if (ctx.state.recents.length === 0 || clearRecentsBtn.disabled) return;
         confirm("⚠️ " + t("clearRecents"), t("clearRecentsConfirm"), () => {
             ctx.state.recents = [];
             ctx.persistSoon();
@@ -1303,55 +1390,78 @@ function buildDataSection(ctx: SettingsUiContext, root: HTMLElement): void {
             clearRecentsBtn.textContent = t("clearRecentsEmpty");
             clearRecentsBtn.disabled = true;
             ctx.notify("info", t("clearRecentsDone"));
+            setOperationStatus("success", t("clearRecentsDone"));
         });
     });
     clearRecentsBtn.disabled = ctx.state.recents.length === 0;
     if (ctx.state.ai.enabled) {
-        const auditBtn = mkBtn("✦ " + t("tagAuditBtn"));
+        const auditBtn = mkBtn("✦ " + t("tagAuditBtn"), undefined, "settings.data.tagAudit");
         withFlight(auditBtn, async () => {
-            await runTagAudit(ctx).catch((err: unknown) => {
-                ctx.notify("error", t("kernelError", err instanceof Error ? err.message : String(err)));
-            });
-        }, "✦ " + t("aiWorking"));
+            const result = await runTagAudit(ctx);
+            return result === "empty" ? {status: "empty" as const, message: t("tagAuditTooFew")} : undefined;
+        }, {flightLabel: "✦ " + t("aiWorking"), loading: t("aiWorking"), formatError: (err) => err instanceof Error ? err.message : String(err)});
     }
-    const exportBtn = mkBtn(t("exportBtn"));
+    const exportBtn = mkBtn(t("exportBtn"), undefined, "settings.data.export");
     withFlight(exportBtn, async () => {
-        try {
-            const json = await ctx.exportBundle();
-            const count = (JSON.parse(json) as {items: unknown[]}).items.length;
-            // 空库导出与模板包同语义：明确报错而非产出空文件（R138）
-            if (count === 0) {
-                ctx.notify("error", t("emptyLibrary"));
-                return;
-            }
-            const blob = new Blob([json], {type: "application/json"});
-            const a = document.createElement("a");
-            a.href = URL.createObjectURL(blob);
-            a.download = `xiaolv-common-export-${new Date().toISOString().slice(0, 10)}.json`;
-            a.click();
-            setTimeout(() => URL.revokeObjectURL(a.href), 4000); // 下载启动后再回收（R138）
-            ctx.notify("info", t("exportDone", String(count)));
-        } catch (err) {
-            ctx.notify("error", t("kernelError", err instanceof Error ? err.message : String(err)));
+        const json = await ctx.exportBundle();
+        const count = (JSON.parse(json) as {items: unknown[]}).items.length;
+        if (count === 0) {
+            return {status: "empty" as const, message: t("exportEmpty")};
         }
-    }, t("indexing"));
-    const packBtn = mkBtn(t("packBtn"));
+        const blob = new Blob([json], {type: "application/json"});
+        const a = document.createElement("a");
+        a.href = URL.createObjectURL(blob);
+        a.download = `xiaolv-common-export-${new Date().toISOString().slice(0, 10)}.json`;
+        a.click();
+        setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+        const message = t("exportDone", String(count));
+        ctx.notify("info", message);
+        return {message};
+    }, {flightLabel: t("indexing"), loading: t("indexing")});
+    const packBtn = mkBtn(t("packBtn"), undefined, "settings.data.packExport");
     withFlight(packBtn, async () => {
-        try {
-            await openPackExportDialog(ctx);
-        } catch (err) {
-            ctx.notify("error", t("kernelError", err instanceof Error ? err.message : String(err)));
-        }
-    });
+        await openPackExportDialog(ctx);
+        return {message: t("packExportTitle")};
+    }, {flightLabel: t("loading"), loading: t("loading")});
     const importBtn = mkBtn(t("importBtn"), () => {
+        if (importBtn.disabled) return;
+        const originalLabel = importBtn.textContent ?? "";
+        let finished = false;
+        let focusTimer: number | null = null;
+        let onFocus: () => void;
+        const finish = (): void => {
+            if (finished) return;
+            finished = true;
+            importBtn.disabled = false;
+            importBtn.textContent = originalLabel;
+            importBtn.removeAttribute("aria-busy");
+            window.removeEventListener("focus", onFocus);
+            if (focusTimer !== null) window.clearTimeout(focusTimer);
+        };
+        onFocus = (): void => {
+            // 取消系统文件选择器时没有 change 事件，回焦后恢复按钮，避免永久锁死。
+            focusTimer = window.setTimeout(finish, 350);
+        };
+        importBtn.disabled = true;
+        importBtn.setAttribute("aria-busy", "true");
+        importBtn.textContent = t("loading");
+        setOperationStatus("loading", t("loading"));
+        window.addEventListener("focus", onFocus, {once: true});
         const fileInput = document.createElement("input");
         fileInput.type = "file";
+        fileInput.dataset.xlcControl = "settings.import.file";
         fileInput.accept = ".json,application/json,.md,text/markdown";
         fileInput.addEventListener("change", () => {
             const file = fileInput.files?.[0];
-            if (!file) return;
+            if (!file) {
+                finish();
+                return;
+            }
             if (file.size > LIMITS.maxImportBytes) {
-                ctx.notify("error", t("importFailed", t("importReasonTooLarge")));
+                const message = t("importFailed", t("importReasonTooLarge"));
+                ctx.notify("error", message);
+                setOperationStatus("error", message, () => importBtn.click());
+                finish();
                 return;
             }
             void file.text().then((text) => {
@@ -1360,26 +1470,59 @@ function buildDataSection(ctx: SettingsUiContext, root: HTMLElement): void {
                     // Markdown 包：解析 → 同一策略对话框 → importBundle
                     const parsed = parseMarkdownPack(text);
                     if (parsed.items.length === 0) {
-                        ctx.notify("error", t("importFailed", t("importReasonNoMeta")));
+                        const message = t("importFailed", t("importReasonNoMeta"));
+                        ctx.notify("error", message);
+                        setOperationStatus("error", message, () => importBtn.click());
+                        finish();
                         return;
                     }
                     openImportPolicyDialog(ctx, {items: parsed.items, pack: parsed.pack}, parsed.issues, {kind: "markdown-pack", items: parsed.items});
+                    setOperationStatus("success", t("importPreview", String(parsed.items.length), String(parsed.issues.length)));
+                    finish();
                     return;
                 }
                 const validation = validateImport(text);
                 if (!validation.ok || !validation.parsed) {
-                    ctx.notify("error", t("importFailed", validation.reason ?? t("importReasonUnknown")));
+                    const message = t("importFailed", validation.reason ?? t("importReasonUnknown"));
+                    ctx.notify("error", message);
+                    setOperationStatus("error", message, () => importBtn.click());
+                    finish();
                     return;
                 }
                 openImportPolicyDialog(ctx, validation.parsed, validation.issues, {kind: "json", text});
+                setOperationStatus("success", t("importPreview", String(validation.parsed.items.length), String(validation.issues.length)));
+                finish();
             }).catch((err: unknown) => {
-                ctx.notify("error", t("importFailed", err instanceof Error ? err.message : String(err)));
+                const message = t("importFailed", err instanceof Error ? err.message : String(err));
+                ctx.notify("error", message);
+                setOperationStatus("error", message, () => importBtn.click());
+                finish();
             });
+        });
+        fileInput.addEventListener("cancel", () => {
+            finish();
+            setOperationStatus("idle");
         });
         fileInput.click();
     });
-    void importBtn;
-    void mkBtn(t("espansoImportBtn"), () => openEspansoImportDialog(ctx));
+    importBtn.dataset.xlcControl = "settings.data.import";
+    const espansoBtn = mkBtn(t("espansoImportBtn"), undefined, "settings.data.espansoImport");
+    // 打开 Espanso 输入对话框本身是同步动作，但仍需锁住按钮直到对话框关闭，
+    // 防止连续点击叠出多个解析窗口。
+    let espansoOpen = false;
+    espansoBtn.addEventListener("click", () => {
+        if (espansoOpen || espansoBtn.disabled) return;
+        espansoOpen = true;
+        espansoBtn.disabled = true;
+        espansoBtn.setAttribute("aria-busy", "true");
+        setOperationStatus("loading", t("loading"));
+        openEspansoImportDialog(ctx, () => {
+            espansoOpen = false;
+            espansoBtn.disabled = false;
+            espansoBtn.removeAttribute("aria-busy");
+            setOperationStatus("idle");
+        });
+    });
     dataSec.appendChild(dataBtns);
     const templateRow = document.createElement("div");
     templateRow.className = "xlc-setting-row xlc-template-import-row";
@@ -1391,13 +1534,29 @@ function buildDataSection(ctx: SettingsUiContext, root: HTMLElement): void {
     templateBtn.type = "button";
     templateBtn.className = "b3-button";
     templateBtn.textContent = t("promptPackBtn");
+    templateBtn.dataset.xlcControl = "settings.data.templateImport";
     templateBtn.addEventListener("click", () => {
+        if (templateBtn.disabled) return;
+        templateBtn.disabled = true;
+        templateBtn.setAttribute("aria-busy", "true");
+        const originalLabel = templateBtn.textContent ?? "";
+        templateBtn.textContent = t("loading");
+        setOperationStatus("loading", t("loading"));
         const parsed = parseMarkdownPack(PROMPT_PACK_MD);
         if (parsed.items.length === 0) {
-            ctx.notify("error", t("importFailed", t("importReasonPackEmpty")));
+            const message = t("importFailed", t("importReasonPackEmpty"));
+            ctx.notify("error", message);
+            setOperationStatus("error", message, () => templateBtn.click());
+            templateBtn.disabled = false;
+            templateBtn.removeAttribute("aria-busy");
+            templateBtn.textContent = originalLabel;
             return;
         }
         openImportPolicyDialog(ctx, {items: parsed.items, pack: parsed.pack}, parsed.issues, {kind: "markdown-pack", items: parsed.items});
+        setOperationStatus("success", t("importPreview", String(parsed.items.length), String(parsed.issues.length)));
+        templateBtn.disabled = false;
+        templateBtn.removeAttribute("aria-busy");
+        templateBtn.textContent = originalLabel;
     });
     templateRow.appendChild(templateBtn);
     dataSec.appendChild(templateRow);
@@ -1405,18 +1564,21 @@ function buildDataSection(ctx: SettingsUiContext, root: HTMLElement): void {
 }
 
 /** Espanso 配置导入（G2/R164）：粘贴 match YAML → 解析预览（条数+问题清单）→ 复用导入策略管道落库。 */
-function openEspansoImportDialog(ctx: SettingsUiContext): void {
+function openEspansoImportDialog(ctx: SettingsUiContext, onClose?: () => void): void {
     const t = ctx.t;
     const dialog = new Dialog({
         title: t("espansoTitle"),
         content: "",
-        width: "min(560px, 92vw)",
-        height: "min(600px, 86vh)",
+        width: "min(680px, 92vw)",
+        height: "min(680px, 86vh)",
     });
     const container = dialog.element.querySelector(".b3-dialog__container");
     if (container) container.classList.add("xlc-form-host", "xlc-settings-host");
     const body = getDialogBody(dialog.element);
-    if (!body) return;
+    if (!body) {
+        onClose?.();
+        return;
+    }
     body.innerHTML = "";
     const root = document.createElement("div");
     root.className = "xlc-form";
@@ -1428,6 +1590,7 @@ function openEspansoImportDialog(ctx: SettingsUiContext): void {
 
     const ta = document.createElement("textarea");
     ta.className = "b3-text-field";
+    ta.dataset.xlcControl = "settings.espanso.text";
     ta.rows = 10;
     ta.placeholder = t("espansoPlaceholder");
     ta.setAttribute("spellcheck", "false");
@@ -1444,25 +1607,50 @@ function openEspansoImportDialog(ctx: SettingsUiContext): void {
     foot.style.gap = "8px";
     const cancelBtn = document.createElement("button");
     cancelBtn.className = "b3-button";
+    cancelBtn.dataset.xlcControl = "settings.espanso.cancel";
     cancelBtn.textContent = t("cancel");
     foot.appendChild(cancelBtn);
     const nextBtn = document.createElement("button");
     nextBtn.className = "b3-button xlc-btn-primary";
+    nextBtn.dataset.xlcControl = "settings.espanso.next";
     nextBtn.textContent = t("setupNext");
     nextBtn.disabled = true;
     foot.appendChild(nextBtn);
     root.appendChild(foot);
     body.appendChild(root);
 
+    // Dialog 的右上角关闭按钮由宿主销毁 DOM；观察移除确保入口按钮不会永久锁定。
+    let released = false;
+    const release = (): void => {
+        if (released) return;
+        released = true;
+        observer?.disconnect();
+        onClose?.();
+    };
+    let observer: MutationObserver | null = null;
+    observer = typeof MutationObserver === "undefined" ? null : new MutationObserver(() => {
+        if (!dialog.element.isConnected) release();
+    });
+    observer?.observe(document.body, {childList: true, subtree: true});
+
     let parsedItems: ExportedItem[] = [];
     let parsedText: string | null = null;
-    const runParse = (): void => {
+    const runParse = async (): Promise<void> => {
         const sourceText = ta.value;
         parsedItems = [];
         parsedText = null;
         nextBtn.disabled = true;
         preview.textContent = "";
-        const result = parseEspansoYaml(sourceText);
+        let parser: typeof import("../service/espanso-import");
+        try {
+            parser = await loadEspansoParser();
+        } catch (err) {
+            preview.textContent = t("importFailed", (err as Error).message.slice(0, 120));
+            return;
+        }
+        // 输入等待期间可能已经变化；旧解析结果不能覆盖最新文本。
+        if (sourceText !== ta.value || !dialog.element.isConnected) return;
+        const result = parser.parseEspansoYaml(sourceText);
         if (result.items.length === 0) {
             preview.textContent = result.issues.length ? result.issues.slice(0, 5).join("\n") : t("espansoNone");
             return;
@@ -1484,12 +1672,16 @@ function openEspansoImportDialog(ctx: SettingsUiContext): void {
         parsedText = null;
         nextBtn.disabled = true;
         preview.textContent = "";
-        parseTimer = setTimeout(runParse, 400);
+        parseTimer = setTimeout(() => { void runParse(); }, 400);
     });
-    cancelBtn.addEventListener("click", () => dialog.destroy());
+    cancelBtn.addEventListener("click", () => {
+        dialog.destroy();
+        release();
+    });
     nextBtn.addEventListener("click", () => {
         if (nextBtn.disabled || parsedItems.length === 0 || parsedText !== ta.value) return;
         dialog.destroy();
+        release();
         openImportPolicyDialog(
             ctx,
             {items: parsedItems.map((i) => ({id: i.id, title: i.title}))},
@@ -1501,36 +1693,34 @@ function openEspansoImportDialog(ctx: SettingsUiContext): void {
 }
 
 /** AI 标签体检：仅标签清单出域；结果只展示，不自动修改任何条目 */
-async function runTagAudit(ctx: SettingsUiContext): Promise<void> {
+async function runTagAudit(ctx: SettingsUiContext): Promise<"empty" | "shown"> {
     const t = ctx.t;
     let idx: Awaited<ReturnType<LibraryService["ensureIndex"]>>;
     try {
         idx = await ctx.library.ensureIndex();
     } catch (err) {
-        ctx.notify("error", t("kernelError", err instanceof Error ? err.message : String(err)));
-        return;
+        throw new Error(t("kernelError", err instanceof Error ? err.message : String(err)));
     }
     const tags = collectTags(idx.entries);
     if (tags.length < 2) {
         ctx.notify("info", t("tagAuditTooFew"));
-        return;
+        return "empty";
     }
     let suggestions;
     try {
         suggestions = await ctx.ai.tagAudit(tags);
     } catch (err) {
-        ctx.notify("error", ctx.aiErrorText(err));
-        return;
+        throw new Error(ctx.aiErrorText(err));
     }
     const dialog = new Dialog({
         title: t("tagAuditTitle"),
         content: "",
-        width: "min(520px, 92vw)",
-        height: "min(520px, 84vh)", // 固定高：建议清单增长不顶跳（R146）
+        width: "min(620px, 92vw)",
+        height: "min(600px, 84vh)", // 固定高：建议清单增长不顶跳（R146）
     });
     dialog.element.querySelector(".b3-dialog__container")?.classList.add("xlc-form-host", "xlc-settings-host");
     const body = getDialogBody(dialog.element);
-    if (!body) return;
+    if (!body) throw new Error(t("kernelError", "无法打开体检结果"));
     body.innerHTML = "";
     const wrap = document.createElement("div");
     wrap.className = "xlc-form";
@@ -1557,11 +1747,13 @@ async function runTagAudit(ctx: SettingsUiContext): Promise<void> {
     actions.className = "xlc-form-actions";
     const close = document.createElement("button");
     close.className = "b3-button";
+    close.dataset.xlcControl = "settings.tag-audit.close";
     close.textContent = t("close");
     close.addEventListener("click", () => dialog.destroy());
     actions.appendChild(close);
     wrap.appendChild(actions);
     body.appendChild(wrap);
+    return suggestions.length === 0 ? "empty" : "shown";
 }
 
 /** 导入策略确认（导入前校验已过；策略三选 → importBundleText → 汇总回执）。导出供渲染 harness 取证。 */
@@ -1575,8 +1767,8 @@ export function openImportPolicyDialog(
     const dialog = new Dialog({
         title: t("importPolicyTitle"),
         content: "",
-        width: "min(440px, 92vw)",
-        height: "min(560px, 86vh)", // 固定高：策略卡片高度稳定（R146）
+        width: "min(540px, 92vw)",
+        height: "min(640px, 86vh)", // 固定高：策略卡片高度稳定（R146）
     });
     dialog.element.querySelector(".b3-dialog__container")?.classList.add("xlc-form-host", "xlc-settings-host");
     const body = getDialogBody(dialog.element);
@@ -1608,25 +1800,58 @@ export function openImportPolicyDialog(
     preview.className = "xlc-form-hint";
     preview.textContent = t("importPreview", String(parsed.items.length), String(issues.length));
     wrap.appendChild(preview);
-    const run = (policy: ConflictPolicy): void => {
-        dialog.destroy();
-        const promise = source.kind === "json"
-            ? ctx.importBundleText(source.text, policy)
-            : ctx.importMarkdownItems(source.items, policy);
-        void promise.then((receipt) => {
+    const receiptHint = document.createElement("p");
+    receiptHint.className = "xlc-form-hint";
+    receiptHint.setAttribute("role", "status");
+    receiptHint.setAttribute("aria-live", "polite");
+    receiptHint.textContent = t("importReceiptHint");
+    const policyCards: HTMLButtonElement[] = [];
+    const run = async (policy: ConflictPolicy): Promise<void> => {
+        if (policyCards.some((card) => card.disabled)) return;
+        policyCards.forEach((card) => {
+            card.disabled = true;
+            card.setAttribute("aria-busy", "true");
+        });
+        receiptHint.dataset.state = "loading";
+        receiptHint.textContent = t("loading");
+        try {
+            const receipt = source.kind === "json"
+                ? await ctx.importBundleText(source.text, policy)
+                : await ctx.importMarkdownItems(source.items, policy);
             ctx.refreshSearch?.();
-            ctx.notify(receipt.failed > 0 ? "error" : "info", t(
+            const message = t(
                 "importDone",
                 String(receipt.created),
                 String(receipt.skipped),
                 String(receipt.overwritten),
                 String(receipt.renamed),
                 String(receipt.failed),
-            ));
-        }).catch((err) => {
-            // 执行期失败≠校验失败：写入可能已部分完成，文案不得谎称「原始数据未改动」（R138）
-            ctx.notify("error", t("importRunFailed", (err as Error).message));
-        });
+            );
+            receiptHint.dataset.state = receipt.failed > 0 ? "error" : "success";
+            receiptHint.textContent = message;
+            ctx.notify(receipt.failed > 0 ? "error" : "info", message);
+        } catch (err) {
+            // 执行期失败≠校验失败：写入可能已部分完成，文案不得谎称「原始数据未改动」。
+            const message = t("importRunFailed", err instanceof Error ? err.message : String(err));
+            receiptHint.dataset.state = "error";
+            receiptHint.replaceChildren();
+            const error = document.createElement("span");
+            error.className = "xlc-form-error";
+            error.textContent = message;
+            receiptHint.appendChild(error);
+            const retryBtn = document.createElement("button");
+            retryBtn.type = "button";
+            retryBtn.className = "b3-button xlc-btn-ghost xlc-operation-retry";
+            retryBtn.dataset.xlcControl = "settings.import.retry";
+            retryBtn.textContent = t("retry");
+            retryBtn.addEventListener("click", () => void run(policy));
+            receiptHint.appendChild(retryBtn);
+            ctx.notify("error", message);
+            policyCards.forEach((card) => {
+                card.disabled = false;
+                card.removeAttribute("aria-busy");
+            });
+        }
     };
     // 策略卡（原型屏 8）：标题+说明+推荐档高亮；逐卡整行可点
     const policyList = document.createElement("div");
@@ -1654,13 +1879,12 @@ export function openImportPolicyDialog(
         descEl.textContent = desc;
         text.appendChild(descEl);
         card.appendChild(text);
-        card.addEventListener("click", () => run(policy));
+        card.dataset.xlcControl = `settings.import.policy.${policy}`;
+        card.addEventListener("click", () => void run(policy));
+        policyCards.push(card);
         policyList.appendChild(card);
     }
     wrap.appendChild(policyList);
-    const receiptHint = document.createElement("p");
-    receiptHint.className = "xlc-form-hint";
-    receiptHint.textContent = t("importReceiptHint");
     wrap.appendChild(receiptHint);
     body.appendChild(wrap);
 }

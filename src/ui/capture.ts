@@ -14,6 +14,8 @@ export function isBlockRefTarget(blockId: string): boolean {
 /** 回执 toast 的标题展示截断（标题最长 512 字；原文不受影响） */
 const TOAST_TITLE_MAX = 48;
 const shortTitle = (title: string): string => (title.length > TOAST_TITLE_MAX ? `${title.slice(0, TOAST_TITLE_MAX)}…` : title);
+/** 每次提交生成短期幂等 key，服务层据此抵御重复双击和重试。 */
+const newWriteKey = (scope: string): string => `xlc-${scope}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 12)}`.slice(0, 120);
 
 /** 链接目标分类：仅接受 http(s) 外链与 assets/ 资源；其余（siyuan:// 等）返回 null */
 export function classifyLinkTarget(href: string): {kind: "url" | "asset"; value: string} | null {
@@ -28,7 +30,7 @@ export interface CaptureDeps {
     getSelectionText(): {text: string; blockId: string | null};
     currentDocId(): string | null;
     readClipboardText(): Promise<string>;
-    createItem(input: NewItemInput): Promise<{ok: boolean; message: string; itemId?: string}>;
+    createItem(input: NewItemInput, options?: {idempotencyKey?: string}): Promise<{ok: boolean; message: string; itemId?: string}>;
     notify(kind: "info" | "error", message: string): void;
     /** 任意块的 kramdown（捕获当前块用；失败返 null） */
     getBlockKramdown(blockId: string): Promise<string | null>;
@@ -182,7 +184,7 @@ export class CaptureDialog {
                 markdown: content,
                 title: firstLine.slice(0, 512),
                 source: {sourceType: "clipboard"},
-            });
+            }, {idempotencyKey: newWriteKey("clipboard")});
         } catch (err) {
             this.deps.notify("error", this.deps.t("kernelError", err instanceof Error ? err.message : String(err)));
             return;
@@ -306,13 +308,14 @@ export class CaptureDialog {
         const t = this.deps.t;
         let closed = false;
         let saving = false;
+        const formWriteKey = newWriteKey("form");
         let tidySeq = 0;
         let draftSeq = 0;
         const dialog = new Dialog({
             title: t("newItem"),
             content: "",
-            width: "min(460px, 92vw)",
-            height: "min(720px, 90vh)",
+            width: "min(620px, 92vw)",
+            height: "min(860px, 92vh)",
             destroyCallback: () => {
                 closed = true;
                 this.formOpen = false;
@@ -329,7 +332,11 @@ export class CaptureDialog {
         }
         body.innerHTML = "";
         const form = document.createElement("div");
-        form.className = "xlc-form";
+        form.className = "xlc-form xlc-capture";
+        const intro = document.createElement("p");
+        intro.className = "xlc-page-intro";
+        intro.textContent = t("captureIntro");
+        form.appendChild(intro);
 
         const field = (label: string, value: string, isArea: boolean, cls: string, parent?: HTMLElement): HTMLInputElement | HTMLTextAreaElement => {
             const wrap = document.createElement("label");
@@ -362,6 +369,7 @@ export class CaptureDialog {
         typeWrap.appendChild(typeLabel);
         const typeSelect = document.createElement("select");
         typeSelect.className = "b3-select xlc-form-type";
+        typeSelect.dataset.xlcControl = "capture.type";
         for (const it of ["text", "markdown", "url", "code", "image", "asset", "blockref", "structure"] as ItemType[]) {
             const opt = document.createElement("option");
             opt.value = it;
@@ -373,22 +381,35 @@ export class CaptureDialog {
         metaRow.appendChild(typeWrap);
 
         const contentEl = field(t("contentLabel"), defaultText, true, "xlc-form-content");
+        contentEl.dataset.xlcControl = "capture.content";
+        const contentWrap = contentEl.parentElement as HTMLElement;
+        const contentError = document.createElement("span");
+        contentError.className = "xlc-form-error";
+        contentError.id = "xlc-capture-content-error";
+        contentError.setAttribute("role", "alert");
+        contentError.hidden = true;
+        contentWrap.appendChild(contentError);
         // 变量快捷插入条（F1 捕获侧，原型屏 3）：点选在内容光标处插入变量语法
         const varbar = buildVariableBar(t, () => contentEl as HTMLTextAreaElement);
         (contentEl.parentElement as HTMLElement).after(varbar);
         const titleEl = field(t("title"), overrides?.title ?? "", false, "xlc-form-title");
+        titleEl.dataset.xlcControl = "capture.title";
         // 原型顺序：标题下方挂 别名|类型 双栏
         form.appendChild(metaRow);
         const aliasEl = field(t("alias"), "", false, "xlc-form-alias", metaRow);
+        aliasEl.dataset.xlcControl = "capture.alias";
+        metaRow.insertBefore(aliasEl.parentElement as HTMLElement, typeWrap);
         // 标签 + 分类（原型：双栏行）
         const tagRow = document.createElement("div");
         tagRow.className = "xlc-form-row";
         const tagsEl = field(t("tags"), "", false, "xlc-form-tags", tagRow);
+        tagsEl.dataset.xlcControl = "capture.tags";
         const tagsHint = document.createElement("span");
         tagsHint.className = "xlc-form-hint";
         tagsHint.textContent = t("tagsHint");
         (tagsEl.parentElement as HTMLElement).appendChild(tagsHint);
         const categoryEl = field(t("category"), "", false, "xlc-form-category", tagRow);
+        categoryEl.dataset.xlcControl = "capture.category";
         (categoryEl.parentElement as HTMLElement).classList.add("xlc-form-field--fixed");
         form.appendChild(tagRow);
 
@@ -404,12 +425,22 @@ export class CaptureDialog {
             }).catch(() => undefined);
         }
 
-        // 行内必填反馈：内容为空保存时红描边（R109），输入即清除
-        const flagContentError = (): void => {
+        // 行内必填反馈：定位正文并关联具体错误，输入后清除错误状态。
+        const flagContentError = (message: string): void => {
             contentEl.classList.add("xlc-input--error");
+            contentEl.setAttribute("aria-invalid", "true");
+            contentEl.setAttribute("aria-describedby", contentError.id);
+            contentError.textContent = message;
+            contentError.hidden = false;
             (contentEl as HTMLTextAreaElement).focus();
         };
-        contentEl.addEventListener("input", () => contentEl.classList.remove("xlc-input--error"));
+        contentEl.addEventListener("input", () => {
+            contentEl.classList.remove("xlc-input--error");
+            contentEl.removeAttribute("aria-invalid");
+            contentEl.removeAttribute("aria-describedby");
+            contentError.hidden = true;
+            contentError.textContent = "";
+        });
 
         // AI 草稿行（启用 AI 时展示）：描述 → 生成草稿填入内容
         // AI 建议行（AI 整理后展示，全部采纳）
@@ -420,6 +451,7 @@ export class CaptureDialog {
         sugrow.appendChild(sugText);
         const adoptBtn = document.createElement("button");
         adoptBtn.className = "xlc-sugrow-adopt";
+        adoptBtn.dataset.xlcControl = "capture.ai.suggestion.adopt";
         let suggestions: {title?: string; alias?: string; tags?: string[]; category?: string} = {};
         const applySuggestions = (): void => {
             if (closed || Object.keys(suggestions).length === 0) return;
@@ -441,18 +473,48 @@ export class CaptureDialog {
                 const tidyBtn = document.createElement("button");
                 tidyBtn.className = "xlc-form-ai";
                 tidyBtn.type = "button";
+                tidyBtn.dataset.xlcControl = "capture.ai.tidy";
                 tidyBtn.textContent = "✦ " + t("aiTidy");
+                const tidyFailure = document.createElement("div");
+                tidyFailure.className = "xlc-ai-failure";
+                tidyFailure.hidden = true;
+                const tidyFailureMessage = document.createElement("span");
+                tidyFailureMessage.className = "xlc-form-error";
+                tidyFailureMessage.dataset.xlcControl = "capture.ai.tidy.error";
+                tidyFailureMessage.setAttribute("role", "alert");
+                tidyFailureMessage.setAttribute("aria-live", "assertive");
+                tidyFailure.appendChild(tidyFailureMessage);
+                const tidyRetryBtn = document.createElement("button");
+                tidyRetryBtn.type = "button";
+                tidyRetryBtn.className = "xlc-form-ai xlc-ai-retry";
+                tidyRetryBtn.dataset.xlcControl = "capture.ai.tidy.retry";
+                tidyRetryBtn.textContent = t("retry");
+                tidyFailure.appendChild(tidyRetryBtn);
+                (contentEl.parentElement as HTMLElement).appendChild(tidyFailure);
                 let tidyBusy = false;
                 const syncTidyButton = (): void => { tidyBtn.disabled = tidyBusy || !(contentEl as HTMLTextAreaElement).value.trim(); };
                 contentEl.addEventListener("input", syncTidyButton);
                 syncTidyButton();
-                tidyBtn.addEventListener("click", () => {
+                const clearTidyFailure = (): void => {
+                    tidyFailure.hidden = true;
+                    tidyFailureMessage.textContent = "";
+                };
+                const showTidyFailure = (message: string): void => {
+                    tidyFailureMessage.textContent = message || t("aiTransport");
+                    tidyFailure.hidden = false;
+                };
+                const runTidy = (): void => {
                     if (closed || tidyBusy) return;
                     const value = (contentEl as HTMLTextAreaElement).value.trim();
                     if (!value) {
                         this.deps.notify("error", t("invalidItem"));
                         return;
                     }
+                    clearTidyFailure();
+                    // A new request invalidates prior suggestions: never offer stale metadata after a failure.
+                    suggestions = {};
+                    sugText.textContent = "";
+                    sugrow.style.display = "none";
                     const request = ++tidySeq;
                     tidyBusy = true;
                     syncTidyButton();
@@ -463,7 +525,7 @@ export class CaptureDialog {
                         tidyBusy = false;
                         syncTidyButton();
                         if (!result.ok) {
-                            this.deps.notify("error", result.message);
+                            showTidyFailure(result.message);
                             return;
                         }
                         suggestions = result;
@@ -478,8 +540,9 @@ export class CaptureDialog {
                             sugText.appendChild(titleEl);
                         }
                         const parts = [
-                            result.tags?.length ? result.tags.join("/") : "",
-                            result.category ?? "",
+                            result.alias ? `${t("alias")}：${result.alias}` : "",
+                            result.tags?.length ? `${t("tags")}：${result.tags.join("/")}` : "",
+                            result.category ? `${t("category")}：${result.category}` : "",
                         ].filter(Boolean);
                         if (parts.length) {
                             const tail = document.createElement("span");
@@ -492,9 +555,11 @@ export class CaptureDialog {
                         tidyBtn.textContent = "✦ " + t("aiTidy");
                         tidyBusy = false;
                         syncTidyButton();
-                        this.deps.notify("error", err instanceof Error ? err.message : t("aiTransport"));
+                        showTidyFailure(err instanceof Error ? err.message : t("aiTransport"));
                     });
-                });
+                };
+                tidyBtn.addEventListener("click", runTidy);
+                tidyRetryBtn.addEventListener("click", runTidy);
                 contentLabel.appendChild(tidyBtn);
             }
 
@@ -508,17 +573,43 @@ export class CaptureDialog {
             const draftBtn = document.createElement("button");
             draftBtn.type = "button";
             draftBtn.className = "xlc-form-ai";
+            draftBtn.dataset.xlcControl = "capture.ai.draft.generate";
             draftBtn.textContent = "✦ " + t("aiDraftDesc");
             draftLabel.appendChild(draftBtn);
             const draftInput = document.createElement("input");
             draftInput.className = "b3-text-field";
+            draftInput.dataset.xlcControl = "capture.ai.draft.description";
             draftInput.placeholder = t("aiDraftDesc");
             draftWrap.appendChild(draftInput);
+            const draftFailure = document.createElement("div");
+            draftFailure.className = "xlc-ai-failure";
+            draftFailure.hidden = true;
+            const draftFailureMessage = document.createElement("span");
+            draftFailureMessage.className = "xlc-form-error";
+            draftFailureMessage.dataset.xlcControl = "capture.ai.draft.error";
+            draftFailureMessage.setAttribute("role", "alert");
+            draftFailureMessage.setAttribute("aria-live", "assertive");
+            draftFailure.appendChild(draftFailureMessage);
+            const draftRetryBtn = document.createElement("button");
+            draftRetryBtn.type = "button";
+            draftRetryBtn.className = "xlc-form-ai xlc-ai-retry";
+            draftRetryBtn.dataset.xlcControl = "capture.ai.draft.retry";
+            draftRetryBtn.textContent = t("retry");
+            draftFailure.appendChild(draftRetryBtn);
+            draftWrap.appendChild(draftFailure);
             let draftBusy = false;
             draftBtn.disabled = true;
             const syncDraftButton = (): void => { draftBtn.disabled = draftBusy || !draftInput.value.trim(); };
             draftInput.addEventListener("input", syncDraftButton);
-            draftBtn.addEventListener("click", () => {
+            const clearDraftFailure = (): void => {
+                draftFailure.hidden = true;
+                draftFailureMessage.textContent = "";
+            };
+            const showDraftFailure = (message: string): void => {
+                draftFailureMessage.textContent = message || t("aiTransport");
+                draftFailure.hidden = false;
+            };
+            const runDraft = (): void => {
                 if (closed || draftBusy) return;
                 const desc = draftInput.value.trim();
                 if (!desc) {
@@ -528,6 +619,7 @@ export class CaptureDialog {
                 }
                 // 防重入 + 代次守卫：连点/慢响应不得并发覆盖（对齐 AI 整理按钮，R138）
                 if (draftBtn.disabled) return;
+                clearDraftFailure();
                 draftBusy = true;
                 syncDraftButton();
                 const request = ++draftSeq;
@@ -538,7 +630,7 @@ export class CaptureDialog {
                     draftBusy = false;
                     syncDraftButton();
                     if (!result.ok) {
-                        this.deps.notify("error", result.message);
+                        showDraftFailure(result.message);
                         return;
                     }
                     const contentBox = contentEl as HTMLTextAreaElement;
@@ -557,9 +649,11 @@ export class CaptureDialog {
                     draftBtn.textContent = "✦ " + t("aiDraftDesc");
                     draftBusy = false;
                     syncDraftButton();
-                    this.deps.notify("error", err instanceof Error ? err.message : t("aiTransport"));
+                    showDraftFailure(err instanceof Error ? err.message : t("aiTransport"));
                 });
-            });
+            };
+            draftBtn.addEventListener("click", runDraft);
+            draftRetryBtn.addEventListener("click", runDraft);
             form.insertBefore(draftWrap, form.firstChild);
         }
 
@@ -567,6 +661,7 @@ export class CaptureDialog {
         actions.className = "xlc-form-actions";
         const cancelBtn = document.createElement("button");
         cancelBtn.className = "b3-button";
+        cancelBtn.dataset.xlcControl = "capture.cancel";
         cancelBtn.textContent = t("cancel");
         cancelBtn.addEventListener("click", () => {
             closed = true;
@@ -576,6 +671,7 @@ export class CaptureDialog {
         });
         const saveBtn = document.createElement("button");
         saveBtn.className = "b3-button xlc-btn-primary";
+        saveBtn.dataset.xlcControl = "capture.save";
         saveBtn.textContent = t("save");
         // 单行输入 Enter 提交（内容 textarea 换行合法，不绑）
         const submitOnEnter = (el: HTMLInputElement): void => {
@@ -594,8 +690,8 @@ export class CaptureDialog {
             const contentValue = (contentEl as HTMLTextAreaElement).value;
             // blockref 条目锚定目标块，允许无正文保存（右键引用捕获的正文本就为空，R138）
             if (!contentValue.trim() && !(typeSelect.value === "blockref" && overrides?.targetBlockId)) {
-                flagContentError();
-                this.deps.notify("error", t("invalidItem"));
+                flagContentError(t("captureContentRequired"));
+                this.deps.notify("error", t("captureContentRequired"));
                 return;
             }
             const type = typeSelect.value as ItemType;
@@ -610,8 +706,8 @@ export class CaptureDialog {
             } else if (type === "url") {
                 markdown = contentValue.trim();
                 if (!isSafeHttpUrl(markdown)) {
-                    flagContentError();
-                    this.deps.notify("error", t("invalidItem"));
+                    flagContentError(t("captureUrlInvalid"));
+                    this.deps.notify("error", t("captureUrlInvalid"));
                     return;
                 }
             }
@@ -647,7 +743,7 @@ export class CaptureDialog {
                             sourceType: overrides?.sourceType ?? (sourceBlockId ? "selection" : "manual"),
                         }
                         : undefined,
-                }).then((result) => {
+                }, {idempotencyKey: formWriteKey}).then((result) => {
                     saving = false;
                     if (result.ok) {
                         // 回执由 index.ts 的 createItem 包装统一给出（此前双 toast，R138）

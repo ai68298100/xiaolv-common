@@ -9,6 +9,20 @@ function isKnownType(v: string): v is NewItemInput["itemType"] {
     return isItemType(v);
 }
 
+// 同一 LibraryService 的两个导入入口（设置页与协议调用）必须串行；否则双方
+// 都基于同一索引快照作冲突判断，overwrite/rename 可能互相覆盖。
+const importLocks = new WeakMap<LibraryService, Promise<void>>();
+
+function withImportLock<T>(library: LibraryService, action: () => Promise<T>): Promise<T> {
+    const previous = importLocks.get(library) ?? Promise.resolve();
+    const current = previous.then(action);
+    const tail = current.then(() => undefined, () => undefined);
+    importLocks.set(library, tail);
+    return current.finally(() => {
+        if (importLocks.get(library) === tail) importLocks.delete(library);
+    });
+}
+
 export interface ImportSource {
     existingIds: ReadonlySet<string>;
     parsed: ParsedImport;
@@ -46,7 +60,8 @@ export async function applyOverwriteImport(library: LibraryService, incoming: Ex
         // 类型变化 = 先删后建。删除前备份旧正文：建新失败时尽力原样恢复旧条目，
         // 不允许「旧已删、新未建」成为终态（失败可恢复红线，R140）。
         const backupKd = await library.getItemKramdown(existing);
-        const backup = backupKd.ok ? backupKd.data : "";
+        if (!backupKd.ok) return false;
+        const backup = backupKd.data;
         const removed = await library.removeItem(logicalId);
         if (!removed.ok) return false;
         const created = await library.createItem({
@@ -66,8 +81,9 @@ export async function applyOverwriteImport(library: LibraryService, incoming: Ex
             },
         });
         if (created.ok) return true;
-        if (backup) {
-            await library.createItem({
+        // 空正文也是合法快照（例如 blockref）；恢复不能用 truthiness 跳过，
+        // 否则创建失败后会留下「旧已删、新未建」的数据丢失状态。
+        const restored = await library.createItem({
                 itemType: existing.itemType,
                 markdown: backup,
                 logicalId,
@@ -79,7 +95,7 @@ export async function applyOverwriteImport(library: LibraryService, incoming: Ex
                 targetBlockId: existing.targetBlockId || undefined,
                 source: {...existing.source},
             });
-        }
+        if (!restored.ok) return false;
         return false;
     }
     const updated = await library.updateItem(logicalId, {
@@ -96,6 +112,10 @@ export async function applyOverwriteImport(library: LibraryService, incoming: Ex
 
 /** 逐条应用导入计划（冲突分类已含）；全部完成后由调用方重建索引。 */
 export async function importBundle(library: LibraryService, parsed: ParsedImport, policy: "skip" | "overwrite" | "rename"): Promise<ImportReceipt> {
+    return withImportLock(library, () => importBundleUnlocked(library, parsed, policy));
+}
+
+async function importBundleUnlocked(library: LibraryService, parsed: ParsedImport, policy: "skip" | "overwrite" | "rename"): Promise<ImportReceipt> {
     const receipt: ImportReceipt = {total: 0, created: 0, skipped: 0, overwritten: 0, renamed: 0, failed: 0, lines: []};
     // 建立一次快照：createItem 成功后会使缓存失效，不能用会变化的 getIndex() 判冲突。
     const existingIds = new Set((await library.ensureIndex()).items.keys());
@@ -142,7 +162,14 @@ export async function importBundle(library: LibraryService, parsed: ParsedImport
             receipt.lines.push({id: incoming.id, title: incoming.title, action: decision?.kind ?? "new", ok: false, error: (err as Error).message});
         }
     }
-    await library.reindex();
+    try {
+        await library.reindex();
+    } catch (err) {
+        // The item writes may already have committed. Preserve their per-line
+        // receipts and report the failed refresh explicitly; throwing here
+        // would make the UI lose the partial-write outcome.
+        receipt.reindexError = (err as Error)?.message || String(err);
+    }
     return receipt;
 }
 

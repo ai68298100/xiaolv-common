@@ -28,7 +28,21 @@ function toRef(item: Pick<CommonItem, "id" | "itemType" | "title">): CommonItemR
 }
 
 export class XiaolvCommonService {
+    /** 宿主插入是有副作用的；协议调用方重试时按幂等键复用成功回执。 */
+    private readonly insertReceipts = new Map<string, ActionResult<{mode: string; downgraded: boolean}>>();
+    private readonly insertLocks = new Map<string, Promise<void>>();
+
     constructor(private readonly deps: ServiceDeps) {}
+
+    private withInsertLock<T>(key: string, action: () => Promise<T>): Promise<T> {
+        const previous = this.insertLocks.get(key) ?? Promise.resolve();
+        const current = previous.then(action);
+        const tail = current.then(() => undefined, () => undefined);
+        this.insertLocks.set(key, tail);
+        return current.finally(() => {
+            if (this.insertLocks.get(key) === tail) this.insertLocks.delete(key);
+        });
+    }
 
     /** 协议生命周期事件（README 承诺 item-created/updated/deleted/inserted 四件；R139 补齐前三件） */
     private emitEvent(eventName: string, itemId: string, itemType?: string): void {
@@ -118,9 +132,11 @@ export class XiaolvCommonService {
     async save(input: unknown): Promise<ActionResult<CommonItemRef>> {
         const parsed = normalizeSaveInput(input);
         if (!parsed.ok) return failureEnvelope("invalid-input", parsed.reason);
+        const idempotencyKey = parsed.input.idempotencyKey;
         const created = await this.deps.library.createItem({
             itemType: parsed.input.itemType,
             markdown: parsed.input.markdown,
+            logicalId: parsed.input.logicalId,
             title: parsed.input.title,
             alias: parsed.input.alias,
             tags: parsed.input.tags,
@@ -133,7 +149,7 @@ export class XiaolvCommonService {
                 // 调用方声明的来源类型透传（此前硬编码 external 静默篡改语义，R139）
                 sourceType: parsed.input.source?.sourceType ?? "external",
             } as NewItemInput["source"],
-        });
+        }, undefined, {idempotencyKey});
         if (!created.ok) return failureEnvelope(created.reason === "timeout" ? "timeout" : created.reason === "invalid-input" ? "invalid-input" : "kernel-error", created.message);
         this.deps.onLibraryChange?.();
         this.emitEvent(EVENTS.itemCreated, created.data.item.id, created.data.item.itemType);
@@ -145,21 +161,25 @@ export class XiaolvCommonService {
             return failureEnvelope("invalid-input", "update input must be object");
         }
         const obj = input as Record<string, unknown>;
+        const idempotencyKey = typeof obj.idempotencyKey === "string" ? obj.idempotencyKey : undefined;
         const updated = await this.deps.library.updateItem(String(itemId ?? ""), {
             title: typeof obj.title === "string" ? obj.title : undefined,
             alias: typeof obj.alias === "string" ? obj.alias : undefined,
             tags: Array.isArray(obj.tags) ? obj.tags.filter((t): t is string => typeof t === "string") : undefined,
             category: typeof obj.category === "string" ? obj.category : undefined,
-        });
+        }, {idempotencyKey});
         if (!updated.ok) return failureEnvelope(updated.reason === "timeout" ? "timeout" : updated.reason === "not-found" ? "not-found" : "kernel-error", updated.message);
         this.deps.onLibraryChange?.();
         this.emitEvent(EVENTS.itemUpdated, updated.data.item.id, updated.data.item.itemType);
         return successEnvelope(toRef(updated.data.item));
     }
 
-    async remove(itemId: string): Promise<ActionResult<void>> {
+    async remove(itemId: string, options?: unknown): Promise<ActionResult<void>> {
         const id = String(itemId ?? "");
-        const removed = await this.deps.library.removeItem(id);
+        const idempotencyKey = options && typeof options === "object" && !Array.isArray(options)
+            && typeof (options as Record<string, unknown>).idempotencyKey === "string"
+            ? (options as Record<string, unknown>).idempotencyKey as string : undefined;
+        const removed = await this.deps.library.removeItem(id, {idempotencyKey});
         if (!removed.ok) return failureEnvelope(removed.reason === "timeout" ? "timeout" : removed.reason === "not-found" ? "not-found" : "kernel-error", removed.message);
         // 侧车清理用归一化后的 id（raw 非字符串时会残留幽灵收藏，R144）
         this.deps.state.favorites = this.deps.state.favorites.filter((x) => x !== id);
@@ -180,17 +200,37 @@ export class XiaolvCommonService {
                 return failureEnvelope("invalid-input", "unknown mode");
             }
         }
+        const rawKey = options && typeof options === "object" && !Array.isArray(options)
+            ? (options as Record<string, unknown>).idempotencyKey : undefined;
+        const idempotencyKey = typeof rawKey === "string" && rawKey.length >= 8 && rawKey.length <= 128 ? rawKey : "";
         const mode = normalizeInsertMode(options);
-        const got = await this.get(itemId);
-        // 超时/内核错误透传真实原因，不折叠成 not-found（协议方可能据此误删本地引用，R139）
-        if (!got.ok || !got.data) {
-            return failureEnvelope(got.reason === "timeout" ? "timeout" : got.reason === "kernel-error" ? "kernel-error" : "not-found", got.message);
-        }
-        const receipt = await this.deps.executor.run(got.data, mode);
-        if (!receipt.ok) {
-            return failureEnvelope(executionFailureReason(receipt.message), receipt.message);
-        }
-        return successEnvelope({mode: receipt.mode, downgraded: receipt.downgraded});
+        const lockKey = idempotencyKey ? `insert:${itemId}:${idempotencyKey}` : "";
+        const action = async (): Promise<ActionResult<{mode: string; downgraded: boolean}>> => {
+            if (idempotencyKey) {
+                const previous = this.insertReceipts.get(lockKey);
+                if (previous) return previous;
+            }
+            const got = await this.get(itemId);
+            // 超时/内核错误透传真实原因，不折叠成 not-found（协议方可能据此误删本地引用，R139）
+            if (!got.ok || !got.data) {
+                return failureEnvelope(got.reason === "timeout" ? "timeout" : got.reason === "kernel-error" ? "kernel-error" : "not-found", got.message);
+            }
+            const receipt = await this.deps.executor.run(got.data, mode);
+            if (!receipt.ok) {
+                return failureEnvelope(executionFailureReason(receipt.message), receipt.message);
+            }
+            const result = successEnvelope({mode: receipt.mode, downgraded: receipt.downgraded});
+            if (idempotencyKey) {
+                this.insertReceipts.set(lockKey, result);
+                while (this.insertReceipts.size > 256) {
+                    const oldest = this.insertReceipts.keys().next().value as string | undefined;
+                    if (!oldest) break;
+                    this.insertReceipts.delete(oldest);
+                }
+            }
+            return result;
+        };
+        return lockKey ? this.withInsertLock(lockKey, action) : action();
     }
 
     async copy(itemId: string): Promise<ActionResult<{kind: string; pendingVerification?: string[]}>> {

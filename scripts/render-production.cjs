@@ -90,13 +90,13 @@ fs.writeFileSync(path.join(OUT, "harness.html"), html);
             if (dialogRoot) stage.appendChild(dialogRoot);
             const root = document.querySelector(".xlc-dialog");
             if (root) {
-                root.style.height = "560px";
+                root.style.height = "700px";
                 root.style.position = "relative";
             }
             const container = document.querySelector(".b3-dialog__container");
             if (container) {
                 container.style.margin = "0 auto";
-                container.style.maxWidth = "760px";
+                container.style.maxWidth = "960px";
             }
         }, opts);
         await page.waitForTimeout(800);
@@ -153,6 +153,61 @@ fs.writeFileSync(path.join(OUT, "harness.html"), html);
         rows: document.querySelectorAll(".xlc-row[data-xlc-index]").length >= 3,
         pane: !!document.querySelector(".xlc-pane"),
     }));
+    // 虚拟列表键盘/ARIA 回归：活动索引必须使用全局 data-xlc-index，不能按窗口内局部序号匹配。
+    await page.evaluate(() => {
+        const stage = document.getElementById("stage");
+        stage.className = "b3-scope light";
+        document.querySelectorAll(".b3-dialog").forEach((el) => el.remove());
+        stage.innerHTML = "";
+        window.XlcHarness.openDialog({largeResults: true, query: ""});
+        const dialogRoot = document.querySelector(".b3-dialog");
+        if (dialogRoot) stage.appendChild(dialogRoot);
+        const root = document.querySelector(".xlc-dialog");
+        if (root) {
+            root.style.height = "700px";
+            root.style.position = "relative";
+        }
+        const container = document.querySelector(".b3-dialog__container");
+        if (container) {
+            container.style.margin = "0 auto";
+            container.style.maxWidth = "960px";
+        }
+    });
+    await page.waitForTimeout(500);
+    await page.locator(".xlc-search-input").focus();
+    for (let i = 0; i < 99; i++) await page.keyboard.press("ArrowDown");
+    const virtualLast = await page.evaluate(() => {
+        const input = document.querySelector(".xlc-search-input");
+        const list = document.querySelector(".xlc-list");
+        const last = document.querySelector('.xlc-row[data-xlc-index="99"]');
+        return {
+            virtualized: list?.classList.contains("xlc-list--virtual") === true,
+            renderedRows: list?.querySelectorAll('.xlc-row[data-xlc-index]').length ?? 0,
+            activeIndex: document.querySelector('.xlc-row--active')?.getAttribute("data-xlc-index") ?? null,
+            selected: last?.getAttribute("aria-selected") === "true",
+            activeDescendant: input?.getAttribute("aria-activedescendant") ?? null,
+            scrolled: (list?.scrollTop ?? 0) > 0,
+        };
+    });
+    if (!virtualLast.virtualized || virtualLast.renderedRows >= 100
+        || virtualLast.activeIndex !== "99" || !virtualLast.selected
+        || virtualLast.activeDescendant !== "xlc-result-99" || !virtualLast.scrolled) {
+        throw new Error("virtual list last-item keyboard/ARIA smoke failed: " + JSON.stringify(virtualLast));
+    }
+    for (let i = 0; i < 99; i++) await page.keyboard.press("ArrowUp");
+    const virtualFirst = await page.evaluate(() => {
+        const input = document.querySelector(".xlc-search-input");
+        const first = document.querySelector('.xlc-row[data-xlc-index="0"]');
+        return {
+            activeIndex: document.querySelector('.xlc-row--active')?.getAttribute("data-xlc-index") ?? null,
+            selected: first?.getAttribute("aria-selected") === "true",
+            activeDescendant: input?.getAttribute("aria-activedescendant") ?? null,
+        };
+    });
+    if (virtualFirst.activeIndex !== "0" || !virtualFirst.selected || virtualFirst.activeDescendant !== "xlc-result-0") {
+        throw new Error("virtual list first-item keyboard/ARIA smoke failed: " + JSON.stringify(virtualFirst));
+    }
+    console.log(`  smoke ✓ virtual list keyboard/ARIA: ${virtualLast.renderedRows} rendered rows, last/first active states`);
     await shoot("provider-light", {theme: "light", aiEnabled: true, missing: false, query: "工作台"}, () => ({
         providerHeader: (document.querySelector(".xlc-provider-header")?.textContent ?? "").includes("其他插件内容"),
         providerRows: document.querySelectorAll(".xlc-row--provider").length >= 1,
@@ -164,6 +219,59 @@ fs.writeFileSync(path.join(OUT, "harness.html"), html);
             return el !== null && el.offsetParent === null && body?.textContent === "选择左侧条目后，这里会显示预览";
         })(),
     }));
+    await shoot("auth-error-light", {theme: "light", aiEnabled: true, missing: false, query: "项目延期"}, () => {
+        window.XlcHarness.triggerAccessIssue("auth");
+        const status = document.querySelector(".xlc-status");
+        const card = document.querySelector(".xlc-list .xlc-empty");
+        const retry = document.querySelector('[data-xlc-control="access.retry"]');
+        return {
+            oldRowsCleared: document.querySelectorAll(".xlc-list .xlc-row[data-xlc-index]").length === 0,
+            alertVisible: status?.getAttribute("role") === "alert" && (status.textContent ?? "").includes("登录状态"),
+            recoveryCard: (card?.textContent ?? "").includes("登录状态") && !!retry,
+            failedStateExcludesCreateAction: !Array.from(card?.querySelectorAll("button") ?? []).some((button) => (button.textContent ?? "").includes("新建")),
+        };
+    });
+    const searchesBeforeRetry = await page.evaluate(() => window.__xlcSearchCalls ?? 0);
+    await page.locator('[data-xlc-control="access.retry"]').click();
+    await page.waitForFunction((previousCount) => (window.__xlcSearchCalls ?? 0) > previousCount, searchesBeforeRetry);
+    await page.waitForFunction(() => document.querySelectorAll(".xlc-list .xlc-row[data-xlc-index]").length > 0);
+    const authRecovery = await page.evaluate(() => ({
+        queryPreserved: document.querySelector(".xlc-search-input")?.value === "项目延期",
+        errorCleared: !(document.querySelector(".xlc-status")?.textContent ?? "").includes("登录状态"),
+        rowsRestored: document.querySelectorAll(".xlc-list .xlc-row[data-xlc-index]").length > 0,
+    }));
+    if (Object.values(authRecovery).some((value) => !value)) {
+        throw new Error("auth recovery smoke failed: " + JSON.stringify(authRecovery));
+    }
+    console.log("  smoke ✓ auth recovery: 3 assertions");
+    await page.evaluate(() => window.XlcHarness.triggerAccessIssue("permission"));
+    const permissionFailure = await page.evaluate(() => {
+        const status = document.querySelector(".xlc-status");
+        const card = document.querySelector(".xlc-list .xlc-empty");
+        return {
+            oldRowsCleared: document.querySelectorAll(".xlc-list .xlc-row[data-xlc-index]").length === 0,
+            alertVisible: status?.getAttribute("role") === "alert" && (status.textContent ?? "").includes("访问权限不足"),
+            queryPreserved: document.querySelector(".xlc-search-input")?.value === "项目延期",
+            retryOnly: !!card?.querySelector('[data-xlc-control="access.retry"]')
+                && !Array.from(card.querySelectorAll("button")).some((button) => (button.textContent ?? "").includes("新建")),
+        };
+    });
+    if (Object.values(permissionFailure).some((value) => !value)) {
+        throw new Error("permission failure smoke failed: " + JSON.stringify(permissionFailure));
+    }
+    const searchesBeforePermissionRetry = await page.evaluate(() => window.__xlcSearchCalls ?? 0);
+    await page.locator('[data-xlc-control="access.retry"]').click();
+    await page.waitForFunction((previousCount) => (window.__xlcSearchCalls ?? 0) > previousCount, searchesBeforePermissionRetry);
+    await page.waitForFunction(() => document.querySelectorAll(".xlc-list .xlc-row[data-xlc-index]").length > 0);
+    const permissionRecovery = await page.evaluate(() => ({
+        queryPreserved: document.querySelector(".xlc-search-input")?.value === "项目延期",
+        errorCleared: !(document.querySelector(".xlc-status")?.textContent ?? "").includes("访问权限不足"),
+        rowsRestored: document.querySelectorAll(".xlc-list .xlc-row[data-xlc-index]").length > 0,
+    }));
+    if (Object.values(permissionRecovery).some((value) => !value)) {
+        throw new Error("permission recovery smoke failed: " + JSON.stringify(permissionRecovery));
+    }
+    console.log("  smoke ✓ permission failure/recovery: 7 assertions");
     // 窄容器（<620px）：单列降级（预览隐藏）
     await page.setViewportSize({width: 420, height: 720});
     await shoot("narrow-light", {theme: "light", aiEnabled: true, missing: false}, () => ({
@@ -216,6 +324,11 @@ fs.writeFileSync(path.join(OUT, "harness.html"), html);
             return !!button && button.disabled;
         })(),
         usageRetentionExplained: (document.body.textContent || "").includes("关闭后会保留已有统计"),
+        introLocalized: (() => {
+            const intro = document.querySelector(".xlc-page-intro");
+            const text = intro?.textContent ?? "";
+            return !!intro && text.length > 8 && !/^(settingsIntro|captureIntro)$/.test(text);
+        })(),
         // R74：提示词场景包入口
         promptPack: (document.body.textContent || "").includes("导入内置分类模板"),
         promptPackInDataSection: (() => {
@@ -226,7 +339,7 @@ fs.writeFileSync(path.join(OUT, "harness.html"), html);
     if (Object.values(settingsAssertions).some((v) => !v)) {
         throw new Error("settings smoke failed: " + JSON.stringify(settingsAssertions));
     }
-    console.log("  smoke ✓ settings: 9 assertions");
+    console.log("  smoke ✓ settings: 10 assertions");
     await page.screenshot({path: path.join(OUT, "production-settings-light.png")});
     // 模板包导出对话框（R71/F6，原型屏 8 右帧：分类筛选 / 包名 / 内容清单）
     await page.evaluate(() => {
@@ -293,8 +406,8 @@ fs.writeFileSync(path.join(OUT, "harness.html"), html);
     await page.waitForTimeout(400);
     const setupAssertions = await page.evaluate(() => {
         const text = document.body.textContent || "";
-        const create = Array.from(document.querySelectorAll("button")).find((b) => (b.textContent ?? "").includes("创建"));
-        const next = Array.from(document.querySelectorAll("button")).find((b) => (b.textContent ?? "").includes("下一步"));
+        const create = document.querySelector("[data-xlc-control='setup.newdoc.create']");
+        const next = document.querySelector("[data-xlc-control='setup.next']");
         return {
             hint: text.includes("思源文档") && text.includes("可继续编辑"),
             usageGuide: (() => {
@@ -309,7 +422,16 @@ fs.writeFileSync(path.join(OUT, "harness.html"), html);
                     && card.textContent.includes("先放一条内容")
                     && card.textContent.includes("再找到它") && card.textContent.includes("最后使用");
             })(),
-            recommendedModeSelected: document.querySelector("#xlc-setup-mode")?.value === "new-doc",
+            quickStartCompact: (() => {
+                const card = document.querySelector(".xlc-setup-quickstart");
+                return !!card && getComputedStyle(card).gridTemplateColumns.split(" ").length === 3;
+            })(),
+            recommendedModeSelected: document.querySelector("[data-xlc-control='setup.mode']")?.value === "new-doc",
+            modeControlMapped: !!document.querySelector("[data-xlc-control='setup.mode']"),
+            docQueryControlMapped: !!document.querySelector("[data-xlc-control='setup.docs.query']"),
+            newDocTitleControlMapped: !!document.querySelector("[data-xlc-control='setup.newdoc.title']"),
+            laterControlMapped: !!document.querySelector("[data-xlc-control='setup.later']"),
+            notebookRetryControlMapped: !!document.querySelector("[data-xlc-control='setup.notebook.retry']"),
             modeSelect: !!document.querySelector(".xlc-form select"),
             notebook: text.includes("按笔记本"),
             createBtn: text.includes("创建新库文档"),
@@ -327,19 +449,19 @@ fs.writeFileSync(path.join(OUT, "harness.html"), html);
     if (Object.values(setupAssertions).some((v) => !v)) {
         throw new Error("setup smoke failed: " + JSON.stringify(setupAssertions));
     }
-    console.log("  smoke ✓ setup: 12 assertions");
+    console.log("  smoke ✓ setup: 18 assertions");
     await page.screenshot({path: path.join(OUT, "production-setup-light.png")});
     const setupStepTransition = await page.evaluate(async () => {
-        const mode = document.querySelector("#xlc-setup-mode");
+        const mode = document.querySelector("[data-xlc-control='setup.mode']");
         mode.value = "doc";
         mode.dispatchEvent(new Event("change", {bubbles: true}));
-        const input = document.querySelector("input[placeholder]");
+        const input = document.querySelector("[data-xlc-control='setup.docs.query']");
         input.value = "常用内容库";
         input.dispatchEvent(new Event("input", {bubbles: true}));
         await new Promise((resolve) => setTimeout(resolve, 360));
-        const doc = document.querySelector(".xlc-doclist-item");
+        const doc = document.querySelector("[data-xlc-control='setup.doc.result']");
         doc?.click();
-        const next = Array.from(document.querySelectorAll("button")).find((b) => (b.textContent ?? "").includes("下一步"));
+        const next = document.querySelector("[data-xlc-control='setup.next']");
         next?.click();
         const guide = Array.from(document.querySelectorAll(".xlc-form-hint")).find((el) => (el.textContent ?? "").includes("开始使用："));
         const recommendation = document.querySelector(".xlc-setup-recommendation");
@@ -353,6 +475,109 @@ fs.writeFileSync(path.join(OUT, "harness.html"), html);
         throw new Error("setup step transition smoke failed: " + JSON.stringify(setupStepTransition));
     }
     console.log("  smoke ✓ setup step transition: 3 assertions");
+    const setupCompletion = await page.evaluate(() => {
+        const back = document.querySelector("[data-xlc-control='setup.back']");
+        back?.click();
+        const returnedToChoice = document.body.textContent.includes("第 1 步 · 选择库方式")
+            && document.querySelector("[data-xlc-control='setup.mode']")?.value === "doc";
+        const resultWasSelected = document.querySelector("[data-xlc-control='setup.doc.result']")?.classList.contains("xlc-doclist-item--on") === true;
+        document.querySelector("[data-xlc-control='setup.next']")?.click();
+        document.querySelector("[data-xlc-control='setup.finish']")?.click();
+        const applied = JSON.parse(document.body.dataset.xlcSetupConfig || "null");
+        return {
+            backReturnsToChoice: !!back && returnedToChoice,
+            resultWasSelected,
+            configuredDocument: applied?.mode === "doc" && applied?.containerDocIds?.[0] === "20240101120001-hijklmn",
+            dialogClosed: !document.querySelector(".b3-dialog.xlc-form-host"),
+        };
+    });
+    if (Object.values(setupCompletion).some((v) => !v)) {
+        throw new Error("setup completion smoke failed: " + JSON.stringify(setupCompletion));
+    }
+    console.log("  smoke ✓ setup completion and saved target: 4 assertions");
+    await page.evaluate(() => {
+        const stage = document.getElementById("stage");
+        document.querySelectorAll(".b3-dialog").forEach((el) => el.remove());
+        stage.innerHTML = "";
+        delete document.body.dataset.xlcSetupConfig;
+        window.XlcHarness.openSetup({
+            docSearchDelayByKeyword: {"旧查询": 260, "新查询": 20},
+            docSearchPathByKeyword: {"旧查询": "/内容库/旧查询", "新查询": "/内容库/新查询"},
+        });
+        const dialogRoot = document.querySelector(".b3-dialog");
+        if (dialogRoot) stage.appendChild(dialogRoot);
+    });
+    const setupSearchRace = await page.evaluate(async () => {
+        const mode = document.querySelector("[data-xlc-control='setup.mode']");
+        const query = document.querySelector("[data-xlc-control='setup.docs.query']");
+        mode.value = "doc";
+        mode.dispatchEvent(new Event("change", {bubbles: true}));
+        query.value = "旧查询";
+        query.dispatchEvent(new Event("input", {bubbles: true}));
+        query.value = "新查询";
+        query.dispatchEvent(new Event("input", {bubbles: true}));
+        await new Promise((resolve) => setTimeout(resolve, 320));
+        const results = Array.from(document.querySelectorAll("[data-xlc-control='setup.doc.result']"));
+        return {
+            newestQueryVisible: results.length === 1 && results[0].textContent.includes("新查询"),
+            staleQueryDiscarded: results.every((result) => !result.textContent.includes("旧查询")),
+        };
+    });
+    if (Object.values(setupSearchRace).some((v) => !v)) {
+        throw new Error("setup search race smoke failed: " + JSON.stringify(setupSearchRace));
+    }
+    console.log("  smoke ✓ setup document search discards stale response: 2 assertions");
+    await page.evaluate(() => {
+        const stage = document.getElementById("stage");
+        document.querySelectorAll(".b3-dialog").forEach((el) => el.remove());
+        stage.innerHTML = "";
+        window.XlcHarness.openSetup();
+        const dialogRoot = document.querySelector(".b3-dialog");
+        if (dialogRoot) stage.appendChild(dialogRoot);
+    });
+    await page.waitForFunction(() => {
+        const notebook = document.querySelector("[data-xlc-control='setup.notebook']");
+        return !!notebook && !notebook.disabled && notebook.options.length > 1;
+    }, undefined, {timeout: 3000});
+    const createLibraryFlow = await page.evaluate(async () => {
+        const notebook = document.querySelector("[data-xlc-control='setup.notebook']");
+        const title = document.querySelector("[data-xlc-control='setup.newdoc.title']");
+        const create = document.querySelector("[data-xlc-control='setup.newdoc.create']");
+        notebook.value = "20240101";
+        notebook.dispatchEvent(new Event("change", {bubbles: true}));
+        title.value = "我的常用库";
+        title.dispatchEvent(new Event("input", {bubbles: true}));
+        const enabledAfterInputs = !create.disabled;
+        window.__xlcAutoConfirm = true;
+        create.click();
+        await new Promise((resolve) => setTimeout(resolve, 0));
+        window.__xlcAutoConfirm = false;
+        const applied = JSON.parse(document.body.dataset.xlcSetupConfig || "null");
+        return {
+            enabledAfterInputs,
+            createdLibraryConfigApplied: applied?.mode === "doc"
+                && applied?.containerDocIds?.[0] === "20240101120001-hijklmn"
+                && applied?.createdDocIds?.[0] === "20240101120001-hijklmn",
+            dialogClosed: !document.querySelector(".b3-dialog.xlc-form-host"),
+        };
+    });
+    if (Object.values(createLibraryFlow).some((v) => !v)) {
+        throw new Error("setup create-library smoke failed: " + JSON.stringify(createLibraryFlow));
+    }
+    console.log("  smoke ✓ create library confirms and applies its real target: 3 assertions");
+    const dismissSetup = await page.evaluate(() => {
+        const stage = document.getElementById("stage");
+        document.querySelectorAll(".b3-dialog").forEach((el) => el.remove());
+        stage.innerHTML = "";
+        delete document.body.dataset.xlcSetupConfig;
+        delete document.body.dataset.xlcSetupNotice;
+        window.XlcHarness.openSetup();
+        const dismiss = document.querySelector("[data-xlc-control='setup.later']");
+        dismiss?.click();
+        return !!dismiss && !document.querySelector(".b3-dialog.xlc-form-host");
+    });
+    if (!dismissSetup) throw new Error("setup later action did not dismiss the wizard");
+    console.log("  smoke ✓ setup later action dismisses the wizard: 1 assertion");
     await page.evaluate(() => {
         const stage = document.getElementById("stage");
         document.querySelectorAll(".b3-dialog").forEach((el) => el.remove());
@@ -370,31 +595,31 @@ fs.writeFileSync(path.join(OUT, "harness.html"), html);
     if (!pickerLoading) throw new Error("doc-picker loading state missing");
     await page.waitForFunction(() => {
         const list = document.querySelector(".xlc-doclist");
-        return !!list?.querySelector(".xlc-doclist-retry") && (list.textContent ?? "").includes("offline");
+        return !!list?.querySelector("[data-xlc-control='setup.docs.retry']") && (list.textContent ?? "").includes("offline");
     }, undefined, {timeout: 3000});
     const pickerFailure = await page.evaluate(() => {
         const list = document.querySelector(".xlc-doclist");
         return {
             preservesCause: (list?.textContent ?? "").includes("思源接口调用失败：offline"),
             notMisreportedAsEmpty: !(list?.textContent ?? "").includes("没有匹配的文档"),
-            retryVisible: !!list?.querySelector(".xlc-doclist-retry"),
+            retryVisible: !!list?.querySelector("[data-xlc-control='setup.docs.retry']"),
         };
     });
     if (Object.values(pickerFailure).some((v) => !v)) {
         throw new Error("doc-picker failure state smoke failed: " + JSON.stringify(pickerFailure));
     }
     const pickerRetry = await page.evaluate(() => {
-        document.querySelector(".xlc-doclist-retry")?.click();
+        document.querySelector("[data-xlc-control='setup.docs.retry']")?.click();
         const list = document.querySelector(".xlc-doclist");
         return list?.getAttribute("aria-busy") === "true"
             && (list.querySelector(".xlc-doclist-empty")?.textContent ?? "").includes("加载中");
     });
     if (!pickerRetry) throw new Error("doc-picker retry did not restart loading state");
-    await page.waitForSelector(".xlc-doclist-item", {timeout: 3000});
+    await page.waitForSelector("[data-xlc-control='setup.doc.result']", {timeout: 3000});
     const pickerRecovered = await page.evaluate(() => {
-        const next = Array.from(document.querySelectorAll("button")).find((b) => (b.textContent ?? "").includes("下一步"));
+        const next = document.querySelector("[data-xlc-control='setup.next']");
         return {
-            resultRestored: Array.from(document.querySelectorAll(".xlc-doclist-item")).some((b) => (b.textContent ?? "").includes("常用内容库")),
+            resultRestored: Array.from(document.querySelectorAll("[data-xlc-control='setup.doc.result']")).some((b) => (b.textContent ?? "").includes("常用内容库")),
             nextEnabled: !!next && !next.disabled,
             busyCleared: document.querySelector(".xlc-doclist")?.getAttribute("aria-busy") !== "true",
         };
@@ -413,15 +638,15 @@ fs.writeFileSync(path.join(OUT, "harness.html"), html);
     });
     await page.waitForTimeout(500);
     const emptyNotebook = await page.evaluate(async () => {
-        const mode = document.querySelector("#xlc-setup-mode");
+        const mode = document.querySelector("[data-xlc-control='setup.mode']");
         mode.value = "notebook";
         mode.dispatchEvent(new Event("change", {bubbles: true}));
         await new Promise((resolve) => setTimeout(resolve, 250));
-        const notebook = document.querySelector("#xlc-setup-notebook");
+        const notebook = document.querySelector("[data-xlc-control='setup.notebook']");
         notebook.value = "20240101";
         notebook.dispatchEvent(new Event("change", {bubbles: true}));
-        const next = Array.from(document.querySelectorAll("button")).find((b) => (b.textContent ?? "").includes("下一步"));
-        const create = Array.from(document.querySelectorAll("button")).find((b) => (b.textContent ?? "").includes("创建"));
+        const next = document.querySelector("[data-xlc-control='setup.next']");
+        const create = document.querySelector("[data-xlc-control='setup.newdoc.create']");
         next?.click();
         await new Promise((resolve) => setTimeout(resolve, 300));
         return {
@@ -430,7 +655,7 @@ fs.writeFileSync(path.join(OUT, "harness.html"), html);
                 || (document.body.dataset.xlcSetupNotice ?? "").includes("根目录没有文档"),
             didNotApplyConfig: !document.body.dataset.xlcSetupConfig,
             createDisabledInNotebookIndexMode: !!create && create.disabled,
-            emptyStateDoesNotOfferRetry: document.querySelector(".xlc-setup-notebook-retry")?.style.display === "none",
+            emptyStateDoesNotOfferRetry: document.querySelector("[data-xlc-control='setup.notebook.retry']")?.style.display === "none",
         };
     });
     if (Object.values(emptyNotebook).some((v) => !v)) {
@@ -447,13 +672,13 @@ fs.writeFileSync(path.join(OUT, "harness.html"), html);
     });
     await page.waitForTimeout(150);
     const retrySetup = await page.evaluate(async () => {
-        const retry = document.querySelector(".xlc-setup-notebook-retry");
+        const retry = document.querySelector("[data-xlc-control='setup.notebook.retry']");
         const status = document.querySelector(".xlc-setup-notebook-status");
         const wasError = status?.textContent?.includes("读取失败") && retry?.style.display !== "none";
         retry?.click();
         await new Promise((resolve) => setTimeout(resolve, 150));
-        const notebook = document.querySelector("#xlc-setup-notebook");
-        const create = Array.from(document.querySelectorAll("button")).find((b) => (b.textContent ?? "").includes("创建"));
+        const notebook = document.querySelector("[data-xlc-control='setup.notebook']");
+        const create = document.querySelector("[data-xlc-control='setup.newdoc.create']");
         const selectReady = !notebook?.disabled && notebook?.options.length === 2;
         notebook.value = "20240101";
         notebook.dispatchEvent(new Event("change", {bubbles: true}));
@@ -477,9 +702,9 @@ fs.writeFileSync(path.join(OUT, "harness.html"), html);
     });
     await page.waitForTimeout(150);
     const existingSetup = await page.evaluate(() => ({
-        modeRestored: document.querySelector("#xlc-setup-mode")?.value === "notebook",
-        notebookRestored: document.querySelector("#xlc-setup-notebook")?.value === "20240101",
-        nextEnabled: !Array.from(document.querySelectorAll("button")).find((b) => (b.textContent ?? "").includes("下一步"))?.disabled,
+        modeRestored: document.querySelector("[data-xlc-control='setup.mode']")?.value === "notebook",
+        notebookRestored: document.querySelector("[data-xlc-control='setup.notebook']")?.value === "20240101",
+        nextEnabled: !document.querySelector("[data-xlc-control='setup.next']")?.disabled,
         quickStartHiddenForExistingConfig: (() => {
             const card = document.querySelector(".xlc-setup-quickstart");
             return !!card && getComputedStyle(card).display === "none";
@@ -499,17 +724,17 @@ fs.writeFileSync(path.join(OUT, "harness.html"), html);
     });
     await page.waitForTimeout(150);
     const notebookDocsRetry = await page.evaluate(async () => {
-        const mode = document.querySelector("#xlc-setup-mode");
+        const mode = document.querySelector("[data-xlc-control='setup.mode']");
         mode.value = "notebook";
         mode.dispatchEvent(new Event("change", {bubbles: true}));
         await new Promise((resolve) => setTimeout(resolve, 150));
-        const notebook = document.querySelector("#xlc-setup-notebook");
+        const notebook = document.querySelector("[data-xlc-control='setup.notebook']");
         notebook.value = "20240101";
         notebook.dispatchEvent(new Event("change", {bubbles: true}));
-        const next = Array.from(document.querySelectorAll("button")).find((b) => (b.textContent ?? "").includes("下一步"));
+        const next = document.querySelector("[data-xlc-control='setup.next']");
         next?.click();
         await new Promise((resolve) => setTimeout(resolve, 150));
-        const retry = document.querySelector(".xlc-setup-notebook-retry");
+        const retry = document.querySelector("[data-xlc-control='setup.notebook.retry']");
         const status = document.querySelector(".xlc-setup-notebook-status");
         const failure = status?.textContent?.includes("检查笔记本根目录失败") && retry?.style.display !== "none";
         retry?.click();
@@ -530,18 +755,18 @@ fs.writeFileSync(path.join(OUT, "harness.html"), html);
         window.XlcHarness.openSetup({notebookDocsDelayMs: 250, existingMode: "doc"});
         const dialogRoot = document.querySelector(".b3-dialog");
         if (dialogRoot) stage.appendChild(dialogRoot);
-        const mode = document.querySelector("#xlc-setup-mode");
+        const mode = document.querySelector("[data-xlc-control='setup.mode']");
         mode.value = "notebook";
         mode.dispatchEvent(new Event("change", {bubbles: true}));
     });
     await page.waitForFunction(() => {
-        const notebook = document.querySelector("#xlc-setup-notebook");
+        const notebook = document.querySelector("[data-xlc-control='setup.notebook']");
         return notebook && !notebook.disabled && notebook.options.length > 1;
     }, {timeout: 3000});
     const staleSetupValidation = await page.evaluate(async () => {
-        const mode = document.querySelector("#xlc-setup-mode");
-        const notebook = document.querySelector("#xlc-setup-notebook");
-        const next = Array.from(document.querySelectorAll("button")).find((b) => (b.textContent ?? "").includes("下一步"));
+        const mode = document.querySelector("[data-xlc-control='setup.mode']");
+        const notebook = document.querySelector("[data-xlc-control='setup.notebook']");
+        const next = document.querySelector("[data-xlc-control='setup.next']");
         mode.value = "notebook";
         mode.dispatchEvent(new Event("change", {bubbles: true}));
         notebook.value = "20240101";
@@ -648,27 +873,116 @@ fs.writeFileSync(path.join(OUT, "harness.html"), html);
             saveBtn: text.includes("保存"),
             aiTidy: !!document.querySelector(".xlc-form-ai") && text.includes("AI 整理"),
             aiDraft: text.includes("草稿"),
+            introLocalized: (() => {
+                const intro = document.querySelector(".xlc-page-intro");
+                const value = intro?.textContent ?? "";
+                return !!intro && value.length > 8 && !/^(settingsIntro|captureIntro)$/.test(value);
+            })(),
             formHost: (() => {
                 const host = document.querySelector(".b3-dialog__container.xlc-form-host");
                 const body = host?.querySelector(".b3-dialog__body, .b3-dialog__content");
                 return !!host && !!body && parseFloat(getComputedStyle(body).paddingLeft) >= 16;
             })(),
-            // R70：原型屏 3 顺序 —— 类型|别名 行在标题之下
+            // R197：标题之后是“别名｜类型”行，具体列顺序由下方断言核对。
             metaRowAfterTitle: !!typeWrap && !!titleWrap && Boolean(titleWrap.compareDocumentPosition(typeWrap) & Node.DOCUMENT_POSITION_FOLLOWING),
+            typeControlMapped: !!document.querySelector("[data-xlc-control='capture.type']"),
+            contentControlMapped: !!document.querySelector("[data-xlc-control='capture.content']"),
+            titleControlMapped: !!document.querySelector("[data-xlc-control='capture.title']"),
+            aliasControlMapped: !!document.querySelector("[data-xlc-control='capture.alias']"),
+            tagsControlMapped: !!document.querySelector("[data-xlc-control='capture.tags']"),
+            categoryControlMapped: !!document.querySelector("[data-xlc-control='capture.category']"),
+            saveControlMapped: !!document.querySelector("[data-xlc-control='capture.save']"),
+            cancelControlMapped: !!document.querySelector("[data-xlc-control='capture.cancel']"),
         };
     });
     if (Object.values(captureAssertions).some((v) => !v)) {
         throw new Error("capture smoke failed: " + JSON.stringify(captureAssertions));
     }
-    console.log("  smoke ✓ capture: 8 assertions");
+    console.log(`  smoke ✓ capture: ${Object.keys(captureAssertions).length} assertions`);
     await page.screenshot({path: path.join(OUT, "production-capture-light.png")});
+
+    // 捕获表单核心写入闭环：字段错误定位/清除、提交 payload、成功关闭和取消无写入。
+    await page.locator("[data-xlc-control='capture.save']").click();
+    const requiredError = await page.evaluate(() => {
+        const content = document.querySelector("[data-xlc-control='capture.content']");
+        const error = document.getElementById("xlc-capture-content-error");
+        return {
+            invalid: content?.getAttribute("aria-invalid") === "true",
+            described: content?.getAttribute("aria-describedby") === error?.id,
+            focused: document.activeElement === content,
+            visibleError: error?.hidden === false && error.textContent === "请填写要保存的内容。",
+            noWrite: JSON.parse(document.body.dataset.xlcCaptureCreatedItems ?? "[]").length === 0,
+        };
+    });
+    if (Object.values(requiredError).some((v) => !v)) {
+        throw new Error("capture required-field validation failed: " + JSON.stringify(requiredError));
+    }
+    await page.screenshot({path: path.join(OUT, "production-capture-validation-light.png")});
+
+    await page.locator("[data-xlc-control='capture.content']").fill("javascript:alert(1)");
+    await page.locator("[data-xlc-control='capture.type']").selectOption("url");
+    await page.locator("[data-xlc-control='capture.save']").click();
+    const urlError = await page.evaluate(() => {
+        const content = document.querySelector("[data-xlc-control='capture.content']");
+        const error = document.getElementById("xlc-capture-content-error");
+        return content?.getAttribute("aria-invalid") === "true"
+            && document.activeElement === content
+            && error?.hidden === false
+            && error.textContent === "请输入有效的 http 或 https 链接。";
+    });
+    if (!urlError) throw new Error("capture URL validation did not identify the content field");
+
+    await page.locator("[data-xlc-control='capture.content']").fill("https://example.com");
+    const correctedErrorCleared = await page.evaluate(() => {
+        const content = document.querySelector("[data-xlc-control='capture.content']");
+        const error = document.getElementById("xlc-capture-content-error");
+        return !content?.hasAttribute("aria-invalid") && !content?.hasAttribute("aria-describedby")
+            && !content?.classList.contains("xlc-input--error") && error?.hidden === true;
+    });
+    if (!correctedErrorCleared) throw new Error("capture field correction did not clear its error state");
+
+    await page.locator("[data-xlc-control='capture.type']").selectOption("markdown");
+    await page.locator("[data-xlc-control='capture.content']").fill("可复用正文\n第二行");
+    await page.locator("[data-xlc-control='capture.title']").fill("验收标题");
+    await page.locator("[data-xlc-control='capture.alias']").fill("验收别名");
+    await page.locator("[data-xlc-control='capture.tags']").fill("模板, 客户");
+    await page.locator("[data-xlc-control='capture.category']").fill("客服");
+    await page.locator("[data-xlc-control='capture.save']").click();
+    await page.waitForFunction(() => {
+        const created = JSON.parse(document.body.dataset.xlcCaptureCreatedItems ?? "[]");
+        return created.length === 1 && !document.querySelector(".xlc-capture");
+    }, undefined, {timeout: 3000});
+    const savedPayload = await page.evaluate(() => {
+        const created = JSON.parse(document.body.dataset.xlcCaptureCreatedItems ?? "[]");
+        const item = created[0];
+        return item?.itemType === "markdown"
+            && item?.markdown === "可复用正文\n第二行"
+            && item?.title === "验收标题"
+            && item?.alias === "验收别名"
+            && item?.tags?.join("|") === "模板|客户"
+            && item?.category === "客服"
+            && item?.source?.sourceDocId === "20240101120001-hijklmn"
+            && item?.source?.sourceType === "manual";
+    });
+    if (!savedPayload) throw new Error("capture save payload did not preserve the entered fields");
+
+    await page.evaluate(() => window.XlcHarness.openCapture(false));
+    await page.locator("[data-xlc-control='capture.cancel']").click();
+    const canceledWithoutWrite = await page.evaluate(() => {
+        const created = JSON.parse(document.body.dataset.xlcCaptureCreatedItems ?? "[]");
+        return created.length === 1 && !document.querySelector(".xlc-capture");
+    });
+    if (!canceledWithoutWrite) throw new Error("capture cancel did not close without another write");
+    console.log("  smoke ✓ capture core: empty/URL validation, correction, payload, save and cancel");
+
     // 捕获表单 AI 建议态（点「AI 整理」→ sugrow + 全部采纳 + 主色保存钮）
     await page.evaluate(() => {
         const stage = document.getElementById("stage");
         stage.className = "b3-scope light";
         document.querySelectorAll(".b3-dialog").forEach((el) => el.remove());
         stage.innerHTML = "";
-        window.XlcHarness.openCapture(true);
+        window.__xlcAutoConfirm = false;
+        window.XlcHarness.openCapture(true, 150);
         const dialogRoot = document.querySelector(".b3-dialog");
         if (dialogRoot) stage.appendChild(dialogRoot);
         const container = document.querySelector(".b3-dialog__container");
@@ -676,34 +990,201 @@ fs.writeFileSync(path.join(OUT, "harness.html"), html);
             container.style.margin = "0 auto";
             container.style.maxWidth = "560px";
         }
-        const tidyBtn = Array.from(document.querySelectorAll(".xlc-form-ai")).find((b) => b.textContent.includes("AI 整理"));
-        const content = document.querySelector(".xlc-form-content");
-        const disabledUntilContent = !!tidyBtn && tidyBtn.disabled;
-        if (content) {
-            content.value = "项目延期通知模板内容";
-            content.dispatchEvent(new Event("input", {bubbles: true}));
-        }
-        document.body.dataset.xlcTidyGate = `${disabledUntilContent}:${!!tidyBtn && !tidyBtn.disabled}`;
-        if (tidyBtn) tidyBtn.click();
     });
-    await page.waitForTimeout(400);
+    const tidyInitiallyDisabled = await page.locator("[data-xlc-control='capture.ai.tidy']").isDisabled();
+    await page.locator("[data-xlc-control='capture.content']").fill("项目延期通知模板内容");
+    const tidyEnabledForContent = !(await page.locator("[data-xlc-control='capture.ai.tidy']").isDisabled());
+    await page.locator("[data-xlc-control='capture.ai.tidy']").click();
+    const tidyBusyLocked = await page.evaluate(() => {
+        const tidy = document.querySelector("[data-xlc-control='capture.ai.tidy']");
+        const locked = tidy?.disabled === true && tidy.textContent?.includes("处理中") === true;
+        tidy?.dispatchEvent(new MouseEvent("click", {bubbles: true}));
+        return locked;
+    });
+    await page.waitForFunction(() => {
+        const calls = JSON.parse(document.body.dataset.xlcCaptureAiTidyCalls ?? "[]");
+        return calls.length === 1 && document.querySelector(".xlc-sugrow")?.offsetParent !== null;
+    }, undefined, {timeout: 3000});
     const captureAiAssertions = await page.evaluate(() => {
         const sugrow = document.querySelector(".xlc-sugrow");
-        const save = Array.from(document.querySelectorAll("button")).find((b) => b.textContent === "保存");
+        const variableIds = ["ask", "ask.options", "ask.textarea", "snippet", "cursor", "date", "date.offset", "random", "doc", "clipboard"];
         return {
             sugrowVisible: !!sugrow && sugrow.offsetParent !== null && sugrow.textContent.includes("全部采纳"),
             // R70：建议行文案「AI 建议」+ 标题加粗
             sugrowWording: !!sugrow && sugrow.textContent.includes("AI 建议") && !!sugrow.querySelector("b"),
-            tidyRequiresContent: document.body.dataset.xlcTidyGate === "true:true",
-            savePrimary: !!save && save.classList.contains("xlc-btn-primary"),
+            suggestionMetadataVisible: !!sugrow && sugrow.textContent.includes("AI 别名")
+                && sugrow.textContent.includes("标签：AI/模板") && sugrow.textContent.includes("分类：AI 模板"),
+            tidyCallUsesEnteredContent: JSON.parse(document.body.dataset.xlcCaptureAiTidyCalls ?? "[]")[0] === "项目延期通知模板内容",
+            tidyStableId: !!document.querySelector("[data-xlc-control='capture.ai.tidy']"),
+            adoptStableId: !!document.querySelector("[data-xlc-control='capture.ai.suggestion.adopt']"),
+            draftDescriptionStableId: !!document.querySelector("[data-xlc-control='capture.ai.draft.description']"),
+            draftGenerateStableId: !!document.querySelector("[data-xlc-control='capture.ai.draft.generate']"),
+            allVariableTemplatesMapped: variableIds.every((id) => document.querySelector(`[data-xlc-control='capture.variable.${id}']`)),
             twoColRows: document.querySelectorAll(".xlc-form-row").length >= 2,
+            captureFieldOrderMatchesPrototype: (() => {
+                const fields = Array.from(document.querySelector(".xlc-capture .xlc-form-row")?.querySelectorAll(".xlc-form-field") ?? []);
+                return fields[0]?.querySelector(".xlc-form-label")?.textContent === "别名"
+                    && fields[1]?.querySelector(".xlc-form-label")?.textContent === "类型"
+                    && fields[1]?.querySelector("select[data-xlc-control='capture.type']") !== null;
+            })(),
         };
     });
-    if (Object.values(captureAiAssertions).some((v) => !v)) {
-        throw new Error("capture-ai smoke failed: " + JSON.stringify(captureAiAssertions));
+    if (!tidyInitiallyDisabled || !tidyEnabledForContent || !tidyBusyLocked || Object.values(captureAiAssertions).some((v) => !v)) {
+        throw new Error("capture-ai smoke failed: " + JSON.stringify({tidyInitiallyDisabled, tidyEnabledForContent, tidyBusyLocked, ...captureAiAssertions}));
     }
-    console.log("  smoke ✓ capture-ai: 4 assertions");
+    if (await page.evaluate(() => JSON.parse(document.body.dataset.xlcCaptureAiTidyCalls ?? "[]").length) !== 1) {
+        throw new Error("capture AI tidy accepted a duplicate request while busy");
+    }
+    console.log(`  smoke ✓ capture-ai: ${Object.keys(captureAiAssertions).length + 3} assertions`);
     await page.screenshot({path: path.join(OUT, "production-capture-ai-light.png")});
+
+    await page.locator("[data-xlc-control='capture.ai.suggestion.adopt']").click();
+    const adoptedSuggestions = await page.evaluate(() => {
+        const value = (id) => document.querySelector(`[data-xlc-control='${id}']`)?.value;
+        return value("capture.title") === "AI 建议 项目延期通知"
+            && value("capture.alias") === "AI 别名"
+            && value("capture.tags") === "AI, 模板"
+            && value("capture.category") === "AI 模板"
+            && value("capture.content") === "项目延期通知模板内容";
+    });
+    if (!adoptedSuggestions) throw new Error("capture AI suggestion adoption did not update only the suggested metadata: " + JSON.stringify(await page.evaluate(() => Object.fromEntries(["capture.title", "capture.alias", "capture.tags", "capture.category", "capture.content"].map((id) => [id, document.querySelector(`[data-xlc-control='${id}']`)?.value])))));
+
+    const draftInput = page.locator("[data-xlc-control='capture.ai.draft.description']");
+    const draftButton = page.locator("[data-xlc-control='capture.ai.draft.generate']");
+    if (!(await draftButton.isDisabled())) throw new Error("capture AI draft should be disabled until a description is entered");
+    await draftInput.fill("客户延期回复");
+    if (await draftButton.isDisabled()) throw new Error("capture AI draft did not enable for a non-empty description");
+    await draftButton.click();
+    const draftBusyLocked = await page.evaluate(() => {
+        const button = document.querySelector("[data-xlc-control='capture.ai.draft.generate']");
+        const locked = button?.disabled === true && button.textContent?.includes("处理中") === true;
+        button?.dispatchEvent(new MouseEvent("click", {bubbles: true}));
+        return locked;
+    });
+    await page.waitForFunction(() => JSON.parse(document.body.dataset.xlcCaptureAiDraftCalls ?? "[]").length === 1, undefined, {timeout: 3000});
+    await page.waitForTimeout(200);
+    const draftRequestCount = await page.evaluate(() => JSON.parse(document.body.dataset.xlcCaptureAiDraftCalls ?? "[]").length);
+    if (!draftBusyLocked || draftRequestCount !== 1 || await draftButton.isDisabled()) {
+        throw new Error("capture AI draft busy state did not lock and deduplicate the request: " + JSON.stringify({draftBusyLocked, draftRequestCount}));
+    }
+    const draftRefusedOverwrite = await page.evaluate(() => document.querySelector("[data-xlc-control='capture.content']")?.value === "项目延期通知模板内容");
+    if (!draftRefusedOverwrite) throw new Error("capture AI draft silently overwrote existing content without confirmation");
+    await page.evaluate(() => { window.__xlcAutoConfirm = true; });
+    await draftButton.click();
+    await page.waitForFunction(() => {
+        const calls = JSON.parse(document.body.dataset.xlcCaptureAiDraftCalls ?? "[]");
+        return calls.length === 2 && document.querySelector("[data-xlc-control='capture.content']")?.value === "草稿（客户延期回复）";
+    }, undefined, {timeout: 3000});
+    await page.evaluate(() => { window.__xlcAutoConfirm = false; });
+    console.log("  smoke ✓ capture-ai adoption and draft overwrite confirmation");
+
+    await page.locator("[data-xlc-control='capture.cancel']").click();
+    await page.waitForFunction(() => document.querySelectorAll("[data-xlc-control='capture.save']").length === 0);
+    await page.evaluate(() => window.XlcHarness.openCapture(true, 90, {tidyFailureCall: 2, draftFailureCall: 1, draftFailureKind: "throw"}));
+    await page.locator("[data-xlc-control='capture.content']").fill("第一版正文");
+    await page.locator("[data-xlc-control='capture.ai.tidy']").click();
+    await page.waitForFunction(() => document.querySelector("[data-xlc-control='capture.ai.suggestion.adopt']")?.offsetParent !== null, undefined, {timeout: 3000});
+    await page.locator("[data-xlc-control='capture.content']").fill("更新后的正文");
+    await page.locator("[data-xlc-control='capture.ai.tidy']").click();
+    await page.waitForFunction(() => document.querySelector("[data-xlc-control='capture.ai.tidy.retry']")?.offsetParent !== null, undefined, {timeout: 3000});
+    const tidyFailureState = await page.evaluate(() => {
+        const error = document.querySelector("[data-xlc-control='capture.ai.tidy.error']");
+        const row = document.querySelector(".xlc-sugrow");
+        const button = document.querySelector("[data-xlc-control='capture.ai.tidy']");
+        return {
+            readableAlert: error?.getAttribute("role") === "alert" && error?.getAttribute("aria-live") === "assertive"
+                && error.textContent.includes("AI 整理请求暂时失败"),
+            visibleRetry: document.querySelector("[data-xlc-control='capture.ai.tidy.retry']")?.offsetParent !== null,
+            staleSuggestionHidden: getComputedStyle(row).display === "none",
+            originalUnlocked: button instanceof HTMLButtonElement && !button.disabled,
+        };
+    });
+    if (Object.values(tidyFailureState).some((value) => !value)) throw new Error("capture AI tidy failure state failed: " + JSON.stringify(tidyFailureState));
+    await page.locator("[data-xlc-control='capture.ai.tidy.retry']").click();
+    await page.waitForFunction(() => document.querySelector(".xlc-sugrow")?.offsetParent !== null
+        && document.querySelector("[data-xlc-control='capture.ai.tidy.retry']")?.offsetParent === null, undefined, {timeout: 3000});
+    const tidyRetriedLatest = await page.evaluate(() => JSON.parse(document.body.dataset.xlcCaptureAiTidyCalls ?? "[]").at(-1) === "更新后的正文");
+    if (!tidyRetriedLatest) throw new Error("capture AI tidy retry did not use the latest content");
+
+    const draftInputFailure = page.locator("[data-xlc-control='capture.ai.draft.description']");
+    await draftInputFailure.fill("首次描述");
+    await page.locator("[data-xlc-control='capture.ai.draft.generate']").click();
+    await page.waitForFunction(() => document.querySelector("[data-xlc-control='capture.ai.draft.retry']")?.offsetParent !== null, undefined, {timeout: 3000});
+    const draftFailureState = await page.evaluate(() => {
+        const error = document.querySelector("[data-xlc-control='capture.ai.draft.error']");
+        return error?.getAttribute("role") === "alert" && error?.getAttribute("aria-live") === "assertive"
+            && error.textContent.includes("AI 草稿请求暂时失败")
+            && document.querySelector("[data-xlc-control='capture.ai.draft.retry']")?.offsetParent !== null
+            && document.querySelector("[data-xlc-control='capture.ai.draft.generate']")?.disabled === false;
+    });
+    if (!draftFailureState) throw new Error("capture AI draft failure state did not expose a readable retry");
+    await draftInputFailure.fill("修改后的描述");
+    await page.evaluate(() => { window.__xlcAutoConfirm = true; });
+    await page.locator("[data-xlc-control='capture.ai.draft.retry']").click();
+    await page.waitForFunction(() => document.querySelector("[data-xlc-control='capture.content']")?.value === "草稿（修改后的描述）"
+        && document.querySelector("[data-xlc-control='capture.ai.draft.retry']")?.offsetParent === null, undefined, {timeout: 3000});
+    await page.evaluate(() => { window.__xlcAutoConfirm = false; });
+    const draftRetriedLatest = await page.evaluate(() => JSON.parse(document.body.dataset.xlcCaptureAiDraftCalls ?? "[]").at(-1) === "修改后的描述");
+    if (!draftRetriedLatest) throw new Error("capture AI draft retry did not use the latest description");
+    console.log("  smoke ✓ capture-ai failure: live errors, retry with latest input, stale suggestion removal");
+
+    await page.locator("[data-xlc-control='capture.cancel']").click();
+    await page.waitForFunction(() => document.querySelectorAll("[data-xlc-control='capture.save']").length === 0);
+    await page.evaluate(() => window.XlcHarness.openCapture(true, 0, {deferTidy: true}));
+    await page.locator("[data-xlc-control='capture.content']").fill("旧表单请求");
+    await page.locator("[data-xlc-control='capture.ai.tidy']").click();
+    await page.waitForFunction(() => document.body.dataset.xlcDeferredTidyPending === "true", undefined, {timeout: 3000});
+    await page.locator("[data-xlc-control='capture.cancel']").click();
+    await page.waitForFunction(() => document.querySelectorAll("[data-xlc-control='capture.save']").length === 0);
+    await page.evaluate(() => window.XlcHarness.openCapture(true));
+    await page.evaluate(() => window.XlcHarness.completeDeferredTidy());
+    await page.waitForTimeout(30);
+    const lateResponseIsolated = await page.evaluate(() => {
+        const row = document.querySelector(".xlc-sugrow");
+        return !!row && getComputedStyle(row).display === "none"
+            && !document.querySelector(".xlc-capture")?.textContent?.includes("迟到的旧建议");
+    });
+    if (!lateResponseIsolated) throw new Error("closed capture AI response polluted the newly opened form");
+    console.log("  smoke ✓ capture-ai close: late response isolated from reopened form");
+    await page.locator("[data-xlc-control='capture.cancel']").click();
+    await page.waitForFunction(() => document.querySelectorAll("[data-xlc-control='capture.save']").length === 0);
+    await page.evaluate(() => window.XlcHarness.openCapture(false));
+    await page.locator("[data-xlc-control='capture.save']").click();
+    await page.evaluate(() => {
+        const content = document.querySelector("[data-xlc-control='capture.content']");
+        content.value = "前后";
+        content.setSelectionRange(1, 1);
+    });
+    const variableIds = ["ask", "ask.options", "ask.textarea", "snippet", "cursor", "date", "date.offset", "random", "doc", "clipboard"];
+    const variableTexts = [
+        "{{xlc:ask:字段}}", "{{xlc:ask:字段|选项A,选项B}}", "{{xlc:ask:字段|textarea}}", "{{xlc:snippet:标题}}",
+        "{{xlc:cursor}}", "{{xlc:date}}", "{{xlc:date|+3d}}", "{{xlc:random|选项A,选项B}}", "{{xlc:doc}}", "{{xlc:clipboard}}",
+    ];
+    for (const id of variableIds) await page.locator(`[data-xlc-control='capture.variable.${id}']`).click();
+    const variableInsertion = await page.evaluate((texts) => {
+        const content = document.querySelector("[data-xlc-control='capture.content']");
+        const body = `前${texts.join("")}后`;
+        return content.value === body
+            && document.activeElement === content
+            && content.selectionStart === body.length - 1
+            && content.selectionEnd === body.length - 1
+            && !content.hasAttribute("aria-invalid")
+            && !content.hasAttribute("aria-describedby")
+            && !content.classList.contains("xlc-input--error");
+    }, variableTexts);
+    if (!variableInsertion) throw new Error("capture variable templates did not insert at the caret and restore the content field state");
+    const selectionReplacement = await page.evaluate(() => {
+        const content = document.querySelector("[data-xlc-control='capture.content']");
+        content.value = "左侧选中文字右侧";
+        content.setSelectionRange(2, 6);
+        document.querySelector("[data-xlc-control='capture.variable.date.offset']").click();
+        return content.value === "左侧{{xlc:date|+3d}}右侧"
+            && document.activeElement === content
+            && content.selectionStart === 2 + "{{xlc:date|+3d}}".length
+            && content.selectionEnd === content.selectionStart;
+    });
+    if (!selectionReplacement) throw new Error("capture variable template did not replace the selected text while preserving both sides");
+    console.log("  smoke ✓ capture variable bar: all 10 templates, caret, focus and error clearing");
     // 动作菜单（生产 showActionMenu DOM：右键第二行触发；图标列 + 标题 + AI 分区）
     await page.setViewportSize({width: 1280, height: 720});
     await page.evaluate(() => {
@@ -716,13 +1197,13 @@ fs.writeFileSync(path.join(OUT, "harness.html"), html);
         if (dialogRoot) stage.appendChild(dialogRoot);
         const root = document.querySelector(".xlc-dialog");
         if (root) {
-            root.style.height = "560px";
+            root.style.height = "700px";
             root.style.position = "relative";
         }
         const container = document.querySelector(".b3-dialog__container");
         if (container) {
             container.style.margin = "0 auto";
-            container.style.maxWidth = "760px";
+            container.style.maxWidth = "960px";
         }
     });
     await page.waitForTimeout(800);
@@ -747,6 +1228,14 @@ fs.writeFileSync(path.join(OUT, "harness.html"), html);
                 const p = document.querySelector(".xlc-menu-preview");
                 return !!p && p.getBoundingClientRect().height >= 36;
             })(),
+            menuWithinHost: (() => {
+                const m = document.querySelector(".xlc-menu");
+                const host = document.querySelector(".b3-dialog__container");
+                if (!m || !host) return false;
+                const mr = m.getBoundingClientRect();
+                const hr = host.getBoundingClientRect();
+                return mr.bottom <= hr.bottom - 2 && m.scrollHeight >= m.clientHeight;
+            })(),
             // R76 键盘导航：菜单内 ArrowDown 把焦点移到菜单项
             kbNavFocus: (() => {
                 const m = document.querySelector(".xlc-menu");
@@ -760,7 +1249,7 @@ fs.writeFileSync(path.join(OUT, "harness.html"), html);
     if (Object.values(menuAssertions).some((v) => !v)) {
         throw new Error("action-menu smoke failed: " + JSON.stringify(menuAssertions));
     }
-    console.log("  smoke ✓ action-menu: 7 assertions");
+    console.log("  smoke ✓ action-menu: 8 assertions");
     // 默认视图证据（R106）：预览盒在分区之后 + 删除项危险色；变换视图截图在守门点击之后
     await page.screenshot({path: path.join(OUT, "production-action-menu-default-light.png")});
     // R77：自定义变换「客服话术」→ 变换视图（结果未就绪时插/复制禁用，防空块）→ 就绪后复制变换结果本体
@@ -801,19 +1290,20 @@ fs.writeFileSync(path.join(OUT, "harness.html"), html);
         if (dialogRoot) stage.appendChild(dialogRoot);
         const root = document.querySelector(".xlc-dialog");
         if (root) {
-            root.style.height = "560px";
+            root.style.height = "700px";
             root.style.position = "relative";
         }
         const container = document.querySelector(".b3-dialog__container");
         if (container) {
             container.style.margin = "0 auto";
-            container.style.maxWidth = "760px";
+            container.style.maxWidth = "960px";
         }
     });
     await page.waitForTimeout(800);
-    await page.evaluate(() => {
-        const input = document.querySelector(".xlc-search-input");
-        input.dispatchEvent(new KeyboardEvent("keydown", {key: "Enter", bubbles: true, cancelable: true}));
+    const variableRowReady = await page.evaluate(() => {
+        const row = document.querySelector("[data-xlc-control='item.row']");
+        row?.dispatchEvent(new MouseEvent("click", {bubbles: true, cancelable: true}));
+        return !!row;
     });
     await page.waitForTimeout(600);
     // harness 伪影修正：填充卡 Dialog 自挂载在 body（不在 .b3-scope 内 → b3 变量失效透明）；
@@ -832,8 +1322,8 @@ fs.writeFileSync(path.join(OUT, "harness.html"), html);
             hasInsertBtn: (form?.querySelector(".xlc-btn-primary")?.textContent ?? "") === "插入",
         };
     });
-    if (Object.values(varFormAssertions).some((v) => !v)) {
-        throw new Error("variable-form smoke failed: " + JSON.stringify(varFormAssertions));
+    if (!variableRowReady || Object.values(varFormAssertions).some((v) => !v)) {
+        throw new Error("variable-form smoke failed: " + JSON.stringify({variableRowReady, ...varFormAssertions}));
     }
     console.log("  smoke ✓ variable-form: 5 assertions");
     await page.screenshot({path: path.join(OUT, "production-variable-form-light.png")});
@@ -848,13 +1338,13 @@ fs.writeFileSync(path.join(OUT, "harness.html"), html);
         if (dialogRoot) stage.appendChild(dialogRoot);
         const root = document.querySelector(".xlc-dialog");
         if (root) {
-            root.style.height = "560px";
+            root.style.height = "700px";
             root.style.position = "relative";
         }
         const container = document.querySelector(".b3-dialog__container");
         if (container) {
             container.style.margin = "0 auto";
-            container.style.maxWidth = "760px";
+            container.style.maxWidth = "960px";
         }
     });
     await page.waitForTimeout(500);
@@ -889,13 +1379,13 @@ fs.writeFileSync(path.join(OUT, "harness.html"), html);
         if (dialogRoot) stage.appendChild(dialogRoot);
         const root = document.querySelector(".xlc-dialog");
         if (root) {
-            root.style.height = "560px";
+            root.style.height = "700px";
             root.style.position = "relative";
         }
         const container = document.querySelector(".b3-dialog__container");
         if (container) {
             container.style.margin = "0 auto";
-            container.style.maxWidth = "760px";
+            container.style.maxWidth = "960px";
         }
     });
     await page.waitForTimeout(500);
@@ -935,13 +1425,13 @@ fs.writeFileSync(path.join(OUT, "harness.html"), html);
         if (dialogRoot) stage.appendChild(dialogRoot);
         const root = document.querySelector(".xlc-dialog");
         if (root) {
-            root.style.height = "560px";
+            root.style.height = "700px";
             root.style.position = "relative";
         }
         const container = document.querySelector(".b3-dialog__container");
         if (container) {
             container.style.margin = "0 auto";
-            container.style.maxWidth = "760px";
+            container.style.maxWidth = "960px";
         }
     });
     await page.waitForTimeout(700);
@@ -966,13 +1456,13 @@ fs.writeFileSync(path.join(OUT, "harness.html"), html);
         if (dialogRoot) stage.appendChild(dialogRoot);
         const root = document.querySelector(".xlc-dialog");
         if (root) {
-            root.style.height = "560px";
+            root.style.height = "700px";
             root.style.position = "relative";
         }
         const container = document.querySelector(".b3-dialog__container");
         if (container) {
             container.style.margin = "0 auto";
-            container.style.maxWidth = "760px";
+            container.style.maxWidth = "960px";
         }
     });
     await page.waitForTimeout(700);
@@ -988,13 +1478,13 @@ fs.writeFileSync(path.join(OUT, "harness.html"), html);
         if (dialogRoot) stage.appendChild(dialogRoot);
         const root = document.querySelector(".xlc-dialog");
         if (root) {
-            root.style.height = "560px";
+            root.style.height = "700px";
             root.style.position = "relative";
         }
         const container = document.querySelector(".b3-dialog__container");
         if (container) {
             container.style.margin = "0 auto";
-            container.style.maxWidth = "760px";
+            container.style.maxWidth = "960px";
         }
     });
     await page.waitForTimeout(500);
@@ -1040,13 +1530,61 @@ fs.writeFileSync(path.join(OUT, "harness.html"), html);
             footButtons: footBtns.length === 2
                 && (footBtns[0].textContent ?? "").includes("新建")
                 && (footBtns[1].textContent ?? "").includes("复制"),
+            mobileCopyDowngradeExplicit: footBtns[1]?.getAttribute("aria-label")?.includes("移动端直接插入尚未验证") === true
+                && footBtns[1]?.title?.includes("当前操作会复制到剪贴板") === true,
         };
     });
     if (Object.values(mobileAssertions).some((v) => !v)) {
         throw new Error("mobile smoke failed: " + JSON.stringify(mobileAssertions));
     }
-    console.log("  smoke ✓ mobile: 5 assertions");
+    const actionsBeforeMobileSelection = await page.evaluate(() => (window.__xlcActions ?? []).length);
+    await page.locator(".xlc-dialog--mobile .xlc-row[data-xlc-index='1']").click();
+    const mobileSelectionOnly = await page.evaluate((before) => {
+        const row = document.querySelector(".xlc-row[data-xlc-index='1']");
+        const button = document.querySelector("[data-xlc-control='preview.mobile-primary']");
+        return row?.getAttribute("aria-selected") === "true"
+            && row.classList.contains("xlc-row--active")
+            && !button?.disabled
+            && (window.__xlcActions ?? []).length === before;
+    }, actionsBeforeMobileSelection);
+    if (!mobileSelectionOnly) throw new Error("mobile row tap should select an item without running the primary action");
+    const mobileActionsBeforeSubmit = await page.evaluate(() => (window.__xlcActions ?? []).length);
+    await page.locator("[data-xlc-control='preview.mobile-primary']").click();
+    await page.waitForFunction((before) => (window.__xlcActions ?? []).length === before + 1, mobileActionsBeforeSubmit, {timeout: 3000});
+    const mobileSelectedAction = await page.evaluate(() => (window.__xlcActions ?? []).at(-1));
+    if (mobileSelectedAction?.id !== "xlc-demo0000003" || mobileSelectedAction?.mode !== "copy") {
+        throw new Error("mobile primary action did not use the selected item: " + JSON.stringify(mobileSelectedAction));
+    }
+    await page.waitForTimeout(120);
+    console.log("  smoke ✓ mobile: 6 assertions");
     await page.screenshot({path: path.join(OUT, "production-mobile-light.png")});
+
+    await page.evaluate(() => {
+        const stage = document.getElementById("stage");
+        stage.className = "b3-scope light";
+        document.querySelectorAll(".b3-dialog").forEach((el) => el.remove());
+        stage.innerHTML = "";
+        window.XlcHarness.openDialog({mobile: true, query: "SQL", insertTarget: {docId: "20240101120001-hijklmn", hPath: "/工作手册/客服话术"}});
+        const root = document.querySelector(".b3-dialog");
+        if (root) stage.appendChild(root);
+        const container = document.querySelector(".b3-dialog__container");
+        if (container) container.style.height = "82vh";
+    });
+    await page.waitForTimeout(300);
+    const mobileTargetAction = await page.evaluate(() => {
+        const button = document.querySelector("[data-xlc-control='preview.mobile-primary']");
+        return button?.textContent?.includes("插入选中") === true
+            && !button?.hasAttribute("aria-label")
+            && !button?.title?.includes("移动端直接插入尚未验证");
+    });
+    if (!mobileTargetAction) throw new Error("mobile targeted insertion should show its explicit target action without the no-target copy fallback");
+    const targetedActionsBefore = await page.evaluate(() => (window.__xlcDocActions ?? []).length);
+    await page.locator("[data-xlc-control='preview.mobile-primary']").click();
+    await page.waitForFunction((before) => (window.__xlcDocActions ?? []).length === before + 1, targetedActionsBefore, {timeout: 3000});
+    const targetAction = await page.evaluate(() => (window.__xlcDocActions ?? []).at(-1));
+    if (targetAction?.id !== "xlc-demo0000003" || targetAction?.docId !== "20240101120001-hijklmn" || targetAction?.hPath !== "/工作手册/客服话术") {
+        throw new Error("mobile targeted primary action missed its selected target: " + JSON.stringify(targetAction));
+    }
     await page.setViewportSize({width: 1280, height: 720});
     // 按需发现：扫描状态、候选预览、筛选和收录按钮禁用语义
     await page.evaluate(() => {
@@ -1066,6 +1604,7 @@ fs.writeFileSync(path.join(OUT, "harness.html"), html);
         const scope = document.querySelector(".xlc-discovery-scope-select");
         const filters = root?.querySelector(".xlc-discovery-filters");
         const close = document.querySelector("[data-xlc-discovery-action='close']");
+        const pager = root?.querySelector(".xlc-discovery-pager");
         const dialogContainer = document.querySelector(".b3-dialog__container");
         const dialogHeader = document.querySelector(".xlc-discovery-host .b3-dialog__header");
         const rootRect = root?.getBoundingClientRect();
@@ -1074,7 +1613,13 @@ fs.writeFileSync(path.join(OUT, "harness.html"), html);
         return {
             root: !!root,
             rows: rows.length === 2,
+            discoveryResultsHaveValidLandmarks: root?.querySelector(".xlc-discovery-list")?.getAttribute("role") === "region"
+                && root?.querySelector(".xlc-discovery-list [role='list'] .xlc-discovery-row[role='listitem']") !== null
+                && (!pager || pager.closest("[role='list']") === null),
             addDisabledWithoutSelection: !!batch && (batch instanceof HTMLButtonElement) && batch.disabled,
+            defaultCategoryReady: root?.querySelector("[data-xlc-discovery-action='default-category']")?.value === "待整理",
+            candidateCategoryLocked: root?.querySelector("[data-xlc-discovery-action='candidate-category']")?.disabled === true,
+            categoryHintVisible: !!root?.querySelector(".xlc-discovery-category-settings .xlc-form-hint")?.textContent?.includes("默认使用此分类"),
             customCloseAvailable: close instanceof HTMLButtonElement && !close.disabled,
             hostCloseDisabled: dialogContainer instanceof HTMLElement && dialogContainer.dataset.disableClose === "true",
             duplicateHostHeaderHidden: !dialogHeader || getComputedStyle(dialogHeader).display === "none",
@@ -1095,6 +1640,25 @@ fs.writeFileSync(path.join(OUT, "harness.html"), html);
     if (Object.values(discoveryAssertions).some((v) => !v)) {
         throw new Error("discovery smoke failed: " + JSON.stringify(discoveryAssertions));
     }
+    await page.locator(".xlc-discovery-filters input").fill("无匹配候选");
+    const discoveryEmptyList = await page.evaluate(() => {
+        const list = document.querySelector(".xlc-discovery-list [role='list']");
+        const empty = list?.querySelector(".xlc-discovery-empty");
+        return {
+            listRole: list?.getAttribute("role"),
+            emptyRole: empty?.getAttribute("role"),
+            clearAction: empty?.querySelector("[data-xlc-discovery-action='clear-filters']")?.textContent,
+        };
+    });
+    if (discoveryEmptyList.listRole !== "list" || discoveryEmptyList.emptyRole !== "listitem"
+        || !discoveryEmptyList.clearAction) {
+        throw new Error("discovery filtered-empty list semantics failed: " + JSON.stringify(discoveryEmptyList));
+    }
+    await page.locator("[data-xlc-discovery-action='clear-filters']").click();
+    if (await page.locator(".xlc-discovery-row").count() !== 2) {
+        throw new Error("discovery clear-filters action did not restore candidates");
+    }
+    console.log("  smoke ✓ on-demand discovery empty-list semantics and filter recovery");
     await page.locator(".xlc-discovery-scope-select").selectOption("notebook");
     await page.waitForTimeout(20);
     const notebookProgressAssertion = await page.locator(".xlc-discovery-status-row").textContent();
@@ -1128,8 +1692,40 @@ fs.writeFileSync(path.join(OUT, "harness.html"), html);
     await page.locator(".xlc-discovery-scope-select").selectOption("tree");
     await page.locator(".xlc-discovery-scope-target input").fill("项目");
     await page.locator(".xlc-discovery-scope-target button").click();
+    await page.waitForFunction(() => document.querySelector(".xlc-discovery-scope-target select option[value='20240101120001-hijklmn']"));
+    const treeSearchSuccessStatus = await page.locator(".xlc-discovery-status-row").innerText();
+    if (!treeSearchSuccessStatus.includes("请先选择或确认扫描目标")) throw new Error("tree search success must ask for a target, not a scope: " + JSON.stringify(treeSearchSuccessStatus));
     await page.locator(".xlc-discovery-scope-target select").selectOption("20240101120001-hijklmn");
-    await page.waitForFunction(() => document.body.dataset.xlcDiscoveryScopeUsed === "tree");
+    await page.waitForFunction(() => document.body.dataset.xlcDiscoveryTargetDoc === "20240101120001-hijklmn");
+    await page.locator(".xlc-discovery-scope-target input").fill("旧项目");
+    await page.locator(".xlc-discovery-scope-target button").click();
+    await page.locator(".xlc-discovery-scope-target input").fill("新项目");
+    await page.locator(".xlc-discovery-scope-target button").click();
+    await page.waitForFunction(() => document.querySelector(".xlc-discovery-scope-target select option[value='20240102120001-qrstuvw']"));
+    await page.waitForTimeout(150);
+    const treeTargetAfterSearch = await page.evaluate(() => ({
+        selected: document.querySelector(".xlc-discovery-scope-target select")?.value,
+        options: Array.from(document.querySelectorAll(".xlc-discovery-scope-target select option"), (option) => option.value),
+        scanDisabled: document.querySelector("[data-xlc-discovery-action='retry-scan']")?.hasAttribute("disabled"),
+    }));
+    if (treeTargetAfterSearch.selected !== "" || treeTargetAfterSearch.options.join(",") !== ",20240102120001-qrstuvw" || !treeTargetAfterSearch.scanDisabled) {
+        throw new Error("new tree search must clear the previous target until the user selects a result: " + JSON.stringify(treeTargetAfterSearch));
+    }
+    await page.locator(".xlc-discovery-scope-target select").selectOption("20240102120001-qrstuvw");
+    await page.waitForFunction(() => document.body.dataset.xlcDiscoveryTargetDoc === "20240102120001-qrstuvw");
+    await page.locator(".xlc-discovery-scope-target input").fill("无结果");
+    const scanDisabledWhileKeywordChanges = await page.locator("[data-xlc-discovery-action='retry-scan']").isDisabled();
+    if (!scanDisabledWhileKeywordChanges) throw new Error("changing the tree query must immediately disable scanning the old root");
+    await page.locator(".xlc-discovery-scope-target button").click();
+    await page.waitForFunction(() => document.querySelector(".xlc-discovery-status-row")?.textContent?.includes("没有找到匹配的文档"));
+    const treeTargetAfterEmptySearch = await page.evaluate(() => ({
+        selected: document.querySelector(".xlc-discovery-scope-target select")?.value,
+        scanDisabled: document.querySelector("[data-xlc-discovery-action='retry-scan']")?.hasAttribute("disabled"),
+        resultsHidden: document.querySelector(".xlc-discovery-scope-target select")?.hasAttribute("hidden"),
+    }));
+    if (treeTargetAfterEmptySearch.selected !== "" || !treeTargetAfterEmptySearch.scanDisabled || !treeTargetAfterEmptySearch.resultsHidden) {
+        throw new Error("empty tree search must clear the previous target and disable scanning: " + JSON.stringify(treeTargetAfterEmptySearch));
+    }
     await page.locator(".xlc-discovery-scope-select").selectOption("selected-notebook");
     await page.locator(".xlc-discovery-scope-target select").selectOption("20240102");
     await page.waitForFunction(() => document.body.dataset.xlcDiscoveryScopeUsed === "selected-notebook");
@@ -1153,6 +1749,20 @@ fs.writeFileSync(path.join(OUT, "harness.html"), html);
     if (!discoveryPreview || !discoveryPreview.includes("交付延期")) {
         throw new Error("discovery preview smoke failed");
     }
+    await page.locator("[data-xlc-discovery-action='default-category']").fill("批量分类");
+    await page.locator("[data-xlc-discovery-action='candidate-category']").fill("本条分类");
+    await page.locator("[data-xlc-discovery-action='category-reset']").click();
+    const resetCategory = await page.locator("[data-xlc-discovery-action='candidate-category']").inputValue();
+    if (resetCategory !== "批量分类") throw new Error("candidate category reset should follow the default category");
+    await page.locator("[data-xlc-discovery-action='candidate-category']").fill("本条分类");
+    await page.locator("[data-xlc-discovery-key='candidate-1'] [data-xlc-discovery-action='add-one']").click();
+    await page.locator("[data-xlc-discovery-action='undo-batch']").waitFor({state: "visible"});
+    const singleCategory = await page.evaluate(() => window.__xlcDiscoveryCategories?.at(-1));
+    if (singleCategory?.key !== "candidate-1" || singleCategory.category !== "本条分类") {
+        throw new Error("single discovery add should pass the candidate category override: " + JSON.stringify(singleCategory));
+    }
+    await page.locator("[data-xlc-discovery-action='undo-batch']").click();
+    await page.waitForFunction(() => document.querySelector(".xlc-discovery-receipt")?.textContent?.includes("已撤销新增 1 条；已跳过 1 条"));
     await page.locator(".xlc-discovery-row[data-xlc-discovery-key='candidate-1'] input[type='checkbox']").check();
     await page.locator(".xlc-discovery-row[data-xlc-discovery-key='candidate-2'] input[type='checkbox']").check();
     await page.locator(".xlc-discovery-force input[type='checkbox']").check();
@@ -1160,7 +1770,20 @@ fs.writeFileSync(path.join(OUT, "harness.html"), html);
     await page.waitForFunction(() => document.querySelector("[data-xlc-discovery-action='close']")?.disabled === true);
     const closeDuringAdd = await page.locator("[data-xlc-discovery-action='close']").isDisabled();
     if (!closeDuringAdd) throw new Error("discovery close should be disabled while adding candidates");
+    const categoryControlsDisabledDuringAdd = await page.evaluate(() =>
+        document.querySelector("[data-xlc-discovery-action='default-category']")?.disabled === true
+            && document.querySelector("[data-xlc-discovery-action='candidate-category']")?.disabled === true,
+    );
+    if (!categoryControlsDisabledDuringAdd) throw new Error("category controls should be locked during batch add");
+    await page.waitForFunction(() => (window.__xlcDiscoveryCategories?.length ?? 0) >= 3);
+    const batchCategories = await page.evaluate(() => window.__xlcDiscoveryCategories?.slice(-2));
+    if (batchCategories?.[0]?.key !== "candidate-1" || batchCategories[0].category !== "本条分类"
+        || batchCategories[1]?.key !== "candidate-2" || batchCategories[1].category !== "批量分类") {
+        throw new Error("batch discovery should prefer per-candidate categories and use the default otherwise: " + JSON.stringify(batchCategories));
+    }
     await page.locator("[data-xlc-discovery-action='undo-batch']").waitFor({state: "visible"});
+    // 收录回执与批次令牌在同一微任务中提交；等待关闭锁同步完成，避免把回执出现的瞬间误判为仍在写入。
+    await page.waitForFunction(() => document.querySelector("[data-xlc-discovery-action='close']")?.disabled === false);
     if (await page.locator("[data-xlc-discovery-action='close']").isDisabled()) {
         throw new Error("discovery close should be available after adding candidates");
     }
@@ -1204,14 +1827,73 @@ fs.writeFileSync(path.join(OUT, "harness.html"), html);
     const geometryRoot = finalDiscoveryGeometry.root;
     const geometryTitle = finalDiscoveryGeometry.title;
     const geometryScope = finalDiscoveryGeometry.scope;
+    let lastCandidateReachable = finalDiscoveryGeometry.lastCandidateFullyVisible;
+    if (!lastCandidateReachable) {
+        lastCandidateReachable = await page.locator(".xlc-discovery-list").evaluate((list, row) => {
+            if (!(list instanceof HTMLElement) || !(row instanceof HTMLElement)) return false;
+            list.scrollTop = list.scrollHeight;
+            return row.getBoundingClientRect().bottom <= list.getBoundingClientRect().bottom + 1
+                && list.scrollTop > 0;
+        }, await page.locator(".xlc-discovery-row").last().elementHandle());
+    }
     if (!geometryRoot || !geometryTitle || !geometryScope
         || geometryTitle.top < geometryRoot.top - 1 || geometryTitle.bottom > geometryRoot.bottom + 1
         || geometryScope.top < geometryRoot.top - 1 || geometryScope.bottom > geometryRoot.bottom + 1
-        || !finalDiscoveryGeometry.lastCandidateFullyVisible
+        || !lastCandidateReachable
         || finalDiscoveryGeometry.rootScrollTop !== 0) {
         throw new Error("discovery heading clipped after add/undo: " + JSON.stringify(finalDiscoveryGeometry));
     }
     await page.screenshot({path: path.join(OUT, "production-discovery-light.png")});
+    await page.setViewportSize({width: 390, height: 844});
+    await page.waitForTimeout(80);
+    const mobileDiscoveryLayout = await page.evaluate(() => {
+        const root = document.querySelector(".xlc-discovery");
+        const preview = root?.querySelector(".xlc-discovery-preview");
+        const list = root?.querySelector(".xlc-discovery-list");
+        const settings = root?.querySelector(".xlc-discovery-category-settings");
+        const candidateRow = root?.querySelector(".xlc-discovery-candidate-category");
+        const defaultInput = settings?.querySelector("[data-xlc-discovery-action='default-category']");
+        const controls = [
+            candidateRow?.querySelector("[data-xlc-discovery-action='candidate-category']"),
+            candidateRow?.querySelector("[data-xlc-discovery-action='category-reset']"),
+        ];
+        const rect = (element) => element instanceof HTMLElement ? element.getBoundingClientRect() : null;
+        const rootRect = rect(root);
+        const previewRect = rect(preview);
+        const listRect = rect(list);
+        const settingsRect = rect(settings);
+        const rowRect = rect(candidateRow);
+        const controlRects = controls.map(rect);
+        const rowStyle = candidateRow ? getComputedStyle(candidateRow) : null;
+        const labelStyle = candidateRow?.querySelector(".xlc-form-label") ? getComputedStyle(candidateRow.querySelector(".xlc-form-label")) : null;
+        const inputStyle = controls[0] ? getComputedStyle(controls[0]) : null;
+        return {
+            fitsViewport: !!rootRect && rootRect.left >= -1 && rootRect.right <= window.innerWidth + 1,
+            noHorizontalPageOverflow: document.documentElement.scrollWidth <= window.innerWidth,
+            categorySettingsVisible: !!settingsRect && settingsRect.width > 0 && settingsRect.right <= window.innerWidth + 1
+                && !!rect(defaultInput) && rect(defaultInput).width > 0 && rect(defaultInput).right <= settingsRect.right + 1,
+            // 手机端发现采用根滚动；预览不必在首屏完整露出，但正文区域和后续操作必须可滚动到。
+            previewVisible: !!previewRect && previewRect.width > 0,
+            previewBodyUseful: (() => {
+                const body = root?.querySelector(".xlc-discovery-preview-body");
+                return !!body && body.getBoundingClientRect().height >= 120;
+            })(),
+            rootCanReachPreview: !!root && root.scrollHeight > root.clientHeight,
+            candidateListVisible: !!listRect && listRect.height >= 120 && root?.querySelectorAll(".xlc-discovery-row").length === 2,
+            candidateControlsVisible: !!rowRect && controlRects.every((item) => !!item && item.width > 0 && item.left >= rowRect.left - 1 && item.right <= rowRect.right + 1),
+            candidateControlRects: controlRects.map((item) => item && ({left: item.left, right: item.right, width: item.width})),
+            candidateRowRect: rowRect && ({left: rowRect.left, right: rowRect.right, width: rowRect.width}),
+            candidateFlexStyle: {wrap: rowStyle?.flexWrap, labelBasis: labelStyle?.flexBasis, inputFlex: inputStyle?.flex, inputWidth: inputStyle?.width},
+            candidateControlsDoNotOverlap: !!controlRects[0] && !!controlRects[1]
+                && controlRects[0].right <= controlRects[1].left + 1,
+        };
+    });
+    if (Object.entries(mobileDiscoveryLayout).some(([key, value]) => key !== "previewVisible" && !value)) {
+        throw new Error("mobile discovery category controls overlap or overflow: " + JSON.stringify(mobileDiscoveryLayout));
+    }
+    await page.screenshot({path: path.join(OUT, "production-discovery-mobile-light.png")});
+    await page.setViewportSize({width: 1280, height: 720});
+    await page.waitForTimeout(50);
     await page.evaluate(() => { document.body.dataset.xlcDiscoveryCloseConflict = "true"; });
     await page.locator("[data-xlc-discovery-action='close']").click();
     const closeConflictPreservesDialog = await page.evaluate(() =>
@@ -1227,7 +1909,150 @@ fs.writeFileSync(path.join(OUT, "harness.html"), html);
         !document.querySelector(".xlc-discovery") && document.body.dataset.xlcDiscoverySessionClosed === "true",
     );
     if (!discoveryProgrammaticClose) throw new Error("programmatic discovery close failed with disableClose enabled");
-    console.log("  smoke ✓ on-demand discovery: 16 assertions");
+    await page.evaluate(() => {
+        const stage = document.getElementById("stage");
+        stage.className = "b3-scope light";
+        stage.innerHTML = "";
+        window.XlcHarness.openDiscovery({notebookLoadErrorOnce: true});
+        const dialogRoot = document.querySelector(".b3-dialog");
+        if (dialogRoot) stage.appendChild(dialogRoot);
+    });
+    await page.locator(".xlc-discovery-scope-select").selectOption("selected-notebook");
+    await page.waitForFunction(() => document.querySelector(".xlc-discovery-status-row")?.textContent?.includes("笔记本列表加载失败：思源请求未完成"));
+    const notebookLoadFailure = await page.evaluate(() => ({
+        selectDisabled: document.querySelector(".xlc-discovery-scope-target select")?.hasAttribute("disabled"),
+        retryVisible: document.querySelector("[data-xlc-discovery-action='retry-notebooks']")?.hasAttribute("hidden") === false,
+    }));
+    if (!notebookLoadFailure.selectDisabled || !notebookLoadFailure.retryVisible) {
+        throw new Error("notebook load failure must preserve an enabled retry action: " + JSON.stringify(notebookLoadFailure));
+    }
+    await page.locator("[data-xlc-discovery-action='retry-notebooks']").click();
+    await page.waitForFunction(() => {
+        const select = document.querySelector(".xlc-discovery-scope-target select");
+        return select instanceof HTMLSelectElement && !select.disabled && select.options.length === 3;
+    });
+    const notebookLoadRecovery = await page.evaluate(() => ({
+        selectEnabled: document.querySelector(".xlc-discovery-scope-target select")?.hasAttribute("disabled") === false,
+        retryHidden: document.querySelector("[data-xlc-discovery-action='retry-notebooks']")?.hasAttribute("hidden"),
+    }));
+    if (!notebookLoadRecovery.selectEnabled || !notebookLoadRecovery.retryHidden) {
+        throw new Error("notebook retry must restore the selectable list: " + JSON.stringify(notebookLoadRecovery));
+    }
+    await page.locator(".xlc-discovery-scope-target select").selectOption("20240101");
+    await page.waitForFunction(() => document.body.dataset.xlcDiscoveryTargetNotebook === "20240101");
+    await page.evaluate(() => window.XlcHarness.closeDiscovery());
+    await page.evaluate(() => {
+        const stage = document.getElementById("stage");
+        stage.className = "b3-scope light";
+        stage.innerHTML = "";
+        window.XlcHarness.openDiscovery({emptyNotebookList: true});
+        const dialogRoot = document.querySelector(".b3-dialog");
+        if (dialogRoot) stage.appendChild(dialogRoot);
+    });
+    await page.locator(".xlc-discovery-scope-select").selectOption("selected-notebook");
+    await page.waitForFunction(() => document.querySelector(".xlc-discovery-status-row")?.textContent?.includes("当前没有可扫描的笔记本"));
+    const emptyNotebookState = await page.evaluate(() => ({
+        selectDisabled: document.querySelector(".xlc-discovery-scope-target select")?.hasAttribute("disabled"),
+        retryHidden: document.querySelector("[data-xlc-discovery-action='retry-notebooks']")?.hasAttribute("hidden"),
+    }));
+    if (!emptyNotebookState.selectDisabled || emptyNotebookState.retryHidden) {
+        throw new Error("empty notebook list must show its own unavailable state and retry action: " + JSON.stringify(emptyNotebookState));
+    }
+    await page.evaluate(() => window.XlcHarness.closeDiscovery());
+    await page.evaluate(() => {
+        const stage = document.getElementById("stage");
+        stage.className = "b3-scope light";
+        stage.innerHTML = "";
+        window.XlcHarness.openDiscovery({initialTreeRoot: true});
+        const dialogRoot = document.querySelector(".b3-dialog");
+        if (dialogRoot) stage.appendChild(dialogRoot);
+    });
+    await page.waitForFunction(() => document.body.dataset.xlcDiscoveryScopeUsed === "tree"
+        && document.body.dataset.xlcDiscoveryTargetDoc === "20240101120001-hijklmn");
+    const initialTreeTarget = await page.evaluate(() => ({
+        scope: document.querySelector(".xlc-discovery-scope-select")?.value,
+        selected: document.querySelector(".xlc-discovery-scope-target select")?.value,
+        title: document.querySelector(".xlc-discovery-heading .xlc-form-title")?.textContent,
+        path: document.querySelector(".xlc-discovery-scope")?.textContent,
+    }));
+    if (initialTreeTarget.scope !== "tree"
+        || initialTreeTarget.selected !== "20240101120001-hijklmn"
+        || initialTreeTarget.title !== "从此文档发现常用语"
+        || !initialTreeTarget.path?.includes("/项目笔记")) {
+        throw new Error("document-tree discovery entry must preserve and display the clicked root: " + JSON.stringify(initialTreeTarget));
+    }
+    await page.evaluate(() => window.XlcHarness.closeDiscovery());
+    await page.evaluate(() => {
+        const stage = document.getElementById("stage");
+        stage.className = "b3-scope light";
+        stage.innerHTML = "";
+        window.XlcHarness.openDiscovery({candidateCount: 205});
+        const dialogRoot = document.querySelector(".b3-dialog");
+        if (dialogRoot) stage.appendChild(dialogRoot);
+    });
+    const nextPageButton = page.locator("[data-xlc-control='discovery.page.next']");
+    await nextPageButton.focus();
+    await page.keyboard.press("Enter");
+    const secondDiscoveryPage = await page.evaluate(() => ({
+        page: document.querySelector(".xlc-discovery-pager")?.textContent,
+        firstTitle: document.querySelector(".xlc-discovery-row-title")?.textContent,
+        activeControl: (document.activeElement instanceof HTMLElement ? document.activeElement.dataset.xlcControl : ""),
+        pagerRole: document.querySelector(".xlc-discovery-pager")?.getAttribute("role"),
+        pagerLabel: document.querySelector(".xlc-discovery-pager")?.getAttribute("aria-label"),
+        pageStatusRole: document.querySelector(".xlc-discovery-page-label")?.getAttribute("role"),
+        pageStatusLive: document.querySelector(".xlc-discovery-page-label")?.getAttribute("aria-live"),
+        pageStatusAtomic: document.querySelector(".xlc-discovery-page-label")?.getAttribute("aria-atomic"),
+    }));
+    if (!secondDiscoveryPage.page?.includes("第 2 / 3 页")
+        || secondDiscoveryPage.firstTitle !== "分页候选 101"
+        || secondDiscoveryPage.activeControl !== "discovery.page.next"
+        || secondDiscoveryPage.pagerRole !== "navigation"
+        || !secondDiscoveryPage.pagerLabel
+        || secondDiscoveryPage.pageStatusRole !== "status"
+        || secondDiscoveryPage.pageStatusLive !== "polite"
+        || secondDiscoveryPage.pageStatusAtomic !== "true") {
+        throw new Error("discovery next-page keyboard focus was not preserved: " + JSON.stringify(secondDiscoveryPage));
+    }
+    await page.keyboard.press("Enter");
+    const lastDiscoveryPage = await page.evaluate(() => ({
+        page: document.querySelector(".xlc-discovery-pager")?.textContent,
+        firstTitle: document.querySelector(".xlc-discovery-row-title")?.textContent,
+        previousFocused: document.activeElement instanceof HTMLElement
+            && document.activeElement.dataset.xlcControl === "discovery.page.previous",
+        nextDisabled: document.querySelector("[data-xlc-control='discovery.page.next']")?.hasAttribute("disabled"),
+    }));
+    if (!lastDiscoveryPage.page?.includes("第 3 / 3 页")
+        || lastDiscoveryPage.firstTitle !== "分页候选 201"
+        || !lastDiscoveryPage.previousFocused
+        || !lastDiscoveryPage.nextDisabled) {
+        throw new Error("discovery last-page focus did not move to the available pager: " + JSON.stringify(lastDiscoveryPage));
+    }
+    await page.keyboard.press("Enter");
+    const previousDiscoveryPage = await page.evaluate(() => ({
+        page: document.querySelector(".xlc-discovery-pager")?.textContent,
+        firstTitle: document.querySelector(".xlc-discovery-row-title")?.textContent,
+        previousFocused: document.activeElement instanceof HTMLElement
+            && document.activeElement.dataset.xlcControl === "discovery.page.previous",
+    }));
+    if (!previousDiscoveryPage.page?.includes("第 2 / 3 页")
+        || previousDiscoveryPage.firstTitle !== "分页候选 101"
+        || !previousDiscoveryPage.previousFocused) {
+        throw new Error("discovery previous-page keyboard focus was not preserved: " + JSON.stringify(previousDiscoveryPage));
+    }
+    await page.keyboard.press("Enter");
+    const firstDiscoveryPage = await page.evaluate(() => ({
+        page: document.querySelector(".xlc-discovery-pager")?.textContent,
+        firstTitle: document.querySelector(".xlc-discovery-row-title")?.textContent,
+        nextFocused: document.activeElement instanceof HTMLElement
+            && document.activeElement.dataset.xlcControl === "discovery.page.next",
+    }));
+    if (!firstDiscoveryPage.page?.includes("第 1 / 3 页")
+        || firstDiscoveryPage.firstTitle !== "分页候选 001"
+        || !firstDiscoveryPage.nextFocused) {
+        throw new Error("discovery first-page focus did not move to the available pager: " + JSON.stringify(firstDiscoveryPage));
+    }
+    await page.evaluate(() => window.XlcHarness.closeDiscovery());
+    console.log("  smoke ✓ on-demand discovery: scope, category, responsive layouts and 4 keyboard pager transitions");
     // 导入策略卡（R69，原型屏 8：三选 + 推荐档 + 逐项回执提示）
     await page.evaluate(() => {
         const stage = document.getElementById("stage");
@@ -1285,11 +2110,39 @@ fs.writeFileSync(path.join(OUT, "harness.html"), html);
     const prototypePage = await browser.newPage({viewport: {width: 3040, height: 1400}, deviceScaleFactor: 1});
     await prototypePage.goto("file:///" + path.join(OUT, "prototype.html").replace(/\\/g, "/"));
     await prototypePage.waitForLoadState("load");
+    const prototypeParity = await prototypePage.evaluate(() => {
+        const sections = Array.from(document.querySelectorAll("body > section"));
+        const capture = sections.find((section) => section.querySelector("h2")?.textContent?.includes("屏 3 · 捕获表单"));
+        const captureFrames = Array.from(capture?.querySelectorAll(".pair > .frame.t-light, .pair > .frame.t-dark") ?? []);
+        const captureFormsMatch = captureFrames.length === 2 && captureFrames.every((frame) => {
+            const labels = Array.from(frame.querySelectorAll(".form .fld label")).map((label) => label.textContent ?? "");
+            const alias = labels.findIndex((label) => label.includes("别名"));
+            const type = labels.findIndex((label) => label.includes("类型"));
+            const title = labels.findIndex((label) => label.includes("标题"));
+            return title >= 0 && alias > title && type > alias && !!frame.querySelector(".form select");
+        });
+        const mobile = sections.find((section) => section.querySelector("h2")?.textContent?.includes("屏 7 · 移动端"));
+        const phones = Array.from(mobile?.querySelectorAll(".phone") ?? []);
+        const mobileThemesMatch = phones.length === 2 && phones.every((phone) =>
+            !!phone.querySelector(".sheet")
+            && Array.from(phone.querySelectorAll(".sheet-foot button")).some((button) => button.textContent?.includes("复制选中"))
+            && phone.textContent.includes("点按选择条目"));
+        const aiRecoveryMirrored = capture?.querySelectorAll(".capture-contracts > .capture-contract strong").length >= 14
+            && Array.from(capture.querySelectorAll(".capture-contracts")).every((theme) => theme.textContent.includes("失败后重试"));
+        const accessRecoveryMirrored = document.querySelectorAll(".access-state-grid .access-state").length === 4
+            && document.querySelector(".access-state-grid")?.textContent.includes("登录状态失效")
+            && document.querySelector(".access-state-grid")?.textContent.includes("访问权限不足")
+            && document.querySelector(".access-state-grid--dark")?.querySelectorAll(".access-state").length === 2;
+        return {captureFormsMatch, mobileThemesMatch, aiRecoveryMirrored, accessRecoveryMirrored};
+    });
+    if (Object.values(prototypeParity).some((value) => !value)) throw new Error("prototype parity smoke failed: " + JSON.stringify(prototypeParity));
+    console.log("  smoke ✓ prototype parity: capture fields, mobile selection/copy, AI and access failure recovery");
     for (const [heading, file] of [
         ["屏 1 · 桌面搜索弹窗", "prototype-desktop-dialog.png"],
         ["屏 1 空态 · 未命中", "prototype-empty-state.png"],
         ["屏 5 · 设置", "prototype-settings.png"],
         ["屏 6 · 首跑引导", "prototype-setup.png"],
+        ["屏 7 · 移动端", "prototype-mobile-sheet.png"],
     ]) {
         const section = prototypePage.locator("section").filter({hasText: heading}).first();
         await section.screenshot({path: path.join(OUT, file), animations: "disabled"});

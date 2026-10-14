@@ -308,6 +308,18 @@ export class DiscoveryService {
     private activeCreates = 0;
     private activeCreateDrain: Promise<void> | null = null;
     private resolveActiveCreateDrain: (() => void) | null = null;
+    /** 同一候选的并发收录必须串行；UI 防双击不能约束协议/宿主调用方。 */
+    private readonly candidateWriteLocks = new Map<string, Promise<void>>();
+
+    private withCandidateWriteLock<T>(key: string, action: () => Promise<T>): Promise<T> {
+        const previous = this.candidateWriteLocks.get(key) ?? Promise.resolve();
+        const current = previous.then(action);
+        const tail = current.then(() => undefined, () => undefined);
+        this.candidateWriteLocks.set(key, tail);
+        return current.finally(() => {
+            if (this.candidateWriteLocks.get(key) === tail) this.candidateWriteLocks.delete(key);
+        });
+    }
 
     constructor(private readonly kernel: IKernelClient, private readonly library: LibraryPort, options: DiscoveryServiceOptions = {}) {
         this.budget = {
@@ -616,7 +628,33 @@ export class DiscoveryService {
     async addCandidate(
         sessionId: string,
         candidateKey: string,
-        options: {allowSameContent?: boolean; batchId?: string} = {},
+        options: {allowSameContent?: boolean; batchId?: string; category?: string} = {},
+    ): Promise<DiscoveryReceipt<AddCandidateResult>> {
+        // Fail fast while a session is closing.  Do this check before queueing on
+        // the per-candidate lock so a caller cannot wait behind an in-flight
+        // create that is intentionally paused during shutdown/close.
+        const session = this.session;
+        if (!session || session.view.id !== sessionId) {
+            return fail("session-expired", "discovery session is no longer available");
+        }
+        if (this.shuttingDown || !session.acceptingWrites) {
+            return fail("conflict", "discovery session is closing and no longer accepts writes");
+        }
+        // Candidate keys are local to a discovery session.  The same source
+        // block can appear in two sessions, though, so serialize by its stable
+        // source ID whenever it is available; this closes the cross-session
+        // duplicate-create race as well as the usual double-click race.
+        const candidate = session.candidates.get(candidateKey);
+        const lockKey = candidate?.view.sourceBlockId
+            ? `source:${candidate.view.sourceBlockId}`
+            : `candidate:${sessionId}:${candidateKey}`;
+        return this.withCandidateWriteLock(lockKey, () => this.addCandidateUnlocked(sessionId, candidateKey, options));
+    }
+
+    private async addCandidateUnlocked(
+        sessionId: string,
+        candidateKey: string,
+        options: {allowSameContent?: boolean; batchId?: string; category?: string} = {},
     ): Promise<DiscoveryReceipt<AddCandidateResult>> {
         const session = this.session;
         if (!session || session.view.id !== sessionId) return fail("session-expired", "discovery session is no longer available");
@@ -700,6 +738,7 @@ export class DiscoveryService {
                     itemType,
                     markdown,
                     title,
+                    category: options.category === undefined ? "待整理" : options.category.slice(0, LIMITS.category),
                     source: {sourceDocId: candidate.sourceDocId, sourceBlockId: candidate.sourceBlockId, sourceType: "block"},
                 }, undefined, {batchToken: batch.id});
             } catch (error) {

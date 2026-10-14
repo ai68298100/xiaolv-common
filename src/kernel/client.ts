@@ -4,18 +4,74 @@ import {LIMITS} from "../constants";
 
 export type KernelPayload = Record<string, unknown>;
 
+/**
+ * 错误分类供 UI/服务层决定降级和重试策略。`kernel` 表示宿主返回了可读的非零 code，
+ * 而 `network`/`timeout` 表示请求没有得到可用的宿主响应。
+ */
+export type KernelErrorKind = "network" | "timeout" | "auth" | "permission" | "validation" | "kernel" | "cancelled" | "stale" | "unknown";
+
+export interface KernelRequestOptions {
+    /** 每个逻辑请求的稳定键。相同键的进行中请求会共享同一 Promise。 */
+    dedupeKey?: string;
+    /** 让同一逻辑通道上的新请求取消旧请求，避免旧响应覆盖新查询。 */
+    raceKey?: string;
+    latest?: boolean;
+    /** 外部取消（页面卸载、用户停止扫描等）。 */
+    signal?: AbortSignal;
+    /** 覆盖默认最大重试次数；仅网络/超时错误会重试。 */
+    maxRetries?: number;
+    /** 写操作建议传入稳定幂等键；客户端用它防止双击产生重复在途请求。 */
+    idempotencyKey?: string;
+    timeoutMs?: number;
+}
+
 export class KernelError extends Error {
-    constructor(public readonly code: string | number, message: string) {
+    public readonly kind: KernelErrorKind;
+
+    constructor(public readonly code: string | number, message: string, kind?: KernelErrorKind) {
         super(message);
         this.name = "KernelError";
+        this.kind = kind ?? classifyKernelError(code, message);
     }
 }
 
 export class KernelTimeoutError extends Error {
+    public readonly kind = "timeout" as const;
     constructor() {
         super("kernel request timed out");
         this.name = "KernelTimeoutError";
     }
+}
+
+export class KernelCancelledError extends Error {
+    public readonly kind = "cancelled" as const;
+    constructor() {
+        super("kernel request cancelled");
+        this.name = "KernelCancelledError";
+    }
+}
+
+/** 被后续 latest 请求取代；调用方应丢弃本次响应并等待新请求。 */
+export class KernelStaleError extends Error {
+    public readonly kind = "stale" as const;
+    constructor() {
+        super("kernel response superseded by a newer request");
+        this.name = "KernelStaleError";
+    }
+}
+
+function classifyKernelError(code: string | number, message: string): KernelErrorKind {
+    const normalizedCode = String(code).toLowerCase();
+    const normalizedMessage = message.toLowerCase();
+    if (normalizedCode === "401" || normalizedCode.includes("unauthor") || /token|登录|认证|鉴权/.test(normalizedMessage)) return "auth";
+    if (normalizedCode === "403" || normalizedCode.includes("forbidden") || /permission|forbidden|无权限|权限/.test(normalizedMessage)) return "permission";
+    if (normalizedCode === "400" || normalizedCode === "422" || normalizedCode.includes("invalid") || /invalid|validation|校验|参数/.test(normalizedMessage)) return "validation";
+    if (normalizedCode === "transport" || normalizedCode === "network") return "network";
+    if (normalizedCode === "timeout") return "timeout";
+    if (normalizedCode === "aborted" || normalizedCode === "cancelled") return "cancelled";
+    if (normalizedCode === "stale") return "stale";
+    if (typeof code === "number" || normalizedCode === "kernel") return "kernel";
+    return "unknown";
 }
 
 // 官方端点白名单（证据：siyuan kernel/api/router.go，行号见 docs/host-contract.md）
@@ -49,19 +105,75 @@ export const ENDPOINTS = {
 export type EndpointName = keyof typeof ENDPOINTS;
 
 export interface IKernelClient {
-    request<T = unknown>(endpoint: EndpointName, payload?: KernelPayload): Promise<T>;
+    request<T = unknown>(endpoint: EndpointName, payload?: KernelPayload, options?: KernelRequestOptions): Promise<T>;
 }
 
 /**
  * 传输函数：生产环境注入官方 fetchSyncPost（自动处理宿主端口与鉴权，双端可用）；
  * 测试注入 stub。响应约定 {code,msg,data}（IWebSocketData）。
  */
-export type SyncPost = (url: string, data: unknown) => Promise<{code?: number; msg?: string; data?: unknown}>;
+export interface SyncPostContext {
+    signal: AbortSignal;
+    attempt: number;
+    timeoutMs: number;
+    idempotencyKey?: string;
+}
+
+export type SyncPost = (url: string, data: unknown, context?: SyncPostContext) => Promise<{code?: number; msg?: string; data?: unknown}>;
+
+/** 请求最终失败时的统一鉴权/权限通知。回调只在一次底层在途请求上触发一次。 */
+export type KernelFailureHandler = (error: KernelError) => void;
+
+const RETRYABLE_ENDPOINTS = new Set<EndpointName>([
+    "version", "lsNotebooks", "listDocsByPath", "searchDocs", "getHPathByID", "getFullHPathByID",
+    "getChildBlocks", "getBlockKramdown", "getBlockInfo", "checkBlocksExist", "getBlockAttrs", "batchGetBlockAttrs",
+    "exportMdContent", "listModels",
+]);
+
+const MAX_RETRIES = 2;
+
+function stableSerialize(value: unknown): string {
+    if (value === null || typeof value !== "object") return JSON.stringify(value) ?? String(value);
+    if (Array.isArray(value)) return `[${value.map((item) => stableSerialize(item)).join(",")}]`;
+    const entries = Object.entries(value as Record<string, unknown>).sort(([a], [b]) => a.localeCompare(b));
+    return `{${entries.map(([key, item]) => `${JSON.stringify(key)}:${stableSerialize(item)}`).join(",")}}`;
+}
+
+function isAbortError(err: unknown): boolean {
+    return err instanceof KernelCancelledError || err instanceof KernelStaleError || (err as {name?: unknown})?.name === "AbortError";
+}
+
+function shouldRetry(err: unknown, endpoint: EndpointName): boolean {
+    if (!RETRYABLE_ENDPOINTS.has(endpoint)) return false;
+    if (err instanceof KernelTimeoutError) return true;
+    if (err instanceof KernelError) return err.kind === "network" || err.kind === "timeout";
+    return !isAbortError(err);
+}
+
+function waitBeforeRetry(delayMs: number, signal: AbortSignal): Promise<void> {
+    if (signal.aborted) return Promise.reject(new KernelCancelledError());
+    return new Promise((resolve, reject) => {
+        const timer = setTimeout(() => {
+            signal.removeEventListener("abort", onAbort);
+            resolve();
+        }, delayMs);
+        const onAbort = (): void => {
+            clearTimeout(timer);
+            signal.removeEventListener("abort", onAbort);
+            reject(new KernelCancelledError());
+        };
+        signal.addEventListener("abort", onAbort, {once: true});
+    });
+}
 
 export function createKernelClient(options: {
     /** 官方 fetchSyncPost（来自 "siyuan" 包）；离开思源运行时（测试）注入 stub */
     syncPost?: SyncPost;
     timeoutMs?: number;
+    /** 宿主返回鉴权失效时的统一恢复入口（不负责伪造宿主登录流程）。 */
+    onAuthFailure?: KernelFailureHandler;
+    /** 宿主返回权限不足时的统一降级入口。 */
+    onPermissionFailure?: KernelFailureHandler;
 }): IKernelClient {
     if (!options.syncPost) {
         // 生产装配必须走官方传输；此处兜底抛错而不是裸 fetch（避免绕过宿主鉴权口径）
@@ -69,30 +181,118 @@ export function createKernelClient(options: {
     }
     const doFetch = options.syncPost;
     const timeoutMs = options.timeoutMs ?? LIMITS.kernelTimeoutMs;
-    return {
-        async request<T = unknown>(endpoint: EndpointName, payload: KernelPayload = {}): Promise<T> {
-            if (!Object.prototype.hasOwnProperty.call(ENDPOINTS, endpoint)) {
-                throw new KernelError("UNKNOWN_ENDPOINT", `endpoint not allowlisted: ${endpoint}`);
+    const inFlight = new Map<string, Promise<unknown>>();
+    const latestRequests = new Map<string, {controller: AbortController; requestKey: string}>();
+
+    const reportFailure = (err: unknown): void => {
+        if (!(err instanceof KernelError)) return;
+        try {
+            if (err.kind === "auth") options.onAuthFailure?.(err);
+            else if (err.kind === "permission") options.onPermissionFailure?.(err);
+        } catch (callbackError) {
+            // 错误提示本身不能掩盖原始内核错误；宿主侧回调失败仅作诊断记录。
+            console.warn("[小驴常用] kernel failure handler failed", callbackError);
+        }
+    };
+
+    const executeOnce = async <T>(endpoint: EndpointName, payload: KernelPayload, signal: AbortSignal, requestOptions: KernelRequestOptions, attempt: number): Promise<T> => {
+        if (signal.aborted) throw new KernelCancelledError();
+        const controller = new AbortController();
+        const abortChild = (): void => controller.abort();
+        signal.addEventListener("abort", abortChild, {once: true});
+        const requestedTimeout = requestOptions.timeoutMs ?? timeoutMs;
+        const effectiveTimeout = Number.isFinite(requestedTimeout) ? Math.max(1, requestedTimeout) : LIMITS.kernelTimeoutMs;
+        let timer: ReturnType<typeof setTimeout> | undefined;
+        const requestPromise = Promise.resolve().then(() => doFetch(ENDPOINTS[endpoint], payload, {
+            signal: controller.signal,
+            attempt,
+            timeoutMs: effectiveTimeout,
+            idempotencyKey: requestOptions.idempotencyKey,
+        }));
+        const timeoutPromise = new Promise<never>((_, reject) => {
+            timer = setTimeout(() => {
+                controller.abort();
+                reject(new KernelTimeoutError());
+            }, effectiveTimeout);
+        });
+        let rejectCancelled: ((err: KernelCancelledError) => void) | null = null;
+        const onSignalAbort = (): void => {
+            controller.abort();
+            rejectCancelled?.(new KernelCancelledError());
+        };
+        const cancelledPromise = new Promise<never>((_, reject) => {
+            rejectCancelled = reject;
+            if (signal.aborted) reject(new KernelCancelledError());
+        });
+        signal.addEventListener("abort", onSignalAbort, {once: true});
+        try {
+            const body = await Promise.race([requestPromise, timeoutPromise, cancelledPromise]);
+            if (typeof body?.code !== "number" || body.code !== 0) {
+                throw new KernelError(body?.code ?? "INVALID_ENVELOPE", body?.msg || `kernel error on ${ENDPOINTS[endpoint]}`);
             }
-            let timer: ReturnType<typeof setTimeout> | undefined;
+            return (body.data ?? (null as unknown)) as T;
+        } catch (err) {
+            if (err instanceof KernelError || err instanceof KernelTimeoutError || err instanceof KernelCancelledError) throw err;
+            if (isAbortError(err)) throw new KernelCancelledError();
+            throw new KernelError("TRANSPORT", (err as Error)?.message || String(err), "network");
+        } finally {
+            if (timer) clearTimeout(timer);
+            signal.removeEventListener("abort", abortChild);
+            signal.removeEventListener("abort", onSignalAbort);
+            rejectCancelled = null;
+        }
+    };
+
+    const execute = async <T>(endpoint: EndpointName, payload: KernelPayload, rootSignal: AbortSignal, requestOptions: KernelRequestOptions): Promise<T> => {
+        const requestedRetries = requestOptions.maxRetries ?? MAX_RETRIES;
+        const maxRetries = Number.isFinite(requestedRetries)
+            ? Math.min(MAX_RETRIES, Math.max(0, Math.floor(requestedRetries)))
+            : MAX_RETRIES;
+        let attempt = 0;
+        while (true) {
             try {
-                const body = await Promise.race([
-                    doFetch(ENDPOINTS[endpoint], payload ?? {}),
-                    new Promise<never>((_, reject) => {
-                        timer = setTimeout(() => reject(new KernelTimeoutError()), timeoutMs);
-                    }),
-                ]);
-                if (typeof body?.code !== "number" || body.code !== 0) {
-                    throw new KernelError(body?.code ?? "INVALID_ENVELOPE", body?.msg || `kernel error on ${ENDPOINTS[endpoint]}`);
-                }
-                return (body.data ?? (null as unknown)) as T;
+                return await executeOnce<T>(endpoint, payload, rootSignal, requestOptions, attempt);
             } catch (err) {
-                if (err instanceof KernelError) throw err;
-                if (err instanceof KernelTimeoutError) throw err;
-                throw new KernelError("TRANSPORT", (err as Error)?.message || String(err));
-            } finally {
-                if (timer) clearTimeout(timer);
+                if (rootSignal.aborted) throw new KernelCancelledError();
+                if (attempt >= maxRetries || !shouldRetry(err, endpoint)) throw err;
+                attempt += 1;
+                await waitBeforeRetry(150 * 2 ** (attempt - 1), rootSignal);
             }
+        }
+    };
+
+    return {
+        request<T = unknown>(endpoint: EndpointName, payload: KernelPayload = {}, requestOptions: KernelRequestOptions = {}): Promise<T> {
+            if (!Object.prototype.hasOwnProperty.call(ENDPOINTS, endpoint)) {
+                return Promise.reject(new KernelError("UNKNOWN_ENDPOINT", `endpoint not allowlisted: ${endpoint}`, "validation"));
+            }
+            if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+                return Promise.reject(new KernelError("INVALID_PAYLOAD", "kernel request payload must be an object", "validation"));
+            }
+            const requestKey = requestOptions.dedupeKey ?? `${endpoint}:${stableSerialize(payload)}:${requestOptions.idempotencyKey ?? ""}`;
+            const existing = inFlight.get(requestKey);
+            if (existing) return existing as Promise<T>;
+            const rootController = new AbortController();
+            const relayAbort = (): void => rootController.abort();
+            requestOptions.signal?.addEventListener("abort", relayAbort, {once: true});
+            if (requestOptions.latest && requestOptions.raceKey) {
+                const previous = latestRequests.get(requestOptions.raceKey);
+                if (previous && previous.requestKey !== requestKey) previous.controller.abort();
+                latestRequests.set(requestOptions.raceKey, {controller: rootController, requestKey});
+            }
+            const promise = execute<T>(endpoint, payload, rootController.signal, requestOptions)
+                .catch((err: unknown) => {
+                    // catch 挂在共享 Promise 上，去重调用方不会重复触发全局处理器。
+                    reportFailure(err);
+                    throw err;
+                })
+                .finally(() => {
+                    if (inFlight.get(requestKey) === promise) inFlight.delete(requestKey);
+                    if (requestOptions.raceKey && latestRequests.get(requestOptions.raceKey)?.controller === rootController) latestRequests.delete(requestOptions.raceKey);
+                    requestOptions.signal?.removeEventListener("abort", relayAbort);
+                });
+            inFlight.set(requestKey, promise);
+            return promise;
         },
     };
 }

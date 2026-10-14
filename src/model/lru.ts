@@ -35,6 +35,11 @@ export class LruCache<V> {
         }
     }
 
+    /** 删除单个缓存项；写操作优先精确失效，避免无关条目抖动。 */
+    delete(key: string): boolean {
+        return this.map.delete(key);
+    }
+
     clear(): void {
         this.map.clear();
     }

@@ -271,6 +271,57 @@ test("笔记本发现候选预览和收录沿用各自来源文档", async () =>
     });
 });
 
+test("发现收录缺省分类为待整理，显式分类和空分类按调用方传入", async () => {
+    const run = async (category) => {
+        const createdInputs = [];
+        const {service} = makeHarness({
+            createItem: async (input) => {
+                createdInputs.push(input);
+                return {ok: true, data: {item: commonItem({itemType: input.itemType, title: input.title, category: input.category, source: input.source})}};
+            },
+        });
+        const scan = await service.discoverCurrentDocument(DOC);
+        assert.equal(scan.ok, true);
+        const candidate = scan.data.candidates[0];
+        assert.equal((await service.previewCandidate(scan.data.id, candidate.key)).ok, true);
+        const result = await service.addCandidate(scan.data.id, candidate.key, category === undefined ? {} : {category});
+        assert.equal(result.ok, true);
+        return createdInputs[0].category;
+    };
+
+    assert.equal(await run(undefined), "待整理");
+    assert.equal(await run("自定义分类"), "自定义分类");
+    assert.equal(await run(""), "");
+});
+
+test("同一发现候选并发收录串行化，不重复创建物理块", async () => {
+    let createdCount = 0;
+    let stored = null;
+    const {service} = makeHarness({
+        createItem: async (input) => {
+            createdCount++;
+            await new Promise((resolve) => setTimeout(resolve, 20));
+            stored = commonItem({id: "xlc-discovery-idempotent", itemType: input.itemType, title: input.title, source: input.source});
+            return {ok: true, data: {item: stored}};
+        },
+        reindex: async () => ({
+            entries: [], items: stored ? new Map([[stored.id, stored]]) : new Map(),
+            truncated: false, docsScanned: 1, errors: [], builtAt: Date.now(),
+        }),
+    });
+    const scan = await service.discoverCurrentDocument(DOC);
+    assert.equal(scan.ok, true);
+    const candidate = scan.data.candidates[0];
+    assert.equal((await service.previewCandidate(scan.data.id, candidate.key)).ok, true);
+    const [first, second] = await Promise.all([
+        service.addCandidate(scan.data.id, candidate.key),
+        service.addCandidate(scan.data.id, candidate.key),
+    ]);
+    assert.equal(createdCount, 1);
+    assert.equal([first, second].filter((result) => result.ok && result.data.status === "added").length, 1);
+    assert.equal([first, second].filter((result) => result.ok && result.data.status === "already-in-library").length, 1);
+});
+
 test("当前笔记本发现限制文档数并在达到上限时标记截断", async () => {
     const {service} = makeHarness({
         serviceOptions: {maxDocs: 2},

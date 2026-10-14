@@ -41,9 +41,9 @@ function makeKernel(overrides = {}) {
     };
 }
 
-function makeService(kernelOverrides = {}, config) {
+function makeService(kernelOverrides = {}, config, serviceOptions = {}) {
     const kernel = makeKernel(kernelOverrides);
-    const service = new LibraryService(kernel);
+    const service = new LibraryService(kernel, serviceOptions);
     service.setConfig(config ?? {mode: "doc", notebookIds: [], containerDocIds: [DOC], createdDocIds: [], configuredAt: 1});
     return {kernel, service};
 }
@@ -91,6 +91,82 @@ test("createItem：appendBlock + setBlockAttrs，返回条目回执", async () =
     const setAttrs = kernel.calls.find((c) => c.endpoint === "setBlockAttrs");
     assert.equal(setAttrs.payload.id, "20240101120003-ccccccc");
     assert.equal(setAttrs.payload.attrs["custom-xlc-tags"], "a");
+});
+
+test("写操作成功后按逻辑 ID 通知缓存失效，失败操作不通知", async () => {
+    const changes = [];
+    const existingId = "xlc-cacheentry0001";
+    const {service} = makeService({
+        getChildBlocks: () => [{id: B1, type: "p"}],
+        batchGetBlockAttrs: () => ({[B1]: {"custom-xlc-id": existingId}}),
+        getBlockAttrs: () => ({"custom-xlc-id": existingId}),
+    }, undefined, {onItemsChanged: (ids) => changes.push([...ids])});
+    const index = await service.ensureIndex();
+    assert.equal(index.entries[0].id, existingId);
+
+    const updated = await service.updateItem(existingId, {title: "改名"});
+    assert.equal(updated.ok, true);
+    assert.deepEqual(changes, [[existingId]]);
+
+    const cleared = await service.clearSource(existingId);
+    assert.equal(cleared.ok, true);
+    const relinked = await service.relinkSource(existingId, {sourceDocId: DOC});
+    assert.equal(relinked.ok, true);
+    const removed = await service.removeItem(existingId);
+    assert.equal(removed.ok, true);
+
+    const created = await service.createItem({itemType: "text", markdown: "new"});
+    assert.equal(created.ok, true);
+    const createdId = created.data.item.id;
+    const invalid = await service.createItem({itemType: "url", markdown: "javascript:alert(1)", url: "javascript:alert(1)"});
+    assert.equal(invalid.ok, false);
+    assert.deepEqual(changes, [
+        [existingId],
+        [existingId],
+        [existingId],
+        [existingId],
+        [createdId],
+    ]);
+});
+
+test("createItem：同一 logicalId 并发写入串行化，重试不产生第二个块", async () => {
+    let appends = 0;
+    const {kernel, service} = makeService({
+        appendBlock: async () => {
+            appends++;
+            await new Promise((resolve) => setTimeout(resolve, 20));
+            return [{doOperations: [{id: "20240101120003-ccccccc"}]}];
+        },
+    });
+    const input = {itemType: "text", markdown: "幂等正文", logicalId: "xlc-idempotent0001"};
+    const [first, second] = await Promise.all([service.createItem(input), service.createItem(input)]);
+    assert.equal([first, second].filter((result) => result.ok).length, 1);
+    assert.equal([first, second].filter((result) => !result.ok && result.reason === "conflict").length, 1);
+    assert.equal(appends, 1);
+    assert.equal(kernel.calls.filter((call) => call.endpoint === "appendBlock").length, 1);
+});
+
+test("createItem：显式幂等 key 在并发与顺序重试中复用成功回执", async () => {
+    let appends = 0;
+    const {kernel, service} = makeService({
+        appendBlock: async () => {
+            appends++;
+            await new Promise((resolve) => setTimeout(resolve, 10));
+            return [{doOperations: [{id: "20240101120003-ccccccc"}]}];
+        },
+    });
+    const input = {itemType: "text", markdown: "重复提交"};
+    const options = {idempotencyKey: "xlc-submit-test-001"};
+    const [first, second] = await Promise.all([
+        service.createItem(input, undefined, options),
+        service.createItem(input, undefined, options),
+    ]);
+    const third = await service.createItem(input, undefined, options);
+    assert.equal(first.ok, true);
+    assert.strictEqual(second, first);
+    assert.strictEqual(third, first);
+    assert.equal(appends, 1);
+    assert.equal(kernel.calls.filter((call) => call.endpoint === "appendBlock").length, 1);
 });
 
 test("URL 写入：仅接受 http/https；清空 URL 仍允许", async () => {
@@ -205,7 +281,7 @@ test("removeItemsIfUnchanged 仅删除仍匹配的批次副本，并现场复核
     const itemId = "xlc-discovery0001";
     const itemBlock = "20240101120005-eeeeeee";
     const body = "批次正文";
-    const createCase = (overrides = {}) => {
+    const createCase = (overrides = {}, serviceOptions = {}) => {
         let liveAttrs = {};
         let liveBody = body;
         let bodyReads = 0;
@@ -227,7 +303,7 @@ test("removeItemsIfUnchanged 仅删除仍匹配的批次副本，并现场复核
             setBlockAttrs: ({attrs}) => { liveAttrs = {...attrs}; },
             deleteBlock: () => null,
             ...overrides.kernel,
-        });
+        }, undefined, serviceOptions);
         return {
             kernel,
             service,
@@ -254,13 +330,17 @@ test("removeItemsIfUnchanged 仅删除仍匹配的批次副本，并现场复核
     };
 
     await t.test("身份、属性和正文都未变时删除精确物理块", async () => {
-        const {kernel, service, createSnapshot, batchToken} = createCase();
+        const notifications = [];
+        const {kernel, service, createSnapshot, batchToken} = createCase({}, {onItemsChanged: (ids) => notifications.push([...ids])});
         const item = await createSnapshot();
+        assert.deepEqual(notifications, [[itemId]], "create emits only the created ID");
+        notifications.length = 0;
         const result = await service.removeItemsIfUnchanged(batchToken, [{item, markdown: body}]);
         assert.equal(result.ok, true, result.ok ? "" : result.message);
         assert.deepEqual(result.data, [{status: "deleted", itemId: item.id, blockId: itemBlock}]);
         assert.equal(kernel.calls.filter((call) => call.endpoint === "getBlockKramdown").length, 3);
         assert.deepEqual(kernel.calls.filter((call) => call.endpoint === "deleteBlock").map((call) => call.payload.id), [itemBlock]);
+        assert.deepEqual(notifications, [[itemId]], "batch delete emits only actually deleted IDs");
     });
 
     await t.test("忽略 getBlockKramdown 附带的本块 IAL 属性", async () => {

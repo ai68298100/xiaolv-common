@@ -24,19 +24,45 @@ const PREVIEWS: Record<string, string> = {
     "xlc-demo0000005": "https://wiki.example.com/sla",
 };
 
+// 虚拟列表回归夹具：保持真实 SearchEntry 形状，只把数量扩到窗口化阈值以上。
+const LARGE_ENTRIES: SearchEntry[] = Array.from({length: 100}, (_, index) => {
+    const base = ENTRIES[index % ENTRIES.length];
+    return {
+        ...base,
+        id: `xlc-window-${String(index + 1).padStart(3, "0")}`,
+        blockId: `2024010113${String(index).padStart(4, "0")}-window`,
+        title: `窗口测试条目 ${String(index + 1).padStart(3, "0")}`,
+        alias: "",
+        category: "",
+        summary: `用于虚拟列表键盘回归的第 ${index + 1} 条结果`,
+        sourceBlockId: `2024010114${String(index).padStart(4, "0")}-window`,
+        varCount: 0,
+    };
+});
+
 let discoveryController: DiscoveryDialogController | null = null;
+const captureCreatedItems: unknown[] = [];
+const captureAiTidyCalls: string[] = [];
+const captureAiDraftCalls: string[] = [];
+let deferredTidyResponse: ((value: {ok: true; title: string; alias: string; tags: string[]; category: string}) => void) | null = null;
+let lastSearchDialog: CommonSearchDialog | null = null;
 
 const T = (key: string, ...args: string[]): string => {
     const map: Record<string, string> = {
         pluginName: "小驴常用（内测版）",
-        discoveryTitle: "从当前文档发现", discoveryTitleNotebook: "从当前笔记本发现", discoveryTitleGeneral: "发现已有内容",
+        settingsIntro: "管理内容库、复用偏好和数据。库内内容会保留在思源文档中，并可继续编辑。",
+        captureIntro: "先放入想要复用的内容，再补充标题和分类，之后可以更快找到它。",
+        discoveryTitle: "从当前文档发现", discoveryTitleNotebook: "从当前笔记本发现", discoveryTitleGeneral: "发现已有内容", discoveryTitleTree: "从此文档发现常用语",
         discoveryScope: "扫描范围", discoveryScopeDocument: "当前文档", discoveryScopeNotebook: "当前笔记本",
         discoveryScopeTree: "指定文档树", discoveryScopeSelectedNotebook: "指定笔记本", discoveryScopeAllNotebooks: "全部笔记本（高级）",
         discoveryScopeTreeHint: "扫描所选根文档及其下级文档顶层块；加入内容只复制到专用库。",
         discoveryScopeSelectedNotebookHint: "扫描所选笔记本的文档顶层块；加入内容只复制到专用库。",
         discoverySelectTree: "输入关键词查找文档树根文档", discoverySelectNotebook: "选择要扫描的笔记本", discoverySearch: "搜索",
+        discoveryFromTreeMenu: "从此文档发现常用语", discoverySelectTreeRoot: "请选择文档树根文档", discoverySearchingDocs: "正在搜索文档…",
+        discoveryNoDocsFound: "没有找到匹配的文档", discoveryNoNotebooks: "当前没有可扫描的笔记本",
+        discoveryNotebookLoading: "正在读取笔记本列表…", discoveryRetryNotebooks: "重试加载笔记本",
         discoveryAllWarning: "上限：%s 个笔记本、%s 篇文档、%s 层目录、%s 个块、%s 个候选、单块 %s 字符、候选文本累计 %s 字符、%s 秒。文档和块按顺序读取；路径查询与重复核验最多 4 路并发。只读扫描，不会自动收录。",
-        discoveryConfirmAll: "我确认开始扫描所有可搜索笔记本", discoveryTargetRequired: "请先选择扫描范围",
+        discoveryConfirmAll: "我确认开始扫描所有可搜索笔记本", discoveryTargetRequired: "请先选择或确认扫描目标",
         discoverySearchFailed: "文档搜索失败：%s", discoveryNotebookLoadFailed: "笔记本列表加载失败：%s",
         discoveryErrors: "扫描或内容库重复核验失败 %s 处，已保留其他结果", discoverySkippedLong: "跳过超长块 %s 个",
         discoveryLimitScope: "范围/深度上限", discoveryLimitNotebooks: "笔记本数上限", discoveryLimitDocuments: "文档数上限",
@@ -66,7 +92,11 @@ const T = (key: string, ...args: string[]): string => {
         discoveryFilterSameContent: "内容相同", discoveryFilterAlready: "已在库中", discoveryFilterAdded: "已收录", discoveryTypeAll: "全部类型",
         discoverySearchPlaceholder: "筛选标题、摘要或来源", discoveryNoCandidates: "没有符合条件的候选", discoveryPreviewTitle: "候选预览",
         discoveryPreviewEmpty: "选择左侧候选后查看正文；收录前会再次校验来源。", discoveryPreviewLoading: "正在读取候选正文…",
-        discoveryAdd: "加入常用库", discoveryAddSelected: "加入选中项", discoveryForceSameContent: "允许收录内容相同的候选",
+        discoveryAdd: "加入常用库", discoveryAddSelected: "加入选中项", discoveryDefaultCategory: "默认分类",
+        discoveryUnsortedCategory: "待整理",
+        discoveryDefaultCategoryHint: "新收录项默认使用此分类；预览中可单独修改当前条目。",
+        discoveryCandidateCategory: "本条分类", discoveryUseDefaultCategory: "恢复默认",
+        discoveryForceSameContent: "允许收录内容相同的候选",
         discoverySelected: "已选 %s 项", discoveryClose: "关闭", discoveryReceiptTitle: "收录回执",
         discoveryClosePendingWrites: "有收录正在写入内容库。请等待收录回执，必要时先撤销本批新增，再关闭此窗口。",
         discoveryReceiptAdded: "已复制到常用库：%s；原笔记未修改，之后不会自动同步。", discoveryReceiptSameContent: "内容与「%s」相同，未自动收录；如仍要收录，请明确确认。",
@@ -75,6 +105,10 @@ const T = (key: string, ...args: string[]): string => {
         discoveryStatusCandidate: "待收录", discoveryStatusAlready: "已在库中", discoveryStatusSameContent: "内容相同", discoveryStatusUnverified: "重复待确认", discoveryStatusAdded: "已收录",
         discoveryType: "类型", discoverySource: "来源", discoveryStats: "统计", discoveryNotConfigured: "尚未配置常用内容库，无法收录候选。",
         searchPlaceholder: "搜索标题、别名、标签、分类和正文摘要", searchHint: "输入 ? 加描述，按含义搜索（需在本插件设置中启用 AI）",
+        kernelAuthRequired: "思源拒绝了当前请求，登录状态可能已失效。请重新登录后重试；当前搜索条件已保留。",
+        kernelPermissionDenied: "当前操作无权访问所选内容。请检查权限后重试；当前搜索条件已保留。",
+        kernelAuthStatus: "登录状态失效",
+        kernelPermissionStatus: "访问权限不足",
         type: "类型", tags: "标签", tagsHint: "逗号分隔", title: "标题", alias: "别名", category: "分类", contentLabel: "内容（Markdown）", filterAll: "全部类型", filterAllType: "类型：全部", filterAllTags: "标签：全部", filterAllCategories: "分类：全部",
         "type.text": "纯文本", "type.markdown": "Markdown", "type.url": "网址", "type.code": "代码", "type.image": "图片", "type.asset": "附件", "type.blockref": "块引用", "type.structure": "块结构", filterFavorites: "只看收藏", filterRecent: "最近使用",
         empty: "没有找到匹配内容", usageHint: "↑ ↓ 选择 · Enter 插入 · Ctrl/⌘ + Enter 复制 · Alt + 1-9 快速插入 · Esc 关闭",
@@ -88,10 +122,11 @@ const T = (key: string, ...args: string[]): string => {
         emptyFiltered: "当前筛选下没有匹配条目", clearFilters: "清除筛选",
         usageGuideOrganize: "整理：给条目补上清楚的标题、标签和分类；设置 → 数据与模板可导入邮箱、地址和联系方式示例。",
         usageGuideVariables: "模板规则：{{xlc:ask:字段}} 会在插入前询问；{{xlc:date}}、{{xlc:clipboard}} 等占位符只在使用时展开，不会改写库中的原文。AI 默认关闭。",
-        insert: "插入", copy: "复制", openSource: "打开来源", edit: "编辑", delete: "删除",
+        insert: "插入", copy: "复制", openSource: "打开来源", edit: "编辑", delete: "删除", favorite: "收藏", unfavorite: "取消收藏",
         insertRef: "插入引用", insertEmbed: "插入嵌入", insertCopy: "复制内容",
         sourceMissing: "来源失效", sourceGone: "原内容块已移动或删除。点击「打开来源」可重新指定位置。", previewUnavailable: "暂无预览", previewNoResult: "选择左侧条目后，这里会显示预览",
         aiFound: "AI 语义搜索", aiWorking: "AI 处理中…", aiOriginalPreserved: "原文未被修改",
+        aiTransport: "AI 调用失败，请检查模型配置或连接后重试。",
         insertNoEditor: "当前没有活动编辑器，已复制到剪贴板，可手动粘贴", insertFailed: "插入失败", insertToDocFailed: "目标文档插入失败",
         insertNoEditorBanner: "当前没有活动编辑器，主操作会复制到剪贴板",
         insertCurrentEditorBanner: "插入到打开弹窗时的光标位置",
@@ -102,6 +137,7 @@ const T = (key: string, ...args: string[]): string => {
         "tf.polish": "润色", "tf.shorten": "缩短", "tf.formal": "正式化", "tf.translate-en": "译为英文", "tf.bulletize": "列表化",
         more: "返回动作",
         newItem: "新建条目", newItemAction: "＋ 新建条目", save: "保存", saving: "保存中…", cancel: "取消", confirm: "确定", invalidItem: "条目数据无效",
+        captureContentRequired: "请填写要保存的内容。", captureUrlInvalid: "请输入有效的 http 或 https 链接。",
         aiTidy: "AI 整理", aiDraft: "AI 草稿", aiDraftDesc: "描述你想要的内容，AI 生成草稿", aiDraftNeedDescription: "请先描述想生成的内容", aiApplied: "已应用 AI 建议", aiTransform: "AI 变换",
         saved: "已保存：%s",
         dataTruth: "保存到思源文档；来源移动或删除时会提示", dataTruthHint: "内容以思源块保存在所选内容库文档，条目和来源仍可在思源中编辑。", adoptAll: "全部采纳", actionsNoun: "动作",
@@ -175,27 +211,33 @@ const T = (key: string, ...args: string[]): string => {
     return text;
 };
 
-function makeDeps(overrides: {aiEnabled?: boolean; missing?: boolean; mobile?: boolean; empty?: boolean; filters?: {type: string; tag: string; category: string}; newItemAction?: string; activeEditor?: boolean; insertTargetAvailable?: boolean; actionDelayMs?: number} = {}) {
+function makeDeps(overrides: {aiEnabled?: boolean; missing?: boolean; mobile?: boolean; empty?: boolean; largeResults?: boolean; filters?: {type: string; tag: string; category: string}; newItemAction?: string; activeEditor?: boolean; insertTargetAvailable?: boolean; actionDelayMs?: number} = {}) {
     const aiOn = overrides.aiEnabled ?? true;
     let activeFilters = {...(overrides.filters ?? {type: "", tag: "", category: ""})};
+    const favorites = new Set(["xlc-demo0000001"]);
     return {
         t: (key: string, ...args: string[]) => key === "newItemAction" && overrides.newItemAction
             ? overrides.newItemAction
             : T(key, ...args),
-        search: async (query: string | {text?: string; itemType?: string; tag?: string; category?: string}) => {
+        search: async (query: string | {text?: string; itemType?: string; tag?: string; category?: string; scope?: "all" | "favorites" | "recent"}) => {
             // 查询计数（R118 筛选回填竞态探测用）
             const w = window as unknown as {__xlcSearchCalls?: number};
             w.__xlcSearchCalls = (w.__xlcSearchCalls ?? 0) + 1;
+            const q = typeof query === "string" ? {text: query} : query;
+            const queries = (window as unknown as {__xlcQueries?: Array<{text?: string; itemType?: string; tag?: string; category?: string; scope?: string}>}).__xlcQueries ?? [];
+            queries.push({...q});
+            (window as unknown as {__xlcQueries?: typeof queries}).__xlcQueries = queries;
             if (overrides.empty) return {entries: [], truncated: false, total: 0};
+            const sourceEntries = overrides.largeResults ? LARGE_ENTRIES : ENTRIES;
             // R137 交互审计：本地结果按查询词过滤（与真实 service 语义一致；? 前缀走 AI 语义找，全量返回）。
             // 真实契约：deps.search 收 {text,itemType,tag,…} 查询对象（dialog.ts refresh）。
             const text = typeof query === "string" ? query : query?.text ?? "";
-            const q = text.trim();
-            let entries = !q || q.startsWith("?")
-                ? ENTRIES
-                : ENTRIES.filter((e) => {
+            const searchText = text.trim();
+            let entries = !searchText || searchText.startsWith("?")
+                ? sourceEntries
+                : sourceEntries.filter((e) => {
                     const hay = [e.title, e.alias, e.summary, e.category, ...(e.tags ?? [])].join(" ").toLowerCase();
-                    return hay.includes(q.toLowerCase());
+                    return hay.includes(searchText.toLowerCase());
                 });
             if (typeof query !== "string") {
                 if (query.itemType) entries = entries.filter((entry) => entry.itemType === query.itemType);
@@ -209,7 +251,8 @@ function makeDeps(overrides: {aiEnabled?: boolean; missing?: boolean; mobile?: b
         preview: async (itemId: string) => PREVIEWS[itemId] ?? "",
         runAction: async (itemId: string, mode: string) => {
             const w = window as unknown as {__xlcActions?: Array<{id: string; mode: string}>};
-            (w.__xlcActions ??= []).push({id: itemId, mode});
+            const observedMode = overrides.mobile && !overrides.insertTarget ? "copy" : mode;
+            (w.__xlcActions ??= []).push({id: itemId, mode: observedMode});
             if (overrides.actionDelayMs) await new Promise((resolve) => setTimeout(resolve, overrides.actionDelayMs));
             return {ok: true, message: "inserted"};
         },
@@ -217,11 +260,24 @@ function makeDeps(overrides: {aiEnabled?: boolean; missing?: boolean; mobile?: b
             (window as unknown as {__xlcLastFills?: Record<string, string>}).__xlcLastFills = fills;
             return {ok: true, message: "inserted"};
         },
-        openSource: async () => ({ok: true, message: "opened"}),
-        editItem: async () => {},
+        openSource: async (itemId: string) => {
+            const w = window as unknown as {__xlcOpenedSources?: string[]};
+            (w.__xlcOpenedSources ??= []).push(itemId);
+            return {ok: true, message: "opened"};
+        },
+        editItem: async (itemId: string) => {
+            const w = window as unknown as {__xlcEditedItems?: string[]};
+            (w.__xlcEditedItems ??= []).push(itemId);
+        },
         deleteItem: async () => {},
-        toggleFavorite: () => true,
-        isFavorite: (id: string) => id === "xlc-demo0000001",
+        toggleFavorite: (itemId: string) => {
+            const w = window as unknown as {__xlcFavoriteToggles?: string[]};
+            (w.__xlcFavoriteToggles ??= []).push(itemId);
+            if (favorites.has(itemId)) favorites.delete(itemId);
+            else favorites.add(itemId);
+            return favorites.has(itemId);
+        },
+        isFavorite: (id: string) => favorites.has(id),
         insertRaw: async () => true,
         copyText: async (text: string) => {
             (window as unknown as {__xlcCopied?: string}).__xlcCopied = text;
@@ -230,7 +286,11 @@ function makeDeps(overrides: {aiEnabled?: boolean; missing?: boolean; mobile?: b
         getSort: (): "manual" | "recent" | "frequent" | "title" => "manual",
         setSort: () => {},
         searchDocs: async (k: string) => k ? [{id: "20240101120001-hijklmn", hPath: "/常用内容库", name: "常用内容库"}] : [],
-        insertToDoc: async () => true,
+        insertToDoc: async (itemId: string, docId: string, hPath: string) => {
+            const w = window as unknown as {__xlcDocActions?: Array<{id: string; docId: string; hPath: string}>};
+            (w.__xlcDocActions ??= []).push({id: itemId, docId, hPath});
+            return true;
+        },
         duplicateItem: async () => {},
         saveTransformed: async () => {},
         getFilters: () => ({...activeFilters}),
@@ -243,7 +303,7 @@ function makeDeps(overrides: {aiEnabled?: boolean; missing?: boolean; mobile?: b
         getLastQuery: () => "",
         setLastQuery: () => {},
         insertTarget: null,
-        openSetup: () => {},
+        openSetup: () => (window as unknown as {XlcHarness: {openSettings: () => void}}).XlcHarness.openSettings(),
         promptVariables: () => true,
         getUsage: () => ({
             "xlc-demo0000001": {count: 32, lastAt: 400},
@@ -253,6 +313,8 @@ function makeDeps(overrides: {aiEnabled?: boolean; missing?: boolean; mobile?: b
         }),
         newItem: (titleCandidate?: string) => {
             document.body.dataset.xlcNewItemTitle = titleCandidate ?? "";
+            document.body.dataset.xlcNewItemCalls = String(Number(document.body.dataset.xlcNewItemCalls ?? 0) + 1);
+            (window as unknown as {XlcHarness: {openCapture: () => void}}).XlcHarness.openCapture();
         },
         providerSearch: async (query: string) => query.includes("工作台") ? [
             {virtualId: "pv:xiaolv-speed-switch:1", providerId: "xiaolv-speed-switch", providerName: "小驴雷切", title: "当前工作台", payload: "快速回到工作台布局（提供方演示数据）"},
@@ -279,8 +341,9 @@ function makeDeps(overrides: {aiEnabled?: boolean; missing?: boolean; mobile?: b
 }
 
 (window as unknown as {XlcHarness: unknown}).XlcHarness = {
-    openDialog(overrides?: {aiEnabled?: boolean; missing?: boolean; scope?: "all" | "favorites"; query?: string; mobile?: boolean; empty?: boolean; insertTarget?: {docId: string; hPath: string}; filters?: {type: string; tag: string; category: string}; newItemAction?: string; activeEditor?: boolean; insertTargetAvailable?: boolean; actionDelayMs?: number}): CommonSearchDialog {
+    openDialog(overrides?: {aiEnabled?: boolean; missing?: boolean; scope?: "all" | "favorites"; query?: string; mobile?: boolean; empty?: boolean; largeResults?: boolean; insertTarget?: {docId: string; hPath: string}; filters?: {type: string; tag: string; category: string}; newItemAction?: string; activeEditor?: boolean; insertTargetAvailable?: boolean; actionDelayMs?: number}): CommonSearchDialog {
         const dialog = new CommonSearchDialog(makeDeps(overrides));
+        lastSearchDialog = dialog;
         if (overrides?.insertTarget) dialog.insertTarget = overrides.insertTarget;
         dialog.open();
         // 预填搜索与选中态，让截图呈现工作状态
@@ -290,6 +353,10 @@ function makeDeps(overrides: {aiEnabled?: boolean; missing?: boolean; mobile?: b
             input.dispatchEvent(new Event("input"));
         }
         return dialog;
+    },
+    triggerAccessIssue(kind: "auth" | "permission" = "auth"): void {
+        const key = kind === "auth" ? "kernelAuthRequired" : "kernelPermissionDenied";
+        lastSearchDialog?.showKernelAccessIssue(kind, T(key));
     },
         openSettings(mode: "doc" | "tree" | "notebook" = "doc"): void {
             const ctx: SettingsUiContext = {
@@ -341,7 +408,7 @@ function makeDeps(overrides: {aiEnabled?: boolean; missing?: boolean; mobile?: b
         } as unknown as SettingsUiContext;
         openSettingsDialog(ctx);
     },
-    openSetup(options?: {emptyNotebook?: boolean; notebookLoadError?: boolean; notebookDocsCheckError?: boolean; notebookDocsDelayMs?: number; docSearchErrorOnce?: boolean; docSearchDelayMs?: number; existingMode?: "doc" | "tree" | "notebook"}): void {
+    openSetup(options?: {emptyNotebook?: boolean; notebookLoadError?: boolean; notebookDocsCheckError?: boolean; notebookDocsDelayMs?: number; docSearchErrorOnce?: boolean; docSearchDelayMs?: number; docSearchDelayByKeyword?: Record<string, number>; docSearchPathByKeyword?: Record<string, string>; existingMode?: "doc" | "tree" | "notebook"}): void {
         let notebookRequests = 0;
         let notebookDocRequests = 0;
         let docSearchRequests = 0;
@@ -375,10 +442,11 @@ function makeDeps(overrides: {aiEnabled?: boolean; missing?: boolean; mobile?: b
                 createLibraryDoc: async () => ({ok: true, data: {docId: "20240101120001-hijklmn"}}),
                 searchDocs: async (k: string) => {
                     docSearchRequests++;
-                    if (options?.docSearchDelayMs) await new Promise((resolve) => setTimeout(resolve, options.docSearchDelayMs));
+                    const delay = options?.docSearchDelayByKeyword?.[k] ?? options?.docSearchDelayMs ?? 0;
+                    if (delay) await new Promise((resolve) => setTimeout(resolve, delay));
                     if (options?.docSearchErrorOnce && docSearchRequests === 1) return {ok: false, reason: "kernel-error", message: "offline"} as const;
                     return k
-                        ? ({ok: true, data: [{id: "20240101120001-hijklmn", hPath: "/常用内容库", box: "nb", name: "常用内容库"}]} as const)
+                        ? ({ok: true, data: [{id: "20240101120001-hijklmn", hPath: options?.docSearchPathByKeyword?.[k] ?? "/常用内容库", box: "nb", name: "常用内容库"}]} as const)
                         : ({ok: true, data: []} as const);
                 },
                 getDocPath: async () => "/常用内容库",
@@ -398,23 +466,49 @@ function makeDeps(overrides: {aiEnabled?: boolean; missing?: boolean; mobile?: b
         } as unknown as SettingsUiContext;
         openSetupDialog(ctx);
     },
-    openCapture(aiOn = true, aiDelayMs = 0): void {
+    openCapture(aiOn = true, aiDelayMs = 0, options?: {tidyFailureCall?: number; tidyFailureKind?: "result" | "throw"; draftFailureCall?: number; draftFailureKind?: "result" | "throw"; deferTidy?: boolean}): void {
+        let tidyCall = 0;
+        let draftCall = 0;
         const capture = new CaptureDialog({
             t: T,
             getSelectionText: () => ({text: "", blockId: null}),
             currentDocId: () => "20240101120001-hijklmn",
             readClipboardText: async () => "",
-            createItem: async (input) => ({ok: true, message: input.title ?? "item", itemId: "xlc-new000000001"}),
+            createItem: async (input) => {
+                captureCreatedItems.push(input);
+                document.body.dataset.xlcCaptureCreatedItems = JSON.stringify(captureCreatedItems);
+                return {ok: true, message: input.title ?? "item", itemId: "xlc-new000000001"};
+            },
             notify: () => {},
             getBlockKramdown: async () => "块内容",
             exportDocContent: async () => ({hPath: "/常用内容库", content: "# 内容"}),
             aiEnabled: () => aiOn,
             aiTidy: async (content: string) => {
+                tidyCall++;
+                if (options?.deferTidy) {
+                    return await new Promise<{ok: true; title: string; alias: string; tags: string[]; category: string}>((resolve) => {
+                        deferredTidyResponse = resolve;
+                        document.body.dataset.xlcDeferredTidyPending = "true";
+                    });
+                }
                 if (aiDelayMs) await new Promise((resolve) => setTimeout(resolve, aiDelayMs));
-                return {ok: true as const, title: "AI 建议 " + content.slice(0, 6), tags: ["AI"]};
+                captureAiTidyCalls.push(content);
+                document.body.dataset.xlcCaptureAiTidyCalls = JSON.stringify(captureAiTidyCalls);
+                if (options?.tidyFailureCall === tidyCall) {
+                    if (options.tidyFailureKind === "throw") throw new Error("AI 整理请求暂时失败，请重试。");
+                    return {ok: false as const, message: "AI 整理请求暂时失败，请重试。"};
+                }
+                return {ok: true as const, title: "AI 建议 " + content.slice(0, 6), alias: "AI 别名", tags: ["AI", "模板"], category: "AI 模板"};
             },
             aiDraft: async (desc: string) => {
+                draftCall++;
                 if (aiDelayMs) await new Promise((resolve) => setTimeout(resolve, aiDelayMs));
+                captureAiDraftCalls.push(desc);
+                document.body.dataset.xlcCaptureAiDraftCalls = JSON.stringify(captureAiDraftCalls);
+                if (options?.draftFailureCall === draftCall) {
+                    if (options.draftFailureKind === "throw") throw new Error("AI 草稿请求暂时失败，请重试。");
+                    return {ok: false as const, message: "AI 草稿请求暂时失败，请重试。"};
+                }
                 return {ok: true as const, text: "草稿（" + desc + "）"};
             },
             findDuplicate: async () => null,
@@ -434,13 +528,27 @@ function makeDeps(overrides: {aiEnabled?: boolean; missing?: boolean; mobile?: b
         const issues = [{line: 3, reason: "bad shape"}, {line: 7, reason: "bad shape"}, {line: 11, reason: "bad shape"}];
         openImportPolicyDialog(ctx, parsed, issues, {kind: "json", text: "{}"});
     },
-    openDiscovery(): void {
+    openDiscovery(options?: {notebookLoadErrorOnce?: boolean; emptyNotebookList?: boolean; initialTreeRoot?: boolean; candidateCount?: number}): void {
         let sessionId = "discovery-harness";
         let stopRequested = false;
-        const candidates = [
+        let notebookRequests = 0;
+        let treeSearchRequests = 0;
+        const sampleCandidates = [
             {key: "candidate-1", sourceDocId: "20240101120001-hijklmn", sourceBlockId: "20240101120002-bbbbbbb", sourcePath: "/项目笔记", itemType: "markdown", title: "客户延期回复", summary: "关于交付延期的说明", status: "candidate"},
             {key: "candidate-2", sourceDocId: "20240101120001-hijklmn", sourceBlockId: "20240101120003-ccccccc", sourcePath: "/项目笔记", itemType: "text", title: "收件地址", summary: "邮寄地址模板", status: "same-content", match: {itemId: "xlc-existing0001", title: "已有收件地址"}},
         ];
+        const candidates = options?.candidateCount
+            ? Array.from({length: options.candidateCount}, (_, index) => ({
+                key: `page-candidate-${String(index + 1).padStart(4, "0")}`,
+                sourceDocId: "20240101120001-hijklmn",
+                sourceBlockId: `2024010112${String(index + 2).padStart(4, "0")}-bbbbbbb`,
+                sourcePath: "/项目笔记",
+                itemType: "markdown",
+                title: `分页候选 ${String(index + 1).padStart(3, "0")}`,
+                summary: "用于验证候选分页与键盘焦点恢复。",
+                status: "candidate" as const,
+            }))
+            : sampleCandidates;
         const makeView = (scope: "document" | "notebook" | "tree" | "all-notebooks", stopped = false) => ({id: sessionId, scope, sourceDocId: "20240101120001-hijklmn", sourcePath: "/项目笔记", candidates: candidates.map((candidate) => ({...candidate})), scannedBlocks: 4, scannedDocs: 1, scannedNotebooks: scope === "all-notebooks" ? 2 : 1, skippedEmpty: 1, skippedLong: 0, truncated: stopped, stopped, truncationReasons: stopped ? ["cancelled"] : [], errors: []});
         const service = {
             discoverCurrentDocument: async () => ({ok: true as const, data: makeView("document")}),
@@ -451,8 +559,16 @@ function makeDeps(overrides: {aiEnabled?: boolean; missing?: boolean; mobile?: b
                 await new Promise((resolve) => setTimeout(resolve, 80));
                 return {ok: true as const, data: {...makeView("notebook", stopRequested), scannedBlocks: 12, scannedDocs: 3, skippedEmpty: 2}};
             },
-            discoverTree: async () => { document.body.dataset.xlcDiscoveryScopeUsed = "tree"; return {ok: true as const, data: makeView("tree")}; },
-            discoverNotebook: async () => { document.body.dataset.xlcDiscoveryScopeUsed = "selected-notebook"; return {ok: true as const, data: makeView("notebook")}; },
+            discoverTree: async (docId: string) => {
+                document.body.dataset.xlcDiscoveryScopeUsed = "tree";
+                document.body.dataset.xlcDiscoveryTargetDoc = docId;
+                return {ok: true as const, data: makeView("tree")};
+            },
+            discoverNotebook: async (notebookId: string) => {
+                document.body.dataset.xlcDiscoveryScopeUsed = "selected-notebook";
+                document.body.dataset.xlcDiscoveryTargetNotebook = notebookId;
+                return {ok: true as const, data: makeView("notebook")};
+            },
             discoverAllNotebooks: async (options?: {confirmed?: boolean}) => {
                 document.body.dataset.xlcDiscoveryScopeUsed = options?.confirmed ? "all-confirmed" : "all-unconfirmed";
                 return options?.confirmed
@@ -463,7 +579,10 @@ function makeDeps(overrides: {aiEnabled?: boolean; missing?: boolean; mobile?: b
                 const candidate = candidates.find((item) => item.key === key) ?? candidates[0];
                 return {ok: true as const, data: {candidate: {...candidate}, markdown: key === "candidate-2" ? "收件人：{{xlc:ask:收件人}}\n地址：{{xlc:ask:地址|textarea}}" : "您好，关于本期交付延期，我们深表歉意。", contentComparisonComplete: true}};
             },
-            addCandidate: async (_id: string, key: string, options?: {allowSameContent?: boolean; batchId?: string}) => {
+            addCandidate: async (_id: string, key: string, options?: {allowSameContent?: boolean; batchId?: string; category?: string}) => {
+                const recorded = (window as unknown as {__xlcDiscoveryCategories?: Array<{key: string; category?: string}>}).__xlcDiscoveryCategories ?? [];
+                recorded.push({key, category: options?.category});
+                (window as unknown as {__xlcDiscoveryCategories?: Array<{key: string; category?: string}>}).__xlcDiscoveryCategories = recorded;
                 const candidate = candidates.find((item) => item.key === key) ?? candidates[0];
                 if (candidate.status === "same-content" && !options?.allowSameContent) {
                     return {ok: true as const, data: {status: "same-content" as const, itemId: "xlc-existing0001", title: "已有收件地址"}};
@@ -498,11 +617,33 @@ function makeDeps(overrides: {aiEnabled?: boolean; missing?: boolean; mobile?: b
             t: T,
             service,
             notify: (_kind, message) => { document.body.dataset.xlcDiscoveryNotice = message; },
-            listNotebooks: async () => [{id: "20240101", name: "笔记本一"}, {id: "20240102", name: "笔记本二"}],
-            searchDocs: async (keyword) => keyword ? [{id: "20240101120001-hijklmn", hPath: "/项目笔记", box: "20240101", name: "项目笔记"}] : [],
-        }, {docId: "20240101120001-hijklmn", sourcePath: "/项目笔记"});
+            listNotebooks: async () => {
+                notebookRequests++;
+                if (options?.notebookLoadErrorOnce && notebookRequests === 1) throw new Error("offline");
+                if (options?.emptyNotebookList) return [];
+                return [{id: "20240101", name: "笔记本一"}, {id: "20240102", name: "笔记本二"}];
+            },
+            searchDocs: async (keyword) => {
+                treeSearchRequests++;
+                document.body.dataset.xlcDiscoveryTreeSearchRequests = String(treeSearchRequests);
+                if (keyword === "旧项目") await new Promise((resolve) => setTimeout(resolve, 100));
+                if (keyword === "项目") return [{id: "20240101120001-hijklmn", hPath: "/项目笔记", box: "20240101", name: "项目笔记"}];
+                if (keyword === "新项目") return [{id: "20240102120001-qrstuvw", hPath: "/新项目", box: "20240102", name: "新项目"}];
+                return [];
+            },
+        }, {
+            docId: "20240101120001-hijklmn",
+            sourcePath: "/项目笔记",
+            scope: options?.initialTreeRoot ? "tree" : undefined,
+            initialTreeRootId: options?.initialTreeRoot ? "20240101120001-hijklmn" : undefined,
+            title: options?.initialTreeRoot ? "从此文档发现常用语" : undefined,
+        });
     },
     closeDiscovery(): void {
         if (discoveryController?.close() !== false) discoveryController = null;
+    },
+    completeDeferredTidy(): void {
+        deferredTidyResponse?.({ok: true, title: "迟到的旧建议", alias: "旧别名", tags: ["旧标签"], category: "旧分类"});
+        deferredTidyResponse = null;
     },
 };

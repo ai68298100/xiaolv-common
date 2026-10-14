@@ -10,8 +10,9 @@ import {fetchSyncPost} from "siyuan";
 import {getDialogBody} from "./ui/dialog-dom";
 import "@/styles/index.scss";
 import {LIMITS, SIDECAR_LOAD_TIMEOUT_MS, STORAGE_KEYS} from "./constants";
-import {createKernelClient, parseExistingMap, type IKernelClient, type SyncPost} from "./kernel/client";
-import {CommonItem, isItemType, isSafeHttpUrl} from "./model/item";
+import {createKernelClient, parseExistingMap, type IKernelClient, type SyncPost, type SyncPostContext} from "./kernel/client";
+import {CommonItem, isBlockId, isItemType, isSafeHttpUrl} from "./model/item";
+import {getSingleDocTreeDiscoveryTarget} from "./model/discovery-target";
 import {buildEmbedBlock} from "./model/actions";
 import {ExportedItem, buildBundle, validateImport, ConflictPolicy, ImportReceipt} from "./model/transfer";
 import {importBundle as importBundleCore} from "./service/importer";
@@ -35,20 +36,30 @@ import {CommonSearchDialog} from "./ui/dialog";
 import {openDiscoveryDialog, type DiscoveryDialogController} from "./ui/discovery-dialog";
 import {CaptureDialog, confirmDelete, classifyLinkTarget} from "./ui/capture";
 import {ICONS} from "./ui/icons";
-import {openSetupDialog, openSettingsDialog, type SettingsUiContext} from "./ui/settings-dialog";
+import type {SettingsUiContext} from "./ui/settings-dialog";
 import {buildVariableBar} from "./ui/variable-form";
 import type {TransformKind} from "./service/ai";
 import {mountXlcBridge} from "./service/external-bridge";
 
+declare let __webpack_public_path__: string;
+
 type TFn = (key: string, ...args: string[]) => string;
+
+const setPluginChunkPath = (pluginName: string): void => {
+    if (typeof __webpack_public_path__ === "undefined") return;
+    __webpack_public_path__ = `/plugins/${encodeURIComponent(pluginName)}/`;
+};
 
 /** 回执 toast 的标题展示截断：标题最长 512 字，原样进通知条会撑爆全屏（原文不受影响） */
 const TOAST_TITLE_MAX = 48;
 const shortTitle = (title: string): string => (title.length > TOAST_TITLE_MAX ? `${title.slice(0, TOAST_TITLE_MAX)}…` : title);
 
 /** 将思源官方泛型传输函数收窄为内核客户端需要的统一信封。 */
-const hostSyncPost: SyncPost = async (url, data) => {
-    const raw = await fetchSyncPost(url, data);
+const hostSyncPost: SyncPost = async (url, data, context?: SyncPostContext) => {
+    // 当前 siyuan 版本的 fetchSyncPost 只声明两个参数；运行时多余的 context 会被忽略，
+    // 但通过兼容签名传递 AbortSignal，未来宿主支持取消时无需再改内核客户端。
+    const post = fetchSyncPost as unknown as (requestUrl: string, body: unknown, requestContext?: SyncPostContext) => Promise<unknown>;
+    const raw = await post(url, data, context);
     if (!raw || typeof raw !== "object") return {data: raw};
     const body = raw as unknown as Record<string, unknown>;
     return {
@@ -78,7 +89,7 @@ export default class XiaolvCommonPlugin extends Plugin {
     private blockRefMenuHandler: ((event: {detail: {menu: {addItem: (item: {icon: string; label: string; click: () => void}) => void}; element?: Element}}) => void) | null = null;
     private linkMenuHandler: ((event: {detail: {menu: {addItem: (item: {icon: string; label: string; click: () => void}) => void}; element?: Element}}) => void) | null = null;
     private imageMenuHandler: ((event: {detail: {menu: {addItem: (item: {icon: string; label: string; click: () => void}) => void}; element?: Element}}) => void) | null = null;
-    private docTreeMenuHandler: ((event: {detail: {menu: {addItem: (item: {icon: string; label: string; click: () => void}) => void}; elements?: Array<Element | null>; type?: string}}) => void) | null = null;
+    private docTreeMenuHandler: ((event: {detail: {menu: {addItem: (item: {icon: string; label: string; click: () => void}) => void}; elements?: Array<Element | null> | NodeListOf<HTMLElement>; type?: string; items?: Array<{id: string; path: string; notebookId: string}>}}) => void) | null = null;
     /** 来源失效预检缓存（每次搜索刷新时批量重建；仅为列表徽标，打开来源仍实时校验） */
     private missingSources = new Set<string>();
     /** 协议命令 ID → 执行器（xiaolv.common.*，供雷切等按稳定 ID 调用） */
@@ -90,6 +101,7 @@ export default class XiaolvCommonPlugin extends Plugin {
 
     async onload(): Promise<void> {
         this.unloading = false;
+        setPluginChunkPath(this.name);
         try {
             this.addIcons(ICONS);
         } catch (err) {
@@ -136,7 +148,11 @@ export default class XiaolvCommonPlugin extends Plugin {
     }
 
     private bootServices(): void {
-        const kernel = createKernelClient({syncPost: hostSyncPost});
+        const kernel = createKernelClient({
+            syncPost: hostSyncPost,
+            onAuthFailure: () => this.handleKernelAccessFailure("auth"),
+            onPermissionFailure: () => this.handleKernelAccessFailure("permission"),
+        });
         this.kernelClient = kernel;
         // 拼音适配器装配（ADR 0004/R5：tiny-pinyin 本地注解，设置可关；关闭即 noop 零开销）
         this.applyPinyinAdapter();
@@ -144,6 +160,7 @@ export default class XiaolvCommonPlugin extends Plugin {
             // /api/file/getFile 返回二进制响应，不经过 fetchSyncPost 的 {code,msg,data} 信封。
             // 通过同源 fetch 探测资源存在性，失败时由 LibraryService 标记 assetMissing。
             probeAsset: async (path) => (await this.fetchAssetBytes(path)) !== null,
+            onItemsChanged: (itemIds) => this.invalidatePreviewCache(itemIds),
         });
         if (this.config) this.library.setConfig(this.config);
         this.discovery = new DiscoveryService(kernel, this.library);
@@ -223,8 +240,8 @@ export default class XiaolvCommonPlugin extends Plugin {
                 if (!navigator.clipboard?.readText) throw new Error("clipboard unavailable");
                 return navigator.clipboard.readText();
             },
-            createItem: async (input) => {
-                const result = await this.library.createItem(input);
+            createItem: async (input, options) => {
+                const result = await this.library.createItem(input, undefined, options);
                 if (!result.ok) return {ok: false, message: result.message};
                 this.notify("info", this.i18nFn()("saved", result.data.item.title));
                 this.searchDialog?.refreshAfterExternalChange();
@@ -308,10 +325,11 @@ export default class XiaolvCommonPlugin extends Plugin {
             return this.discovery.previewCandidate(value?.sessionId ?? "", value?.candidateKey ?? "");
         };
         this.protocolCommands["xiaolv.common.addDiscoveryCandidate"] = async (payload) => {
-            const value = payload as {sessionId?: string; candidateKey?: string; allowSameContent?: boolean; batchId?: string} | undefined;
+            const value = payload as {sessionId?: string; candidateKey?: string; allowSameContent?: boolean; batchId?: string; category?: string} | undefined;
             return this.discovery.addCandidate(value?.sessionId ?? "", value?.candidateKey ?? "", {
                 allowSameContent: value?.allowSameContent === true,
                 batchId: value?.batchId,
+                category: typeof value?.category === "string" ? value.category : undefined,
             });
         };
         this.protocolCommands["xiaolv.common.closeDiscoverySession"] = async (payload) => {
@@ -410,7 +428,29 @@ export default class XiaolvCommonPlugin extends Plugin {
         });
     }
 
-    private showDiscoveryDialog(docId: string, scope: "document" | "notebook", sourcePath?: string): void {
+    private openDiscoveryForTreeRoot(target: {docId: string; path: string}): void {
+        if (!this.sidecarReady) {
+            this.notify("info", this.i18nFn()("sidecarLoading"));
+            return;
+        }
+        if (!this.config) {
+            this.openSetup();
+            return;
+        }
+        if (!isBlockId(target.docId)) {
+            this.notify("error", this.i18nFn()("discoveryNoDocument"));
+            return;
+        }
+        void this.library.getDocPath(target.docId).then((sourcePath) => {
+            if (this.unloading) return;
+            this.showDiscoveryDialog(target.docId, "tree", sourcePath || target.path, target.docId);
+        }).catch(() => {
+            if (this.unloading) return;
+            this.showDiscoveryDialog(target.docId, "tree", target.path, target.docId);
+        });
+    }
+
+    private showDiscoveryDialog(docId: string, scope: "document" | "notebook" | "tree", sourcePath?: string, initialTreeRootId?: string): void {
         if (this.discoveryDialog) {
             if (!this.discoveryDialog.close()) return;
             this.discoveryDialog = null;
@@ -432,7 +472,7 @@ export default class XiaolvCommonPlugin extends Plugin {
             onAdded: () => {
                 this.searchDialog?.refreshAfterExternalChange();
             },
-        }, {docId, sourcePath, scope});
+        }, {docId, sourcePath, scope, initialTreeRootId, title: scope === "tree" ? this.i18nFn()("discoveryTitleTree") : undefined});
     }
 
     private discoveryFailureText(result: Extract<DiscoveryReceipt<unknown>, {ok: false}>): string {
@@ -477,7 +517,7 @@ export default class XiaolvCommonPlugin extends Plugin {
     onDataChanged(_reason?: string): void {
         try {
             this.library?.invalidateIndex();
-            this.previewCache.clear();
+            this.invalidatePreviewCache();
         } catch {
             // 索引失效失败无副作用（SWR 会兜底重建）
         }
@@ -514,6 +554,25 @@ export default class XiaolvCommonPlugin extends Plugin {
     private lastHealthPrefetch = 0;
     /** 提供方失败通知记忆（每提供方每会话一次；成功即清除） */
     private providerFailureSeen = new Set<string>();
+    /** 全局鉴权回执做短暂节流；多请求同时失败时不连续覆盖宿主通知条。 */
+    private accessFailureNoticeAt: Record<"auth" | "permission", number> = {auth: 0, permission: 0};
+
+    /** 清除运行时派生数据并保留搜索上下文，等用户恢复宿主状态后可以原位重试。 */
+    private handleKernelAccessFailure(kind: "auth" | "permission"): void {
+        this.library?.invalidateIndex();
+        this.previewCache?.clear();
+        this.missingSources.clear();
+        this.lastHealthPrefetch = 0;
+
+        const t = this.i18nFn();
+        const message = t(kind === "auth" ? "kernelAuthRequired" : "kernelPermissionDenied");
+        this.searchDialog?.showKernelAccessIssue(kind, message);
+        const now = Date.now();
+        if (now - this.accessFailureNoticeAt[kind] >= 4_000) {
+            this.accessFailureNoticeAt[kind] = now;
+            this.notify("error", message);
+        }
+    }
 
     /** 列表来源失效预检（批量一次 checkBlocksExist；不阻塞渲染，喂完徽标即重绘当前列表）。
      *  节流 5s：防止逐键搜索连发内核调用；R166 真机发现 30s 节流 + 不重绘会让失效警告
@@ -738,14 +797,21 @@ export default class XiaolvCommonPlugin extends Plugin {
             this.eventBus.on("open-menu-image", this.imageMenuHandler);
             // 文档树右键：把选中文档一键设为常用库文档（doc 模式；多选取前 64 个）
             this.docTreeMenuHandler = (event) => {
-                const {menu, elements, type} = event.detail;
-                if (type !== "items" && type !== "docs" && type !== undefined) return;
+                const {menu, elements, type, items} = event.detail;
+                if (type !== "items" && type !== "doc" && type !== "docs" && type !== undefined) return;
                 const ids: string[] = [];
-                for (const el of elements ?? []) {
-                    const id = el?.getAttribute?.("data-node-id") ?? "";
-                    if (id && ids.length < 64) ids.push(id);
+                if (type === "doc" || type === "docs") {
+                    for (const item of items ?? []) {
+                        if (isBlockId(item?.id) && ids.length < 64) ids.push(item.id);
+                    }
+                } else {
+                    for (const el of elements ?? []) {
+                        const id = el?.getAttribute?.("data-node-id") ?? "";
+                        if (id && ids.length < 64) ids.push(id);
+                    }
                 }
                 if (ids.length === 0) return;
+                const treeTarget = getSingleDocTreeDiscoveryTarget(type, items);
                 // 插入定向入口：打开搜索弹窗（定向模式，Enter 插入到首个选中文档）
                 menu.addItem({
                     icon: "iconXlcCommon",
@@ -757,7 +823,15 @@ export default class XiaolvCommonPlugin extends Plugin {
                             this.openSearch({docId, hPath: path});
                         }).catch((err) => this.notify("error", this.i18nFn()("kernelError", (err as Error).message)));
                     },
-                });                menu.addItem({
+                });
+                if (treeTarget) {
+                    menu.addItem({
+                        icon: "iconXlcCommon",
+                        label: this.i18nFn()("discoveryFromTreeMenu"),
+                        click: () => this.openDiscoveryForTreeRoot(treeTarget),
+                    });
+                }
+                menu.addItem({
                     icon: "iconXlcCommon",
                     label: this.i18nFn()("setAsLibraryMenu"),
                     click: () => {
@@ -811,6 +885,21 @@ export default class XiaolvCommonPlugin extends Plugin {
 
     /** 预览文本的有界可丢弃缓存（60s TTL：同步变更后预览最多陈旧一分钟；插入/复制仍现场取正文） */
     private previewCache = new LruCache<string>(PREVIEW_CACHE_CAPACITY, PREVIEW_CACHE_TTL_MS);
+    private previewTasks = new Map<string, Promise<string>>();
+    private previewCacheGeneration = 0;
+
+    private invalidatePreviewCache(itemIds?: readonly string[]): void {
+        if (!itemIds) {
+            this.previewCacheGeneration++;
+            this.previewCache.clear();
+            this.previewTasks.clear();
+            return;
+        }
+        for (const itemId of new Set(itemIds)) {
+            this.previewCache.delete(itemId);
+            this.previewTasks.delete(itemId);
+        }
+    }
 
     /** 打开搜索弹窗；insertTarget 提供时进入定向插入模式（插入到指定文档） */
     openSearch(insertTarget?: {docId: string; hPath: string}): void {
@@ -1056,13 +1145,28 @@ export default class XiaolvCommonPlugin extends Plugin {
             preview: async (itemId) => {
                 const cached = this.previewCache.get(itemId);
                 if (cached !== undefined) return cached;
-                const got = await this.library.getItem(itemId);
-                if (!got.ok) return "";
-                const kd = await this.library.getItemKramdown(got.data);
-                // 片段引用展开后预览（F5）：预览/填充卡所见 = 插入所得；变量仍保留给填充卡
-                const text = kd.ok ? await this.library.expandSnippetRefs(kd.data) : "";
-                if (text) this.previewCache.set(itemId, text);
-                return text;
+                const existingTask = this.previewTasks.get(itemId);
+                if (existingTask) return existingTask;
+                const generation = this.previewCacheGeneration;
+                let task!: Promise<string>;
+                task = (async (): Promise<string> => {
+                    const got = await this.library.getItem(itemId);
+                    if (!got.ok) return "";
+                    const kd = await this.library.getItemKramdown(got.data);
+                    // 片段引用展开后预览（F5）：预览/填充卡所见 = 插入所得；变量仍保留给填充卡
+                    const text = kd.ok ? await this.library.expandSnippetRefs(kd.data) : "";
+                    // 写入或换库发生后，旧异步读取不能把陈旧预览重新放回缓存。
+                    if (text && generation === this.previewCacheGeneration && this.previewTasks.get(itemId) === task) {
+                        this.previewCache.set(itemId, text);
+                    }
+                    return text;
+                })();
+                this.previewTasks.set(itemId, task);
+                try {
+                    return await task;
+                } finally {
+                    if (this.previewTasks.get(itemId) === task) this.previewTasks.delete(itemId);
+                }
             },
             getSort: () => this.state.sort,
             setSort: (sort) => {
@@ -1222,7 +1326,7 @@ export default class XiaolvCommonPlugin extends Plugin {
                 confirmDelete(this.i18nFn(), got.data.title, async () => {
                     const removed = await this.library.removeItem(itemId);
                     if (removed.ok) {
-                        this.previewCache.clear();
+                        this.invalidatePreviewCache([itemId]);
                         this.state.favorites = this.state.favorites.filter((id) => id !== itemId);
                         this.state.recents = this.state.recents.filter((r) => r.id !== itemId);
                         delete this.state.usage[itemId];
@@ -1275,8 +1379,8 @@ export default class XiaolvCommonPlugin extends Plugin {
             // 标题带条目名（截断 24 字）：确认正在编辑哪一条
             title: `${t("edit")} · ${(item.title || t("unknownType")).slice(0, 24)}${item.title.length > 24 ? "…" : ""}`,
             content: "",
-            width: "min(520px, 92vw)",
-            height: "min(720px, 90vh)",
+            width: "min(620px, 92vw)",
+            height: "min(860px, 92vh)",
         });
         dialog.element.querySelector(".b3-dialog__container")?.classList.add("xlc-form-host");
         const body = getDialogBody(dialog.element);
@@ -1344,7 +1448,7 @@ export default class XiaolvCommonPlugin extends Plugin {
             }
             void this.library.relinkSource(item.id, {sourceDocId: docId}).then((result) => {
                 if (result.ok) {
-                    this.previewCache.clear();
+                    this.invalidatePreviewCache([item.id]);
                     this.notify("info", t("relinkDone"));
                     void this.library.getDocPath(docId).then((path) => {
                         srcText.textContent = path ? t("sourceWithId", path) : t("sourceWithId", docId);
@@ -1362,7 +1466,7 @@ export default class XiaolvCommonPlugin extends Plugin {
             clearBtn.addEventListener("click", () => {
                 void this.library.clearSource(item.id).then((result) => {
                     if (result.ok) {
-                        this.previewCache.clear();
+                        this.invalidatePreviewCache([item.id]);
                         this.notify("info", t("clearSourceDone"));
                         srcText.textContent = t("sourceMissing");
                     } else {
@@ -1424,7 +1528,7 @@ export default class XiaolvCommonPlugin extends Plugin {
                 url: item.itemType === "url" ? contentEl.value.trim() : undefined,
             }).then((result) => {
                 if (result.ok) {
-                    this.previewCache.clear();
+                    this.invalidatePreviewCache([item.id]);
                     this.notify("info", t("updated", shortTitle(result.data.item.title)));
                     this.searchDialog?.refreshAfterExternalChange();
                     dialog.destroy();
@@ -1474,17 +1578,27 @@ export default class XiaolvCommonPlugin extends Plugin {
 
     /** 首次引导（仅库选择；完整设置见 openSettings） */
     openSetup(): void {
-        openSetupDialog(this.settingsContext(), {
-            onConfigured: () => {
-                // 设置完成后自动打开搜索弹窗（空态引导用户开始捕获）
-                this.openSearch();
-            },
+        const context = this.settingsContext();
+        void import("./ui/settings-dialog").then(({openSetupDialog}) => {
+            openSetupDialog(context, {
+                onConfigured: () => {
+                    // 设置完成后自动打开搜索弹窗（空态引导用户开始捕获）
+                    this.openSearch();
+                },
+            });
+        }).catch((err: unknown) => {
+            this.notify("error", this.i18nFn()("startupFailed", err instanceof Error ? err.message : String(err)));
         });
     }
 
     /** 完整设置：库管理（含更改库）+ AI + 搜索 + 数据 */
     openSettings(): void {
-        openSettingsDialog(this.settingsContext());
+        const context = this.settingsContext();
+        void import("./ui/settings-dialog").then(({openSettingsDialog}) => {
+            openSettingsDialog(context);
+        }).catch((err: unknown) => {
+            this.notify("error", this.i18nFn()("startupFailed", err instanceof Error ? err.message : String(err)));
+        });
     }
 
     /** 资源字节获取：/api/file/getFile 为二进制端点，fetchSyncPost 信封不适用，
@@ -1506,6 +1620,7 @@ export default class XiaolvCommonPlugin extends Plugin {
     private applyConfig(config: LibraryConfig): void {
         this.config = config;
         this.library.setConfig(config);
+        this.invalidatePreviewCache();
         this.persistSidecar(STORAGE_KEYS.config, config);
         void this.library.reindex().then((idx) => {
             this.searchDialog?.refreshAfterExternalChange();

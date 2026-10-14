@@ -56,6 +56,10 @@ module.exports = (env, argv) => {
         },
         output: {
             path: path.resolve(__dirname, "dist"),
+            // onload 会用宿主提供的插件 name 将运行时 publicPath 设为 /plugins/{name}/；
+            // 保留相对初值只作为运行时尚未初始化时的构建默认值。
+            publicPath: "./",
+            chunkFilename: "[name].js",
             filename: "[name].js",
             // SiYuan 插件加载器在 eval 包装中读取 module.exports：必须 commonjs2。
             // umd 会把赋值写到加载器读不到的位置，真实前端报 has-no-export 静默不装载（R142 P0）。

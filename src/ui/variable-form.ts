@@ -28,7 +28,7 @@ export function openVariableFillCard(options: VariableFillOptions): void {
     const dialog = new Dialog({
         title: t("varFormTitle"),
         content: "",
-        width: "min(360px, 92vw)",
+        width: "min(440px, 92vw)",
         height: "auto",
         // 所有关闭路径（Esc/scrim）统一走 onCancel：上层搜索弹窗焦点回归（R128）；
         // 按钮确认/取消已自行结算，不在此重复触发（R138 结算语义）
@@ -124,6 +124,7 @@ export function openVariableFillCard(options: VariableFillOptions): void {
     foot.appendChild(kbdHint);
     const cancelBtn = document.createElement("button");
     cancelBtn.className = "b3-button";
+    cancelBtn.dataset.xlcControl = "variable.cancel";
     cancelBtn.textContent = t("cancel");
     foot.appendChild(cancelBtn);
     const insertBtn = document.createElement("button");
@@ -201,28 +202,29 @@ export function buildVariableBar(t: (key: string, ...args: string[]) => string, 
     cap.textContent = t("insertVariable");
     bar.appendChild(cap);
     const snippets = [
-        "{{xlc:ask:字段}}",
-        "{{xlc:ask:字段|选项A,选项B}}",
-        "{{xlc:ask:字段|textarea}}",
-        "{{xlc:snippet:标题}}",
-        "{{xlc:cursor}}",
-        "{{xlc:date}}",
-        "{{xlc:date|+3d}}",
-        "{{xlc:random|选项A,选项B}}",
-        "{{xlc:doc}}",
-        "{{xlc:clipboard}}",
+        {id: "ask", text: "{{xlc:ask:字段}}"},
+        {id: "ask.options", text: "{{xlc:ask:字段|选项A,选项B}}"},
+        {id: "ask.textarea", text: "{{xlc:ask:字段|textarea}}"},
+        {id: "snippet", text: "{{xlc:snippet:标题}}"},
+        {id: "cursor", text: "{{xlc:cursor}}"},
+        {id: "date", text: "{{xlc:date}}"},
+        {id: "date.offset", text: "{{xlc:date|+3d}}"},
+        {id: "random", text: "{{xlc:random|选项A,选项B}}"},
+        {id: "doc", text: "{{xlc:doc}}"},
+        {id: "clipboard", text: "{{xlc:clipboard}}"},
     ];
     for (const snippet of snippets) {
         const btn = document.createElement("button");
         btn.type = "button";
         btn.className = "xlc-varbtn";
-        btn.textContent = snippet;
+        btn.dataset.xlcControl = `capture.variable.${snippet.id}`;
+        btn.textContent = snippet.text;
         btn.addEventListener("click", () => {
             const el = getTarget();
             const start = el.selectionStart ?? el.value.length;
             const end = el.selectionEnd ?? start;
-            el.value = el.value.slice(0, start) + snippet + el.value.slice(end);
-            const caret = start + snippet.length;
+            el.value = el.value.slice(0, start) + snippet.text + el.value.slice(end);
+            const caret = start + snippet.text.length;
             el.focus();
             el.setSelectionRange(caret, caret);
             // 编程赋值不触发 input 事件：派发一次，清除表单的必填红描边等监听态（R138）

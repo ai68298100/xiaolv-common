@@ -2,18 +2,18 @@
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8">
-<title>小驴常用 · 界面原型 v3（2026-10-07）</title>
+<title>小驴常用 · 界面原型 v4（实现镜像，2026-10-13）</title>
 <style>
-/* ============ 原型设计基准 v3 ============
+/* ============ 原型设计基准 v4 ============
    定位：思源笔记的内容资产层（docs/positioning.md v3）。
    原则：与思源 b3 视觉融合为基线（变量语义一致，不硬编码主题色），在此之上做克制的精致化：
-   · 4px 间距栅格；字号阶梯 11/11.5/12/12.5/13/13.5/15/16；圆角梯度 4/6/8/10/12/16
-   · 阴影三级（低透明多层叠加，禁纯黑硬阴影）；单一缓动 cubic-bezier(.33,1,.68,1)，120-220ms
+   · 4px 是目标间距基准，未对齐值见 design-spec 的测量；字号当前值 10/10.5/11/11.5/12/12.5/13/13.5/14/15/16/17/18/20/22；圆角主值 4/6/8/10/12/16/18/22
+   · 阴影按工作面/浮层区分；单一缓动 cubic-bezier(.33,1,.68,1)，120/140/160/220ms
    · 类型彩色徽标（b3 派生淡彩）、AI 主色高光、变量系统高亮（{{}} 紫罗兰）
    · 主色只给核心动作；中性色承担大部分面积；1px 半透明描边分层，不靠实色边框
-   v3 新增：屏 0 设计规范板；屏 4 变量填充卡片（F1/F2）；使用计数（F3）；设置含变量区；
-   屏 8 导入策略/模板包。完整规范：docs/design/design-spec.md。
-   本文件是生产 UI 的质感基准（src/styles/index.scss 须达到同等效果）。 */
+   v4 新增：实现状态镜像板（加载/成功/失败/空结果/禁用、边界与响应式形态）；
+   screen 0 的规范板按生产 token 取值，screen 11 分开标注已实现快照和期望状态契约。完整规范：docs/design/design-spec.md。
+   本文件是生产 UI 的唯一视觉事实源（实现必须达到同等效果）。 */
 :root {
   --font: "PingFang SC", "Microsoft YaHei", -apple-system, "Segoe UI", sans-serif;
   --mono: "SF Mono", "Cascadia Code", Consolas, "PingFang SC", monospace;
@@ -22,44 +22,80 @@
 }
 /* 亮色主题（对齐思源 daylight 语义） */
 .t-light {
-  --b3-theme-primary: #3575f0;
-  --b3-theme-primary-light: #7f9ff5;
-  --b3-theme-primary-lighter: #c6d5fa;
-  --b3-theme-on-primary: #fff;
+  --b3-theme-primary: #5e59cb;
+  --b3-theme-primary-light: #e6e5f0;
+  --b3-theme-primary-lighter: #eeecfb;
+  --b3-theme-on-primary: #ffffff;
   --b3-theme-background: #ffffff;
-  --b3-theme-surface: #f2f4f7;
-  --b3-theme-on-background: #1f2329;
-  --b3-theme-on-surface: #7d8085;
-  --b3-border-color: #e5e7eb;
-  --b3-list-hover: #eef1f6;
+  --b3-theme-surface: #f1f1f9;
+  --b3-theme-on-background: #2c2b3e;
+  --b3-theme-on-surface: #6c6a7f;
+  --b3-border-color: #e6e5f0;
+  --b3-list-hover: #eeecfb;
   --b3-menu-background: #ffffff;
-  --shadow-1: 0 1px 2px rgba(31,35,41,.05), 0 1px 3px rgba(31,35,41,.04);
-  --shadow-2: 0 1px 2px rgba(31,35,41,.05), 0 4px 14px rgba(31,35,41,.07);
-  --shadow: 0 8px 32px rgba(31,35,41,.14), 0 2px 8px rgba(31,35,41,.08);
-  --badge-text-bg: rgba(53,117,240,.08);
-  --hairline: rgba(31,35,41,.06);
+  --shadow-1: 0 1px 2px rgba(41,34,72,.04), 0 1px 3px rgba(41,34,72,.03);
+  --shadow-2: 0 1px 2px rgba(41,34,72,.04), 0 4px 14px rgba(41,34,72,.06);
+  --shadow: 0 12px 40px rgba(41,34,72,.10);
+  --badge-text-bg: #eeecfb;
+  --hairline: rgba(44,43,62,.06);
+  --state-success: #32654d; --state-success-bg: #edf6f1;
+  --state-danger: #a34151; --state-danger-bg: #fcf0f1;
+  --xlc-canvas: #f7f7fc;
+  --xlc-ink: #2c2b3e; --xlc-muted: #6c6a7f; --xlc-line: #e6e5f0; --xlc-soft: #f1f1f9;
+  --xlc-lavender: #eeecfb; --xlc-lavender-ink: #4f4799; --xlc-warm: #fff0d4; --xlc-warm-ink: #855318;
+  --xlc-info: #27667a; --xlc-info-soft: #eaf4f8;
+  --xlc-badge-text: #32654d; --xlc-badge-text-bg: #edf6f1;
+  --xlc-badge-md: #504abd; --xlc-badge-md-bg: #eeecfb;
+  --xlc-badge-url: #855318; --xlc-badge-url-bg: #fff0d4;
+  --xlc-badge-code: #4f4799; --xlc-badge-code-bg: #eeecfb;
+  --xlc-badge-image: #27667a; --xlc-badge-image-bg: #eaf4f8;
+  --xlc-badge-file: #6c6a7f; --xlc-badge-file-bg: #f1f1f9;
+  --xlc-badge-ref: #4f4799; --xlc-badge-ref-bg: #eeecfb;
+  --xlc-badge-warn: #a34151; --xlc-badge-warn-bg: #fcf0f1;
 }
 /* 暗色主题（对齐思源 mid-night 语义） */
 .t-dark {
-  --b3-theme-primary: #5a8af2;
-  --b3-theme-primary-light: #3d4a66;
-  --b3-theme-primary-lighter: #2c3a55;
-  --b3-theme-on-primary: #fff;
-  --b3-theme-background: #1e1e1f;
-  --b3-theme-surface: #292a30;
-  --b3-theme-on-background: #dcdcdc;
-  --b3-theme-on-surface: #8a8a93;
-  --b3-border-color: #36363a;
-  --b3-list-hover: #2c2c31;
-  --b3-menu-background: #26262a;
-  --shadow-1: 0 1px 2px rgba(0,0,0,.3), 0 1px 3px rgba(0,0,0,.25);
-  --shadow-2: 0 1px 2px rgba(0,0,0,.3), 0 4px 14px rgba(0,0,0,.35);
-  --shadow: 0 8px 32px rgba(0,0,0,.5), 0 2px 8px rgba(0,0,0,.35);
-  --badge-text-bg: rgba(90,138,242,.14);
+  --b3-theme-primary: #b5afff;
+  --b3-theme-primary-light: #393744;
+  --b3-theme-primary-lighter: #343046;
+  --b3-theme-on-primary: #22222d;
+  --b3-theme-background: #22222d;
+  --b3-theme-surface: #2a2936;
+  --b3-theme-on-background: #f0eef8;
+  --b3-theme-on-surface: #b2aec4;
+  --b3-border-color: #393744;
+  --b3-list-hover: #343046;
+  --b3-menu-background: #292835;
+  --shadow-1: 0 1px 2px rgba(0,0,0,.22), 0 1px 3px rgba(0,0,0,.18);
+  --shadow-2: 0 1px 2px rgba(0,0,0,.22), 0 4px 14px rgba(0,0,0,.25);
+  --shadow: 0 12px 40px rgba(0,0,0,.32);
+  --badge-text-bg: #343046;
   --hairline: rgba(255,255,255,.06);
+  --state-success: #a0d9bb; --state-success-bg: #28382f;
+  --state-danger: #ffadb9; --state-danger-bg: #402b33;
+  --xlc-canvas: #181820;
+  --xlc-ink: #f0eef8; --xlc-muted: #b2aec4; --xlc-line: #393744; --xlc-soft: #2a2936;
+  --xlc-lavender: #343046; --xlc-lavender-ink: #d0c9ff; --xlc-warm: #3b3126; --xlc-warm-ink: #f4c78a;
+  --xlc-info: #a0d6e6; --xlc-info-soft: #273840;
+  --xlc-badge-text: #a0d9bb; --xlc-badge-text-bg: #28382f;
+  --xlc-badge-md: #c3beff; --xlc-badge-md-bg: #343046;
+  --xlc-badge-url: #f4c78a; --xlc-badge-url-bg: #3b3126;
+  --xlc-badge-code: #d0c9ff; --xlc-badge-code-bg: #343046;
+  --xlc-badge-image: #a0d6e6; --xlc-badge-image-bg: #273840;
+  --xlc-badge-file: #b2aec4; --xlc-badge-file-bg: #2a2936;
+  --xlc-badge-ref: #d0c9ff; --xlc-badge-ref-bg: #343046;
+  --xlc-badge-warn: #ffadb9; --xlc-badge-warn-bg: #402b33;
+}
+/* Prototype visual tokens mirror src/styles/tokens-r187.scss. */
+:root {
+  --xlc-font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+  --xlc-radius-overlay: 22px; --xlc-radius-lg: 18px; --xlc-radius: 12px; --xlc-radius-sm: 10px;
+  --xlc-space-1: 4px; --xlc-space-2: 8px; --xlc-space-3: 12px; --xlc-space-4: 16px;
+  --xlc-space-5: 20px; --xlc-space-6: 24px; --xlc-space-8: 32px;
+  --xlc-ease: cubic-bezier(.33, 1, .68, 1); --xlc-dur-fast: 120ms; --xlc-dur: 160ms; --xlc-dur-slow: 220ms;
 }
 * { box-sizing: border-box; margin: 0; }
-body { font-family: var(--font); background: #eceef1; padding: 32px; display: flex; flex-wrap: wrap; gap: 40px; align-items: flex-start; }
+body { font-family: var(--xlc-font-family); background: #f7f7fc; padding: 32px; display: flex; flex-wrap: wrap; gap: 40px; align-items: flex-start; }
 body > section > h2 { font-size: 13px; color: #666; margin: 0 0 10px 4px; font-weight: 600; }
 .pair { display: flex; gap: 20px; flex-wrap: wrap; }
 .frame {
@@ -67,22 +103,20 @@ body > section > h2 { font-size: 13px; color: #666; margin: 0 0 10px 4px; font-w
   box-shadow: 0 2px 12px rgba(0,0,0,.12); position: relative;
   display: flex; flex-direction: column; font-size: 13px; color: var(--b3-theme-on-background);
 }
-.frame.t-light, .frame.t-dark { background: #eceef1; }
+.frame.t-light, .frame.t-dark { background: var(--xlc-canvas); }
 
 /* ---------- 基础组件（设计 token 落地） ---------- */
 .badge { font-size: 11px; padding: 0 8px; border-radius: 999px; line-height: 18px; white-space: nowrap; font-weight: 600; letter-spacing: .3px; }
-.badge.text  { color:#4a8a4a; background:rgba(94,168,94,.13); }
-.badge.md    { color:#3575f0; background:var(--badge-text-bg); }
-.badge.url   { color:#b0680a; background:rgba(232,152,45,.13); }
-.badge.code  { color:#8a5ad0; background:rgba(150,105,224,.13); }
-.badge.image { color:#3a9ab5; background:rgba(80,175,200,.13); }
-.badge.asset { color:#8a8a93; background:rgba(140,140,150,.14); }
-.badge.ref   { color:#d05a8a; background:rgba(220,110,155,.13); }
-.badge.warn  { color:#c2503a; background:rgba(226,106,80,.12); }
-.badge.ai    { color:var(--b3-theme-primary); background:var(--badge-text-bg); }
-.t-dark .badge.md, .t-dark .badge.ai { color:#8fb0f5; }
-.badge.var   { color:#8a5ad0; background:rgba(150,105,224,.12); font-family: var(--mono); font-weight: 500; letter-spacing: 0; }
-.t-dark .badge.var { color:#b49ae0; }
+.badge.text  { color:var(--xlc-badge-text); background:var(--xlc-badge-text-bg); }
+.badge.md    { color:var(--xlc-badge-md); background:var(--xlc-badge-md-bg); }
+.badge.url   { color:var(--xlc-badge-url); background:var(--xlc-badge-url-bg); }
+.badge.code  { color:var(--xlc-badge-code); background:var(--xlc-badge-code-bg); }
+.badge.image { color:var(--xlc-badge-image); background:var(--xlc-badge-image-bg); }
+.badge.asset { color:var(--xlc-badge-file); background:var(--xlc-badge-file-bg); }
+.badge.ref   { color:var(--xlc-badge-ref); background:var(--xlc-badge-ref-bg); }
+.badge.warn  { color:var(--xlc-badge-warn); background:var(--xlc-badge-warn-bg); }
+.badge.ai    { color:var(--xlc-badge-md); background:var(--xlc-badge-md-bg); }
+.badge.var   { color:var(--xlc-lavender-ink); background:var(--xlc-lavender); font-family: var(--mono); font-weight: 500; letter-spacing: 0; }
 .ai-chip { display:inline-flex; align-items:center; gap:4px; color:var(--b3-theme-primary); font-size:11px; }
 button { font-family: var(--font); cursor: pointer; }
 .ordinal {
@@ -93,7 +127,7 @@ button { font-family: var(--font); cursor: pointer; }
 .row.on .ordinal { color:var(--b3-theme-primary); border-color:var(--b3-theme-primary-light); background:var(--b3-theme-background); }
 .warnmini {
   display:inline-flex; width:18px; height:18px; align-items:center; justify-content:center;
-  border-radius:50%; font-size:11px; color:#c2503a; background:rgba(226,106,80,.12); flex-shrink:0;
+  border-radius:50%; font-size:11px; color:var(--xlc-badge-warn); background:var(--xlc-badge-warn-bg); flex-shrink:0;
 }
 .kbd { display:inline-flex; align-items:center; gap:5px; font-size:10.5px; color:var(--b3-theme-on-surface); border:1px solid var(--b3-border-color); border-radius:7px; padding:2px 7px 2px 4px; line-height:16px; background:var(--b3-theme-surface); white-space:nowrap; }
 .kbd small { display:inline-flex; align-items:center; min-height:18px; padding:0 5px; border:1px solid var(--b3-border-color); border-bottom-width:2px; border-radius:4px; background:var(--b3-theme-background); color:var(--b3-theme-on-background); font-size:10px; font-weight:600; }
@@ -120,26 +154,36 @@ button { font-family: var(--font); cursor: pointer; }
 .chip.ai-chip { border-style: dashed; }
 
 /* ---------- 屏 0：设计规范板 ---------- */
-.spec-board { width: 1180px; border-radius: 14px; background: #fff; box-shadow: 0 2px 12px rgba(0,0,0,.12); padding: 24px 28px; color: #1f2329; }
-.spec-board h3 { font-size: 15px; margin: 18px 0 10px; padding-top: 14px; border-top: 1px solid #e5e7eb; }
+.spec-board { width: 1180px; border-radius: var(--xlc-radius); background: #fff; box-shadow: 0 2px 12px rgba(41,34,72,.10); padding: 24px 28px; color: #2c2b3e; }
+.spec-board .badge.md { color: var(--xlc-badge-md); background: var(--xlc-badge-md-bg); }
+.spec-board .badge.text { color: var(--xlc-badge-text); background: var(--xlc-badge-text-bg); }
+.spec-board .badge.url { color: var(--xlc-badge-url); background: var(--xlc-badge-url-bg); }
+.spec-board .badge.code { color: var(--xlc-badge-code); background: var(--xlc-badge-code-bg); }
+.spec-board .badge.image { color: var(--xlc-badge-image); background: var(--xlc-badge-image-bg); }
+.spec-board .badge.asset { color: var(--xlc-badge-file); background: var(--xlc-badge-file-bg); }
+.spec-board .badge.ref { color: var(--xlc-badge-ref); background: var(--xlc-badge-ref-bg); }
+.spec-board .badge.warn { color: var(--xlc-badge-warn); background: var(--xlc-badge-warn-bg); }
+.spec-board .badge.ai { color: var(--xlc-badge-md); background: var(--xlc-badge-md-bg); }
+.spec-board .badge.var { color: var(--xlc-lavender-ink); background: var(--xlc-lavender); }
+.spec-board h3 { font-size: 15px; margin: 18px 0 10px; padding-top: 14px; border-top: 1px solid #e6e5f0; }
 .spec-board h3:first-child { margin-top: 0; padding-top: 0; border-top: none; }
 .spec-row { display: flex; gap: 12px; flex-wrap: wrap; align-items: flex-start; }
-.swatch { width: 108px; border-radius: 8px; overflow: hidden; border: 1px solid #e5e7eb; font-size: 11px; }
+.swatch { width: 108px; border-radius: 8px; overflow: hidden; border: 1px solid #e6e5f0; font-size: 11px; }
 .swatch .c { height: 44px; }
 .swatch .l { padding: 5px 8px; background: #fff; color: #5f6672; line-height: 1.5; }
 .type-item { display: flex; align-items: baseline; gap: 10px; margin-right: 28px; }
-.type-item .demo { color: #1f2329; }
+.type-item .demo { color: #2c2b3e; }
 .type-item .cap { font-size: 11px; color: #8a8f99; }
-.radius-item .d { background: #eef1f6; border: 1.5px solid #c6d5fa; width: 56px; height: 40px; }
-.shadow-item .d { background: #fff; width: 96px; height: 40px; margin-bottom: 8px; }
+.radius-item .d { background: #f1f1f9; border: 1.5px solid #e6e5f0; width: 56px; height: 40px; }
+.shadow-item .d { background: #fff; width: 96px; height: 40px; margin-bottom: 8px; border: 1px solid #e6e5f0; }
 .shadow-item .cap, .radius-item .cap { font-size: 11px; color: #8a8f99; }
-.motion-demo { width: 120px; height: 28px; border-radius: 6px; background: linear-gradient(90deg, #c6d5fa, #3575f0); position: relative; overflow: hidden; }
-.motion-demo::after { content: ""; position: absolute; left: 82px; top: 4px; width: 20px; height: 20px; border-radius: 5px; background: #3575f0; box-shadow: var(--shadow-1); }
+.motion-demo { width: 120px; height: 28px; border-radius: 6px; background: linear-gradient(90deg, #eeecfb, #5e59cb); position: relative; overflow: hidden; }
+.motion-demo::after { content: ""; position: absolute; left: 82px; top: 4px; width: 20px; height: 20px; border-radius: 5px; background: #5e59cb; box-shadow: var(--shadow-1); }
 .spec-state { display: flex; gap: 14px; align-items: center; }
 
 /* ---------- 屏 1：桌面搜索弹窗 ---------- */
 .dlg {
-  width: 720px; margin: 20px auto 0; height: 480px; background: var(--b3-theme-background);
+  width: 960px; max-width: 94vw; margin: 20px auto 0; height: 680px; max-height: 92vh; background: var(--b3-theme-background);
   border-radius: var(--radius); box-shadow: var(--shadow); display: flex; flex-direction: column; overflow: hidden;
   border: 1px solid var(--b3-border-color);
 }
@@ -160,7 +204,7 @@ button { font-family: var(--font); cursor: pointer; }
 .search-clear:hover { background:var(--b3-theme-on-surface); color:var(--b3-theme-background); }
 .filters { display:flex; align-items:center; gap:6px; padding: 8px 14px; flex-wrap: wrap; }
 .dlg-body { flex:1; display:flex; min-height:0; border-top:1px solid var(--b3-border-color); }
-.list { width: 330px; overflow:auto; border-right:1px solid var(--b3-border-color); }
+.list { width: 420px; overflow:auto; border-right:1px solid var(--b3-border-color); }
 .group-head {
   padding: 5px 12px; font-size: 11px; font-weight: 600; letter-spacing: .4px; color: var(--b3-theme-on-surface);
   background: var(--b3-theme-surface); border-bottom: 1px solid var(--b3-border-color);
@@ -187,14 +231,13 @@ button { font-family: var(--font); cursor: pointer; }
 .pane { flex:1; display:flex; flex-direction:column; min-width:0; }
 .pane-head { padding:10px 14px 6px; display:flex; align-items:center; gap:8px; }
 .pane-title { font-weight:600; font-size:13.5px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-.pane-vars { margin: 2px 14px 4px; padding: 6px 10px; border-radius: 6px; font-size: 11.5px; line-height: 1.7; color: #8a5ad0; background: rgba(150,105,224,.08); display:flex; align-items:center; gap:6px; flex-wrap: wrap; }
-.t-dark .pane-vars { color:#b49ae0; }
+.pane-vars { margin: 2px 14px 4px; padding: 6px 10px; border-radius: 6px; font-size: 11.5px; line-height: 1.7; color:var(--xlc-lavender-ink); background:var(--xlc-lavender); display:flex; align-items:center; gap:6px; flex-wrap: wrap; }
 .pane-vars code { font-family: var(--mono); font-size: 10.5px; background: rgba(150,105,224,.12); border-radius: 4px; padding: 1px 5px; }
 .pane-body { flex:1; overflow:auto; padding: 4px 14px; font-size:12.5px; line-height:1.75; color:var(--b3-theme-on-background); white-space:pre-wrap; }
 .pane-body.empty-preview { display:flex; align-items:center; justify-content:center; color:var(--b3-theme-on-surface); }
 .pane-foot { padding:8px 14px 12px; display:flex; gap:6px; flex-wrap:wrap; }
 .pane-foot .spacer { flex:1; }
-.srcwarn { margin: 4px 14px 8px; padding:6px 10px; border-radius:6px; background:rgba(226,106,80,.08); color:#c2503a; font-size:12px; }
+ .srcwarn { margin: 4px 14px 8px; padding:6px 10px; border-radius:6px; background:var(--state-danger-bg); color:var(--state-danger); font-size:12px; }
 .dlg-foot { padding:7px 14px; font-size:11.5px; color:var(--b3-theme-on-surface); border-top:1px solid var(--b3-border-color); display:flex; gap:12px; }
 .dlg-foot .count { font-variant-numeric: tabular-nums; }
 .dlg-foot .claim { margin-left: auto; }
@@ -236,9 +279,19 @@ button { font-family: var(--font); cursor: pointer; }
 .inp:focus { border-color: var(--b3-theme-primary); background: var(--b3-theme-background); }
 .varbar { display:flex; gap:6px; align-items:center; flex-wrap:wrap; margin-bottom:11px; }
 .varbar .cap { font-size:11px; color:var(--b3-theme-on-surface); margin-right:2px; }
-.varbtn { font-family: var(--mono); font-size: 11px; border: 1px solid rgba(150,105,224,.35); color: #8a5ad0; background: rgba(150,105,224,.07); border-radius: 999px; padding: 1px 9px; line-height: 18px; }
-.t-dark .varbtn { color: #b49ae0; }
-.sugrow { white-space: nowrap; display:flex; gap:6px; align-items:center; background:var(--badge-text-bg); border:1px dashed var(--b3-theme-primary-light); border-radius:8px; padding:6px 10px; font-size:12px; color:var(--b3-theme-primary); margin-bottom:11px; }
+.varbtn { font-family: var(--mono); font-size: 11px; border: 1px solid var(--xlc-line); color:var(--xlc-lavender-ink); background:var(--xlc-lavender); border-radius: 999px; padding: 1px 9px; line-height: 18px; }
+.sugrow { display:flex; gap:6px; align-items:center; flex-wrap:wrap; background:var(--badge-text-bg); border:1px dashed var(--b3-theme-primary-light); border-radius:8px; padding:6px 10px; font-size:12px; color:var(--b3-theme-primary); margin-bottom:11px; }
+.ai-trigger { border:0; background:transparent; color:var(--b3-theme-primary); font:inherit; cursor:pointer; padding:0 4px; }
+.ai-trigger:hover { text-decoration:underline; }
+.ai-trigger:disabled { color:var(--b3-theme-on-surface); cursor:not-allowed; text-decoration:none; opacity:.68; }
+.capture-contracts { width:min(100%,1520px); display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:10px; padding:12px; border:1px solid var(--xlc-line); border-radius:10px; background:var(--xlc-canvas); margin-top:12px; }
+.capture-contract { min-width:0; padding:10px 12px; border:1px solid var(--xlc-line); border-radius:8px; background:var(--b3-theme-background); color:var(--b3-theme-on-background); font-size:11px; line-height:1.6; }
+.capture-contract strong { display:block; margin-bottom:3px; font-size:12px; }
+.capture-contract .state-demo { display:inline-flex; min-height:24px; align-items:center; margin-top:6px; padding:2px 8px; border:1px solid var(--b3-border-color); border-radius:6px; color:var(--b3-theme-on-surface); background:var(--b3-theme-surface); }
+.capture-contract .state-demo.ai { color:var(--b3-theme-primary); border-color:var(--b3-theme-primary-light); }
+.capture-contract .state-demo.danger { color:var(--state-danger); border-color:var(--state-danger); background:var(--state-danger-bg); }
+@media (max-width:900px) { .capture-contracts { grid-template-columns:repeat(2,minmax(0,1fr)); } }
+@media (max-width:520px) { .capture-contracts { grid-template-columns:1fr; } }
 .form-foot { display:flex; justify-content:flex-end; gap:8px; margin-top:14px; }
 .hintline { font-size:11px; color:var(--b3-theme-on-surface); margin-top:2px; line-height:1.6; }
 
@@ -258,8 +311,7 @@ button { font-family: var(--font); cursor: pointer; }
 .varform .vf-sub { font-size: 11px; color: var(--b3-theme-on-surface); margin: -8px 0 12px; line-height: 1.6; }
 .vf-field { margin-bottom: 10px; }
 .vf-field label { display:block; font-size: 11.5px; color: var(--b3-theme-on-surface); margin-bottom: 4px; }
-.vf-field label .tag { font-family: var(--mono); font-size: 10px; color: #8a5ad0; margin-left: 4px; }
-.t-dark .vf-field label .tag { color: #b49ae0; }
+.vf-field label .tag { font-family: var(--mono); font-size: 10px; color:var(--xlc-lavender-ink); margin-left: 4px; }
 .vf-field .inp { padding: 6px 10px; font-size: 12.5px; }
 .vf-foot { display:flex; align-items:center; gap:8px; margin-top: 14px; }
 .vf-foot .kbdhint { font-size: 11px; color: var(--b3-theme-on-surface); margin-right: auto; }
@@ -302,8 +354,8 @@ button { font-family: var(--font); cursor: pointer; }
 .sheet-mask { position:absolute; inset:0; background:rgba(0,0,0,.32); }
 .sheet {
   position:absolute; left:0; right:0; bottom:0; background:var(--b3-menu-background);
-  border-radius:16px 16px 0 0; box-shadow:var(--shadow); padding:6px 14px calc(10px + env(safe-area-inset-bottom,14px));
-  display:flex; flex-direction:column; max-height:78%;
+  border-radius:16px 16px 0 0; box-shadow:var(--shadow); padding:6px 10px calc(10px + env(safe-area-inset-bottom,14px));
+  display:flex; flex-direction:column; max-height:88%;
 }
 .grabber { width:36px; height:4px; border-radius:2px; background:var(--b3-border-color); margin:4px auto 8px; }
 .sheet .search { margin:0 0 8px; }
@@ -335,6 +387,64 @@ button { font-family: var(--font); cursor: pointer; }
 .policy .p-t { font-weight: 600; }
 .policy .p-d { font-size: 11px; color: var(--b3-theme-on-surface); }
 </style>
+<style>
+/* ============ v4 实现镜像：异步状态 / 边界 / 响应式 ============ */
+.state-board{display:grid;grid-template-columns:repeat(5,minmax(180px,1fr));gap:10px;padding:14px;background:var(--b3-theme-surface);border:1px solid var(--b3-border-color);border-radius:12px}
+.state-card{min-width:0;display:flex;flex-direction:column;gap:8px;padding:12px;border:1px solid var(--b3-border-color);border-radius:10px;background:var(--b3-theme-background)}
+.state-card h4{font-size:12px;line-height:18px;color:var(--b3-theme-on-background)}
+.state-card p{font-size:11px;line-height:17px;color:var(--b3-theme-on-surface);overflow-wrap:anywhere}
+.state-card .state-icon{width:32px;height:32px;display:grid;place-items:center;border-radius:9px;border:1px solid var(--b3-border-color);color:var(--b3-theme-primary);background:var(--b3-theme-surface);font-size:16px}
+.state-card.loading .state-icon{animation:proto-pulse 1.2s var(--ease) infinite}
+.state-card.success{border-color:color-mix(in srgb,var(--state-success) 40%,var(--b3-border-color))}.state-card.success .state-icon{color:var(--state-success);background:var(--state-success-bg)}
+.state-card.error{border-color:color-mix(in srgb,var(--state-danger) 45%,var(--b3-border-color))}.state-card.error .state-icon{color:var(--state-danger);background:var(--state-danger-bg)}
+.state-card.empty .state-icon{color:var(--b3-theme-primary);background:var(--badge-text-bg)}
+.state-actions{display:flex;gap:6px;flex-wrap:wrap;margin-top:auto}.state-actions .btn{min-height:32px;padding:5px 9px;font-size:11px}.state-actions .btn[disabled]{opacity:.45;cursor:not-allowed}
+.access-state-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-top:10px}.access-state{min-width:0;padding:12px;border:1px solid color-mix(in srgb,var(--state-danger) 45%,var(--b3-border-color));border-radius:10px;background:var(--b3-theme-background)}.access-state h4{font-size:12px;line-height:18px;color:var(--state-danger)}.access-state p{font-size:11px;line-height:17px;color:var(--b3-theme-on-surface);overflow-wrap:anywhere}.access-state .access-status{display:inline-flex;align-items:center;gap:5px;padding:4px 7px;border-radius:6px;background:var(--state-danger-bg);color:var(--state-danger);font-size:11px;font-weight:600}.access-state .btn{margin-top:4px;min-height:30px;padding:4px 9px;font-size:11px}
+.access-state-grid--dark{padding:10px;border-radius:12px;background:#181820}
+.state-annotation{display:flex;align-items:flex-start;gap:7px;padding:8px 10px;border-left:3px solid var(--b3-theme-primary);background:var(--badge-text-bg);border-radius:4px;font-size:11px;line-height:17px;color:var(--b3-theme-on-background)}
+.edge-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}.edge-card{min-width:0;padding:12px;border:1px dashed var(--b3-border-color);border-radius:10px;background:var(--b3-theme-surface)}.edge-card strong{display:block;font-size:12px;margin-bottom:4px}.edge-card p{font-size:11px;line-height:17px;overflow-wrap:anywhere;max-height:52px;overflow:auto}
+.responsive-frames{display:grid;grid-template-columns:1.1fr .8fr .65fr;gap:10px}.responsive-frame{min-width:0;min-height:154px;padding:10px;border:1px solid var(--b3-border-color);border-radius:10px;background:var(--b3-theme-background)}.responsive-frame .rf-title{font-weight:650;font-size:12px;margin-bottom:7px}.responsive-frame .rf-body{display:grid;gap:6px;font-size:11px;color:var(--b3-theme-on-surface)}.rf-pill{display:inline-flex;align-items:center;min-height:24px;padding:3px 8px;border:1px solid var(--b3-border-color);border-radius:999px;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.rf-stack{display:flex;gap:5px;flex-wrap:wrap}.rf-sheet{border-radius:12px 12px 0 0;border-bottom:0;padding-top:14px}.rf-sheet:before{content:"";display:block;width:32px;height:3px;margin:-7px auto 8px;border-radius:999px;background:var(--b3-border-color)}
+@keyframes proto-pulse{0%,100%{opacity:.55;transform:scale(.96)}50%{opacity:1;transform:scale(1)}}
+@media (prefers-reduced-motion:reduce){.state-card.loading .state-icon{animation:none}}
+@media(max-width:980px){.state-board{grid-template-columns:repeat(3,minmax(170px,1fr))}.responsive-frames{grid-template-columns:1fr 1fr}.responsive-frame:last-child{grid-column:1/-1}}
+@media(max-width:620px){.state-board,.access-state-grid,.edge-grid,.responsive-frames{grid-template-columns:1fr}.state-card{min-height:126px}.responsive-frame:last-child{grid-column:auto}}
+/* R188 页面实现同步：桌面首设三列、动作区不收缩、菜单自身滚动；窄屏回到纵向。 */
+@media(min-width:621px){.setup-quickstart{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}.setup-quickstart h3{grid-column:1/-1}.setup-quickstart .qrow{gap:6px}.setup-quickstart .qdesc{font-size:10.5px;line-height:15px}.pane-foot{flex-wrap:nowrap}.pane-foot .btn{flex:0 0 auto;padding-right:9px;padding-left:9px;white-space:nowrap}.menu{max-height:calc(100% - 40px);overflow-y:auto}}
+@media(max-width:620px){.setup-quickstart{display:flex;flex-direction:column}.setup-quickstart .qdesc{font-size:11px;line-height:16px}.pane-foot{flex-wrap:wrap}}
+/* Screen 10 mirrors the production discovery surface and its responsive stacking. */
+.discovery-screen{width:min(100%,1540px)}
+.discovery-screen > h3{margin:18px 0 9px 4px;font-size:13px;color:var(--b3-theme-on-surface)}
+.discovery-desktop-pair,.discovery-mobile-pair{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}
+.discovery-mobile-pair{justify-items:center}
+.discovery-frame{display:flex;flex-direction:column;width:100%;height:590px;padding:12px;border:1px solid var(--b3-border-color);border-radius:12px;box-shadow:var(--shadow-2);overflow:hidden}
+.discovery-work{display:flex;flex:1;flex-direction:column;min-height:0}
+.discovery-head{display:flex;align-items:flex-start;gap:12px;min-width:0}.discovery-head-main{flex:1;min-width:0}
+.discovery-title{margin:0 0 7px;font-size:18px;line-height:24px;font-weight:650}
+.discovery-scope-row{display:flex;align-items:center;flex-wrap:wrap;gap:6px;color:var(--b3-theme-on-surface);font-size:11px}
+.discovery-scope-row select,.discovery-controls select,.discovery-controls input,.discovery-category input,.discovery-preview select{min-width:0;height:28px;border:1px solid var(--b3-border-color);border-radius:6px;background:var(--b3-theme-background);color:var(--b3-theme-on-background);padding:3px 8px;font:inherit}
+.discovery-scope-row .path{flex:1 1 180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.discovery-close{min-width:54px}
+.discovery-note{margin-top:8px;padding:7px 9px;border:1px solid var(--b3-border-color);border-radius:6px;background:var(--b3-theme-background);color:var(--b3-theme-on-surface);font-size:11px;line-height:1.5}
+.discovery-status{display:flex;align-items:center;gap:8px;min-height:28px;font-size:11px}.discovery-status .status-copy{flex:1;min-width:0;color:var(--b3-theme-on-surface)}
+.discovery-controls{display:flex;align-items:center;flex-wrap:wrap;gap:6px}.discovery-controls select{flex:0 1 130px}.discovery-controls input{flex:1 1 130px}
+.discovery-category{display:flex;align-items:center;flex-wrap:wrap;gap:7px;min-height:30px;color:var(--b3-theme-on-surface);font-size:11px}.discovery-category input{width:140px}
+.discovery-content{display:grid;grid-template-columns:minmax(0,1.08fr) minmax(0,.92fr);gap:9px;flex:1;min-height:0;margin-top:8px}
+.discovery-list,.discovery-preview{min-width:0;min-height:0;overflow:hidden;border:1px solid var(--b3-border-color);border-radius:7px;background:var(--b3-theme-background)}
+.discovery-list{display:flex;flex-direction:column;padding:7px}.discovery-candidate{display:flex;align-items:flex-start;gap:8px;min-width:0;padding:9px 7px;border-radius:6px}
+.discovery-candidate.active{background:var(--b3-list-hover);outline:1px solid var(--b3-theme-primary-light)}.discovery-candidate input{margin-top:3px;accent-color:var(--b3-theme-primary)}
+.discovery-candidate-copy{flex:1;min-width:0}.discovery-candidate-title{overflow:hidden;color:var(--b3-theme-on-background);font-size:12px;font-weight:600;text-overflow:ellipsis;white-space:nowrap}
+.discovery-candidate-meta{margin-top:3px;overflow:hidden;color:var(--b3-theme-on-surface);font-size:10px;text-overflow:ellipsis;white-space:nowrap}
+.discovery-candidate .badge{flex:0 0 auto}.discovery-candidate .btn{flex:0 0 auto;padding:3px 7px;font-size:10px}
+.discovery-pager{display:flex;align-items:center;justify-content:center;gap:8px;margin-top:auto;padding-top:7px;border-top:1px solid var(--b3-border-color);color:var(--b3-theme-on-surface);font-size:10px}
+.discovery-preview{display:flex;flex-direction:column;gap:7px;padding:10px}.discovery-preview-title{color:var(--b3-theme-on-background);font-size:13px;font-weight:650}.discovery-preview-meta{color:var(--b3-theme-on-surface);font-size:10px}
+.discovery-preview textarea{flex:1;min-height:0;width:100%;resize:none;border:1px solid var(--b3-border-color);border-radius:6px;background:var(--b3-theme-surface);color:var(--b3-theme-on-background);padding:8px;font:11px/1.6 var(--mono)}
+.discovery-footer{display:flex;align-items:center;flex-wrap:wrap;gap:8px;min-height:38px;margin-top:7px;color:var(--b3-theme-on-surface);font-size:10px}.discovery-footer .spacer{flex:1}
+.discovery-receipt{padding:7px 9px;border:1px solid color-mix(in srgb,var(--state-success) 35%,var(--b3-border-color));border-radius:6px;background:var(--state-success-bg);color:var(--state-success);font-size:10px}
+.discovery-frame.narrow{width:min(100%,390px);height:760px;padding:11px}.discovery-frame.narrow .discovery-title{font-size:16px}
+.discovery-frame.narrow .discovery-content{grid-template-columns:1fr;grid-template-rows:270px 280px;flex:0 0 auto}.discovery-frame.narrow .discovery-status{align-items:flex-start}
+.discovery-frame.narrow .discovery-controls select{flex:1 1 130px}.discovery-frame.narrow .discovery-candidate{padding:8px 3px}.discovery-frame.narrow .discovery-candidate .btn{min-height:36px}
+.discovery-frame.narrow .discovery-preview{min-height:260px}.discovery-error{color:var(--state-danger);font-size:11px}.discovery-empty{display:grid;place-items:center;min-height:88px;padding:12px;border:1px dashed var(--b3-border-color);border-radius:7px;color:var(--b3-theme-on-surface);text-align:center;font-size:11px;line-height:1.55}.discovery-scan-error{padding:7px 9px;border:1px solid color-mix(in srgb,var(--state-danger) 35%,var(--b3-border-color));border-radius:6px;background:var(--state-danger-bg);color:var(--state-danger);font-size:11px;line-height:1.5}.discovery-list .discovery-scan-error{margin-bottom:6px}.discovery-preview-empty{display:grid;flex:1;place-items:center;padding:16px;border:1px dashed var(--b3-border-color);border-radius:6px;color:var(--b3-theme-on-surface);text-align:center;font-size:11px;line-height:1.6}.discovery-screen-note{margin:0 0 12px 4px;color:var(--b3-theme-on-surface);font-size:11px;line-height:1.6}
+@media(max-width:900px){.discovery-desktop-pair,.discovery-mobile-pair{grid-template-columns:1fr}.discovery-frame{width:min(100%,760px)}}
+</style>
 </head>
 <body>
 
@@ -344,33 +454,39 @@ button { font-family: var(--font); cursor: pointer; }
 <div class="spec-board">
   <h3>色彩 · 双主题（语义对齐思源 b3；固定色仅徽标淡彩与中性阴影）</h3>
   <div class="spec-row">
-    <div class="swatch"><div class="c" style="background:#3575f0"></div><div class="l">primary<br>#3575f0 · 暗 #5a8af2</div></div>
-    <div class="swatch"><div class="c" style="background:#ffffff;border-bottom:1px solid #e5e7eb"></div><div class="l">background<br>#ffffff · 暗 #1e1e1f</div></div>
-    <div class="swatch"><div class="c" style="background:#f7f8fa;border-bottom:1px solid #e5e7eb"></div><div class="l">surface<br>#f7f8fa · 暗 #26262a</div></div>
-    <div class="swatch"><div class="c" style="background:#1f2329"></div><div class="l">on-background<br>#1f2329 · 暗 #dcdcdc</div></div>
-    <div class="swatch"><div class="c" style="background:#7d8085"></div><div class="l">on-surface<br>#7d8085 · 暗 #8a8a93</div></div>
-    <div class="swatch"><div class="c" style="background:#e5e7eb"></div><div class="l">border<br>#e5e7eb · 暗 #36363a</div></div>
-    <div class="swatch"><div class="c" style="background:rgba(53,117,240,.08)"></div><div class="l">ai-tint<br>主色 8% 淡彩底</div></div>
-    <div class="swatch"><div class="c" style="background:rgba(150,105,224,.10)"></div><div class="l">var-tint<br>变量紫 10%（新）</div></div>
+    <div class="swatch"><div class="c" style="background:#5e59cb"></div><div class="l">primary<br>#5e59cb · 暗 #b5afff</div></div>
+    <div class="swatch"><div class="c" style="background:#ffffff;border-bottom:1px solid #e6e5f0"></div><div class="l">background<br>#ffffff · 暗 #22222d</div></div>
+    <div class="swatch"><div class="c" style="background:#f1f1f9;border-bottom:1px solid #e6e5f0"></div><div class="l">surface<br>#f1f1f9 · 暗 #2a2936</div></div>
+    <div class="swatch"><div class="c" style="background:#2c2b3e"></div><div class="l">on-background<br>#2c2b3e · 暗 #f0eef8</div></div>
+    <div class="swatch"><div class="c" style="background:#6c6a7f"></div><div class="l">on-surface<br>#6c6a7f · 暗 #b2aec4</div></div>
+    <div class="swatch"><div class="c" style="background:#e6e5f0"></div><div class="l">border<br>#e6e5f0 · 暗 #393744</div></div>
+    <div class="swatch"><div class="c" style="background:#eeecfb"></div><div class="l">ai-tint<br>主色 8% 淡彩底</div></div>
+    <div class="swatch"><div class="c" style="background:#eeecfb;border:1px solid #e6e5f0"></div><div class="l">var-tint<br>#eeecfb · 暗 #343046</div></div>
   </div>
   <div class="spec-row" style="margin-top:12px">
     <span class="badge md">MD</span><span class="badge text">TXT</span><span class="badge url">URL</span><span class="badge code">CODE</span><span class="badge image">IMG</span><span class="badge asset">FILE</span><span class="badge ref">REF</span><span class="badge warn">⚠</span><span class="badge ai">✦ AI</span><span class="badge var">{{var}}</span>
   </div>
 
-  <h3>字号阶梯（每级即实际用途，不做任意字号）</h3>
+  <h3>生产字号档（每档对应 token；按组件用途选择）</h3>
   <div class="spec-row">
-    <div class="type-item"><span class="demo" style="font-size:16px;font-weight:600">16</span><span class="cap">弹窗标题</span></div>
-    <div class="type-item"><span class="demo" style="font-size:15px;font-weight:600">15</span><span class="cap">表单标题</span></div>
-    <div class="type-item"><span class="demo" style="font-size:14px;font-weight:600">14</span><span class="cap">面板标题</span></div>
-    <div class="type-item"><span class="demo" style="font-size:13.5px;font-weight:600">13.5</span><span class="cap">预览标题</span></div>
-    <div class="type-item"><span class="demo" style="font-size:13px">13</span><span class="cap">行标题/菜单项/正文输入</span></div>
+    <div class="type-item"><span class="demo" style="font-size:22px;font-weight:700">22</span><span class="cap">弹窗标题</span></div>
+    <div class="type-item"><span class="demo" style="font-size:20px;font-weight:700">20</span><span class="cap">发现页标题</span></div>
+    <div class="type-item"><span class="demo" style="font-size:18px;font-weight:600">18</span><span class="cap">变量卡标题</span></div>
+    <div class="type-item"><span class="demo" style="font-size:17px;font-weight:650">17</span><span class="cap">预览标题</span></div>
+    <div class="type-item"><span class="demo" style="font-size:16px;font-weight:600">16</span><span class="cap">空态标题</span></div>
+    <div class="type-item"><span class="demo" style="font-size:15px;font-weight:600">15</span><span class="cap">首设提示标题</span></div>
+    <div class="type-item"><span class="demo" style="font-size:14px;font-weight:600">14</span><span class="cap">输入/正文</span></div>
+    <div class="type-item"><span class="demo" style="font-size:13.5px;font-weight:600">13.5</span><span class="cap">搜索文字</span></div>
+    <div class="type-item"><span class="demo" style="font-size:13px">13</span><span class="cap">行标题/菜单项</span></div>
     <div class="type-item"><span class="demo" style="font-size:12.5px">12.5</span><span class="cap">按钮/预览正文</span></div>
     <div class="type-item"><span class="demo" style="font-size:12px">12</span><span class="cap">chip/次级说明</span></div>
     <div class="type-item"><span class="demo" style="font-size:11.5px">11.5</span><span class="cap">meta/foot</span></div>
     <div class="type-item"><span class="demo" style="font-size:11px">11</span><span class="cap">kbd/徽标/分组头</span></div>
+    <div class="type-item"><span class="demo" style="font-size:10.5px">10.5</span><span class="cap">变量徽标</span></div>
+    <div class="type-item"><span class="demo" style="font-size:10px">10</span><span class="cap">语法标签</span></div>
   </div>
 
-  <h3>间距 4px 栅格 · 圆角梯度（嵌套外大内小）</h3>
+  <h3>间距目标基准 4px（当前网格覆盖见设计规范）· 圆角 token</h3>
   <div class="spec-row" style="align-items:center">
     <div class="radius-item"><div class="d" style="border-radius:4px"></div><div class="cap">4 · ordinal</div></div>
     <div class="radius-item"><div class="d" style="border-radius:6px"></div><div class="cap">6 · 警条/小件</div></div>
@@ -378,31 +494,33 @@ button { font-family: var(--font); cursor: pointer; }
     <div class="radius-item"><div class="d" style="border-radius:10px"></div><div class="cap">10 · 弹窗主体/行卡</div></div>
     <div class="radius-item"><div class="d" style="border-radius:12px"></div><div class="cap">12 · 菜单/表单卡/设置卡</div></div>
     <div class="radius-item"><div class="d" style="border-radius:16px"></div><div class="cap">16 · 底部 sheet</div></div>
+    <div class="radius-item"><div class="d" style="border-radius:18px"></div><div class="cap">18 · 页面大卡</div></div>
+    <div class="radius-item"><div class="d" style="border-radius:22px"></div><div class="cap">22 · 对话框</div></div>
     <div class="radius-item"><div class="d" style="border-radius:999px;width:96px"></div><div class="cap">999 · chip/徽标/开关</div></div>
   </div>
 
-  <h3>阴影三级（多层低透明叠加，禁纯黑硬阴影）· 动效</h3>
+  <h3>表面层级 · 浮层阴影与动效</h3>
   <div class="spec-row">
-    <div class="shadow-item"><div class="d" style="box-shadow:0 1px 2px rgba(31,35,41,.05),0 1px 3px rgba(31,35,41,.04)"></div><div class="cap">L1 卡片/主按钮</div></div>
-    <div class="shadow-item"><div class="d" style="box-shadow:0 1px 2px rgba(31,35,41,.05),0 4px 14px rgba(31,35,41,.07)"></div><div class="cap">L2 浮层（菜单替代底）</div></div>
-    <div class="shadow-item"><div class="d" style="box-shadow:0 8px 32px rgba(31,35,41,.14),0 2px 8px rgba(31,35,41,.08)"></div><div class="cap">L3 弹窗/菜单</div></div>
+    <div class="shadow-item"><div class="d" style="box-shadow:none"></div><div class="cap">工作面 · 描边分层</div></div>
+    <div class="shadow-item"><div class="d" style="box-shadow:none;background:#f1f1f9"></div><div class="cap">卡片/按钮 · 表面区分</div></div>
+    <div class="shadow-item"><div class="d" style="box-shadow:0 12px 40px rgba(41,34,72,.10)"></div><div class="cap">弹窗/菜单 · overlay</div></div>
     <div class="spec-state" style="margin-left:24px">
       <div style="position:relative;width:160px;height:28px"><div class="motion-demo"></div></div>
-      <span class="cap" style="font-size:11px;color:#8a8f99">cubic-bezier(.33,1,.68,1) · 120/160/220ms · 只动 transform/opacity/背景</span>
+      <span class="cap" style="font-size:11px;color:#8a8f99">cubic-bezier(.33,1,.68,1) · 120/140/160/220ms · 只动 transform/opacity/背景</span>
     </div>
   </div>
 
   <h3>组件态（缺哪个哪个是半成品）</h3>
   <div class="spec-row spec-state">
     <button class="btn">默认</button>
-    <button class="btn" style="background:#eef1f6">hover</button>
+    <button class="btn" style="background:#f1f1f9">hover</button>
     <button class="btn primary">主要</button>
     <button class="btn ai">✦ AI</button>
     <button class="btn ghost">ghost</button>
     <button class="btn" disabled style="opacity:.5;cursor:not-allowed">disabled</button>
     <span class="chip">chip</span>
     <span class="chip on">chip on</span>
-    <span class="chip ai-chip" style="color:#3575f0">✦ AI 语义搜索</span>
+    <span class="chip ai-chip" style="color:#5e59cb">✦ AI 语义搜索</span>
     <span class="kbd">Enter <small>插入</small></span>
     <span class="ordinal">1</span>
   </div>
@@ -648,11 +766,11 @@ button { font-family: var(--font); cursor: pointer; }
   <div class="form">
     <h3>新建条目 · 小驴常用</h3>
     <div class="fld">
-      <label>AI 草稿 <span class="opt">✦ 描述需求，AI 生成</span></label>
-      <input class="inp" value="一封给客户的项目延期通知模板">
+      <label>AI 草稿 <button class="opt ai-trigger">✦ 生成草稿</button></label>
+      <input class="inp" placeholder="描述你想生成的内容，例如：给客户说明项目延期">
     </div>
     <div class="fld">
-      <label>内容 <span class="opt" style="color:#8a5ad0">插入变量 ▾</span></label>
+      <label>内容 <button class="opt ai-trigger">✦ AI 整理</button></label>
       <textarea class="inp" rows="6">尊敬的 {{xlc:ask:客户名称}}：
 
 关于 __项目名称__ 的交付计划调整，我们深表歉意。当前进度 {{xlc:ask:进度}}，预计推迟 __天数__ 个工作日。
@@ -663,12 +781,12 @@ button { font-family: var(--font); cursor: pointer; }
 
 再次感谢理解与支持。{{xlc:cursor}}</textarea>
     </div>
-    <div class="varbar"><span class="cap">点选插入：</span><button class="varbtn">{{xlc:ask:字段}}</button><button class="varbtn">{{xlc:ask:字段|A,B}}</button><button class="varbtn">{{xlc:snippet:标题}}</button><button class="varbtn">{{xlc:cursor}}</button><button class="varbtn">{{xlc:date}}</button><button class="varbtn">{{xlc:doc}}</button><button class="varbtn">{{xlc:clipboard}}</button></div>
-    <div class="sugrow">✦ AI 建议：<b>项目延期通知模板</b> · 标签 客户沟通/模板 · 分类 客服<button class="btn ai" style="margin-left:auto;padding:2px 10px">全部采纳</button></div>
+    <div class="varbar"><span class="cap">插入变量（点选后放到光标处）：</span><button class="varbtn">{{xlc:ask:字段}}</button><button class="varbtn">{{xlc:ask:字段|选项A,选项B}}</button><button class="varbtn">{{xlc:ask:字段|textarea}}</button><button class="varbtn">{{xlc:snippet:标题}}</button><button class="varbtn">{{xlc:cursor}}</button><button class="varbtn">{{xlc:date}}</button><button class="varbtn">{{xlc:date|+3d}}</button><button class="varbtn">{{xlc:random|选项A,选项B}}</button><button class="varbtn">{{xlc:doc}}</button><button class="varbtn">{{xlc:clipboard}}</button></div>
+    <div class="sugrow">✦ AI 建议：<b>项目延期通知模板</b> · 别名：延期通知 · 标签：客户沟通/模板 · 分类：客服<button class="btn ai" style="margin-left:auto;padding:2px 10px">全部采纳</button></div>
     <div class="fld"><label>标题</label><input class="inp" value="项目延期通知模板"></div>
     <div style="display:flex;gap:10px">
       <div class="fld" style="flex:1;margin-bottom:0"><label>别名</label><input class="inp" value="延期通知"></div>
-      <div class="fld" style="width:130px;margin-bottom:0"><label>类型</label><input class="inp" value="Markdown" readonly style="color:var(--b3-theme-on-surface)"></div>
+      <div class="fld" style="width:130px;margin-bottom:0"><label>类型</label><select class="inp"><option selected>Markdown</option><option>文本</option><option>链接</option><option>代码</option><option>图片</option><option>附件</option><option>块引用</option><option>块结构</option></select></div>
     </div>
     <div style="display:flex;gap:10px;margin-top:11px">
       <div class="fld" style="flex:1;margin-bottom:0"><label>标签（逗号分隔）</label><input class="inp" value="客户沟通, 模板"></div>
@@ -682,10 +800,10 @@ button { font-family: var(--font); cursor: pointer; }
   <div class="form">
     <h3>新建条目 · 小驴常用</h3>
     <div class="fld">
-      <label>AI 草稿 <span class="opt">✦ 描述需求，AI 生成</span></label>
-      <input class="inp" value="周报开头三句话模板">
+      <label>AI 草稿 <button class="opt ai-trigger">✦ 生成草稿</button></label>
+      <input class="inp" placeholder="描述你想生成的内容，例如：周报开头三句话">
     </div>
-    <div class="fld"><label>内容 <span class="opt" style="color:#b49ae0">插入变量 ▾</span></label>
+    <div class="fld"><label>内容 <button class="opt ai-trigger">✦ AI 整理</button></label>
       <textarea class="inp" rows="6">本周进展：
 1. __事项__（状态：{{xlc:ask:进度}}）
 2. __事项__（状态：{{xlc:ask:进度}}）
@@ -693,13 +811,42 @@ button { font-family: var(--font); cursor: pointer; }
 风险与依赖：__风险__
 下周计划：{{xlc:cursor}}</textarea>
     </div>
-    <div class="varbar"><span class="cap">点选插入：</span><button class="varbtn">{{xlc:ask:字段}}</button><button class="varbtn">{{xlc:ask:字段|A,B}}</button><button class="varbtn">{{xlc:cursor}}</button><button class="varbtn">{{xlc:doc}}</button></div>
-    <div class="sugrow">✦ AI 建议：<b>周报开头模板</b> · 标签 周报/写作 · 分类 模板<button class="btn ai" style="margin-left:auto;padding:2px 10px">全部采纳</button></div>
+    <div class="varbar"><span class="cap">插入变量（点选后放到光标处）：</span><button class="varbtn">{{xlc:ask:字段}}</button><button class="varbtn">{{xlc:ask:字段|选项A,选项B}}</button><button class="varbtn">{{xlc:ask:字段|textarea}}</button><button class="varbtn">{{xlc:snippet:标题}}</button><button class="varbtn">{{xlc:cursor}}</button><button class="varbtn">{{xlc:date}}</button><button class="varbtn">{{xlc:date|+3d}}</button><button class="varbtn">{{xlc:random|选项A,选项B}}</button><button class="varbtn">{{xlc:doc}}</button><button class="varbtn">{{xlc:clipboard}}</button></div>
+    <div class="sugrow">✦ AI 建议：<b>周报开头模板</b> · 别名：周报开头 · 标签：周报/写作 · 分类：模板<button class="btn ai" style="margin-left:auto;padding:2px 10px">全部采纳</button></div>
     <div class="fld"><label>标题</label><input class="inp" value="周报开头模板"></div>
+    <div style="display:flex;gap:10px">
+      <div class="fld" style="flex:1;margin-bottom:0"><label>别名</label><input class="inp" value="周报开头"></div>
+      <div class="fld" style="width:130px;margin-bottom:0"><label>类型</label><select class="inp"><option selected>Markdown</option><option>文本</option><option>链接</option><option>代码</option><option>图片</option><option>附件</option><option>块引用</option><option>块结构</option></select></div>
+    </div>
+    <div style="display:flex;gap:10px;margin-top:11px">
+      <div class="fld" style="flex:1;margin-bottom:0"><label>标签（逗号分隔）</label><input class="inp" value="周报, 写作"></div>
+      <div class="fld" style="width:130px;margin-bottom:0"><label>分类</label><input class="inp" value="模板"></div>
+    </div>
     <div class="hintline">AI 使用思源 设置→人工智能 的模型 · 正文出域可随时关闭</div>
     <div class="form-foot"><button class="btn">取消</button><button class="btn primary">保存条目</button></div>
   </div>
 </div>
+</div>
+<h3 style="font-size:13px;margin:12px 0 0">捕获辅助状态（生产 UI smoke 覆盖范围）</h3>
+<div class="pair">
+  <div class="capture-contracts t-light">
+    <article class="capture-contract"><strong>AI 整理 · 空正文</strong>正文为空时按钮禁用；输入正文后可触发整理。<br><span class="state-demo">✦ AI 整理 · 禁用</span></article>
+    <article class="capture-contract"><strong>AI 整理 · 请求中</strong>显示处理中并禁用重复触发；完成后恢复按钮。<br><span class="state-demo ai">✦ 正在整理…</span></article>
+    <article class="capture-contract"><strong>AI 整理 · 失败后重试</strong>错误原因就地保留并播报；重试读取当前正文，旧建议不再可采纳。<br><span class="state-demo danger" role="alert">AI 整理请求暂时失败，请重试。</span> <span class="state-demo ai">重试 · 样例</span></article>
+    <article class="capture-contract"><strong>AI 建议 · 可采纳</strong>展示标题、别名、标签和分类；全部采纳只更新元数据。<br><span class="state-demo ai">全部采纳</span></article>
+    <article class="capture-contract"><strong>AI 草稿 · 描述为空</strong>需要先填写生成描述，草稿按钮保持禁用。<br><span class="state-demo">✦ 生成草稿 · 禁用</span></article>
+    <article class="capture-contract"><strong>AI 草稿 · 生成中</strong>生成请求期间锁定重复触发，完成后可再次生成。<br><span class="state-demo ai">✦ AI 处理中…</span></article>
+    <article class="capture-contract"><strong>AI 草稿 · 覆盖确认</strong>正文已有内容时先确认；取消则保留原文。<br><span class="state-demo danger">确认后覆盖正文</span></article>
+  </div>
+  <div class="capture-contracts t-dark">
+    <article class="capture-contract"><strong>AI 整理 · 空正文</strong>正文为空时按钮禁用；输入正文后可触发整理。<br><span class="state-demo">✦ AI 整理 · 禁用</span></article>
+    <article class="capture-contract"><strong>AI 整理 · 请求中</strong>显示处理中并禁用重复触发；完成后恢复按钮。<br><span class="state-demo ai">✦ 正在整理…</span></article>
+    <article class="capture-contract"><strong>AI 整理 · 失败后重试</strong>错误原因就地保留并播报；重试读取当前正文，旧建议不再可采纳。<br><span class="state-demo danger" role="alert">AI 整理请求暂时失败，请重试。</span> <span class="state-demo ai">重试 · 样例</span></article>
+    <article class="capture-contract"><strong>AI 建议 · 可采纳</strong>展示标题、别名、标签和分类；全部采纳只更新元数据。<br><span class="state-demo ai">全部采纳</span></article>
+    <article class="capture-contract"><strong>AI 草稿 · 描述为空</strong>需要先填写生成描述，草稿按钮保持禁用。<br><span class="state-demo">✦ 生成草稿 · 禁用</span></article>
+    <article class="capture-contract"><strong>AI 草稿 · 生成中</strong>生成请求期间锁定重复触发，完成后可再次生成。<br><span class="state-demo ai">✦ AI 处理中…</span></article>
+    <article class="capture-contract"><strong>AI 草稿 · 覆盖确认</strong>正文已有内容时先确认；取消则保留原文。<br><span class="state-demo danger">确认后覆盖正文</span></article>
+  </div>
 </div>
 </section>
 
@@ -931,11 +1078,11 @@ button { font-family: var(--font); cursor: pointer; }
         <div class="meta">引用到「产品模板库」</div>
       </div><span class="star">☆</span>
     </div>
-    <div class="ph-sec" style="text-align:center">点按条目立即插入 · 长按条目查看操作</div>
-    <div class="ph-sec" style="text-align:center">移动端直接插入待验证；当前会复制到剪贴板</div>
+    <div class="ph-sec" style="text-align:center">点按选择条目 · 长按查看操作</div>
+    <div class="ph-sec" style="text-align:center">无可用插入目标时复制到剪贴板；移动端直接插入待验证</div>
     <div class="sheet-foot">
       <button class="btn">＋ 新建条目</button>
-      <button class="btn primary">插入选中</button>
+      <button class="btn primary">复制选中</button>
     </div>
   </div>
 </div>
@@ -945,18 +1092,30 @@ button { font-family: var(--font); cursor: pointer; }
     <div class="h" style="width:42%"></div><div class="h"></div><div class="h" style="width:88%"></div>
   </div>
   <div class="sheet-mask"></div>
-  <div class="mmenu">
-    <div class="lbl" style="font-size:11px;color:var(--b3-theme-on-surface);padding:10px 14px 2px">会议纪要开头 · 动作</div>
-    <div class="sec">
-      <button class="mi"><span class="ic">＋</span><b>插入（复制到剪贴板）</b></button>
-      <button class="mi"><span class="ic">⧉</span>复制</button>
-      <button class="mi ai"><span class="ic">✦</span>AI 变换 ▾</button>
+  <div class="sheet">
+    <div class="grabber"></div>
+    <div class="search"><span class="search-icon" aria-hidden="true"></span><input placeholder="搜索标题、别名、标签、分类和正文摘要"></div>
+    <div class="row on">
+      <div style="flex:1;min-width:0">
+        <div class="tt"><span class="badge text">TXT</span><span class="t">会议纪要开头</span><span class="badge var">2 变量</span></div>
+        <div class="meta">时间：__ 地点：__ 与会：__</div>
+      </div><span class="star fav">★</span>
     </div>
-    <div class="sec">
-      <button class="mi"><span class="ic">✎</span>编辑</button>
-      <button class="mi"><span class="ic">⧉</span>创建副本</button>
-      <button class="mi"><span class="ic">🗑</span>删除</button>
+    <div class="row">
+      <div style="flex:1;min-width:0">
+        <div class="tt"><span class="badge code">CODE</span><span class="t">SQL 分页模板</span></div>
+        <div class="meta">SELECT * FROM t LIMIT …</div>
+      </div><span class="star">☆</span>
     </div>
+    <div class="row">
+      <div style="flex:1;min-width:0">
+        <div class="tt"><span class="badge ref">REF</span><span class="t">产品需求模板（引用）</span></div>
+        <div class="meta">引用到「产品模板库」</div>
+      </div><span class="star">☆</span>
+    </div>
+    <div class="ph-sec" style="text-align:center">点按选择条目 · 长按查看操作</div>
+    <div class="ph-sec" style="text-align:center">无可用插入目标时复制到剪贴板；移动端直接插入待验证</div>
+    <div class="sheet-foot"><button class="btn">＋ 新建条目</button><button class="btn primary">复制选中</button></div>
   </div>
 </div>
 </div>
@@ -998,6 +1157,85 @@ button { font-family: var(--font); cursor: pointer; }
     <div class="form-foot"><button class="btn">取消</button><button class="btn primary">导出 .md 包</button></div>
   </div>
 </div>
+</div>
+</section>
+
+<!-- ======== 屏 10：按需发现（生产实现镜像） ======== -->
+<section>
+<h2>屏 10 · 按需发现（专用库 + 按需发现 · 范围 / 目标 / 筛选 / 预览 / 分页 / 回执）</h2>
+<div class="discovery-screen">
+  <p class="discovery-screen-note">发现会话只读扫描当前范围，候选不会进入常用库；用户确认后才复制到专用库，并保留来源回链。分页和状态样例与生产页面保持同一信息层级。</p>
+  <div class="discovery-desktop-pair">
+    <div class="discovery-frame t-light">
+      <div class="discovery-work">
+        <div class="discovery-head"><div class="discovery-head-main"><h3 class="discovery-title">发现已有内容</h3><div class="discovery-scope-row"><span>扫描范围</span><select aria-label="扫描范围"><option selected>当前文档</option><option>当前笔记本</option><option>指定文档树</option></select><span class="path">入口：/项目笔记/迭代记录</span></div></div><button class="btn ghost discovery-close">关闭</button></div>
+        <div class="discovery-note">只读取当前文档顶层块；原笔记不会被修改，加入动作只复制到专用库。</div>
+        <div class="discovery-status"><span class="status-copy">已扫描 24 个块，发现 205 个候选 · 可按页查看</span><button class="btn">重新扫描</button></div>
+        <div class="discovery-controls"><select aria-label="筛选状态"><option>全部状态</option><option>待收录</option><option>内容相同</option></select><select aria-label="内容类型"><option>全部类型</option><option>文本</option><option>Markdown</option></select><input aria-label="筛选候选" placeholder="筛选标题、摘要或来源"></div>
+        <div class="discovery-category"><span>默认分类</span><input value="待整理" aria-label="默认分类"><span>新收录项可逐条修改</span></div>
+        <div class="discovery-content">
+          <div class="discovery-list"><div class="discovery-candidate active"><input type="checkbox" checked aria-label="选择客户延期回复"><div class="discovery-candidate-copy"><div class="discovery-candidate-title">客户延期回复</div><div class="discovery-candidate-meta">文本 · /项目笔记/迭代记录</div></div><span class="badge text">待收录</span><button class="btn primary">加入</button></div><div class="discovery-candidate"><input type="checkbox" aria-label="选择收件地址"><div class="discovery-candidate-copy"><div class="discovery-candidate-title">收件地址</div><div class="discovery-candidate-meta">文本 · /项目笔记/客户资料</div></div><span class="badge warn">内容相同</span><button class="btn">预览</button></div><div class="discovery-candidate"><input type="checkbox" aria-label="选择分页候选 101"><div class="discovery-candidate-copy"><div class="discovery-candidate-title">分页候选 101</div><div class="discovery-candidate-meta">Markdown · /项目笔记/模板</div></div><span class="badge md">待收录</span><button class="btn">加入</button></div><div class="discovery-pager" role="navigation" aria-label="发现结果分页"><button class="btn" disabled>上一页</button><span role="status" aria-live="polite">第 2 / 3 页</span><button class="btn">下一页</button></div></div>
+          <div class="discovery-preview"><div class="discovery-preview-title">客户延期回复</div><div class="discovery-preview-meta">来源：/项目笔记/迭代记录 · 类型：文本</div><textarea readonly>您好，关于本期交付延期，我们深表歉意。预计推迟 2 个工作日上线。</textarea><div class="discovery-footer"><span>已选 1 项</span><span class="spacer"></span><button class="btn primary">加入选中项</button></div></div>
+        </div>
+        <div class="discovery-receipt">已复制到常用库：客户延期回复；原笔记未修改。<button class="btn ghost">撤销本批新增</button></div>
+      </div>
+    </div>
+    <div class="discovery-frame t-dark">
+      <div class="discovery-work">
+        <div class="discovery-head"><div class="discovery-head-main"><h3 class="discovery-title">从指定文档树发现常用语</h3><div class="discovery-scope-row"><span>扫描范围</span><select aria-label="扫描范围"><option>当前文档</option><option selected>指定文档树</option><option>全部笔记本（高级）</option></select><span class="path">入口：/客户支持/话术模板</span></div></div><button class="btn ghost discovery-close">关闭</button></div>
+        <div class="discovery-note">扫描所选根文档及其下级文档；达到上限会保留已完成部分，并在状态中说明。</div>
+        <div class="discovery-status"><span class="status-copy discovery-error">扫描失败：思源请求未完成，请检查连接后重试。</span><button class="btn primary">重新扫描</button></div>
+        <div class="discovery-controls"><select aria-label="筛选状态"><option selected>全部状态</option></select><select aria-label="内容类型"><option selected>全部类型</option></select><input aria-label="筛选候选" placeholder="筛选标题、摘要或来源"></div>
+        <div class="discovery-category"><span>默认分类</span><input value="待整理" aria-label="默认分类"><span>扫描失败不会自动收录</span></div>
+        <div class="discovery-content"><div class="discovery-list"><div class="discovery-scan-error">当前没有候选结果。可以检查目标文档、连接状态后重新扫描。</div><div class="discovery-empty">空结果 · 选择其他范围或重试扫描</div></div><div class="discovery-preview"><div class="discovery-preview-title">候选预览</div><div class="discovery-preview-empty">选择一条候选后查看正文；收录前会再次校验来源。</div></div></div>
+        <div class="discovery-footer"><span>没有自动修改原笔记</span><span class="spacer"></span><button class="btn" disabled>加入选中项</button></div>
+      </div>
+    </div>
+  </div>
+  <h3>窄屏与移动形态</h3>
+  <div class="discovery-mobile-pair">
+    <div class="discovery-frame narrow t-light">
+      <div class="discovery-work"><div class="discovery-head"><div class="discovery-head-main"><h3 class="discovery-title">发现已有内容</h3><div class="discovery-scope-row"><span>范围</span><select aria-label="范围"><option selected>当前笔记本</option></select><span class="path">/研发模板</span></div></div><button class="btn ghost discovery-close">关闭</button></div><div class="discovery-note">只读扫描；确认后复制到专用库。</div><div class="discovery-status"><span class="status-copy">已发现 2 条候选</span><button class="btn">重扫</button></div><div class="discovery-controls"><select aria-label="状态"><option>全部状态</option></select><input aria-label="筛选" placeholder="筛选标题或来源"></div><div class="discovery-content"><div class="discovery-list"><div class="discovery-candidate active"><input type="checkbox" checked aria-label="选择会议纪要开头"><div class="discovery-candidate-copy"><div class="discovery-candidate-title">会议纪要开头</div><div class="discovery-candidate-meta">文本 · /研发模板</div></div><button class="btn primary">加入</button></div><div class="discovery-candidate"><input type="checkbox" aria-label="选择 SQL 分页模板"><div class="discovery-candidate-copy"><div class="discovery-candidate-title">SQL 分页模板</div><div class="discovery-candidate-meta">代码 · /研发模板</div></div><button class="btn">加入</button></div></div><div class="discovery-preview"><div class="discovery-preview-title">候选预览</div><textarea readonly>会议时间：{{xlc:ask:时间}} · 地点：{{xlc:ask:地点}}</textarea><div class="discovery-footer"><span>已选 1 项</span><span class="spacer"></span><button class="btn primary">加入</button></div></div></div><div class="discovery-receipt">已加入专用库 · 可撤销</div></div>
+    </div>
+    <div class="discovery-frame narrow t-dark">
+      <div class="discovery-work"><div class="discovery-head"><div class="discovery-head-main"><h3 class="discovery-title">发现已有内容</h3><div class="discovery-scope-row"><span>范围</span><select aria-label="范围"><option selected>全部笔记本（高级）</option></select></div></div><button class="btn ghost discovery-close">关闭</button></div><div class="discovery-note">扫描全部笔记本前需要确认，达到上限会停止。</div><div class="discovery-status"><span class="status-copy">扫描已停止，尚未保留候选；可以重新扫描。</span><button class="btn primary">重新扫描</button></div><div class="discovery-content"><div class="discovery-list"><div class="discovery-empty">尚未开始扫描 · 确认范围后重试</div></div><div class="discovery-preview"><div class="discovery-preview-title">候选预览</div><div class="discovery-preview-empty">暂无候选。原笔记不会被修改。</div></div></div><div class="discovery-footer"><span>移动端保留复制降级提示</span><span class="spacer"></span><button class="btn" disabled>加入选中项</button></div></div>
+    </div>
+  </div>
+</div>
+</section>
+
+<!-- ======== 屏 11：实现状态镜像（v4） ======== -->
+<section>
+<h2>屏 11 · 实现状态镜像与交互契约（桌面 / 窄屏 / 移动端）</h2>
+<div class="frame t-light state-matrix-frame" style="width:min(100%,1120px);height:auto;padding:16px;overflow:visible">
+  <div class="state-annotation"><strong>镜像说明</strong><span>以下卡片是状态视觉样例，不是可点击控件，也不表示每类操作都需要五种状态。各入口真实拥有的状态、反馈和已验证证据见组件清单；通用交互契约只在该操作适用时生效。</span></div>
+  <div class="state-board" style="margin-top:12px">
+    <article class="state-card"><span class="state-icon">⌕</span><h4>空闲 · 可操作</h4><p>搜索面板保留常驻新建与发现入口；条目动作按来源和宿主能力呈现。</p><div class="state-actions"><span class="btn primary">新建条目 · 样例</span><span class="btn">发现已有内容 · 样例</span></div></article>
+    <article class="state-card loading"><span class="state-icon">◌</span><h4>加载中 · 操作锁定</h4><p>发现扫描显示进度并锁定互斥操作；搜索刷新对列表设置 busy 反馈。</p><div class="state-actions"><span class="btn" aria-disabled="true">正在加载 · 样例</span></div></article>
+    <article class="state-card success"><span class="state-icon">✓</span><h4>成功 · 明确回执</h4><p>收录回执说明新块已写入专用库；已打开的搜索面板刷新结果，发现批次提供有条件的撤销入口。</p><div class="state-actions"><span class="btn">列表刷新 · 样例</span><span class="btn">撤销批次 · 样例</span></div></article>
+    <article class="state-card error"><span class="state-icon">!</span><h4>失败 · 原因 + 可用恢复</h4><p>文档/笔记本目标加载失败会保留原因并提供重试；其他操作按各自回执恢复。</p><div class="state-actions"><span class="btn primary">重试 · 样例</span></div></article>
+    <article class="state-card empty"><span class="state-icon">✦</span><h4>空结果 · 引导下一步</h4><p>空库、筛选无命中、空发现结果分别说明当前范围，并给出可行入口。</p><div class="state-actions"><span class="btn">清除筛选 · 样例</span><span class="btn primary">新建条目 · 样例</span></div></article>
+  </div>
+  <div class="access-state-grid" aria-label="鉴权与权限错误状态样例">
+    <article class="access-state"><span class="access-status" role="alert">登录状态失效</span><h4>鉴权失败 · 保留上下文</h4><p>思源拒绝当前请求。搜索条件和筛选仍保留，旧列表与预览已清空；请回到思源重新登录后再重试。</p><span class="btn primary">重试 · 样例</span></article>
+    <article class="access-state"><span class="access-status" role="alert">访问权限不足</span><h4>权限失败 · 不绕过检查</h4><p>当前账号无权访问所选内容。请检查笔记本或文档权限后重试；插件不会放行或伪造结果。</p><span class="btn primary">重试 · 样例</span></article>
+  </div>
+  <div class="access-state-grid access-state-grid--dark t-dark" aria-label="暗色主题鉴权与权限错误状态样例">
+    <article class="access-state"><span class="access-status" role="alert">登录状态失效</span><h4>鉴权失败 · 保留上下文</h4><p>思源拒绝当前请求。查询条件仍保留，旧结果已清空；重新登录后可重试。</p><span class="btn primary">重试 · 样例</span></article>
+    <article class="access-state"><span class="access-status" role="alert">访问权限不足</span><h4>权限失败 · 检查目标权限</h4><p>当前账号无权访问所选内容。检查笔记本或文档权限后重试。</p><span class="btn primary">重试 · 样例</span></article>
+  </div>
+  <h3 style="margin:16px 0 8px;font-size:13px">边界与破坏性操作</h3>
+  <div class="edge-grid">
+    <article class="edge-card"><strong>超长文本 / 特殊字符</strong><p>正文预览允许换行或局部滚动；列表标题单行省略。目前没有专用的展开全文控件：{{xlc:ask:客户名称|textarea}} / https://example.com/a?x=1&amp;y=2</p></article>
+    <article class="edge-card"><strong>来源失效 / 内核请求失败</strong><p>来源块失效时保留条目并显示告警；鉴权失败与权限不足分别保留搜索上下文、清空过期结果并提供重试。UI 与隔离内核已验证，Electron 真实宿主仍待现场确认。</p></article>
+    <article class="edge-card"><strong>删除 / 覆盖 / 退出</strong><p>先确认后执行；可恢复动作提供撤销回执，不可恢复动作明确说明影响范围。</p></article>
+  </div>
+  <h3 style="margin:16px 0 8px;font-size:13px">断点形态</h3>
+  <div class="responsive-frames">
+    <article class="responsive-frame"><div class="rf-title">桌面 · 双栏预览</div><div class="rf-body"><span class="rf-pill">搜索、筛选、排序同一工具栏</span><span class="rf-pill">左列表 + 右预览，动作区不压缩</span><span class="rf-pill">表单主体滚动，操作区随内容到达</span></div></article>
+    <article class="responsive-frame"><div class="rf-title">窄屏 · 搜索列表优先</div><div class="rf-body"><span class="rf-pill">≤620px 隐藏桌面预览窗格</span><span class="rf-pill">筛选换行，文本不横溢</span><span class="rf-pill">首设说明改为纵向引导</span></div></article>
+    <article class="responsive-frame rf-sheet"><div class="rf-title">移动端 · 底部 sheet</div><div class="rf-body"><span class="rf-pill">44px 触控目标 + 安全区</span><span class="rf-pill">点按选择并预览 · 底部主按钮执行 · 长按打开动作</span><span class="rf-pill">无法验证的能力明确复制降级</span></div></article>
+  </div>
 </div>
 </section>
 

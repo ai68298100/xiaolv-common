@@ -30,6 +30,7 @@ import * as ai from "../src/service/ai";
 import * as startup from "../src/model/startup";
 import * as externalBridge from "../src/service/external-bridge";
 import * as discovery from "../src/service/discovery";
+import * as discoveryTarget from "../src/model/discovery-target";
 
 export {
     item,
@@ -61,4 +62,5 @@ export {
     startup,
     externalBridge,
     discovery,
+    discoveryTarget,
 };
