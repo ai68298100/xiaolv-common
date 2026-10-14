@@ -278,6 +278,68 @@ const check = (name, ok, detail = "") => {
     });
     check("B14 空输入框按 ArrowUp 回填最近搜索历史", historyRestored.val && historyRestored.val === historyRestored.expected, JSON.stringify(historyRestored));
 
+    // B15: 点击列表行标签胶囊直选筛选，再次点击反选取消恢复
+    await open({});
+    await sleep(400);
+    const pillDebug = await page.evaluate(() => {
+        const pill = document.querySelector("[data-xlc-control='row.filter.tag']");
+        return {
+            hasPill: Boolean(pill),
+            text: pill?.textContent,
+            title: pill?.title,
+            parentMeta: pill?.parentElement?.className,
+        };
+    });
+    const tagPillClicked = await page.evaluate(() => {
+        const pill = document.querySelector("[data-xlc-control='row.filter.tag']");
+        if (!pill) return false;
+        pill.click();
+        return true;
+    });
+    await sleep(300);
+    const filterApplied = await page.evaluate(() => {
+        const sel = document.querySelector("[data-xlc-control='filter.tag']");
+        return {
+            val: sel?.value,
+            options: Array.from(sel?.options ?? []).map((o) => o.value),
+        };
+    });
+    // 再次点击同一标签反选恢复全部
+    await page.evaluate(() => {
+        const pill = document.querySelector("[data-xlc-control='row.filter.tag']");
+        pill?.click();
+    });
+    await sleep(300);
+    const filterCleared = await page.evaluate(() => {
+        const sel = document.querySelector("[data-xlc-control='filter.tag']");
+        return sel?.value === "";
+    });
+    check("B15 点击行标签胶囊直选过滤且再次点击反选取消", tagPillClicked && Boolean(filterApplied.val) && filterCleared, `pill=${JSON.stringify(pillDebug)} applied=${JSON.stringify(filterApplied)} cleared=${filterCleared}`);
+
+    // B16: 条目动作菜单中展示重置使用频次选项并成功派发清零
+    await open({});
+    await sleep(300);
+    await page.evaluate(() => {
+        window.__xlcResetUsageItems = [];
+        const row = document.querySelector("[data-xlc-control='item.row']");
+        // 触发右键上下文菜单（长按/右键菜单）
+        row?.dispatchEvent(new MouseEvent("contextmenu", {bubbles: true, cancelable: true, clientX: 200, clientY: 200}));
+    });
+    await sleep(250);
+    const resetBtnClicked = await page.evaluate(() => {
+        const items = Array.from(document.querySelectorAll(".xlc-menu-item"));
+        const resetBtn = items.find((el) => (el.textContent ?? "").includes("重置使用频次"));
+        if (!resetBtn) return false;
+        resetBtn.click();
+        return true;
+    });
+    await sleep(250);
+    const resetDispatched = await page.evaluate(() => {
+        const calls = window.__xlcResetUsageItems;
+        return Array.isArray(calls) && calls.length > 0 && calls.includes("xlc-demo0000001");
+    });
+    check("B16 动作菜单展示重置使用频次并成功分派清零", resetBtnClicked && resetDispatched, `btn=${resetBtnClicked} dispatched=${resetDispatched}`);
+
     // ── C. Esc 关闭弹窗 ──
     await open({});
     await sleep(200);

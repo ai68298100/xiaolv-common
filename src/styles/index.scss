@@ -626,12 +626,63 @@
     }
 
     .xlc-row-meta {
+      display: flex;
+      align-items: center;
+      gap: var(--xlc-space-1);
       font-size: var(--xlc-font-xs);
       font-variant-numeric: tabular-nums;
       color: var(--b3-theme-on-surface);
       overflow: hidden;
       text-overflow: ellipsis;
       white-space: nowrap;
+
+      .xlc-row-tags {
+        display: inline-flex;
+        align-items: center;
+        gap: var(--xlc-space-1);
+        flex-shrink: 0;
+      }
+
+      .xlc-tag-pill {
+        display: inline-flex;
+        align-items: center;
+        border: 0;
+        background: var(--xlc-soft);
+        color: var(--xlc-muted);
+        font-size: var(--xlc-font-2xs);
+        padding: 0 var(--xlc-space-1);
+        border-radius: var(--xlc-radius-sm);
+        line-height: var(--xlc-line-control);
+        font-family: inherit;
+        cursor: pointer;
+        transition: background-color var(--xlc-dur-fast) var(--xlc-ease),
+                    color var(--xlc-dur-fast) var(--xlc-ease);
+
+        &:hover {
+          background: var(--xlc-lavender);
+          color: var(--xlc-lavender-ink);
+        }
+
+        &--on {
+          background: var(--b3-theme-primary);
+          color: #fff;
+        }
+
+        &--more {
+          cursor: default;
+          pointer-events: none;
+        }
+      }
+
+      .xlc-row-summary {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .xlc-row-usecount {
+        flex-shrink: 0;
+      }
     }
 
     .xlc-row-action {

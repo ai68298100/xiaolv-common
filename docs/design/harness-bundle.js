@@ -4407,10 +4407,51 @@ ${exception.mark.snippet}`;
       main.appendChild(title);
       const meta = document.createElement("div");
       meta.className = "xlc-row-meta";
+      const currentFilters = this.deps.getFilters();
+      const cleanTags = entry.tags.filter(Boolean);
+      const shownTags = cleanTags.slice(0, 3);
+      if (shownTags.length > 0) {
+        const tagsWrapper = document.createElement("span");
+        tagsWrapper.className = "xlc-row-tags";
+        for (const tag of shownTags) {
+          const isSelected = currentFilters.tag === tag;
+          const pill = document.createElement("button");
+          pill.type = "button";
+          pill.className = "xlc-tag-pill" + (isSelected ? " xlc-tag-pill--on" : "");
+          pill.dataset.xlcControl = "row.filter.tag";
+          pill.textContent = `#${tag}`;
+          const tip = this.deps.t(isSelected ? "clearThisTagFilter" : "filterByThisTag", tag);
+          pill.title = tip;
+          pill.setAttribute("aria-label", tip);
+          pill.setAttribute("aria-pressed", String(isSelected));
+          pill.addEventListener("click", (e) => {
+            e.stopPropagation();
+            this.filterByTag(tag);
+          });
+          tagsWrapper.appendChild(pill);
+        }
+        if (cleanTags.length > shownTags.length) {
+          const more = document.createElement("span");
+          more.className = "xlc-tag-pill xlc-tag-pill--more";
+          more.textContent = `+${cleanTags.length - shownTags.length}`;
+          tagsWrapper.appendChild(more);
+        }
+        meta.appendChild(tagsWrapper);
+      }
       const useCount = (_c = this.usageCounts.get(entry.id)) != null ? _c : 0;
-      const joined = [entry.tags.join(" / "), entry.summary].filter(Boolean).join(" \xB7 ");
-      const metaBase = joined.length > 140 ? joined.slice(0, 140) + "\u2026" : joined;
-      meta.textContent = metaBase + (useCount > 0 ? ` \xB7 ${this.deps.t("useCount", String(useCount))}` : "");
+      if (entry.summary) {
+        const summarySpan = document.createElement("span");
+        summarySpan.className = "xlc-row-summary";
+        const summaryText = entry.summary.length > 100 ? entry.summary.slice(0, 100) + "\u2026" : entry.summary;
+        summarySpan.textContent = (shownTags.length > 0 ? " \xB7 " : "") + summaryText;
+        meta.appendChild(summarySpan);
+      }
+      if (useCount > 0) {
+        const useSpan = document.createElement("span");
+        useSpan.className = "xlc-row-usecount";
+        useSpan.textContent = (shownTags.length > 0 || entry.summary ? " \xB7 " : "") + this.deps.t("useCount", String(useCount));
+        meta.appendChild(useSpan);
+      }
       main.appendChild(meta);
       row.appendChild(main);
       const star = document.createElement("button");
@@ -4976,6 +5017,20 @@ ${exception.mark.snippet}`;
       });
       (_f = menu.querySelector(".xlc-menu-item")) == null ? void 0 : _f.focus();
     }
+    /** 直选或反选标签筛选（ADR 0044 / T-0071） */
+    filterByTag(tag) {
+      var _a;
+      const current = this.deps.getFilters();
+      const nextTag = current.tag === tag ? "" : tag;
+      this.deps.setFilters({
+        type: current.type,
+        tag: nextTag,
+        category: current.category
+      });
+      const tagSelect = (_a = this.dialog) == null ? void 0 : _a.element.querySelector(".xlc-tag-select");
+      if (tagSelect) tagSelect.value = nextTag;
+      void this.refresh().then(() => this.restoreFocusToSearch());
+    }
     /** 预览窗格元数据行（R108，Raycast Detail.Metadata 惯例）：类型徽标 + 分类/标签可点筛选 + 更新日期。 */
     paintPaneMeta(entry) {
       var _a, _b;
@@ -5021,14 +5076,17 @@ ${exception.mark.snippet}`;
       const cleanTags = entry.tags.filter(Boolean);
       const shownTags = cleanTags.slice(0, 3);
       for (const tag of shownTags) {
+        const isSelected = currentFilters.tag === tag;
         const chip = document.createElement("button");
         chip.type = "button";
-        chip.className = "xlc-meta-chip" + (currentFilters.tag === tag ? " xlc-meta-chip--on" : "");
+        chip.className = "xlc-meta-chip xlc-meta-chip--clickable" + (isSelected ? " xlc-meta-chip--on" : "");
         chip.dataset.xlcControl = "preview.filter.tag";
-        chip.textContent = tag;
-        chip.title = this.deps.t("tags");
-        chip.setAttribute("aria-pressed", String(currentFilters.tag === tag));
-        chip.addEventListener("click", () => setFilter({ tag: toggleChip(tag, this.deps.getFilters().tag) }));
+        chip.textContent = `#${tag}`;
+        const tip = this.deps.t(isSelected ? "clearThisTagFilter" : "filterByThisTag", tag);
+        chip.title = tip;
+        chip.setAttribute("aria-label", tip);
+        chip.setAttribute("aria-pressed", String(isSelected));
+        chip.addEventListener("click", () => this.filterByTag(tag));
         meta.appendChild(chip);
       }
       if (cleanTags.length > shownTags.length) {
@@ -5243,6 +5301,7 @@ ${exception.mark.snippet}`;
         render();
       };
       const buildDefault = () => {
+        var _a2;
         const lbl = document.createElement("div");
         lbl.className = "xlc-menu-lbl";
         lbl.textContent = (entry.title || this.deps.t("unknownType")) + " \xB7 " + this.deps.t("actionsNoun");
@@ -5262,11 +5321,11 @@ ${exception.mark.snippet}`;
         sec1.className = "xlc-menu-sec";
         const addAction = (icon, label, run, cls = "xlc-menu-item", destroyBeforeRun = true) => {
           sec1.appendChild(this.menuButton(icon, label, cls, async () => {
-            var _a2;
+            var _a3;
             const execution = run();
             if (destroyBeforeRun) this.destroy();
             else {
-              (_a2 = this.menuDismiss) == null ? void 0 : _a2.call(this);
+              (_a3 = this.menuDismiss) == null ? void 0 : _a3.call(this);
               this.menuDismiss = null;
             }
             await execution;
@@ -5305,8 +5364,8 @@ ${exception.mark.snippet}`;
         sec2.className = "xlc-menu-sec";
         const addSilent = (icon, label, run, cls = "xlc-menu-item", title) => {
           const btn = this.menuButton(icon, label, cls, async () => {
-            var _a2;
-            (_a2 = this.menuDismiss) == null ? void 0 : _a2.call(this);
+            var _a3;
+            (_a3 = this.menuDismiss) == null ? void 0 : _a3.call(this);
             this.menuDismiss = null;
             await run();
           });
@@ -5317,9 +5376,20 @@ ${exception.mark.snippet}`;
         addSilent("\u2197", this.deps.t("openSource"), () => this.deps.openSource(entry.id));
         addSilent("\u270E", this.deps.t("edit"), () => this.deps.editItem(entry.id));
         addSilent("\u29C9", this.deps.t("duplicateItem"), () => this.deps.duplicateItem(entry.id));
+        const useCount = (_a2 = this.usageCounts.get(entry.id)) != null ? _a2 : 0;
+        if (useCount > 0 && this.deps.resetItemUsage) {
+          addSilent("\u21BA", this.deps.t("resetItemUsage", String(useCount)), async () => {
+            var _a3, _b2;
+            const ok = (_b2 = (_a3 = this.deps).resetItemUsage) == null ? void 0 : _b2.call(_a3, entry.id);
+            if (ok) {
+              this.usageCounts.delete(entry.id);
+              void this.refreshPreservingPosition();
+            }
+          }, "xlc-menu-item", this.deps.t("resetItemUsage", String(useCount)));
+        }
         addSilent("\u{1F5D1}", this.deps.t("delete"), () => this.deps.deleteItem(entry.id), "xlc-menu-item xlc-menu-item--danger", `${this.deps.t("delete")} (Alt+Delete)`);
         const toDocBtn = this.menuButton("\u2913", this.deps.t("insertToDoc"), "xlc-menu-item", () => {
-          var _a2;
+          var _a3;
           let sec = menu.querySelector(".xlc-menu-pickdoc");
           if (sec) {
             sec.remove();
@@ -5373,8 +5443,8 @@ ${exception.mark.snippet}`;
               searchStatus.remove();
               for (const hit of hits.slice(0, 5)) {
                 sec.appendChild(this.menuButton("\u2913", hit.hPath || hit.name || hit.id, "xlc-menu-item xlc-pickdoc-hit", async () => {
-                  var _a3;
-                  (_a3 = this.menuDismiss) == null ? void 0 : _a3.call(this);
+                  var _a4;
+                  (_a4 = this.menuDismiss) == null ? void 0 : _a4.call(this);
                   this.menuDismiss = null;
                   await this.insertEntryWithVars(entry, (fills) => this.deps.insertToDoc(entry.id, hit.id, hit.hPath, fills));
                 }));
@@ -5398,7 +5468,7 @@ ${exception.mark.snippet}`;
             runDocSearch(input.value);
           });
           const actions2 = menu.querySelectorAll(".xlc-menu-sec");
-          (_a2 = actions2[actions2.length - 1]) == null ? void 0 : _a2.before(sec);
+          (_a3 = actions2[actions2.length - 1]) == null ? void 0 : _a3.before(sec);
           input.focus();
         });
         sec2.appendChild(toDocBtn);
@@ -10702,6 +10772,8 @@ ${details.join("\n")}` : ""}`;
       filterAll: "\u5168\u90E8\u7C7B\u578B",
       filterAllType: "\u7C7B\u578B\uFF1A\u5168\u90E8",
       filterAllTags: "\u6807\u7B7E\uFF1A\u5168\u90E8",
+      filterByThisTag: "\u70B9\u51FB\u6309\u6B64\u6807\u7B7E\u7B5B\u9009\uFF1A%s",
+      clearThisTagFilter: "\u70B9\u51FB\u53D6\u6D88\u6807\u7B7E\u7B5B\u9009\uFF1A%s",
       filterAllCategories: "\u5206\u7C7B\uFF1A\u5168\u90E8",
       "type.text": "\u7EAF\u6587\u672C",
       "type.markdown": "Markdown",
@@ -10803,6 +10875,8 @@ ${details.join("\n")}` : ""}`;
       clearUsageEmpty: "\u6682\u65E0\u4F7F\u7528\u7EDF\u8BA1",
       clearUsageConfirm: "\u6E05\u7A7A\u5168\u90E8\u4F7F\u7528\u8BA1\u6570\uFF1F",
       clearUsageDone: "\u5DF2\u6E05\u7A7A\u4F7F\u7528\u7EDF\u8BA1",
+      resetItemUsage: "\u91CD\u7F6E\u4F7F\u7528\u9891\u6B21\uFF08\u5F53\u524D %s \u6B21\uFF09",
+      resetItemUsageDone: "\u5DF2\u91CD\u7F6E\u300C%s\u300D\u7684\u4F7F\u7528\u9891\u6B21",
       importPolicySkipDesc: "\u540C\u540D\u540C\u6E90\u6761\u76EE\u4E0D\u52A8\uFF0C\u4EC5\u65B0\u589E\u7F3A\u5931\u9879",
       importPolicyOverwriteDesc: "\u4EE5\u5BFC\u5165\u5185\u5BB9\u66F4\u65B0\u73B0\u6709\u6761\u76EE\uFF08\u539F\u6587\u5757\u88AB\u6539\u5199\uFF09",
       importPolicyRenameDesc: "\u5BFC\u5165\u9879\u52A0\u300C\u5BFC\u5165\u300D\u540E\u7F00\uFF0C\u73B0\u6709\u6761\u76EE\u4E0D\u53D7\u5F71\u54CD",
@@ -11119,6 +11193,12 @@ ${details.join("\n")}` : ""}`;
         "xlc-demo0000003": { count: 11, lastAt: 200 },
         "xlc-demo0000005": { count: 4, lastAt: 100 }
       }),
+      resetItemUsage: (itemId) => {
+        var _a2;
+        const w = window;
+        ((_a2 = w.__xlcResetUsageItems) != null ? _a2 : w.__xlcResetUsageItems = []).push(itemId);
+        return true;
+      },
       newItem: (titleCandidate) => {
         var _a2;
         document.body.dataset.xlcNewItemTitle = titleCandidate != null ? titleCandidate : "";

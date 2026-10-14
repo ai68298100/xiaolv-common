@@ -109,7 +109,7 @@ const T = (key: string, ...args: string[]): string => {
         kernelPermissionDenied: "当前操作无权访问所选内容。请检查权限后重试；当前搜索条件已保留。",
         kernelAuthStatus: "登录状态失效",
         kernelPermissionStatus: "访问权限不足",
-        type: "类型", tags: "标签", tagsHint: "逗号分隔", title: "标题", alias: "别名", category: "分类", contentLabel: "内容（Markdown）", filterAll: "全部类型", filterAllType: "类型：全部", filterAllTags: "标签：全部", filterAllCategories: "分类：全部",
+        type: "类型", tags: "标签", tagsHint: "逗号分隔", title: "标题", alias: "别名", category: "分类", contentLabel: "内容（Markdown）", filterAll: "全部类型", filterAllType: "类型：全部", filterAllTags: "标签：全部", filterByThisTag: "点击按此标签筛选：%s", clearThisTagFilter: "点击取消标签筛选：%s", filterAllCategories: "分类：全部",
         "type.text": "纯文本", "type.markdown": "Markdown", "type.url": "网址", "type.code": "代码", "type.image": "图片", "type.asset": "附件", "type.blockref": "块引用", "type.structure": "块结构", filterFavorites: "只看收藏", filterRecent: "最近使用",
         empty: "没有找到匹配内容", usageHint: "↑ ↓ 选择 · Enter 插入 · Ctrl/⌘ + Enter 复制 · Alt + 1-9 快速插入 · Esc 关闭",
         ordinalShortcutHint: "Alt+%s 插入 · Alt+Shift+%s 复制",
@@ -150,6 +150,7 @@ const T = (key: string, ...args: string[]): string => {
         promptVariablesToggle: "插入前询问变量", promptVariablesSub: "含 {{xlc:ask:…}} 的条目插入前弹出填充卡片",
         recordUsageToggle: "记录使用次数", recordUsageSub: "仅本地存储，可一键清除；用于「常用」排序。关闭后会保留已有统计。",
         usageStatsHint: "使用统计仅保存在本机", clearUsageBtn: "清空使用统计", clearUsageEmpty: "暂无使用统计", clearUsageConfirm: "清空全部使用计数？", clearUsageDone: "已清空使用统计",
+        resetItemUsage: "重置使用频次（当前 %s 次）", resetItemUsageDone: "已重置「%s」的使用频次",
         importPolicySkipDesc: "同名同源条目不动，仅新增缺失项", importPolicyOverwriteDesc: "以导入内容更新现有条目（原文块被改写）", importPolicyRenameDesc: "导入项加「导入」后缀，现有条目不受影响",
         recommended: "推荐", importReceiptHint: "导入完成将逐项回执：新增 / 跳过 / 覆盖 / 改名 / 失败",
         importPolicyTitle: "选择重复处理策略", importPolicySkip: "跳过重复（保留现有）", importPolicyOverwrite: "覆盖重复", importPolicyRename: "重名并存",
@@ -325,6 +326,11 @@ function makeDeps(overrides: {aiEnabled?: boolean; missing?: boolean; mobile?: b
             "xlc-demo0000003": {count: 11, lastAt: 200},
             "xlc-demo0000005": {count: 4, lastAt: 100},
         }),
+        resetItemUsage: (itemId: string) => {
+            const w = window as unknown as {__xlcResetUsageItems?: string[]};
+            (w.__xlcResetUsageItems ??= []).push(itemId);
+            return true;
+        },
         newItem: (titleCandidate?: string) => {
             document.body.dataset.xlcNewItemTitle = titleCandidate ?? "";
             document.body.dataset.xlcNewItemCalls = String(Number(document.body.dataset.xlcNewItemCalls ?? 0) + 1);

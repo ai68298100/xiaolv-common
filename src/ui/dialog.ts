@@ -60,6 +60,8 @@ export interface DialogDeps {
     copyProviderPayload: (payload: string) => Promise<boolean>;
     /** 使用计数（F3 展示：行 meta 与预览徽标；侧车只读） */
     getUsage: () => Record<string, {count: number; lastAt: number}>;
+    /** 重置单条条目使用频次（ADR 0045 / T-0072） */
+    resetItemUsage?: (itemId: string) => boolean;
     /** 手动新建条目（移动端「＋ 新建」入口） */
     newItem: (titleCandidate?: string) => void;
     /** 从文本快速创建草稿（拖拽放置 / 面板非输入区快捷粘贴，ADR 0034 / T-0061） */
@@ -1122,10 +1124,52 @@ export class CommonSearchDialog {
         main.appendChild(title);
         const meta = document.createElement("div");
         meta.className = "xlc-row-meta";
+        const currentFilters = this.deps.getFilters();
+        const cleanTags = entry.tags.filter(Boolean);
+        const shownTags = cleanTags.slice(0, 3);
+        if (shownTags.length > 0) {
+            const tagsWrapper = document.createElement("span");
+            tagsWrapper.className = "xlc-row-tags";
+            for (const tag of shownTags) {
+                const isSelected = currentFilters.tag === tag;
+                const pill = document.createElement("button");
+                pill.type = "button";
+                pill.className = "xlc-tag-pill" + (isSelected ? " xlc-tag-pill--on" : "");
+                pill.dataset.xlcControl = "row.filter.tag";
+                pill.textContent = `#${tag}`;
+                const tip = this.deps.t(isSelected ? "clearThisTagFilter" : "filterByThisTag", tag);
+                pill.title = tip;
+                pill.setAttribute("aria-label", tip);
+                pill.setAttribute("aria-pressed", String(isSelected));
+                pill.addEventListener("click", (e) => {
+                    e.stopPropagation();
+                    this.filterByTag(tag);
+                });
+                tagsWrapper.appendChild(pill);
+            }
+            if (cleanTags.length > shownTags.length) {
+                const more = document.createElement("span");
+                more.className = "xlc-tag-pill xlc-tag-pill--more";
+                more.textContent = `+${cleanTags.length - shownTags.length}`;
+                tagsWrapper.appendChild(more);
+            }
+            meta.appendChild(tagsWrapper);
+        }
+
         const useCount = this.usageCounts.get(entry.id) ?? 0;
-        const joined = [entry.tags.join(" / "), entry.summary].filter(Boolean).join(" · ");
-        const metaBase = joined.length > 140 ? joined.slice(0, 140) + "…" : joined;
-        meta.textContent = metaBase + (useCount > 0 ? ` · ${this.deps.t("useCount", String(useCount))}` : "");
+        if (entry.summary) {
+            const summarySpan = document.createElement("span");
+            summarySpan.className = "xlc-row-summary";
+            const summaryText = entry.summary.length > 100 ? entry.summary.slice(0, 100) + "…" : entry.summary;
+            summarySpan.textContent = (shownTags.length > 0 ? " · " : "") + summaryText;
+            meta.appendChild(summarySpan);
+        }
+        if (useCount > 0) {
+            const useSpan = document.createElement("span");
+            useSpan.className = "xlc-row-usecount";
+            useSpan.textContent = (shownTags.length > 0 || entry.summary ? " · " : "") + this.deps.t("useCount", String(useCount));
+            meta.appendChild(useSpan);
+        }
         main.appendChild(meta);
         row.appendChild(main);
         const star = document.createElement("button");
@@ -1746,6 +1790,20 @@ export class CommonSearchDialog {
         menu.querySelector<HTMLElement>(".xlc-menu-item")?.focus();
     }
 
+    /** 直选或反选标签筛选（ADR 0044 / T-0071） */
+    private filterByTag(tag: string): void {
+        const current = this.deps.getFilters();
+        const nextTag = current.tag === tag ? "" : tag;
+        this.deps.setFilters({
+            type: current.type,
+            tag: nextTag,
+            category: current.category,
+        });
+        const tagSelect = this.dialog?.element.querySelector<HTMLSelectElement>(".xlc-tag-select");
+        if (tagSelect) tagSelect.value = nextTag;
+        void this.refresh().then(() => this.restoreFocusToSearch());
+    }
+
     /** 预览窗格元数据行（R108，Raycast Detail.Metadata 惯例）：类型徽标 + 分类/标签可点筛选 + 更新日期。 */
     private paintPaneMeta(entry: SearchEntry | undefined): void {
         const meta = this.dialog?.element.querySelector<HTMLElement>(".xlc-pane-meta");
@@ -1790,14 +1848,17 @@ export class CommonSearchDialog {
         const cleanTags = entry.tags.filter(Boolean);
         const shownTags = cleanTags.slice(0, 3);
         for (const tag of shownTags) {
+            const isSelected = currentFilters.tag === tag;
             const chip = document.createElement("button");
             chip.type = "button";
-            chip.className = "xlc-meta-chip" + (currentFilters.tag === tag ? " xlc-meta-chip--on" : "");
+            chip.className = "xlc-meta-chip xlc-meta-chip--clickable" + (isSelected ? " xlc-meta-chip--on" : "");
             chip.dataset.xlcControl = "preview.filter.tag";
-            chip.textContent = tag;
-            chip.title = this.deps.t("tags");
-            chip.setAttribute("aria-pressed", String(currentFilters.tag === tag));
-            chip.addEventListener("click", () => setFilter({tag: toggleChip(tag, this.deps.getFilters().tag)}));
+            chip.textContent = `#${tag}`;
+            const tip = this.deps.t(isSelected ? "clearThisTagFilter" : "filterByThisTag", tag);
+            chip.title = tip;
+            chip.setAttribute("aria-label", tip);
+            chip.setAttribute("aria-pressed", String(isSelected));
+            chip.addEventListener("click", () => this.filterByTag(tag));
             meta.appendChild(chip);
         }
         if (cleanTags.length > shownTags.length) {
@@ -2123,6 +2184,16 @@ export class CommonSearchDialog {
             addSilent("↗", this.deps.t("openSource"), () => this.deps.openSource(entry.id));
             addSilent("✎", this.deps.t("edit"), () => this.deps.editItem(entry.id));
             addSilent("⧉", this.deps.t("duplicateItem"), () => this.deps.duplicateItem(entry.id));
+            const useCount = this.usageCounts.get(entry.id) ?? 0;
+            if (useCount > 0 && this.deps.resetItemUsage) {
+                addSilent("↺", this.deps.t("resetItemUsage", String(useCount)), async () => {
+                    const ok = this.deps.resetItemUsage?.(entry.id);
+                    if (ok) {
+                        this.usageCounts.delete(entry.id);
+                        void this.refreshPreservingPosition();
+                    }
+                }, "xlc-menu-item", this.deps.t("resetItemUsage", String(useCount)));
+            }
             // 删除 = 危险动作，固定语义红（样式层区分；确认弹窗不变）
             addSilent("🗑", this.deps.t("delete"), () => this.deps.deleteItem(entry.id), "xlc-menu-item xlc-menu-item--danger", `${this.deps.t("delete")} (Alt+Delete)`);
             // 插入到指定文档（菜单内联文档选择器；无活动编辑器场景的主路径）

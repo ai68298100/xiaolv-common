@@ -1206,6 +1206,7 @@ export default class XiaolvCommonPlugin extends Plugin {
             }),
             promptVariables: () => this.state.insert.promptVariables,
             getUsage: () => this.state.usage,
+            resetItemUsage: (itemId: string) => this.resetItemUsage(itemId),
             newItem: (titleCandidate?: string) => this.capture.newManual(titleCandidate),
             newWithContent: (content: string, options?: {title?: string}) => this.capture.newWithContent(content, options),
             openSource: async (itemId) => {
@@ -1360,6 +1361,15 @@ export default class XiaolvCommonPlugin extends Plugin {
         });
         this.searchDialog.insertTarget = insertTarget ? {docId: insertTarget.docId, hPath: insertTarget.hPath} : null;
         this.searchDialog.open();
+    }
+
+    resetItemUsage(itemId: string): boolean {
+        if (this.state.usage[itemId]) {
+            delete this.state.usage[itemId];
+            this.persistSoon();
+            return true;
+        }
+        return false;
     }
 
     private receiptText(code: string, title: string, pending: string[]): string {
