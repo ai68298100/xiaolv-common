@@ -256,6 +256,28 @@ const check = (name, ok, detail = "") => {
     });
     check("B13 Alt+F 快捷切换条目收藏状态", favOk);
 
+    // B14: 空搜索框聚焦时按 Alt+ArrowUp 成功回填最近搜索历史词
+    await page.evaluate(() => {
+        const input = document.querySelector("[data-xlc-control='search.input']");
+        if (input) {
+            input.value = "";
+            input.dispatchEvent(new Event("input", {bubbles: true}));
+            input.focus();
+        }
+    });
+    await sleep(300);
+    await key("ArrowUp", {altKey: true});
+    await sleep(250);
+    const historyRestored = await page.evaluate(() => {
+        const input = document.querySelector("[data-xlc-control='search.input']");
+        const history = window.XlcHarness ? (window.__xlcRecentQueries ?? []) : [];
+        return {
+            val: input?.value ?? "",
+            expected: history[0] ?? "",
+        };
+    });
+    check("B14 空输入框按 ArrowUp 回填最近搜索历史", historyRestored.val && historyRestored.val === historyRestored.expected, JSON.stringify(historyRestored));
+
     // ── C. Esc 关闭弹窗 ──
     await open({});
     await sleep(200);

@@ -115,6 +115,15 @@ export interface SearchPrefs {
     placeholders: boolean;
     /** 上次搜索词（跨会话保留，200 字符截断；空串=无） */
     lastQuery: string;
+    /** 最近搜索词历史（上限 10 条，LRU 去重保序，ADR 0043 / T-0070） */
+    recentQueries?: string[];
+}
+
+/** 追加并更新最近搜索历史队列（LRU 去重保序，上限 10 条） */
+export function pushRecentQuery(history: readonly string[], newQuery: string, limit = 10): string[] {
+    const trimmed = (newQuery ?? "").trim().slice(0, LIMITS.queryChars);
+    if (!trimmed) return [...history];
+    return [trimmed, ...history.filter((q) => q !== trimmed)].slice(0, limit);
 }
 
 /** 使用计数（F3）：插入/复制成功 +1；「常用」排序=次数×最近使用时间。侧车存储，可重建可清空。 */
@@ -230,6 +239,13 @@ export function normalizeState(raw: unknown): PluginState {
             lastQuery: obj.search !== null && typeof obj.search === "object" && typeof (obj.search as SearchPrefs).lastQuery === "string"
                 ? ((obj.search as SearchPrefs).lastQuery as string).slice(0, LIMITS.queryChars)
                 : "",
+            recentQueries: obj.search !== null && typeof obj.search === "object" && Array.isArray((obj.search as SearchPrefs).recentQueries)
+                ? Array.from(new Set(
+                    ((obj.search as SearchPrefs).recentQueries as unknown[])
+                        .filter((q): q is string => typeof q === "string" && q.trim().length > 0)
+                        .map((q) => q.trim().slice(0, LIMITS.queryChars))
+                )).slice(0, 10)
+                : [],
         },
         // 插入偏好默认开（F1/F3）；显式 false 才关
         insert: {

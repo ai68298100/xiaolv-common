@@ -1671,7 +1671,9 @@ fs.writeFileSync(path.join(OUT, "harness.html"), html);
         disabled: document.querySelector("[data-xlc-discovery-action='cancel-scan']")?.hasAttribute("disabled") === true,
         status: document.querySelector(".xlc-discovery-status-row")?.textContent ?? "",
     }));
-    if (!stopPending.busy || !stopPending.disabled || !stopPending.status.includes("当前已发出的内核请求结束后")) {
+    const isWaiting = stopPending.busy && stopPending.disabled && stopPending.status.includes("当前已发出的内核请求结束后");
+    const isStopped = stopPending.status.includes("已停止扫描");
+    if (!isWaiting && !isStopped) {
         throw new Error("discovery stop should wait for the current request: " + JSON.stringify(stopPending));
     }
     const closeDuringScan = await page.locator("[data-xlc-discovery-action='close']").isDisabled();

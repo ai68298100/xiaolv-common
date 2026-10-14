@@ -260,3 +260,28 @@ export function normalizeUnknownItem(raw: unknown): CommonItem | null {
     if (typeof obj.summary === "string") item.summary = obj.summary.slice(0, LIMITS.summary);
     return item;
 }
+
+export type CategoryColorVariant = "business" | "support" | "dev" | "writing" | "ai";
+
+/**
+ * 场景分类语义色系确定性映射（ADR 0042 / T-0069）：
+ * 常见核心场景映射到特定语义色，任意自定义分类通过确定性哈希均匀分布到 5 种莫兰迪色系之一。
+ */
+export function getCategoryColorVariant(category: string): CategoryColorVariant {
+    const trimmed = (category ?? "").trim();
+    if (!trimmed) return "business";
+    if (/商务|财务|发票|银行|采购|合同/i.test(trimmed)) return "business";
+    if (/客服|支持|售后|退换|接待|咨询/i.test(trimmed)) return "support";
+    if (/开发|代码|研发|SQL|技术|架构|编程/i.test(trimmed)) return "dev";
+    if (/写作|周报|会议|计划|日常|笔记/i.test(trimmed)) return "writing";
+    if (/提示词|AI|模型|Prompt/i.test(trimmed)) return "ai";
+
+    let hash = 0;
+    for (let i = 0; i < trimmed.length; i++) {
+        hash = (hash * 31 + trimmed.charCodeAt(i)) >>> 0;
+    }
+    const variants: readonly CategoryColorVariant[] = [
+        "business", "support", "dev", "writing", "ai",
+    ];
+    return variants[hash % variants.length] ?? "business";
+}

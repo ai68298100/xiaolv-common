@@ -310,6 +310,12 @@ function makeDeps(overrides: {aiEnabled?: boolean; missing?: boolean; mobile?: b
         },
         getLastQuery: () => "",
         setLastQuery: () => {},
+        getRecentQueries: () => (window as unknown as {__xlcRecentQueries?: string[]}).__xlcRecentQueries ?? ["发票资料", "延期道歉"],
+        addRecentQuery: (q: string) => {
+            const w = window as unknown as {__xlcRecentQueries?: string[]};
+            const current = w.__xlcRecentQueries ?? ["发票资料", "延期道歉"];
+            w.__xlcRecentQueries = [q, ...current.filter((x) => x !== q)].slice(0, 10);
+        },
         insertTarget: null,
         openSetup: () => (window as unknown as {XlcHarness: {openSettings: () => void}}).XlcHarness.openSettings(),
         promptVariables: () => true,

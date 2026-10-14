@@ -6,7 +6,7 @@
 // AI：? 前缀语义找条目（默认仅元数据出域）；动作菜单 AI 变换（预览后选插入，原文永不被改写）。
 import {Dialog} from "siyuan";
 import {getDialogBody} from "./dialog-dom";
-import {ITEM_TYPES, ItemType} from "../model/item";
+import {ITEM_TYPES, ItemType, getCategoryColorVariant} from "../model/item";
 import {SearchEntry, SearchQuery} from "../model/search";
 import {InsertMode} from "../model/actions";
 import {TransformKind} from "../service/ai";
@@ -40,6 +40,9 @@ export interface DialogDeps {
     /** 上次搜索词（跨会话保留；空串=无） */
     getLastQuery: () => string;
     setLastQuery: (q: string) => void;
+    /** 最近搜索历史队列（ADR 0043 / T-0070） */
+    getRecentQueries?: () => string[];
+    addRecentQuery?: (q: string) => void;
     /** 定向插入目标（文档树入口；设置后 Enter/点按插入到该文档而非活动编辑器） */
     insertTarget?: {docId: string; hPath: string} | null;
     toggleFavorite: (itemId: string) => boolean;
@@ -217,6 +220,10 @@ export class CommonSearchDialog {
             syncQMark();
             this.currentScope = "all";
             this.syncScopeChips(); // 输入即重置范围，chip 选中态必须同步（R138）
+            // 真实手动输入时退出历史回退态
+            if (!this.navigatingHistory) {
+                this.historyCursor = -1;
+            }
             // 持久化剥离 ? 前缀：重开弹窗预填普通查询，绝不自动触发 AI 语义找
             this.deps.setLastQuery(input.value.replace(/^\?+/, ""));
             // IME 组合输入（中文输入法组词）期间跳过刷新——候选词未上屏不过滤；
@@ -1081,6 +1088,15 @@ export class CommonSearchDialog {
         badge.title = this.deps.t(`type.${entry.itemType}`);
         badge.setAttribute("aria-label", this.deps.t(`type.${entry.itemType}`));
         title.appendChild(badge);
+        if (entry.category && entry.category.trim()) {
+            const catBadge = document.createElement("span");
+            const variant = getCategoryColorVariant(entry.category);
+            catBadge.className = `xlc-badge xlc-badge--cat xlc-cat--${variant}`;
+            catBadge.textContent = entry.category.trim();
+            catBadge.title = `${this.deps.t("category")}：${entry.category.trim()}`;
+            catBadge.setAttribute("aria-label", `${this.deps.t("category")}：${entry.category.trim()}`);
+            title.appendChild(catBadge);
+        }
         const titleText = document.createElement("span");
         titleText.className = "xlc-row-titletext";
         const highlight = this.lastQueryText.length > 0
@@ -1893,7 +1909,13 @@ export class CommonSearchDialog {
     private transformSeq = 0;
     /** 排序菜单关闭时刻：chip 的 click 在 pointerdown 关闭之后到达，不得立刻重开（R138 toggle） */
     private sortMenuClosedAt = 0;
+    private historyCursor = -1;
+    private tempQueryBeforeHistory = "";
+    private navigatingHistory = false;
+
     private async runPrimary(entry: SearchEntry): Promise<void> {
+        const cleanQuery = this.lastQueryText.replace(/^\?+/, "").trim();
+        if (cleanQuery) this.deps.addRecentQuery?.(cleanQuery);
         if (this.primaryBusy || this.varFormOpen) return;
         await this.insertEntryWithVars(entry, (fills) => this.runActionFor(entry, fills));
     }
@@ -2356,6 +2378,49 @@ export class CommonSearchDialog {
         if (e.isComposing || e.keyCode === 229) return;
         const list = this.dialog?.element.querySelector<HTMLElement>(".xlc-list");
         if (!list) return;
+        const input = this.dialog?.element.querySelector<HTMLInputElement>(".xlc-search-input");
+        const isInputFocused = e.target === input || document.activeElement === input;
+
+        // 历史回溯向下回退（ADR 0043）：支持 Alt+ArrowDown 或在历史态中向下
+        const isHistoryDown = (e.altKey && e.key === "ArrowDown") || (e.key === "ArrowDown" && isInputFocused && this.historyCursor >= 0);
+        if (isHistoryDown && input) {
+            e.preventDefault();
+            this.historyCursor--;
+            const history = this.deps.getRecentQueries?.() ?? [];
+            this.navigatingHistory = true;
+            if (this.historyCursor >= 0) {
+                input.value = history[this.historyCursor] ?? "";
+            } else {
+                input.value = this.tempQueryBeforeHistory;
+            }
+            input.dispatchEvent(new Event("input", {bubbles: true}));
+            this.navigatingHistory = false;
+            input.select();
+            return;
+        }
+
+        // 历史回溯向上翻找（ADR 0043）：支持 Alt+ArrowUp 或（输入框为空且处于列表顶端时向上）
+        const isHistoryUp = (e.altKey && e.key === "ArrowUp") ||
+            (e.key === "ArrowUp" && isInputFocused && input && (this.historyCursor >= 0 || (!input.value.trim() && this.navPosition() === 0)));
+        if (isHistoryUp && input) {
+            const history = this.deps.getRecentQueries?.() ?? [];
+            if (history.length > 0) {
+                if (this.historyCursor < 0) {
+                    this.tempQueryBeforeHistory = input.value;
+                    this.historyCursor = 0;
+                } else if (this.historyCursor + 1 < history.length) {
+                    this.historyCursor++;
+                }
+                e.preventDefault();
+                this.navigatingHistory = true;
+                input.value = history[this.historyCursor] ?? "";
+                input.dispatchEvent(new Event("input", {bubbles: true}));
+                this.navigatingHistory = false;
+                input.select();
+                return;
+            }
+        }
+
         if (e.key === "ArrowDown") {
             e.preventDefault();
             const total = this.results.length + this.providerRows.length;

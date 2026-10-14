@@ -3042,6 +3042,28 @@ ${exception.mark.snippet}`;
   function isLogicalId(v) {
     return typeof v === "string" && LOGICAL_ID_RE.test(v);
   }
+  function getCategoryColorVariant(category) {
+    var _a;
+    const trimmed = (category != null ? category : "").trim();
+    if (!trimmed) return "business";
+    if (/商务|财务|发票|银行|采购|合同/i.test(trimmed)) return "business";
+    if (/客服|支持|售后|退换|接待|咨询/i.test(trimmed)) return "support";
+    if (/开发|代码|研发|SQL|技术|架构|编程/i.test(trimmed)) return "dev";
+    if (/写作|周报|会议|计划|日常|笔记/i.test(trimmed)) return "writing";
+    if (/提示词|AI|模型|Prompt/i.test(trimmed)) return "ai";
+    let hash = 0;
+    for (let i = 0; i < trimmed.length; i++) {
+      hash = hash * 31 + trimmed.charCodeAt(i) >>> 0;
+    }
+    const variants = [
+      "business",
+      "support",
+      "dev",
+      "writing",
+      "ai"
+    ];
+    return (_a = variants[hash % variants.length]) != null ? _a : "business";
+  }
 
   // src/model/variables.ts
   var ASK_PATTERN = /\{\{xlc:ask:([^|}]+)(?:\|([^}]*))?\}\}/g;
@@ -3301,29 +3323,87 @@ ${exception.mark.snippet}`;
   var active = createNoopPinyinAdapter();
 
   // src/model/pinyin-tiny.ts
+  var POLYPHONE_PHRASES = {
+    "\u5F00\u6237\u884C": ["kai", "hu", "hang"],
+    "\u5F00\u6237\u94F6\u884C": ["kai", "hu", "yin", "hang"],
+    "\u94F6\u884C": ["yin", "hang"],
+    "\u884C\u4E1A": ["hang", "ye"],
+    "\u884C\u957F": ["hang", "zhang"],
+    "\u91CD\u65B0": ["chong", "xin"],
+    "\u91CD\u8BD5": ["chong", "shi"],
+    "\u91CD\u6784": ["chong", "gou"],
+    "\u91CD\u8981": ["zhong", "yao"],
+    "\u91CD\u70B9": ["zhong", "dian"],
+    "\u4F1A\u8BA1": ["kuai", "ji"],
+    "\u8C03\u6574": ["tiao", "zheng"],
+    "\u8C03\u8BD5": ["tiao", "shi"],
+    "\u8C03\u67E5": ["diao", "cha"],
+    "\u957F\u6309": ["chang", "an"],
+    "\u957F\u5EA6": ["chang", "du"],
+    "\u6210\u957F": ["cheng", "zhang"],
+    "\u5DEE\u9519": ["cha", "cuo"],
+    "\u5DEE\u522B": ["cha", "bie"],
+    "\u51FA\u5DEE": ["chu", "chai"],
+    "\u5904\u7406": ["chu", "li"],
+    "\u76F8\u5904": ["xiang", "chu"],
+    "\u66F4\u540D": ["geng", "ming"],
+    "\u66F4\u6539": ["geng", "gai"]
+  };
   function isCjk(char) {
     var _a;
     const code = (_a = char.codePointAt(0)) != null ? _a : 0;
     return code >= 19968 && code <= 40959;
   }
+  function extractCharPinyins(text, maxChars, options) {
+    var _a, _b, _c, _d;
+    if (!text) return [];
+    const len = Math.min(text.length, maxChars);
+    const chars = [];
+    const cjkOnly = (_a = options == null ? void 0 : options.cjkOnly) != null ? _a : false;
+    let cursor = 0;
+    while (cursor < len) {
+      let matchedPhrase = null;
+      let matchedPys = null;
+      for (const [phrase, pys] of Object.entries(POLYPHONE_PHRASES)) {
+        if (text.startsWith(phrase, cursor)) {
+          if (!matchedPhrase || phrase.length > matchedPhrase.length) {
+            matchedPhrase = phrase;
+            matchedPys = pys;
+          }
+        }
+      }
+      if (matchedPhrase && matchedPys) {
+        for (let k = 0; k < matchedPhrase.length; k++) {
+          const c = (_b = matchedPhrase[k]) != null ? _b : "";
+          const py = (_c = matchedPys[k]) != null ? _c : "";
+          chars.push({
+            char: c,
+            py,
+            initial: py[0] || "",
+            index: cursor + k
+          });
+        }
+        cursor += matchedPhrase.length;
+        continue;
+      }
+      const char = (_d = text[cursor]) != null ? _d : "";
+      if (isCjk(char)) {
+        const py = import_tiny_pinyin.default.convertToPinyin(char, "", true).toLowerCase();
+        chars.push({ char, py, initial: py[0] || "", index: cursor });
+      } else if (!cjkOnly) {
+        const lower = char.toLowerCase();
+        chars.push({ char, py: lower, initial: lower, index: cursor });
+      }
+      cursor++;
+    }
+    return chars;
+  }
   function findPinyinMatches(text, rawToken) {
-    var _a;
     if (!text || !rawToken) return [];
     const token = rawToken.trim().toLowerCase();
     if (!/^[a-z]{1,40}$/.test(token)) return [];
     if (!import_tiny_pinyin.default.isSupported()) return [];
-    const chars = [];
-    const maxLen = Math.min(text.length, 120);
-    for (let i = 0; i < maxLen; i++) {
-      const char = (_a = text[i]) != null ? _a : "";
-      if (isCjk(char)) {
-        const py = import_tiny_pinyin.default.convertToPinyin(char, "", true).toLowerCase();
-        chars.push({ char, py, initial: py[0] || "", index: i });
-      } else {
-        const lower = char.toLowerCase();
-        chars.push({ char, py: lower, initial: lower, index: i });
-      }
-    }
+    const chars = extractCharPinyins(text, 120);
     if (chars.length === 0) return [];
     const intervals = [];
     const initialsStr = chars.map((c) => c.initial).join("");
@@ -3410,6 +3490,9 @@ ${exception.mark.snippet}`;
       this.transformSeq = 0;
       /** 排序菜单关闭时刻：chip 的 click 在 pointerdown 关闭之后到达，不得立刻重开（R138 toggle） */
       this.sortMenuClosedAt = 0;
+      this.historyCursor = -1;
+      this.tempQueryBeforeHistory = "";
+      this.navigatingHistory = false;
       this.dragOverlay = null;
       this.dropCleanup = null;
     }
@@ -3497,6 +3580,9 @@ ${exception.mark.snippet}`;
         syncQMark();
         this.currentScope = "all";
         this.syncScopeChips();
+        if (!this.navigatingHistory) {
+          this.historyCursor = -1;
+        }
         this.deps.setLastQuery(input.value.replace(/^\?+/, ""));
         if (this.isComposing) return;
         if (this.inputDebounce) clearTimeout(this.inputDebounce);
@@ -4289,6 +4375,15 @@ ${exception.mark.snippet}`;
       badge.title = this.deps.t(`type.${entry.itemType}`);
       badge.setAttribute("aria-label", this.deps.t(`type.${entry.itemType}`));
       title.appendChild(badge);
+      if (entry.category && entry.category.trim()) {
+        const catBadge = document.createElement("span");
+        const variant = getCategoryColorVariant(entry.category);
+        catBadge.className = `xlc-badge xlc-badge--cat xlc-cat--${variant}`;
+        catBadge.textContent = entry.category.trim();
+        catBadge.title = `${this.deps.t("category")}\uFF1A${entry.category.trim()}`;
+        catBadge.setAttribute("aria-label", `${this.deps.t("category")}\uFF1A${entry.category.trim()}`);
+        title.appendChild(catBadge);
+      }
       const titleText = document.createElement("span");
       titleText.className = "xlc-row-titletext";
       const highlight = this.lastQueryText.length > 0 && !this.lastQueryText.startsWith("?") && !this.aiResults;
@@ -5033,6 +5128,9 @@ ${exception.mark.snippet}`;
       });
     }
     async runPrimary(entry) {
+      var _a, _b;
+      const cleanQuery = this.lastQueryText.replace(/^\?+/, "").trim();
+      if (cleanQuery) (_b = (_a = this.deps).addRecentQuery) == null ? void 0 : _b.call(_a, cleanQuery);
       if (this.primaryBusy || this.varFormOpen) return;
       await this.insertEntryWithVars(entry, (fills) => this.runActionFor(entry, fills));
     }
@@ -5457,10 +5555,47 @@ ${exception.mark.snippet}`;
       (_f = menu.querySelector(".xlc-menu-item")) == null ? void 0 : _f.focus();
     }
     async onKeydown(e) {
-      var _a, _b, _c, _d, _e, _f;
+      var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k, _l, _m, _n, _o;
       if (e.isComposing || e.keyCode === 229) return;
       const list = (_a = this.dialog) == null ? void 0 : _a.element.querySelector(".xlc-list");
       if (!list) return;
+      const input = (_b = this.dialog) == null ? void 0 : _b.element.querySelector(".xlc-search-input");
+      const isInputFocused = e.target === input || document.activeElement === input;
+      const isHistoryDown = e.altKey && e.key === "ArrowDown" || e.key === "ArrowDown" && isInputFocused && this.historyCursor >= 0;
+      if (isHistoryDown && input) {
+        e.preventDefault();
+        this.historyCursor--;
+        const history = (_e = (_d = (_c = this.deps).getRecentQueries) == null ? void 0 : _d.call(_c)) != null ? _e : [];
+        this.navigatingHistory = true;
+        if (this.historyCursor >= 0) {
+          input.value = (_f = history[this.historyCursor]) != null ? _f : "";
+        } else {
+          input.value = this.tempQueryBeforeHistory;
+        }
+        input.dispatchEvent(new Event("input", { bubbles: true }));
+        this.navigatingHistory = false;
+        input.select();
+        return;
+      }
+      const isHistoryUp = e.altKey && e.key === "ArrowUp" || e.key === "ArrowUp" && isInputFocused && input && (this.historyCursor >= 0 || !input.value.trim() && this.navPosition() === 0);
+      if (isHistoryUp && input) {
+        const history = (_i = (_h = (_g = this.deps).getRecentQueries) == null ? void 0 : _h.call(_g)) != null ? _i : [];
+        if (history.length > 0) {
+          if (this.historyCursor < 0) {
+            this.tempQueryBeforeHistory = input.value;
+            this.historyCursor = 0;
+          } else if (this.historyCursor + 1 < history.length) {
+            this.historyCursor++;
+          }
+          e.preventDefault();
+          this.navigatingHistory = true;
+          input.value = (_j = history[this.historyCursor]) != null ? _j : "";
+          input.dispatchEvent(new Event("input", { bubbles: true }));
+          this.navigatingHistory = false;
+          input.select();
+          return;
+        }
+      }
       if (e.key === "ArrowDown") {
         e.preventDefault();
         const total = this.results.length + this.providerRows.length;
@@ -5473,13 +5608,13 @@ ${exception.mark.snippet}`;
         this.paintActive();
         this.updatePreview();
       } else if (e.key === "Enter" && !e.ctrlKey && !e.metaKey) {
-        if ((_c = (_b = e.target).closest) == null ? void 0 : _c.call(_b, ".xlc-row-action")) return;
+        if ((_l = (_k = e.target).closest) == null ? void 0 : _l.call(_k, ".xlc-row-action")) return;
         if (e.repeat) return;
         e.preventDefault();
         if (this.activeProvider >= 0) {
           const row = this.providerRows[this.activeProvider];
           if (row) {
-            const execution = this.deps.insertProviderPayload(row.payload, (_d = this.insertTarget) != null ? _d : void 0);
+            const execution = this.deps.insertProviderPayload(row.payload, (_m = this.insertTarget) != null ? _m : void 0);
             this.destroy();
             await execution;
           }
@@ -5520,7 +5655,7 @@ ${exception.mark.snippet}`;
           }
         }
       } else if (e.key === "Tab") {
-        const root = (_e = this.dialog) == null ? void 0 : _e.element;
+        const root = (_n = this.dialog) == null ? void 0 : _n.element;
         if (!root) return;
         const focusables = Array.from(root.querySelectorAll(
           'input:not([disabled]):not([type="hidden"]), select:not([disabled]), button:not([disabled]), [tabindex="0"]:not([disabled])'
@@ -5531,8 +5666,8 @@ ${exception.mark.snippet}`;
         const first = focusables[0];
         const last = focusables[focusables.length - 1];
         const active2 = document.activeElement;
-        const input = root.querySelector(".xlc-search-input");
-        if (active2 === input && !e.shiftKey) {
+        const input2 = root.querySelector(".xlc-search-input");
+        if (active2 === input2 && !e.shiftKey) {
           const previewAction = root.querySelector(".xlc-pane-foot button:not([disabled])");
           if (previewAction && focusables.includes(previewAction)) {
             e.preventDefault();
@@ -5565,7 +5700,7 @@ ${exception.mark.snippet}`;
           await this.deps.duplicateItem(entry.id);
           await this.refresh();
         }
-      } else if (e.altKey && (e.key === "Delete" || e.key === "Backspace") || !e.ctrlKey && !e.metaKey && !e.altKey && e.key === "Delete" && !((_f = document.activeElement) == null ? void 0 : _f.matches("input, textarea"))) {
+      } else if (e.altKey && (e.key === "Delete" || e.key === "Backspace") || !e.ctrlKey && !e.metaKey && !e.altKey && e.key === "Delete" && !((_o = document.activeElement) == null ? void 0 : _o.matches("input, textarea"))) {
         if (e.repeat) return;
         if (this.activeProvider >= 0) return;
         const entry = this.results[this.activeIndex];
@@ -10964,6 +11099,16 @@ ${details.join("\n")}` : ""}`;
       },
       getLastQuery: () => "",
       setLastQuery: () => {
+      },
+      getRecentQueries: () => {
+        var _a2;
+        return (_a2 = window.__xlcRecentQueries) != null ? _a2 : ["\u53D1\u7968\u8D44\u6599", "\u5EF6\u671F\u9053\u6B49"];
+      },
+      addRecentQuery: (q) => {
+        var _a2;
+        const w = window;
+        const current = (_a2 = w.__xlcRecentQueries) != null ? _a2 : ["\u53D1\u7968\u8D44\u6599", "\u5EF6\u671F\u9053\u6B49"];
+        w.__xlcRecentQueries = [q, ...current.filter((x) => x !== q)].slice(0, 10);
       },
       insertTarget: null,
       openSetup: () => window.XlcHarness.openSettings(),

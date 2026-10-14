@@ -17,7 +17,7 @@ import {buildEmbedBlock} from "./model/actions";
 import {ExportedItem, buildBundle, validateImport, ConflictPolicy, ImportReceipt} from "./model/transfer";
 import {importBundle as importBundleCore} from "./service/importer";
 import {importMarkdownBundle} from "./service/import-markdown";
-import {LibraryConfig, CONFIG_VERSION, migrateState, normalizeLibraryConfig, normalizeState, PluginState} from "./model/storage";
+import {LibraryConfig, CONFIG_VERSION, migrateState, normalizeLibraryConfig, normalizeState, PluginState, pushRecentQuery} from "./model/storage";
 import {SearchContext, collectCategories, collectTags, searchEntries, applyBasicFilters} from "./model/search";
 import {findDuplicateByContent} from "./model/dedupe";
 import {LruCache, PREVIEW_CACHE_CAPACITY, PREVIEW_CACHE_TTL_MS} from "./model/lru";
@@ -1140,6 +1140,11 @@ export default class XiaolvCommonPlugin extends Plugin {
             getLastQuery: () => this.state.search.lastQuery,
             setLastQuery: (q) => {
                 this.state.search.lastQuery = q.slice(0, 200);
+                this.persistSoon();
+            },
+            getRecentQueries: () => this.state.search.recentQueries ?? [],
+            addRecentQuery: (q: string) => {
+                this.state.search.recentQueries = pushRecentQuery(this.state.search.recentQueries ?? [], q);
                 this.persistSoon();
             },
             preview: async (itemId) => {
