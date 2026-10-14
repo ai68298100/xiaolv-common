@@ -363,6 +363,7 @@
   "kbdQuickInsert": "Insert matching item",
   "kbdQuickCopy": "Copy matching item",
   "kbdTabActions": "Switch to actions",
+  "kbdFavorite": "Toggle favorite",
   "kbdClose": "Close panel",
   "loading": "Loading…",
   "truncatedHint": "Items exceed index limit; list truncated. Data stays safe in library.",

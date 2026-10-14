@@ -439,3 +439,34 @@
 - [x] 列表分词安全高亮：`appendHighlighted` 收集多 token 匹配区间，合并重叠与相邻区间（Merge Intervals），交替安全渲染普通文本节点与 `<mark class="xlc-hit">`。
 - [x] 决策见 [ADR 0036](docs/adr/0036-multi-keyword-search-and-highlighting-contract.md)；单元测试 365 项全过，门禁负向验证通过，全套构建、UI 冒烟与包检查通过。
 - [ ] 真实宿主长文本大库检索性能与分词匹配深度按后续规模持续观测。
+
+## T-0064 / R211（2026-10-14 列表条目快捷编辑与副本复制契约）
+
+- [x] 列表条目快捷编辑：支持按 `Ctrl + E`（macOS 下 `⌘ + E`，兼容 `Alt + E`）直接分派 `editItem`，关闭搜索面板并打开编辑表单。
+- [x] 快捷复制副本：支持按 `Ctrl + D`（macOS 下 `⌘ + D`，兼容 `Alt + D`）直接分派 `duplicateItem` 克隆出新条目并自动刷新当前列表。
+- [x] 防连发与防冲突保护：严格遵循 `if (e.repeat) return;` 阻断长按误触克隆；排除第三方虚拟 Provider 条目。
+- [x] 决策见 [ADR 0037](docs/adr/0037-keyboard-shortcuts-for-edit-and-duplicate.md)；单元测试 366 项全绿，门禁负向验证通过，交互审计增至 52/52 全通，全套构建与冒烟通过。
+- [ ] 移动端专属长按弹出动作菜单的触摸交互保持，不依赖物理按键。
+
+## T-0065 / R212（2026-10-14 拼音检索汉字字符级定位高亮）
+
+- [x] 拼音汉字字符级映射与定位：`pinyin-tiny.ts` 纯函数 `findPinyinMatches` 支持首字母缩写与连续全拼音节滑动匹配，精准反查汉字物理区间 `[start, end)`。
+- [x] 区间融合与安全高亮：字面子串区间与拼音推导区间交由 Merge Intervals 算法排序合并，交替渲染普通文本节点与 `<mark class="xlc-hit">`，文本一律 `textContent`。
+- [x] 决策见 [ADR 0038](docs/adr/0038-pinyin-character-highlighting-contract.md)；单元测试 369 项全绿，门禁负向验证通过，全套构建、UI 冒烟与包检查通过。
+- [ ] 真实宿主下多音字词典深度与拼音分词扩展按后续反馈持续演进。
+
+## T-0066 / R213（2026-10-14 列表条目快捷删除与二次确认契约）
+
+- [x] 分级快捷删除：支持 `Alt + Delete`（macOS 下 `⌥ + Delete` 或 `⌥ + Backspace`）显式快捷删除；支持在列表焦点非输入控件下按独立 `Delete` 键触发。
+- [x] 输入框防误触绝对隔离：焦点在搜索输入框内部时，`Delete`/`Backspace` 严格处理光标字符，严禁拦截为条目删除。
+- [x] 强制二次确认与数据真源保护：触发后绝不静默删除，一律唤起标准 `confirmDelete` 二次确认弹窗；用户确认后执行 `removeItem` 并清理索引与统计；虚拟 Provider 条目严禁删除；`e.repeat` 阻断长按误触。
+- [x] 决策见 [ADR 0039](docs/adr/0039-keyboard-shortcut-for-delete-contract.md)；单元测试 370 项全绿，门禁负向验证通过，交互审计增至 53/53 全通，全套构建与冒烟通过。
+- [ ] 移动端专属长按弹出动作菜单的触摸交互保持，不依赖物理按键。
+
+## T-0067 / R214（2026-10-15 列表条目快捷收藏切换与即时响应契约）
+
+- [x] 列表条目快捷收藏切换：支持 `Alt + F`（macOS 下 `⌥ + F`）与 `Alt + S` 双键位快捷切换当前条目收藏状态，阻止默认行为并即时分派 `toggleFavorite`。
+- [x] 位置保持刷新与连续打字心流：通过 `refreshPreservingPosition()` 保持滚动位置，重绘星标（★/☆）与类名，随后调用 `restoreFocusToSearch()` 保持搜索输入框焦点。
+- [x] 防连发与键帽引导同步：`if (e.repeat) return;` 阻断长按闪烁；排除虚拟 Provider 条目；顶部键帽栏同步增补 `Alt/⌥ + F` 引导。
+- [x] 决策见 [ADR 0040](docs/adr/0040-keyboard-shortcut-for-toggle-favorite-contract.md)；单元测试 372 项全绿，门禁负向验证通过，交互审计增至 54/54 全通，全套构建与冒烟通过。
+- [ ] 移动端维持触控操作，不依赖物理热键。

@@ -13,6 +13,7 @@ import {TransformKind} from "../service/ai";
 import {ProviderRow} from "../model/provider-section";
 import {AskField, askFieldTag, hasCursorToken, listAskFields} from "../model/variables";
 import {openVariableFillCard} from "./variable-form";
+import {findPinyinMatches} from "../model/pinyin-tiny";
 
 export interface DialogDeps {
     t: (key: string, ...args: string[]) => string;
@@ -263,6 +264,7 @@ export class CommonSearchDialog {
                 {key: `${isApple ? "⌘" : "Ctrl"} + Enter`, action: this.deps.t("kbdCopy")},
                 {key: `${isApple ? "⌥" : "Alt"} + 1-9`, action: this.deps.t("kbdQuickInsert")},
                 {key: `${isApple ? "⌥ + ⇧" : "Alt + Shift"} + 1-9`, action: this.deps.t("kbdQuickCopy")},
+                {key: `${isApple ? "⌥" : "Alt"} + F`, action: this.deps.t("kbdFavorite")},
                 {key: "Tab", action: this.deps.t("kbdTabActions")},
                 {key: "Esc", action: this.deps.t("kbdClose")},
             ]) {
@@ -1002,6 +1004,11 @@ export class CommonSearchDialog {
                 if (at < 0) break;
                 intervals.push([at, at + token.length]);
                 cursor = at + Math.max(1, token.length);
+            }
+            // 拼音首字母与全拼对应汉字字符级定位高亮（ADR 0038 / T-0065）
+            const pyMatches = findPinyinMatches(text, token);
+            for (const pm of pyMatches) {
+                intervals.push(pm);
             }
         }
 
@@ -2079,20 +2086,23 @@ export class CommonSearchDialog {
 
             const sec2 = document.createElement("div");
             sec2.className = "xlc-menu-sec";
-            const addSilent = (icon: string, label: string, run: () => Promise<unknown>, cls = "xlc-menu-item"): void => {
-                sec2.appendChild(this.menuButton(icon, label, cls, async () => {
+            const addSilent = (icon: string, label: string, run: () => Promise<unknown>, cls = "xlc-menu-item", title?: string): HTMLButtonElement => {
+                const btn = this.menuButton(icon, label, cls, async () => {
                     // 统一走 menuDismiss：document 监听必须摘除、账目不被错清（此前 menu.remove() 泄漏监听，
                     // 后续 pointerdown 会把焦点从编辑弹窗抢回搜索框，R138）
                     this.menuDismiss?.();
                     this.menuDismiss = null;
                     await run();
-                }));
+                });
+                if (title) btn.title = title;
+                sec2.appendChild(btn);
+                return btn;
             };
             addSilent("↗", this.deps.t("openSource"), () => this.deps.openSource(entry.id));
             addSilent("✎", this.deps.t("edit"), () => this.deps.editItem(entry.id));
             addSilent("⧉", this.deps.t("duplicateItem"), () => this.deps.duplicateItem(entry.id));
             // 删除 = 危险动作，固定语义红（样式层区分；确认弹窗不变）
-            addSilent("🗑", this.deps.t("delete"), () => this.deps.deleteItem(entry.id), "xlc-menu-item xlc-menu-item--danger");
+            addSilent("🗑", this.deps.t("delete"), () => this.deps.deleteItem(entry.id), "xlc-menu-item xlc-menu-item--danger", `${this.deps.t("delete")} (Alt+Delete)`);
             // 插入到指定文档（菜单内联文档选择器；无活动编辑器场景的主路径）
             const toDocBtn = this.menuButton("⤓", this.deps.t("insertToDoc"), "xlc-menu-item", () => {
                 let sec = menu.querySelector<HTMLElement>(".xlc-menu-pickdoc");
@@ -2386,7 +2396,7 @@ export class CommonSearchDialog {
         } else if (e.key === "Escape") {
             e.preventDefault();
             this.destroy();
-        } else if (e.altKey && !e.ctrlKey && !e.metaKey) {
+        } else if (e.altKey && !e.ctrlKey && !e.metaKey && (/^[1-9]$/.test(e.key) || /^Digit[1-9]$/.test(e.code))) {
             let num: number | null = null;
             if (/^[1-9]$/.test(e.key)) {
                 num = Number(e.key);
@@ -2440,6 +2450,47 @@ export class CommonSearchDialog {
             } else if (!e.shiftKey && active === last) {
                 e.preventDefault();
                 first?.focus();
+            }
+        } else if ((e.ctrlKey || e.metaKey || e.altKey) && (e.key === "e" || e.key === "E")) {
+            if (e.repeat) return;
+            if (this.activeProvider >= 0) return;
+            const entry = this.results[this.activeIndex];
+            if (entry) {
+                e.preventDefault();
+                this.destroy();
+                await this.deps.editItem(entry.id);
+            }
+        } else if ((e.ctrlKey || e.metaKey || e.altKey) && (e.key === "d" || e.key === "D")) {
+            if (e.repeat) return;
+            if (this.activeProvider >= 0) return;
+            const entry = this.results[this.activeIndex];
+            if (entry) {
+                e.preventDefault();
+                await this.deps.duplicateItem(entry.id);
+                await this.refresh();
+            }
+        } else if (
+            (e.altKey && (e.key === "Delete" || e.key === "Backspace")) ||
+            (!e.ctrlKey && !e.metaKey && !e.altKey && e.key === "Delete" && !(document.activeElement as HTMLElement | null)?.matches("input, textarea"))
+        ) {
+            if (e.repeat) return;
+            if (this.activeProvider >= 0) return;
+            const entry = this.results[this.activeIndex];
+            if (entry) {
+                e.preventDefault();
+                await this.deps.deleteItem(entry.id);
+            }
+        } else if (
+            e.altKey && !e.ctrlKey && !e.metaKey &&
+            (e.key === "f" || e.key === "F" || e.key === "s" || e.key === "S")
+        ) {
+            if (e.repeat) return;
+            if (this.activeProvider >= 0) return;
+            const entry = this.results[this.activeIndex];
+            if (entry) {
+                e.preventDefault();
+                this.deps.toggleFavorite(entry.id);
+                void this.refreshPreservingPosition().then(() => this.restoreFocusToSearch());
             }
         }
     }

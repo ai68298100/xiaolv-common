@@ -199,7 +199,7 @@ const T = (key: string, ...args: string[]): string => {
         emptyLibrary: "还没有常用内容", emptyLibrarySub: "先新建一条，或从选区、剪贴板和右键菜单保存；内容会保存在当前内容库",
         updatedAtLabel: "更新于 %s",
         // R138 键集（缺失时 T 回落键名，截图/断言会看到裸键）
-        keyboardHelp: "键盘快捷操作", kbdNav: "切换选中条目", kbdEnter: "插入选中条目", kbdCopy: "复制选中条目", kbdAltDirect: "%s + 1-9 快速插入", kbdEsc: "关闭", kbdQuickInsert: "快速插入对应条目", kbdQuickCopy: "快速复制对应条目", kbdTabActions: "切换到操作区", kbdClose: "关闭面板", loading: "加载中…",
+        keyboardHelp: "键盘快捷操作", kbdNav: "切换选中条目", kbdEnter: "插入选中条目", kbdCopy: "复制选中条目", kbdAltDirect: "%s + 1-9 快速插入", kbdEsc: "关闭", kbdQuickInsert: "快速插入对应条目", kbdQuickCopy: "快速复制对应条目", kbdTabActions: "切换到操作区", kbdFavorite: "收藏/取消收藏", kbdClose: "关闭面板", loading: "加载中…",
         truncatedHint: "条目超出索引上限，已截断显示；数据仍安全在库中", copyFailed: "复制失败：无法写入剪贴板",
         libModeNotebook: "笔记本 × %s", libModeDoc: "文档库 · %s 个文档", libModeTree: "文档树 · %s 个根文档", setupPickDocTree: "选择现有文档（含子文档）",
         ctDeleteConfirm: "删除自定义变换「%s」？该操作不可恢复。", ctDeleted: "已删除自定义变换「%s」",
@@ -271,7 +271,10 @@ function makeDeps(overrides: {aiEnabled?: boolean; missing?: boolean; mobile?: b
             const w = window as unknown as {__xlcEditedItems?: string[]};
             (w.__xlcEditedItems ??= []).push(itemId);
         },
-        deleteItem: async () => {},
+        deleteItem: async (itemId: string) => {
+            const w = window as unknown as {__xlcDeletedItems?: string[]};
+            (w.__xlcDeletedItems ??= []).push(itemId);
+        },
         toggleFavorite: (itemId: string) => {
             const w = window as unknown as {__xlcFavoriteToggles?: string[]};
             (w.__xlcFavoriteToggles ??= []).push(itemId);
@@ -293,7 +296,10 @@ function makeDeps(overrides: {aiEnabled?: boolean; missing?: boolean; mobile?: b
             (w.__xlcDocActions ??= []).push({id: itemId, docId, hPath});
             return true;
         },
-        duplicateItem: async () => {},
+        duplicateItem: async (itemId: string) => {
+            const w = window as unknown as {__xlcDuplicatedItems?: string[]};
+            (w.__xlcDuplicatedItems ??= []).push(itemId);
+        },
         saveTransformed: async () => {},
         getFilters: () => ({...activeFilters}),
         getLibraryName: async () => "/常用内容库",

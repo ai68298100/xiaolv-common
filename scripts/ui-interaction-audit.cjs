@@ -209,7 +209,56 @@ const check = (name, ok, detail = "") => {
     });
     check("B9 拖拽进入出现放置提示层且离开时移除", overlayShown && overlayRemoved, `shown=${overlayShown} removed=${overlayRemoved}`);
 
+    // B10: Ctrl+D 快捷复制当前选中条目副本
+    await page.evaluate(() => { window.__xlcDuplicatedItems = []; });
+    await key("d", {ctrlKey: true});
+    await sleep(250);
+    const dupOk = await page.evaluate(() => {
+        const dups = window.__xlcDuplicatedItems;
+        return Array.isArray(dups) && dups.includes("xlc-demo0000001");
+    });
+    check("B10 Ctrl+D 快捷复制选中条目副本", dupOk);
+
+    // B11: Ctrl+E 快捷编辑当前选中条目（并关闭搜索面板）
+    await page.evaluate(() => { window.__xlcEditedItems = []; });
+    await key("e", {ctrlKey: true});
+    await sleep(250);
+    const editOk = await page.evaluate(() => {
+        const edits = window.__xlcEditedItems;
+        const dialogGone = document.querySelector(".xlc-dialog") === null;
+        return Array.isArray(edits) && edits.includes("xlc-demo0000001") && dialogGone;
+    });
+    check("B11 Ctrl+E 快捷编辑选中条目并关闭搜索面板", editOk);
+
+    // B12: Alt+Delete 快捷删除分派当前选中条目
+    await open({});
+    await sleep(400);
+    await page.evaluate(() => { window.__xlcDeletedItems = []; });
+    await key("Delete", {altKey: true});
+    await sleep(250);
+    const delDebug = await page.evaluate(() => ({
+        dels: window.__xlcDeletedItems,
+        hasDialog: Boolean(document.querySelector(".xlc-dialog")),
+        rows: document.querySelectorAll("[data-xlc-control='item.row']").length,
+    }));
+    const delOk = Array.isArray(delDebug.dels) && delDebug.dels.includes("xlc-demo0000001");
+    check("B12 Alt+Delete 快捷删除分派对应条目", delOk, JSON.stringify(delDebug));
+
+    // B13: Alt+F 快捷切换选中条目收藏状态
+    await open({});
+    await sleep(250);
+    await page.evaluate(() => { window.__xlcFavoriteToggles = []; });
+    await key("f", {altKey: true});
+    await sleep(250);
+    const favOk = await page.evaluate(() => {
+        const toggles = window.__xlcFavoriteToggles;
+        return Array.isArray(toggles) && toggles.includes("xlc-demo0000001");
+    });
+    check("B13 Alt+F 快捷切换条目收藏状态", favOk);
+
     // ── C. Esc 关闭弹窗 ──
+    await open({});
+    await sleep(200);
     await key("Escape");
     await sleep(200);
     const gone = await page.evaluate(() => document.querySelector(".xlc-dialog") === null);

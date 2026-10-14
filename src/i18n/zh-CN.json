@@ -363,6 +363,7 @@
   "kbdQuickInsert": "快速插入对应条目",
   "kbdQuickCopy": "快速复制对应条目",
   "kbdTabActions": "切换到操作区",
+  "kbdFavorite": "收藏/取消收藏",
   "kbdClose": "关闭面板",
   "loading": "加载中…",
   "truncatedHint": "条目超出索引上限，已截断显示；数据仍安全在库中",
