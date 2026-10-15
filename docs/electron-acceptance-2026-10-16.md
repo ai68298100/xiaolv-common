@@ -37,3 +37,16 @@
 - 通过 `service.openSource` 验证普通条目来源打开：回执 `ok=true`、`opened="doc"`，普通手工条目没有 `sourceDocId` 时按设计回退到 `libraryDocId`；不能用空的 `sourceDocId` 作为失败判据。
 - 首次打开设置触发插件目录下 `702.js` 请求，响应为 `200 text/javascript`；未观察到站点根 `/702.js` 请求。
 - 本轮未形成可采信的指定文档插入、引用条目块引用/嵌入/源正文、来源失效和移动端降级证据；前一次脚本移除设置 DOM 后遗留宿主 Dialog 状态，后续设置重开与压力序列失去有效前置条件。B-004 继续开放。
+
+## T-0077 动作补充证据（第三个隔离副本，2026-10-16）
+
+- 环境：复用临时工作区 `C:\\Users\\Admin\\AppData\\Local\\Temp\\xlc-electron-r223c-20261016023412`，思源内核 `6846`、Electron CDP `9346`；先用真实 `Dialog.destroy()` 关闭设置弹窗，未直接删除宿主 DOM。动作完成后删除源/目标文档和库内引用入口。
+- 创建源文档 `20261016025207-8o5j25a`，源块 `20261016025207-3yehxzg`，通过真实插件服务创建 `blockref` 条目 `xlc-mv9wb6or3009c6xq5p`；条目回读确认 `itemType=blockref`、`targetBlockId`、`sourceDocId/sourceBlockId`、标签和分类均落盘，库内正文仍为引用 marker。
+- 在三个独立新目标文档中逐项执行：
+  - `insert-ref`：回执 `ok=true,downgraded=false`；内核读回 `((20261016025207-3yehxzg 'Electron T-0077 引用条目'))`。
+  - `insert-embed`：回执 `ok=true,downgraded=false`；内核读回 `{{select * from blocks where id='20261016025207-3yehxzg'}}`。
+  - `insert-content`：回执 `ok=true,downgraded=false`；内核读回源块正文 `Electron T-0077 源块正文：可实时更新。`。
+- `copy-content` 回执 `ok=true,mode=copy-content,downgraded=false`，Electron 剪贴板读回源块正文一致；`openSource` 回执 `opened=block`，真实活动文档切换到源文档。
+- 指定文档插入沿真实搜索面板 `insertToDoc` 回调执行，返回成功；目标文档内核读回源正文块。
+- 删除源块后，`copy` 和 `openSource` 均返回协议失败 `reason=source-missing`；引用条目和临时文档随后清理成功。块引用/嵌入语法本身是否可在源块删除后继续插入未作为成功能力声明。
+- 宿主边界：在同一个编辑器连续插入块引用后再插入嵌入，思源会把选区留在嵌入渲染节点的 `.protyle-cursor`，第三次 `insert-content` 可能返回 `insert-failed`；三个动作分别在干净目标文档执行均通过。该现象归因于宿主编辑器选区状态，暂不修改插件以伪造回执。
