@@ -90,7 +90,7 @@ const T = (key: string, ...args: string[]): string => {
         discoveryTruncated: "已达到扫描上限，结果可能不完整", discoveryCancelScan: "停止扫描", discoveryRetry: "重新扫描",
         discoveryFilter: "筛选", discoveryFilterAll: "全部状态", discoveryFilterCandidate: "待收录", discoveryFilterUnverified: "重复待确认",
         discoveryFilterSameContent: "内容相同", discoveryFilterAlready: "已在库中", discoveryFilterAdded: "已收录", discoveryTypeAll: "全部类型",
-        discoverySearchPlaceholder: "筛选标题、摘要或来源", discoveryNoCandidates: "没有符合条件的候选", discoveryPreviewTitle: "候选预览",
+        discoverySearchPlaceholder: "筛选标题、摘要或来源", discoveryTagFilterPlaceholder: "按标签筛选", discoveryNoCandidates: "没有符合条件的候选", discoveryPreviewTitle: "候选预览",
         discoveryPreviewEmpty: "选择左侧候选后查看正文；收录前会再次校验来源。", discoveryPreviewLoading: "正在读取候选正文…",
         discoveryAdd: "加入常用库", discoveryAddSelected: "加入选中项", discoveryDefaultCategory: "默认分类",
         discoveryUnsortedCategory: "待整理",
@@ -182,7 +182,7 @@ const T = (key: string, ...args: string[]): string => {
         aiEnabledSub: "使用思源 设置→人工智能 的模型，插件不保存密钥", aiShareContentSub: "整理/变换/草稿需要；关闭时仅元数据",
         searchSection: "搜索", pinyinToggle: "拼音搜索", placeholdersToggle: "动态占位符", placeholdersHint: "支持 {{xlc:date}} 等",
         pinyinToggleSub: "全拼/首字母本地匹配", placeholdersToggleSub: "插入时替换 {{xlc:date}} 等为当前日期时间",
-        aiSuggestion: "AI 建议", clearSearch: "清空搜索", shortcutLabel: "操作提示", newItemActionWithQuery: "＋ 新建「%s」", newItemWithTitle: "将「%s」预填为标题并新建条目", emptyQueryHint: "新建时会把当前搜索词填入标题，你可以继续修改。", semanticEmptyHint: "AI 搜索没有找到相关条目。可调整描述，或新建条目后自行填写标题和内容。",
+        aiSuggestion: "AI 建议", clearSearch: "清空搜索", shortcutLabel: "操作提示", searchAllScopeAction: "在全部内容中搜索「%s」", newItemActionWithQuery: "＋ 新建「%s」", newItemWithTitle: "将「%s」预填为标题并新建条目", emptyQueryHint: "新建时会把当前搜索词填入标题，你可以继续修改。", semanticEmptyHint: "AI 搜索没有找到相关条目。可调整描述，或新建条目后自行填写标题和内容。",
         customTransformSection: "自定义变换", customTransformAdd: "＋ 添加自定义变换", customTransformName: "名称",
         customTransformPrompt: "变换指令，如：改写为客服话术：", customTransformEmpty: "暂无自定义变换",
         customTransformCap: "最多 10 个自定义变换", customTransformNewName: "我的变换",
@@ -218,6 +218,7 @@ function makeDeps(overrides: {aiEnabled?: boolean; missing?: boolean; mobile?: b
     const aiOn = overrides.aiEnabled ?? true;
     let activeFilters = {...(overrides.filters ?? {type: "", tag: "", category: ""})};
     const favorites = new Set(["xlc-demo0000001"]);
+    const recents = new Set(["xlc-demo0000001", "xlc-demo0000002"]);
     return {
         t: (key: string, ...args: string[]) => key === "newItemAction" && overrides.newItemAction
             ? overrides.newItemAction
@@ -243,6 +244,8 @@ function makeDeps(overrides: {aiEnabled?: boolean; missing?: boolean; mobile?: b
                     return hay.includes(searchText.toLowerCase());
                 });
             if (typeof query !== "string") {
+                if (query.scope === "favorites") entries = entries.filter((entry) => favorites.has(entry.id));
+                if (query.scope === "recent") entries = entries.filter((entry) => recents.has(entry.id));
                 if (query.itemType) entries = entries.filter((entry) => entry.itemType === query.itemType);
                 if (query.tag) entries = entries.filter((entry) => entry.tags?.includes(query.tag ?? ""));
                 if (query.category) entries = entries.filter((entry) => entry.category === query.category);
@@ -561,8 +564,8 @@ function makeDeps(overrides: {aiEnabled?: boolean; missing?: boolean; mobile?: b
         let notebookRequests = 0;
         let treeSearchRequests = 0;
         const sampleCandidates = [
-            {key: "candidate-1", sourceDocId: "20240101120001-hijklmn", sourceBlockId: "20240101120002-bbbbbbb", sourcePath: "/项目笔记", itemType: "markdown", title: "客户延期回复", summary: "关于交付延期的说明", status: "candidate"},
-            {key: "candidate-2", sourceDocId: "20240101120001-hijklmn", sourceBlockId: "20240101120003-ccccccc", sourcePath: "/项目笔记", itemType: "text", title: "收件地址", summary: "邮寄地址模板", status: "same-content", match: {itemId: "xlc-existing0001", title: "已有收件地址"}},
+            {key: "candidate-1", sourceDocId: "20240101120001-hijklmn", sourceBlockId: "20240101120002-bbbbbbb", sourcePath: "/项目笔记", itemType: "markdown", title: "客户延期回复", summary: "关于交付延期的说明", tags: ["客服", "延期"], status: "candidate"},
+            {key: "candidate-2", sourceDocId: "20240101120001-hijklmn", sourceBlockId: "20240101120003-ccccccc", sourcePath: "/项目笔记", itemType: "text", title: "收件地址", summary: "邮寄地址模板", tags: ["客服", "地址"], status: "same-content", match: {itemId: "xlc-existing0001", title: "已有收件地址"}},
         ];
         const candidates = options?.candidateCount
             ? Array.from({length: options.candidateCount}, (_, index) => ({
@@ -573,6 +576,7 @@ function makeDeps(overrides: {aiEnabled?: boolean; missing?: boolean; mobile?: b
                 itemType: "markdown",
                 title: `分页候选 ${String(index + 1).padStart(3, "0")}`,
                 summary: "用于验证候选分页与键盘焦点恢复。",
+                tags: [],
                 status: "candidate" as const,
             }))
             : sampleCandidates;

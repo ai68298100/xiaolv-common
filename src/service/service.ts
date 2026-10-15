@@ -69,7 +69,7 @@ export class XiaolvCommonService {
                 // 移动端插入未验证（B-002）；复制/打开来源为主路径
                 mobileSafe: name !== "insert",
                 itemTypes: ["text", "markdown", "url", "code", "image", "asset", "blockref", "structure"],
-                insertModes: ["insert", "copy", "copy-content", "insert-ref", "insert-embed", "open"],
+                insertModes: ["insert", "insert-content", "copy", "copy-content", "insert-ref", "insert-embed", "open"],
                 limitations: name === "insert"
                     ? ["mobile-insert-unverified: 移动端直接插入待真机验证，当前自动降级为复制"]
                     : name === "copy"
@@ -195,7 +195,7 @@ export class XiaolvCommonService {
         // 未知 mode 显式拒绝而非静默降级为 insert（写文档的副作用不可猜，R139）
         const rawMode = typeof options === "object" && options !== null ? (options as {mode?: unknown}).mode : options;
         if (rawMode !== undefined && rawMode !== null) {
-            const allowed: InsertMode[] = ["insert", "copy", "copy-content", "insert-ref", "insert-embed", "open"];
+            const allowed: InsertMode[] = ["insert", "insert-content", "copy", "copy-content", "insert-ref", "insert-embed", "open"];
             if (typeof rawMode !== "string" || !(allowed as string[]).includes(rawMode)) {
                 return failureEnvelope("invalid-input", "unknown mode");
             }
@@ -367,7 +367,7 @@ function normalizeQuery(query: SearchQuery): SearchQuery {
 
 function normalizeInsertMode(options: unknown): InsertMode {
     const raw = typeof options === "object" && options !== null ? (options as {mode?: unknown}).mode : options;
-    const allowed: InsertMode[] = ["insert", "copy", "copy-content", "insert-ref", "insert-embed", "open"];
+    const allowed: InsertMode[] = ["insert", "insert-content", "copy", "copy-content", "insert-ref", "insert-embed", "open"];
     return typeof raw === "string" && (allowed as string[]).includes(raw) ? raw as InsertMode : "insert";
 }
 

@@ -70,6 +70,12 @@ test("标签列表：去重、逐项裁剪、数量上限 32", () => {
     assert.equal(item.cleanTagList("x,y、z").join("|"), "x|y|z");
 });
 
+test("blockref 目标解析：显式 target 优先，旧记录回退 sourceBlockId", () => {
+    assert.equal(item.resolveBlockRefTarget({itemType: "blockref", targetBlockId: VALID_BLOCK_ID, source: {sourceBlockId: VALID_DOC_ID}}), VALID_BLOCK_ID);
+    assert.equal(item.resolveBlockRefTarget({itemType: "blockref", targetBlockId: "", source: {sourceBlockId: VALID_DOC_ID}}), VALID_DOC_ID);
+    assert.equal(item.resolveBlockRefTarget({itemType: "text", targetBlockId: VALID_BLOCK_ID, source: {sourceBlockId: VALID_DOC_ID}}), "");
+});
+
 test("inferItemType：代码/图片/附件/结构", () => {
     assert.equal(item.inferItemType("c", "", ""), "code");
     assert.equal(item.inferItemType("p", "", `![](assets/foo-20240101.png)`), "image");

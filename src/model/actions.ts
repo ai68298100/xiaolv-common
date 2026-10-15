@@ -1,10 +1,11 @@
 // 动作计划：纯函数层。给定条目 + 已解析内容 + 动作意图 + 端侧上下文 → 输出InsertPlan。
 // 不触碰宿主，全部可单测；宿主执行在 service/commands.ts。
 import {LIMITS} from "../constants";
-import {BLOCK_ID_RE, CommonItem, isSafeHttpUrl} from "./item";
+import {BLOCK_ID_RE, CommonItem, isSafeHttpUrl, resolveBlockRefTarget} from "./item";
 
 export type InsertMode =
     | "insert"          // 插入到当前文档光标处
+    | "insert-content"  // 块引用：插入目标块当前正文
     | "copy"            // 复制（按类型给出正确载荷）
     | "copy-content"    // 块引用条目：复制目标块内容（而非引用语法）
     | "insert-ref"      // 块引用条目：插入 ((id 'text')) 引用
@@ -180,7 +181,7 @@ export function planAction(item: CommonItem, mode: InsertMode, ctx: ActionContex
             };
         }
         case "blockref": {
-            const target = item.targetBlockId;
+            const target = resolveBlockRefTarget(item);
             if (!BLOCK_ID_RE.test(target)) {
                 return {...base, downgraded: true, downgradeReason: "source-missing", warnings: ["target-block-invalid"]};
             }
@@ -192,6 +193,9 @@ export function planAction(item: CommonItem, mode: InsertMode, ctx: ActionContex
             }
             if (mode === "insert-embed") {
                 return {...base, markdown: buildEmbedBlock(target)};
+            }
+            if (mode === "insert-content") {
+                return {...base, markdown: ctx.content.kramdown.slice(0, LIMITS.contentChars)};
             }
             // blockref 默认插入 = 引用语法（绝不能误克隆成普通文本）
             return {...base, markdown: buildBlockRef(target, refAnchorText(item))};
@@ -222,9 +226,12 @@ export function planOpenSource(
         if (!assetPath || resolved.assetMissing) return {failure: "asset-missing"};
         return {target: {kind: "asset", assetPath}};
     }
-    if (item.source.sourceBlockId) {
+    const sourceBlockId = item.itemType === "blockref"
+        ? resolveBlockRefTarget(item)
+        : item.source.sourceBlockId;
+    if (sourceBlockId) {
         if (resolved.sourceMissing) return {failure: "source-missing"};
-        return {target: {kind: "block", docId: item.source.sourceDocId, blockId: item.source.sourceBlockId}};
+        return {target: {kind: "block", docId: item.source.sourceDocId, blockId: sourceBlockId}};
     }
     if (item.source.sourceDocId) {
         if (resolved.sourceMissing) return {failure: "source-missing"};

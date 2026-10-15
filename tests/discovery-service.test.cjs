@@ -19,7 +19,7 @@ const discoveryModule = new Module(sourcePath);
 discoveryModule.filename = sourcePath;
 discoveryModule.paths = Module._nodeModulePaths(path.dirname(sourcePath));
 discoveryModule._compile(built.outputFiles[0].text, sourcePath);
-const {DiscoveryService} = discoveryModule.exports;
+const {DiscoveryService, extractNativeTags} = discoveryModule.exports;
 
 const DOC = "20260101000001-aaaaaaa";
 const BLOCK = "20260101000002-bbbbbbb";
@@ -71,6 +71,10 @@ function makeHarness(options = {}) {
             if (endpoint === "batchGetBlockAttrs") {
                 if (options.batchGetBlockAttrs) return options.batchGetBlockAttrs(payload);
                 return Object.fromEntries(payload.ids.map((id) => [id, {}]));
+            }
+            if (endpoint === "getBlockKramdowns") {
+                if (options.getBlockKramdowns) return options.getBlockKramdowns(payload);
+                return Object.fromEntries(payload.ids.map((id) => [id, options.textmarks?.[id] ?? ""]));
             }
             if (endpoint === "getBlockKramdown") {
                 if (options.getBlockKramdown) return options.getBlockKramdown(payload, bodies);
@@ -149,6 +153,56 @@ test("扫描仅读取当前文档直接子块，严格使用 subType 且不在�
     assert.equal(calls.filter((call) => call.endpoint === "getChildBlocks").length, 1);
     assert.equal(calls.some((call) => call.endpoint === "getBlockKramdown"), false);
     assert.equal(calls.some((call) => call.payload.id === BLOCK && call.endpoint === "getChildBlocks"), false);
+});
+
+test("原生标签只识别 textmark 标签节点，并与 custom-xlc-tags 合并到候选", async () => {
+    assert.deepEqual(extractNativeTags("普通 #文本 <span data-type=\"tag\">原生</span><span data-type=\"tag\">A&amp;B</span>"), ["原生", "A&B"]);
+    assert.deepEqual(extractNativeTags("普通 #文本 <span data-type=\"other\">忽略</span>"), []);
+    const {service, calls} = makeHarness({
+        children: [{id: BLOCK, type: "p", content: "候选正文"}],
+        batchGetBlockAttrs: () => ({[BLOCK]: {"custom-xlc-tags": "常用,模板"}}),
+        textmarks: {[BLOCK]: "<span data-type=\"tag\">原生标签</span>"},
+    });
+    const scan = await service.discoverCurrentDocument(DOC);
+    assert.equal(scan.ok, true);
+    assert.deepEqual(scan.data.candidates[0].tags, ["原生标签", "常用", "模板"]);
+    assert.equal(calls.filter((call) => call.endpoint === "getBlockKramdowns").length, 1);
+});
+
+test("零搬运引用只写原生块引用语法和来源元数据，不写源正文", async () => {
+    let createdInput;
+    const {service, calls} = makeHarness({
+        children: [{id: BLOCK, type: "p", content: "这是一段只应留在原文档的正文"}],
+        batchGetBlockAttrs: () => ({[BLOCK]: {"custom-xlc-tags": "客服,模板"}}),
+        createItem: async (input) => {
+            createdInput = input;
+            return {ok: true, data: {item: commonItem({itemType: input.itemType, title: input.title, targetBlockId: input.targetBlockId, source: input.source})}};
+        },
+    });
+    const scan = await service.discoverCurrentDocument(DOC);
+    const session = scan.data;
+    const preview = await service.previewCandidate(session.id, session.candidates[0].key);
+    assert.equal(preview.ok, true);
+    const result = await service.addCandidate(session.id, session.candidates[0].key, {mode: "reference"});
+    assert.equal(result.ok, true);
+    assert.equal(createdInput.itemType, "blockref");
+    assert.equal(createdInput.targetBlockId, BLOCK);
+    assert.deepEqual(createdInput.tags, ["客服", "模板"]);
+    assert.match(createdInput.markdown, new RegExp(BLOCK));
+    assert.equal(createdInput.markdown.includes("这是一段只应留在原文档的正文"), false);
+    assert.equal(result.data.status, "added");
+});
+
+test("发现收录拒绝未知引用模式", async () => {
+    const {service} = makeHarness({
+        children: [{id: BLOCK, type: "p", content: "候选正文"}],
+    });
+    const scan = await service.discoverCurrentDocument(DOC);
+    const preview = await service.previewCandidate(scan.data.id, scan.data.candidates[0].key);
+    assert.equal(preview.ok, true);
+    const result = await service.addCandidate(scan.data.id, scan.data.candidates[0].key, {mode: "unexpected"});
+    assert.equal(result.ok, false);
+    assert.equal(result.reason, "invalid-input");
 });
 
 test("getChildBlocks 畸形顶层响应与畸形 subType 显式失败", async (t) => {

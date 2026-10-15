@@ -17,6 +17,7 @@ const ENDPOINTS = {
     lsNotebooks: "/api/notebook/lsNotebooks",
     getBlockInfo: "/api/block/getBlockInfo",
     getBlockKramdown: "/api/block/getBlockKramdown",
+    getBlockKramdowns: "/api/block/getBlockKramdowns",
     getChildBlocks: "/api/block/getChildBlocks",
     batchGetBlockAttrs: "/api/attr/batchGetBlockAttrs",
     getBlockAttrs: "/api/attr/getBlockAttrs",
@@ -86,8 +87,10 @@ async function main() {
     const notebook = notebooks[0].id;
     const docs = [];
     const sourceBlocks = [];
+    const referenceSourceBlocks = [];
     let sourceNestedBlockId = "";
     const libraryBlocks = [];
+    const referenceLibraryBlocks = [];
     let discovery;
     let sessionId = "";
     let batchId = "";
@@ -135,6 +138,20 @@ async function main() {
         assert.notEqual(structureId, sourceNestedBlockId, "structure and nested child must have separate physical IDs");
         assert.equal((await api("/api/block/checkBlocksExist", {ids: [sourceNestedBlockId]}))[sourceNestedBlockId], true, "source nested block should exist");
 
+        // 专门的零搬运引用夹具：原生标签留在正文，custom-xlc-tags 留在块属性。
+        // 发现阶段应合并两类标签；后续只在专用库写入 blockref marker。
+        const referenceSourceBlockId = firstBlockId(await api("/api/block/appendBlock", {
+            data: `${TITLE} 引用来源 #原生引用#`,
+            dataType: "markdown",
+            parentID: sourceDocId,
+        }));
+        assert.ok(referenceSourceBlockId, "reference source block append returned an id");
+        referenceSourceBlocks.push(referenceSourceBlockId);
+        await api("/api/attr/setBlockAttrs", {
+            id: referenceSourceBlockId,
+            attrs: {"custom-xlc-tags": "自定义标签,模板", "custom-xlc-alias": `${TITLE} 引用来源`},
+        });
+
         const {kernel, LibraryService, DiscoveryService} = makeServices();
         const library = new LibraryService(kernel);
         library.setConfig({
@@ -179,7 +196,59 @@ async function main() {
         const candidates = scan.data.candidates.filter((candidate) => sourceBlocks.includes(candidate.sourceBlockId));
         assert.equal(candidates.length, 3, "both text blocks and the nested structure should be discovered");
         assert.ok(scan.data.candidates.every((candidate) => candidate.sourceDocId !== libraryDocId), "dedicated library must be excluded");
+        const referenceCandidate = scan.data.candidates.find((candidate) => candidate.sourceBlockId === referenceSourceBlockId);
+        assert.ok(referenceCandidate, "reference source block should be discovered");
+        assert.deepEqual(referenceCandidate.tags, ["原生引用", "自定义标签", "模板"], "native textmark and custom tags should merge");
         console.log(`✔ 当前笔记本发现：扫描 ${scan.data.scannedDocs} 个文档，专用库已排除`);
+
+        const referencePreview = await discovery.previewCandidate(sessionId, referenceCandidate.key);
+        assert.equal(referencePreview.ok, true, referencePreview.ok ? "" : referencePreview.message);
+        const referenceAdded = await discovery.addCandidate(sessionId, referenceCandidate.key, {mode: "reference"});
+        assert.equal(referenceAdded.ok, true, referenceAdded.ok ? "" : referenceAdded.message);
+        assert.equal(referenceAdded.data.status, "added");
+        const referenceItem = referenceAdded.data.item;
+        referenceLibraryBlocks.push(referenceItem.blockId);
+        assert.equal(referenceItem.itemType, "blockref");
+        assert.equal(referenceItem.targetBlockId, referenceSourceBlockId);
+        const referenceAttrs = await api("/api/attr/getBlockAttrs", {id: referenceItem.blockId});
+        assert.equal(referenceAttrs["custom-xlc-src-doc"], sourceDocId);
+        assert.equal(referenceAttrs["custom-xlc-src-block"], referenceSourceBlockId);
+        assert.equal(referenceAttrs["custom-xlc-target"], referenceSourceBlockId);
+        const referenceStored = await api("/api/block/getBlockKramdown", {id: referenceItem.blockId});
+        assert.match(referenceStored.kramdown, new RegExp(`\\(\\(${referenceSourceBlockId} `), "reference library block should retain a blockref marker");
+        assert.equal(referenceStored.kramdown.includes("引用来源"), true, "marker anchor should remain readable");
+        assert.equal(referenceStored.kramdown.includes("原生引用"), true, "marker anchor may contain the source title");
+        const referenceBody = referenceStored.kramdown.replace(/\n\{:[^{}]*\}\s*$/, "").trim();
+        assert.equal(referenceBody.startsWith(`((${referenceSourceBlockId} '`), true, "reference body should start with the source block marker");
+        assert.equal(referenceBody.includes("\n"), false, "reference body should contain one marker line, not copied source blocks");
+        assert.equal((await api("/api/block/checkBlocksExist", {ids: [referenceSourceBlockId]}))[referenceSourceBlockId], true, "reference source must remain in place");
+        console.log("✔ 引用收录：库内只保存 blockref marker，来源正文与来源块均不搬动");
+
+        const beforeReferenceIndex = await library.reindex();
+        const indexedReferenceBefore = beforeReferenceIndex.items.get(referenceItem.id);
+        assert.ok(indexedReferenceBefore, "reference item should be indexed");
+        assert.match(indexedReferenceBefore.summary, /引用来源/);
+        await api("/api/block/updateBlock", {
+            id: referenceSourceBlockId,
+            data: `${TITLE} 引用来源 更新后 #原生引用#`,
+            dataType: "markdown",
+        });
+        const afterReferenceIndex = await library.reindex();
+        const indexedReferenceAfter = afterReferenceIndex.items.get(referenceItem.id);
+        assert.ok(indexedReferenceAfter, "reference item should remain indexed after source update");
+        assert.match(indexedReferenceAfter.summary, /更新后/);
+        const latestReferenceBody = await library.getItemKramdown(referenceItem);
+        assert.equal(latestReferenceBody.ok, true, latestReferenceBody.ok ? "" : latestReferenceBody.message);
+        assert.match(latestReferenceBody.data, /更新后/);
+        console.log("✔ 引用实时性：源块更新后重建索引与现场读取均看到最新正文");
+
+        const undoneReference = await discovery.undoBatch(sessionId, referenceAdded.data.batchId);
+        assert.equal(undoneReference.ok, true, undoneReference.ok ? "" : undoneReference.message);
+        assert.equal(undoneReference.data.deleted, 1, JSON.stringify(undoneReference.data));
+        const afterReferenceUndo = await api("/api/block/checkBlocksExist", {ids: [referenceItem.blockId, referenceSourceBlockId]});
+        assert.equal(afterReferenceUndo[referenceItem.blockId], false, "undo should remove only the library reference entry");
+        assert.equal(afterReferenceUndo[referenceSourceBlockId], true, "undo must preserve the updated source block");
+        console.log("✔ 引用撤销：只删除库入口，不删除来源块");
 
         const batch = discovery.beginAddBatch(sessionId);
         assert.equal(batch.ok, true, batch.ok ? "" : batch.message);
@@ -243,7 +312,7 @@ async function main() {
     } finally {
         if (discovery && sessionId) discovery.closeSession(sessionId);
 
-        const blockIds = [...new Set([...sourceBlocks, ...libraryBlocks])].filter((id) => BLOCK_ID.test(id));
+        const blockIds = [...new Set([...sourceBlocks, ...referenceSourceBlocks, ...libraryBlocks, ...referenceLibraryBlocks])].filter((id) => BLOCK_ID.test(id));
         const docIds = [...new Set(docs)].filter((id) => BLOCK_ID.test(id));
         if (docIds.length !== docs.length) cleanupErrors.push("无法安全清理响应 ID 无效的临时文档");
 

@@ -31,6 +31,7 @@ import * as startup from "../src/model/startup";
 import * as externalBridge from "../src/service/external-bridge";
 import * as discovery from "../src/service/discovery";
 import * as discoveryTarget from "../src/model/discovery-target";
+import * as emptyState from "../src/ui/empty-state";
 
 export {
     item,
@@ -63,4 +64,5 @@ export {
     externalBridge,
     discovery,
     discoveryTarget,
+    emptyState,
 };

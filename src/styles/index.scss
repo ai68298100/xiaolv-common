@@ -2517,7 +2517,8 @@
   height: 100%;
   overflow: clip;
   min-height: 0;
-  gap: var(--xlc-space-3);
+  // 标签筛选增加了一个控制项；保持桌面低高度下回执和撤销按钮在首屏内。
+  gap: var(--xlc-space-1);
 
   .xlc-discovery-head,
   .xlc-discovery-status-row,
@@ -2632,6 +2633,24 @@
     flex: 1 1 190px;
     width: auto;
     min-width: 150px;
+  }
+
+  .xlc-discovery-filters > .b3-button {
+    flex: 0 0 auto;
+    min-height: 36px;
+    white-space: nowrap;
+  }
+
+  .xlc-discovery-mode-row {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: var(--xlc-space-2);
+    min-height: 30px;
+
+    > span { flex: 0 0 auto; }
+    > .b3-select { flex: 0 0 180px; width: 180px; min-width: 150px; }
+    > .xlc-form-hint { flex: 1 1 260px; min-width: 0; }
   }
 
   .xlc-discovery-category-settings {

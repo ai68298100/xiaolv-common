@@ -260,15 +260,19 @@ export class ActionExecutor {
     }
 
     private async resolveContent(item: CommonItem): Promise<{kramdown: string; sourceMissing: boolean; assetMissing: boolean} | null> {
-        const kramdown = await this.library.getItemKramdown(item);
-        if (!kramdown.ok) return null;
         const health = await this.library.checkSourceHealth(item);
         const h: SourceHealth = health.ok ? health.data : {blockMissing: false, docMissing: false, assetMissing: false};
+        const sourceMissing = item.itemType === "blockref" ? h.blockMissing : h.blockMissing || h.docMissing;
+        if (item.itemType === "blockref" && sourceMissing) {
+            return {kramdown: "", sourceMissing: true, assetMissing: false};
+        }
+        const kramdown = await this.library.getItemKramdown(item);
+        if (!kramdown.ok) return null;
         return {
             kramdown: kramdown.data,
             // libraryDocId 是条目所在库文档，不能用它掩盖 sourceDocId 的失效。
             // 来源文档/块任一失效都必须传入计划层，openSource 才能返回 source-missing。
-            sourceMissing: h.blockMissing || h.docMissing,
+            sourceMissing,
             assetMissing: h.assetMissing,
         };
     }
@@ -311,6 +315,9 @@ export class ActionExecutor {
         if (!content) {
             return {ok: false, mode, message: "kernel-error:content", downgraded: false, pendingVerification: []};
         }
+        if (item.itemType === "blockref" && content.sourceMissing && (mode === "copy" || mode === "copy-content" || mode === "insert-content")) {
+            return {ok: false, mode, message: "source-missing", downgraded: true, pendingVerification: []};
+        }
         const ctx: ActionContext = {
             surface: this.host.isMobile() ? "mobile" : "desktop",
             hasActiveEditor: opts?.editorTarget !== undefined
@@ -319,6 +326,12 @@ export class ActionExecutor {
             content,
         };
         const plan: InsertPlan = planAction(item, mode, ctx);
+        if (plan.downgraded && plan.downgradeReason === "source-missing") {
+            return {ok: false, mode: plan.mode, message: "source-missing", downgraded: true, pendingVerification: plan.pendingVerification};
+        }
+        if ((plan.mode === "copy" || plan.mode === "copy-content") && !plan.clipboardText) {
+            return {ok: false, mode: plan.mode, message: "empty-plan", downgraded: plan.downgraded, pendingVerification: plan.pendingVerification};
+        }
         return this.execute(item, plan, opts?.editorTarget);
     }
 
@@ -330,7 +343,7 @@ export class ActionExecutor {
             return this.applyOutput(applyAskDefaults(stripCursorToken(text)), item);
         };
         // 移动端插入未验证：诚实降级为复制（B-002 解除后复核）
-        if ((plan.mode === "insert" || plan.mode === "insert-ref" || plan.mode === "insert-embed") && this.host.isMobile()) {
+        if ((plan.mode === "insert" || plan.mode === "insert-content" || plan.mode === "insert-ref" || plan.mode === "insert-embed") && this.host.isMobile()) {
             const text = (await insertRender(plan.markdown)) ?? "";
             const copied = text ? await this.host.writeClipboard(text) : false;
             if (copied) {
@@ -344,7 +357,7 @@ export class ActionExecutor {
                 pendingVerification: ["mobile-insert-unverified", ...plan.pendingVerification],
             };
         }
-        if (plan.mode === "insert" || plan.mode === "insert-ref" || plan.mode === "insert-embed") {
+        if (plan.mode === "insert" || plan.mode === "insert-content" || plan.mode === "insert-ref" || plan.mode === "insert-embed") {
             const md = (await insertRender(plan.markdown)) ?? "";
             if (!md) {
                 return {ok: false, mode: plan.mode, message: "empty-plan", downgraded: plan.downgraded, pendingVerification: plan.pendingVerification};

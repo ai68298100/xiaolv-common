@@ -81,6 +81,14 @@ test("块引用：默认插入=引用语法（绝不误克隆为文本）；三�
     assert.equal(copyContent.mode, "copy-content");
 });
 
+test("块引用：插入源正文是显式动作，不改变默认引用语义", () => {
+    const it = makeItem({itemType: "blockref", targetBlockId: "20240101120000-abcdefg"});
+    const content = actions.planAction(it, "insert-content", ctx({content: {kramdown: "源块最新正文", sourceMissing: false, assetMissing: false}}));
+    assert.equal(content.mode, "insert-content");
+    assert.equal(content.markdown, "源块最新正文");
+    assert.equal(actions.planAction(it, "insert-ref", ctx()).markdown, "((20240101120000-abcdefg '标题'))");
+});
+
 test("块引用：目标 ID 非法时诚实降级（不产出坏语法）", () => {
     const it = makeItem({itemType: "blockref", targetBlockId: "not-a-block-id"});
     const plan = actions.planAction(it, "insert-ref", ctx());

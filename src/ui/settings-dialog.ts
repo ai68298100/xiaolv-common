@@ -369,7 +369,7 @@ async function collectKramdown(
 ): Promise<Map<string, string>> {
     const kramdownById = new Map<string, string>();
     for (const item of items) {
-        const kd = await ctx.library.getItemKramdown(item);
+        const kd = await ctx.library.getStoredItemKramdown(item);
         if (kd.ok) kramdownById.set(item.id, kd.data);
     }
     return kramdownById;

@@ -12,3 +12,5 @@
 > 记录规则：阻塞不撒谎、不静默删除；解除后在当期账本记销项证据，状态改「已解除（日期）」。
 
 **B-001 补充记录（2026-10-14）**：在思源 `3.8.7-beta.3` stage 前端连接当前 `D:\SIYUAN` 工作区，已验证插件实例启动、设置弹窗、设置异步 chunk `702.js` 和 Espanso/parser chunks `795.js`/`713.js` 的真实执行。修复前曾复现错误地请求站点根 `/702.js`；修复后插件目录请求均返回 `200 text/javascript`，Espanso 合法样例解析出 1 条。该 Chromium stage 前端证据不等于 Electron 壳 UI，也不证明真实 AI 模型链路；Electron 和 AI 仍保持待验。
+
+**B-001 补充记录（2026-10-15）**：隔离内核复验升级到 v3.8.7，`pnpm run e2e:iso` 12/12，`pnpm run e2e:discovery:iso` 已扩展为 12/12。该证据更新了内核与发现链路，不解除 Electron 插件生命周期、真实 AI 或 Android 限制。

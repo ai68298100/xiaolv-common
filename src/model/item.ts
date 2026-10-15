@@ -91,6 +91,15 @@ export function isBlockId(v: unknown): v is string {
     return typeof v === "string" && BLOCK_ID_RE.test(v);
 }
 
+/** Resolve a blockref's physical target, preferring its explicit target attribute and
+ * falling back to the source block field used by older/imported records. */
+export function resolveBlockRefTarget(item: Pick<CommonItem, "itemType" | "targetBlockId" | "source">): string {
+    if (item.itemType !== "blockref") return "";
+    if (isBlockId(item.targetBlockId)) return item.targetBlockId;
+    if (isBlockId(item.source.sourceBlockId)) return item.source.sourceBlockId;
+    return "";
+}
+
 export function newLogicalId(now = Date.now(), random = Math.random): string {
     const time = now.toString(36);
     // 随机源退化（注入 0/极小值）时左填充，保证后缀长度满足 LOGICAL_ID_RE（R139）

@@ -59,7 +59,7 @@ export async function applyOverwriteImport(library: LibraryService, incoming: Ex
     if (existing.itemType !== incomingType) {
         // 类型变化 = 先删后建。删除前备份旧正文：建新失败时尽力原样恢复旧条目，
         // 不允许「旧已删、新未建」成为终态（失败可恢复红线，R140）。
-        const backupKd = await library.getItemKramdown(existing);
+        const backupKd = await library.getStoredItemKramdown(existing);
         if (!backupKd.ok) return false;
         const backup = backupKd.data;
         const removed = await library.removeItem(logicalId);

@@ -72,9 +72,9 @@ pnpm run build
 
 ## 验收回归与当前边界
 
-截至 2026-10-14，R187-R202 的 UI smoke、交互审计、类型检查、单元测试、构建、隔离内核、发现内核、密钥扫描和包检查已完成组合复跑，逐项结果见 [`acceptance-audit-2026-10-12.md`](acceptance-audit-2026-10-12.md)。鉴权错误态新增 4 项、恢复 3 项 smoke；交互审计保持 45/45；单元测试为 355/355。原型 screen 11 提供五态/边界/断点视觉样例；卡片里的动作是静态标签，不是交互证据。当前交互审计不是所有页面控件的全量清点，映射范围和缺口见 [`ui-component-catalog.md`](ui-component-catalog.md)。
+截至 2026-10-16，本地 R187-R223 组合复验通过：`pnpm run check`、`pnpm test`（399/399）、生产 build、`test:ui`、`test:ix`（59/59）、隔离内核（12/12）、发现（12/12）、secret scan 和 package check（13 项）。分项结果见当前状态审计 [`status-audit-2026-10-15.md`](status-audit-2026-10-15.md)；[`acceptance-audit-2026-10-12.md`](acceptance-audit-2026-10-12.md) 保留为 R191-R198 历史快照。原型 screen 11 提供五态/边界/断点视觉样例；卡片里的动作是静态标签，不是交互证据。当前交互审计不是所有页面控件的全量清点，映射范围和缺口见 [`ui-component-catalog.md`](ui-component-catalog.md)。
 
-样式变量覆盖和视觉尺度现状见 [`design-spec.md`](design/design-spec.md) 与 ADR 0017/0018。当前生产入口 `index.js + index.css` 为 488 KiB（本机 webpack 输出，非 gzip 或网络首屏数据）；没有可比的历史包体/耗时数据，因此没有声称性能提升。
+样式变量覆盖和视觉尺度现状见 [`design-spec.md`](design/design-spec.md) 与 ADR 0017/0018。2026-10-15 本机构建的 `dist/index.js` 为 322,351 B、`dist/index.css` 为 130,700 B、`dist/package.zip` 为 488,635 B；这些是原始文件大小，不等于 gzip 传输或 Electron 首屏时间。性能趋势沿用 [`perf-baseline-2026-10-14.md`](perf-baseline-2026-10-14.md)，当前构建变化不构成性能提升声明。
 
 仍未完成的事项：
 

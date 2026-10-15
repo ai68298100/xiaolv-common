@@ -340,6 +340,62 @@ const check = (name, ok, detail = "") => {
     });
     check("B16 动作菜单展示重置使用频次并成功分派清零", resetBtnClicked && resetDispatched, `btn=${resetBtnClicked} dispatched=${resetDispatched}`);
 
+    // B17/B18: 先输入查询再收窄范围（输入会依 R138 回到全库），验证收藏与最近范围回退。
+    const verifyScopeFallback = async (scope) => {
+        await open({});
+        await type("SQL");
+        await sleep(300);
+        await page.locator(`[data-xlc-control='filter.scope.${scope}']`).click();
+        await page.waitForSelector("[data-xlc-control='empty.scope-fallback']", {timeout: 3000});
+        const emptyState = await page.evaluate(() => {
+            const btn = document.querySelector("[data-xlc-control='empty.scope-fallback']");
+            const create = document.querySelector("[data-xlc-control='empty.new-item']");
+            return {
+                hasBtn: Boolean(btn),
+                action: btn?.getAttribute("data-xlc-action"),
+                text: btn?.textContent,
+                label: btn?.getAttribute("aria-label"),
+                primary: btn?.classList.contains("xlc-btn-primary"),
+                createGhost: create?.classList.contains("xlc-btn-ghost"),
+                rowCount: document.querySelectorAll("[data-xlc-control='item.row']").length,
+            };
+        });
+        await page.locator("[data-xlc-control='empty.scope-fallback']").click();
+        await page.waitForFunction(() => {
+            const rows = Array.from(document.querySelectorAll("[data-xlc-control='item.row']"));
+            return rows.some((row) => row.textContent?.includes("SQL"))
+                && !document.querySelector("[data-xlc-control='filter.scope.favorites']")?.classList.contains("xlc-chip--on")
+                && !document.querySelector("[data-xlc-control='filter.scope.recent']")?.classList.contains("xlc-chip--on");
+        }, undefined, {timeout: 3000});
+        const recovered = await page.evaluate(() => ({
+            hasSql: Array.from(document.querySelectorAll("[data-xlc-control='item.row']"))
+                .some((row) => row.textContent?.includes("SQL")),
+            query: document.querySelector("[data-xlc-control='search.input']")?.value,
+            queryScope: window.__xlcQueries?.at(-1)?.scope,
+            focused: document.activeElement?.matches("[data-xlc-control='search.input']"),
+        }));
+        return {emptyState, recovered};
+    };
+    const favoriteFallback = await verifyScopeFallback("favorites");
+    check("B17 收藏范围空态提供全库回退和次级新建，回退保留查询、命中并恢复焦点",
+        favoriteFallback.emptyState.hasBtn
+            && favoriteFallback.emptyState.action === "scope-all"
+            && favoriteFallback.emptyState.text?.includes("在全部内容中搜索「SQL」")
+            && favoriteFallback.emptyState.label?.includes("SQL")
+            && favoriteFallback.emptyState.primary
+            && favoriteFallback.emptyState.createGhost
+            && favoriteFallback.emptyState.rowCount === 0
+            && favoriteFallback.recovered.hasSql
+            && favoriteFallback.recovered.query === "SQL"
+            && favoriteFallback.recovered.queryScope === "all"
+            && favoriteFallback.recovered.focused,
+        JSON.stringify(favoriteFallback));
+    const recentFallback = await verifyScopeFallback("recent");
+    check("B18 最近范围空态提供全库回退并恢复 SQL 命中",
+        recentFallback.emptyState.hasBtn && recentFallback.emptyState.rowCount === 0
+            && recentFallback.recovered.hasSql && recentFallback.recovered.queryScope === "all",
+        JSON.stringify(recentFallback));
+
     // ── C. Esc 关闭弹窗 ──
     await open({});
     await sleep(200);

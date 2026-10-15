@@ -1,7 +1,9 @@
 // 按需发现：当前文档顶层块只读扫描，候选仅保存在本实例内存中。
 import {ATTR, LIMITS} from "../constants";
 import type {IKernelClient} from "../kernel/client";
-import {deriveSummary, deriveTitle, inferItemType, isBlockId, ItemType} from "../model/item";
+import {parseBatchKramdowns} from "../kernel/client";
+import {cleanTagList, deriveSummary, deriveTitle, inferItemType, isBlockId, ItemType} from "../model/item";
+import {buildBlockRef} from "../model/actions";
 import {normalizeKramdownIal} from "../model/kramdown";
 import type {CommonItem} from "../model/item";
 import type {LibraryConfig} from "../model/storage";
@@ -37,6 +39,8 @@ export interface DiscoveryCandidate {
     itemType: ItemType;
     title: string;
     summary: string;
+    /** 源块上的 custom-xlc-tags；用于批量筛选，不改变源块正文。 */
+    tags: string[];
     status: DiscoveryCandidateStatus;
     match?: {itemId: string; title: string};
 }
@@ -103,6 +107,8 @@ export interface DiscoveryShutdownResult {
     compensatedItemIds: string[];
     unresolved: Array<{batchId: string; itemId?: string; title: string; message: string}>;
 }
+
+export type DiscoveryAddMode = "copy" | "reference";
 
 interface ChildBlock {
     id: string;
@@ -238,6 +244,7 @@ function parseChildren(data: unknown): {ok: true; children: ChildBlock[]} | {ok:
 }
 
 function parseAttrsById(data: unknown): {ok: true; attrs: Record<string, Record<string, string>>} | {ok: false; message: string} {
+    if (data === null) return {ok: true, attrs: {}};
     if (!isRecord(data)) return {ok: false, message: "batchGetBlockAttrs response is not an object"};
     const attrs: Record<string, Record<string, string>> = {};
     for (const [id, rawAttrs] of Object.entries(data)) {
@@ -250,6 +257,25 @@ function parseAttrsById(data: unknown): {ok: true; attrs: Record<string, Record<
         attrs[id] = blockAttrs;
     }
     return {ok: true, attrs};
+}
+
+function decodeHtmlText(value: string): string {
+    return value.replace(/&(#x[\da-f]+|#\d+|amp|lt|gt|quot|apos);/gi, (entity, code: string) => {
+        if (code[0] === "#") {
+            const numeric = code[1]?.toLocaleLowerCase() === "x" ? Number.parseInt(code.slice(2), 16) : Number.parseInt(code.slice(1), 10);
+            return Number.isFinite(numeric) && numeric >= 0 && numeric <= 0x10ffff ? String.fromCodePoint(numeric) : entity;
+        }
+        const named: Record<string, string> = {amp: "&", lt: "<", gt: ">", quot: "\"", apos: "'"};
+        return named[code.toLocaleLowerCase()] ?? entity;
+    });
+}
+
+/** textmark output gives native SiYuan tags an explicit span; plain #text is not treated as a tag. */
+export function extractNativeTags(textmark: string): string[] {
+    const tags: string[] = [];
+    const pattern = /<span\b(?=[^>]*\bdata-type=["']tag["'])[^>]*>([^<]*)<\/span>/gi;
+    for (const match of textmark.matchAll(pattern)) tags.push(decodeHtmlText(match[1] ?? ""));
+    return cleanTagList(tags);
 }
 
 function parseDocFiles(data: unknown): {ok: true; files: Array<{id: string; path: string}>} | {ok: false; message: string} {
@@ -628,7 +654,7 @@ export class DiscoveryService {
     async addCandidate(
         sessionId: string,
         candidateKey: string,
-        options: {allowSameContent?: boolean; batchId?: string; category?: string} = {},
+        options: {allowSameContent?: boolean; batchId?: string; category?: string; mode?: DiscoveryAddMode} = {},
     ): Promise<DiscoveryReceipt<AddCandidateResult>> {
         // Fail fast while a session is closing.  Do this check before queueing on
         // the per-candidate lock so a caller cannot wait behind an in-flight
@@ -654,11 +680,14 @@ export class DiscoveryService {
     private async addCandidateUnlocked(
         sessionId: string,
         candidateKey: string,
-        options: {allowSameContent?: boolean; batchId?: string; category?: string} = {},
+        options: {allowSameContent?: boolean; batchId?: string; category?: string; mode?: DiscoveryAddMode} = {},
     ): Promise<DiscoveryReceipt<AddCandidateResult>> {
         const session = this.session;
         if (!session || session.view.id !== sessionId) return fail("session-expired", "discovery session is no longer available");
         if (this.shuttingDown || !session.acceptingWrites) return fail("conflict", "discovery session is closing and no longer accepts writes");
+        if (options.mode !== undefined && options.mode !== "copy" && options.mode !== "reference") {
+            return fail("invalid-input", "discovery add mode is invalid");
+        }
         const current = this.getCandidate(sessionId, candidateKey);
         if (!current.ok) return current;
         const isCurrentSession = (): boolean => this.session === session && session.view.id === sessionId
@@ -700,6 +729,63 @@ export class DiscoveryService {
             return fail("source-changed", "source changed after preview; preview it again before adding");
         }
 
+        // 引用入口只保存来源 ID 和元数据；不做正文重复比较，也不把源正文写入库。
+        if (options.mode === "reference") {
+            const latestScope = await this.validateCandidateScope(session, candidate);
+            if (!isCurrentSession()) return fail("session-expired", "discovery session was closed before the item could be added");
+            if (!latestScope.ok) return latestScope;
+            if (latestScope.data.type !== previewBlockType || latestScope.data.subType !== previewSubType) {
+                return fail("source-changed", "source block type changed after preview; preview it again before adding");
+            }
+            const existingResult = await this.findItemForSource(candidate.sourceBlockId);
+            if (!existingResult.ok) return existingResult;
+            const existing = existingResult.data;
+            if (existing) {
+                current.data.view.status = "already-in-library";
+                current.data.view.match = {itemId: existing.id, title: existing.title};
+                this.refreshSessionCandidate(candidateKey, current.data.view);
+                return ok({status: "already-in-library", itemId: existing.id, title: existing.title});
+            }
+            const batch = batchResult?.data ?? {id: makeBatchId(), state: "open" as const, items: new Map<string, {item: CommonItem; markdown: string; title: string}>()};
+            if (!isCurrentSession()) return fail("session-expired", "discovery session was closed before the item could be added");
+            this.beginCreate();
+            try {
+                const referenceMarkdown = buildBlockRef(candidate.sourceBlockId, candidate.title);
+                let created: Receipt<{item: CommonItem}>;
+                try {
+                    created = await this.library.createItem({
+                        itemType: "blockref",
+                        markdown: referenceMarkdown,
+                        title: candidate.title,
+                        tags: candidate.tags,
+                        category: options.category === undefined ? "待整理" : options.category.slice(0, LIMITS.category),
+                        targetBlockId: candidate.sourceBlockId,
+                        source: {sourceDocId: candidate.sourceDocId, sourceBlockId: candidate.sourceBlockId, sourceType: "block"},
+                    }, undefined, {batchToken: batch.id});
+                } catch (error) {
+                    if (this.shuttingDown) this.shutdownResult.unresolved.push({batchId: batch.id, title: candidate.title, message: `create result is unknown: ${(error as Error)?.message || String(error)}`});
+                    return errorReceipt(error);
+                }
+                if (!created.ok) {
+                    if (this.shuttingDown) this.shutdownResult.unresolved.push({batchId: batch.id, title: candidate.title, message: `create failed during shutdown: ${created.message}`});
+                    return fail(created.reason, created.message);
+                }
+                if (!batchResult) { batch.state = "ready"; session.batches.set(batch.id, batch); }
+                batch.items.set(created.data.item.id, {item: created.data.item, markdown: referenceMarkdown, title: created.data.item.title});
+                current.data.view.status = "added";
+                current.data.view.match = {itemId: created.data.item.id, title: created.data.item.title};
+                this.refreshSessionCandidate(candidateKey, current.data.view);
+                if (this.shuttingDown) {
+                    if (Date.now() < this.shutdownDeadline) await this.compensateShutdownItem(batch.id, created.data.item, referenceMarkdown);
+                    else this.shutdownResult.unresolved.push({batchId: batch.id, itemId: created.data.item.id, title: created.data.item.title, message: "shutdown wait budget expired before conditional removal could start"});
+                    return fail("conflict", "item was created during plugin shutdown; cleanup status is recorded by shutdown");
+                }
+                return ok({status: "added", item: created.data.item, batchId: batch.id});
+            } finally {
+                this.endCreate();
+            }
+        }
+
         const comparison = await this.compareWithLibrary(markdown, candidate.sourceBlockId);
         if (!isCurrentSession()) return fail("session-expired", "discovery session was closed before the item could be added");
         if (!comparison.ok) return comparison;
@@ -738,6 +824,7 @@ export class DiscoveryService {
                     itemType,
                     markdown,
                     title,
+                    tags: candidate.tags,
                     category: options.category === undefined ? "待整理" : options.category.slice(0, LIMITS.category),
                     source: {sourceDocId: candidate.sourceDocId, sourceBlockId: candidate.sourceBlockId, sourceType: "block"},
                 }, undefined, {batchToken: batch.id});
@@ -893,6 +980,7 @@ export class DiscoveryService {
             doc: SourceDocument;
             children: ChildBlock[];
             attrsById: Record<string, Record<string, string>>;
+            nativeTagsById: Record<string, string[]>;
         }> = [];
         let scannedBlocks = 0;
         let scannedDocs = 0;
@@ -946,6 +1034,7 @@ export class DiscoveryService {
             scannedBlocks += scanned.length;
 
             let attrsById: Record<string, Record<string, string>> = {};
+            let nativeTagsById: Record<string, string[]> = {};
             if (scanned.length && this.withinScanBudget(generation) && !this.isStopRequested(generation)) {
                 let rawAttrs: unknown;
                 try {
@@ -959,12 +1048,32 @@ export class DiscoveryService {
                 const parsedAttrs = parseAttrsById(rawAttrs);
                 if (parsedAttrs.ok) attrsById = parsedAttrs.attrs;
                 else if (rawAttrs !== null) errors.push({sourcePath: doc.displayPath ?? doc.path, message: parsedAttrs.message});
+
+                if (this.isCancelled(generation)) return this.cancelled();
+                if (this.withinScanBudget(generation) && !this.isStopRequested(generation)) {
+                    try {
+                        const rawKramdowns = await this.kernel.request("getBlockKramdowns", {
+                            ids: scanned.map((child) => child.id), mode: "textmark",
+                        });
+                        const kramdowns = parseBatchKramdowns(rawKramdowns);
+                        const missing = scanned.filter((child) => kramdowns[child.id] === undefined).length;
+                        nativeTagsById = Object.fromEntries(Object.entries(kramdowns).map(([id, textmark]) => [id, extractNativeTags(textmark)]));
+                        if (missing) errors.push({sourcePath: doc.displayPath ?? doc.path, message: `native tag metadata unavailable for ${missing} blocks`});
+                    } catch (error) {
+                        errors.push({sourcePath: doc.displayPath ?? doc.path, message: `native tags: ${(error as Error)?.message || String(error)}`});
+                    }
+                } else {
+                    truncated = true;
+                    truncationReasons.push("time");
+                    errors.push({sourcePath: doc.displayPath ?? doc.path, message: "native tags were not read before the time limit"});
+                }
+
             } else if (scanned.length) {
                 truncated = true;
                 truncationReasons.push("time");
                 errors.push({sourcePath: doc.displayPath ?? doc.path, message: "block attributes were not read before the time limit"});
             }
-            scannedDocuments.push({doc, children: scanned, attrsById});
+            scannedDocuments.push({doc, children: scanned, attrsById, nativeTagsById});
             this.reportProgress(onProgress, {
                 phase: "scanning", scannedDocs, scannedBlocks,
                 discoveredDocs: documents.length, totalDocs: documents.length,
@@ -1040,7 +1149,7 @@ export class DiscoveryService {
         let stopCandidates = false;
         let sequence = 0;
 
-        for (const {doc, children, attrsById} of scannedDocuments) {
+        for (const {doc, children, attrsById, nativeTagsById} of scannedDocuments) {
             for (const child of children) {
                 const brief = child.markdown || child.content;
                 if (!brief.trim()) {
@@ -1077,6 +1186,7 @@ export class DiscoveryService {
                     sourceDocId: doc.id,
                     sourceBlockId: child.id,
                     sourcePath: doc.displayPath ?? doc.id,
+                    tags: cleanTagList([...(nativeTagsById[child.id] ?? []), ...cleanTagList(attrs[ATTR.tags])]),
                     itemType,
                     title,
                     summary: deriveSummary(brief),
@@ -1412,6 +1522,19 @@ export class DiscoveryService {
         };
         await Promise.all(Array.from({length: Math.min(4, Math.max(1, matches.length))}, () => worker()));
         return ok({sameSource: null, sameContent, complete: failedReads === 0});
+    }
+
+    private async findItemForSource(sourceBlockId: string): Promise<DiscoveryReceipt<CommonItem | null>> {
+        try {
+            const index = await this.library.reindex();
+            if (index.truncated || index.errors.length > 0) return fail("library-check-incomplete", "content library could not be fully checked for source duplicates");
+            for (const item of index.items.values()) {
+                if (item.source.sourceBlockId === sourceBlockId || (item.itemType === "blockref" && item.targetBlockId === sourceBlockId)) return ok(item);
+            }
+        } catch {
+            return fail("library-check-incomplete", "content library could not be checked for source duplicates");
+        }
+        return ok(null);
     }
 
     private itemsBySourceBlock(index: IndexBuildResult): Map<string, CommonItem> {

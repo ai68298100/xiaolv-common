@@ -41,6 +41,7 @@ test("解析器：形状不符时返回安全空值", () => {
     assert.deepEqual(client.parseChildBlocks([{id: "20240101120000-abcdefg", type: "p"}, {bad: true}]).length, 1);
     assert.deepEqual(client.parseAttrs([1, 2]), {});
     assert.deepEqual(client.parseBatchAttrs({a: {x: "1", y: 2}}), {a: {x: "1"}});
+    assert.deepEqual(client.parseBatchKramdowns({"20240101120000-abcdefg": "<span data-type=\"tag\">hi</span>", bad: 2}), {"20240101120000-abcdefg": "<span data-type=\"tag\">hi</span>"});
     assert.deepEqual(client.parseExistingMap({a: true, b: "no"}), {a: true, b: false});
     assert.equal(client.parseDocId(42), null);
     assert.equal(client.parseKramdown({noId: 1}), null);

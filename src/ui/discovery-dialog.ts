@@ -17,7 +17,7 @@ type TFn = (key: string, ...args: string[]) => string;
 type DiscoveryScope = "document" | "notebook" | "tree" | "selected-notebook" | "all-notebooks";
 type DiscoveryApi = Omit<Pick<DiscoveryService, "discoverCurrentDocument" | "previewCandidate" | "addCandidate" | "closeSession">, "addCandidate">
     & Pick<DiscoveryService, "beginAddBatch" | "finishAddBatch" | "undoBatch" | "requestScanStop">
-    & {addCandidate: (sessionId: string, candidateKey: string, options?: {allowSameContent?: boolean; batchId?: string; category?: string}) => Promise<DiscoveryReceipt<AddCandidateResult>>}
+    & {addCandidate: (sessionId: string, candidateKey: string, options?: {allowSameContent?: boolean; batchId?: string; category?: string; mode?: "copy" | "reference"}) => Promise<DiscoveryReceipt<AddCandidateResult>>}
     & {discoverCurrentNotebook?: (docId: string, options?: {onProgress?: (progress: DiscoveryProgress) => void}) => Promise<DiscoveryReceipt<DiscoverySessionView>>}
     & {discoverTree?: (docId: string, options?: {onProgress?: (progress: DiscoveryProgress) => void}) => Promise<DiscoveryReceipt<DiscoverySessionView>>}
     & {discoverNotebook?: (notebookId: string, options?: {onProgress?: (progress: DiscoveryProgress) => void}) => Promise<DiscoveryReceipt<DiscoverySessionView>>}
@@ -68,8 +68,8 @@ const FALLBACKS: Record<string, string> = {
     discoveryScopeSelectedNotebook: "指定笔记本",
     discoveryScopeAllNotebooks: "全部笔记本（高级）",
     discoveryScopeUnavailable: "当前环境暂不可用此扫描范围",
-    discoveryScopeTreeHint: "扫描所选根文档及其下级文档顶层块；加入内容只复制到专用库。",
-    discoveryScopeSelectedNotebookHint: "扫描所选笔记本的文档顶层块；加入内容只复制到专用库。",
+    discoveryScopeTreeHint: "扫描所选根文档及其下级文档顶层块；收录方式可选引用或独立副本。",
+    discoveryScopeSelectedNotebookHint: "扫描所选笔记本的文档顶层块；收录方式可选引用或独立副本。",
     discoveryScopeLockedForUndo: "当前仍有可撤销的收录批次；请先撤销或关闭本窗口，再更换扫描范围。",
     discoverySelectTree: "输入关键词查找文档树根文档",
     discoverySelectTreeRoot: "请选择文档树根文档",
@@ -106,7 +106,7 @@ const FALLBACKS: Record<string, string> = {
     discoveryRescanKeepsUndo: "请先撤销或关闭本批次，再重新扫描。",
     discoveryCloseKeepsUndo: "本次发现仍有可撤销的收录批次。关闭会丢失撤销入口；仍要关闭吗？",
     discoveryScopeHintDocument: "只读取当前文档的顶层块；收录前可预览，原文不会被修改。",
-    discoveryScopeHintNotebook: "扫描当前文档所属笔记本的顶层块；候选会显示各自来源，收录只复制到专用库。",
+    discoveryScopeHintNotebook: "扫描当前文档所属笔记本的顶层块；候选会显示各自来源，收录方式可选引用或独立副本。",
     discoveryNotebookUnavailable: "当前版本暂不支持笔记本范围发现",
     discoveryScanningDocument: "正在扫描当前文档…",
     discoveryScanningNotebook: "正在扫描当前笔记本…",
@@ -169,12 +169,14 @@ const FALLBACKS: Record<string, string> = {
     discoveryAddingBatch: "正在收录选中项：%s / %s",
     discoveryAdd: "加入常用库",
     discoveryAddSelected: "加入选中项",
+    discoverySelectFiltered: "选中当前筛选（%s）",
+    discoveryClearFilteredSelection: "清除当前筛选选择",
     discoveryForceSameContent: "批量允许收录内容相同的候选",
     discoverySelected: "已选 %s 项",
     discoveryClose: "关闭",
     discoveryClosePendingWrites: "有收录正在写入内容库。请等待收录回执，必要时先撤销本批新增，再关闭此窗口。",
     discoveryReceiptTitle: "收录回执",
-    discoveryReceiptAdded: "已复制到常用库：%s；原笔记未修改，之后不会自动同步。",
+    discoveryReceiptAdded: "已加入常用库：%s；原笔记未修改。",
     discoveryReceiptSameContent: "内容与「%s」相同，未自动收录；如仍要收录，请明确确认。",
     discoveryReceiptAlready: "已在常用库中：%s",
     discoveryReceiptFailed: "收录失败：%s",
@@ -236,6 +238,9 @@ export class DiscoveryDialog implements DiscoveryDialogController {
     private filterStatus: HTMLSelectElement | null = null;
     private filterType: HTMLSelectElement | null = null;
     private filterText: HTMLInputElement | null = null;
+    private filterTag: HTMLInputElement | null = null;
+    private selectFilteredButton: HTMLButtonElement | null = null;
+    private addMode: HTMLSelectElement | null = null;
     private forceSameContent: HTMLInputElement | null = null;
     private defaultCategoryInput: HTMLInputElement | null = null;
     private candidateCategoryInput: HTMLInputElement | null = null;
@@ -255,8 +260,8 @@ export class DiscoveryDialog implements DiscoveryDialogController {
     private scope: DiscoveryScope;
     private cancelRequested = false;
     private scanState: "idle" | "scanning" | "ready" | "failed" | "cancelled" = "idle";
-    private filter: {status: DiscoveryCandidateStatus | "all"; type: ItemType | "all"; text: string} = {
-        status: "all", type: "all", text: "",
+    private filter: {status: DiscoveryCandidateStatus | "all"; type: ItemType | "all"; text: string; tag: string} = {
+        status: "all", type: "all", text: "", tag: "",
     };
 
     constructor(private readonly deps: DiscoveryDialogDeps, private readonly options: DiscoveryDialogOptions) {
@@ -530,7 +535,47 @@ export class DiscoveryDialog implements DiscoveryDialogController {
             this.renderList();
         });
         filters.appendChild(this.filterText);
+        this.filterTag = document.createElement("input");
+        this.filterTag.className = "b3-text-field";
+        this.filterTag.dataset.xlcControl = "discovery.filter.tag";
+        this.filterTag.placeholder = this.tx("discoveryTagFilterPlaceholder");
+        this.filterTag.setAttribute("aria-label", this.tx("discoveryTagFilterPlaceholder"));
+        this.filterTag.addEventListener("input", () => {
+            this.filter.tag = this.filterTag?.value.trim().toLocaleLowerCase() ?? "";
+            this.page = 0;
+            this.renderList();
+        });
+        filters.appendChild(this.filterTag);
+        this.selectFilteredButton = document.createElement("button");
+        this.selectFilteredButton.type = "button";
+        this.selectFilteredButton.className = "b3-button xlc-btn-ghost";
+        this.selectFilteredButton.dataset.xlcDiscoveryAction = "select-filtered";
+        this.selectFilteredButton.setAttribute("aria-pressed", "false");
+        this.selectFilteredButton.addEventListener("click", () => this.toggleFilteredSelection());
+        filters.appendChild(this.selectFilteredButton);
         root.appendChild(filters);
+
+        const modeRow = document.createElement("label");
+        modeRow.className = "xlc-form-label xlc-discovery-mode-row";
+        const modeLabel = document.createElement("span");
+        modeLabel.textContent = this.tx("discoveryAddMode");
+        modeRow.appendChild(modeLabel);
+        this.addMode = document.createElement("select");
+        this.addMode.className = "b3-select";
+        this.addMode.dataset.xlcControl = "discovery.add-mode";
+        const reference = document.createElement("option");
+        reference.value = "reference";
+        reference.textContent = this.tx("discoveryAddModeReference");
+        const copy = document.createElement("option");
+        copy.value = "copy";
+        copy.textContent = this.tx("discoveryAddModeCopy");
+        this.addMode.append(reference, copy);
+        modeRow.appendChild(this.addMode);
+        const modeHint = document.createElement("span");
+        modeHint.className = "xlc-form-hint";
+        modeHint.textContent = this.tx("discoveryAddModeHint");
+        modeRow.appendChild(modeHint);
+        root.appendChild(modeRow);
 
         const categorySettings = document.createElement("div");
         categorySettings.className = "xlc-discovery-category-settings";
@@ -692,6 +737,8 @@ export class DiscoveryDialog implements DiscoveryDialogController {
         if (this.filterStatus) this.filterStatus.disabled = scanning || this.actionBusy;
         if (this.filterType) this.filterType.disabled = scanning || this.actionBusy;
         if (this.filterText) this.filterText.disabled = scanning || this.actionBusy;
+        if (this.filterTag) this.filterTag.disabled = scanning || this.actionBusy;
+        if (this.addMode) this.addMode.disabled = scanning || this.actionBusy;
         if (this.scopeSelect) {
             this.scopeSelect.disabled = scanning || this.actionBusy || locked;
             this.scopeSelect.title = locked ? this.tx("discoveryScopeLockedForUndo") : "";
@@ -1037,9 +1084,22 @@ export class DiscoveryDialog implements DiscoveryDialogController {
     private matches(candidate: DiscoveryCandidate): boolean {
         if (this.filter.status !== "all" && candidate.status !== this.filter.status) return false;
         if (this.filter.type !== "all" && candidate.itemType !== this.filter.type) return false;
+        if (this.filter.tag && !candidate.tags.some((tag) => tag.toLocaleLowerCase().includes(this.filter.tag))) return false;
         if (!this.filter.text) return true;
         const haystack = `${candidate.title} ${candidate.summary} ${candidate.sourcePath}`.toLocaleLowerCase();
         return haystack.includes(this.filter.text);
+    }
+
+    private toggleFilteredSelection(): void {
+        const eligible = Array.from(this.candidates.values()).filter((candidate) => this.canAdd(candidate) && this.matches(candidate));
+        if (!eligible.length || this.actionBusy || !this.sessionId) return;
+        const allSelected = eligible.every((candidate) => this.selected.has(candidate.key));
+        for (const candidate of eligible) {
+            if (allSelected) this.selected.delete(candidate.key);
+            else this.selected.add(candidate.key);
+        }
+        this.renderList();
+        this.selectFilteredButton?.focus();
     }
 
     private canAdd(candidate: DiscoveryCandidate): boolean {
@@ -1062,7 +1122,7 @@ export class DiscoveryDialog implements DiscoveryDialogController {
             empty.className = "xlc-discovery-empty";
             empty.setAttribute("role", "listitem");
             const scanning = this.root?.getAttribute("aria-busy") === "true";
-            const hasFilters = this.filter.status !== "all" || this.filter.type !== "all" || !!this.filter.text;
+            const hasFilters = this.filter.status !== "all" || this.filter.type !== "all" || !!this.filter.text || !!this.filter.tag;
             empty.textContent = scanning ? this.tx("discoveryScanningCandidates")
                 : this.scanState === "failed" ? this.tx("discoveryScanIncompleteEmpty")
                     : this.scanState === "cancelled" ? this.tx("discoveryScanStoppedEmpty")
@@ -1076,10 +1136,11 @@ export class DiscoveryDialog implements DiscoveryDialogController {
                 clear.textContent = this.tx("discoveryClearFilters");
                 clear.dataset.xlcDiscoveryAction = "clear-filters";
                 clear.addEventListener("click", () => {
-                    this.filter = {status: "all", type: "all", text: ""};
+                    this.filter = {status: "all", type: "all", text: "", tag: ""};
                     if (this.filterStatus) this.filterStatus.value = "all";
                     if (this.filterType) this.filterType.value = "all";
                     if (this.filterText) this.filterText.value = "";
+                    if (this.filterTag) this.filterTag.value = "";
                     this.page = 0;
                     this.renderList();
                 });
@@ -1125,7 +1186,7 @@ export class DiscoveryDialog implements DiscoveryDialogController {
             body.appendChild(title);
             const meta = document.createElement("div");
             meta.className = "xlc-discovery-row-meta";
-            meta.textContent = `${typeLabel(this.deps.t, candidate.itemType)} · ${candidate.sourcePath}`;
+            meta.textContent = `${typeLabel(this.deps.t, candidate.itemType)} · ${candidate.sourcePath}${candidate.tags.length ? ` · ${candidate.tags.join(", ")}` : ""}`;
             body.appendChild(meta);
             const summary = document.createElement("div");
             summary.className = "xlc-discovery-row-summary";
@@ -1202,6 +1263,14 @@ export class DiscoveryDialog implements DiscoveryDialogController {
         if (this.addSelectedButton) {
             this.addSelectedButton.disabled = this.actionBusy || !this.sessionId || count === 0;
         }
+        if (this.selectFilteredButton) {
+            const eligible = Array.from(this.candidates.values()).filter((candidate) => this.canAdd(candidate) && this.matches(candidate));
+            const allSelected = eligible.length > 0 && eligible.every((candidate) => this.selected.has(candidate.key));
+            this.selectFilteredButton.textContent = this.tx(allSelected ? "discoveryClearFilteredSelection" : "discoverySelectFiltered", String(eligible.length));
+            this.selectFilteredButton.disabled = this.actionBusy || !this.sessionId || eligible.length === 0;
+            this.selectFilteredButton.setAttribute("aria-pressed", String(allSelected));
+            this.selectFilteredButton.setAttribute("aria-label", this.tx(allSelected ? "discoveryClearFilteredSelection" : "discoverySelectFiltered", String(eligible.length)));
+        }
         if (this.defaultCategoryInput) this.defaultCategoryInput.disabled = this.actionBusy;
         if (this.candidateCategoryInput) this.candidateCategoryInput.disabled = this.actionBusy || !this.activeKey || !this.sessionId;
         this.updateCategoryResetState();
@@ -1268,6 +1337,7 @@ export class DiscoveryDialog implements DiscoveryDialogController {
 
     private async addOne(key: string, allowSameContent: boolean): Promise<void> {
         if (!this.sessionId || this.actionBusy) return;
+        const mode = this.addMode?.value === "copy" ? "copy" : "reference";
         const candidate = this.candidates.get(key);
         if (!candidate || !this.canAdd(candidate)) return;
         const previousStatus = this.status?.textContent ?? "";
@@ -1277,7 +1347,11 @@ export class DiscoveryDialog implements DiscoveryDialogController {
         this.renderList();
         try {
             if (!(await this.ensurePreview(key)) || !this.sessionId) return;
-            const result = await this.deps.service.addCandidate(this.sessionId, key, {allowSameContent, category: this.getCategory(key)});
+            const result = await this.deps.service.addCandidate(this.sessionId, key, {
+                allowSameContent,
+                category: this.getCategory(key),
+                mode,
+            });
             if (!result.ok) {
                 this.handleFailure(result, key);
                 return;
@@ -1295,6 +1369,7 @@ export class DiscoveryDialog implements DiscoveryDialogController {
     private async addSelected(): Promise<void> {
         if (!this.sessionId || this.actionBusy || this.selected.size === 0) return;
         const sessionId = this.sessionId;
+        const mode = this.addMode?.value === "copy" ? "copy" : "reference";
         const batchStart = this.deps.service.beginAddBatch(sessionId);
         if (!batchStart.ok) {
             this.handleFailure(batchStart);
@@ -1330,6 +1405,7 @@ export class DiscoveryDialog implements DiscoveryDialogController {
                     allowSameContent,
                     batchId,
                     category: categories.get(key) ?? this.tx("discoveryUnsortedCategory"),
+                    mode,
                 });
                 if (!result.ok) {
                     if (result.reason === "session-expired") {

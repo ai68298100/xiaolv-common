@@ -86,6 +86,7 @@ export const ENDPOINTS = {
     getFullHPathByID: "/api/filetree/getFullHPathByID",
     getChildBlocks: "/api/block/getChildBlocks",
     getBlockKramdown: "/api/block/getBlockKramdown",
+    getBlockKramdowns: "/api/block/getBlockKramdowns",
     getBlockInfo: "/api/block/getBlockInfo",
     insertBlock: "/api/block/insertBlock",
     appendBlock: "/api/block/appendBlock",
@@ -126,7 +127,7 @@ export type KernelFailureHandler = (error: KernelError) => void;
 
 const RETRYABLE_ENDPOINTS = new Set<EndpointName>([
     "version", "lsNotebooks", "listDocsByPath", "searchDocs", "getHPathByID", "getFullHPathByID",
-    "getChildBlocks", "getBlockKramdown", "getBlockInfo", "checkBlocksExist", "getBlockAttrs", "batchGetBlockAttrs",
+    "getChildBlocks", "getBlockKramdown", "getBlockKramdowns", "getBlockInfo", "checkBlocksExist", "getBlockAttrs", "batchGetBlockAttrs",
     "exportMdContent", "listModels",
 ]);
 
@@ -317,6 +318,16 @@ export function parseKramdown(data: unknown): {id: string; kramdown: string} | n
     if (!data || typeof (data as {id?: unknown}).id !== "string") return null;
     const kramdown = (data as {kramdown?: unknown}).kramdown;
     return {id: (data as {id: string}).id, kramdown: typeof kramdown === "string" ? kramdown : ""};
+}
+
+/** getBlockKramdowns 响应形状：block id → kramdown string。 */
+export function parseBatchKramdowns(data: unknown): Record<string, string> {
+    if (!data || typeof data !== "object" || Array.isArray(data)) return {};
+    const out: Record<string, string> = {};
+    for (const [blockId, value] of Object.entries(data as Record<string, unknown>)) {
+        if (/^\d{14}-[0-9a-z]{7}$/.test(blockId) && typeof value === "string") out[blockId] = value;
+    }
+    return out;
 }
 
 export function parseAttrs(data: unknown): Record<string, string> {

@@ -13,6 +13,7 @@ import {TransformKind} from "../service/ai";
 import {ProviderRow} from "../model/provider-section";
 import {AskField, askFieldTag, hasCursorToken, listAskFields} from "../model/variables";
 import {openVariableFillCard} from "./variable-form";
+import {formatScopeFallbackQuery, shouldShowScopeFallback} from "./empty-state";
 import {findPinyinMatches} from "../model/pinyin-tiny";
 
 export interface DialogDeps {
@@ -20,7 +21,7 @@ export interface DialogDeps {
     search: (query: SearchQuery) => Promise<{entries: SearchEntry[]; truncated: boolean; total: number; loading?: boolean; error?: string}>;
     /** 文档搜索（插入到指定文档的选择器） */
     searchDocs: (k: string) => Promise<Array<{id: string; hPath: string; name: string}>>;
-    insertToDoc: (itemId: string, docId: string, hPath: string, fills?: Record<string, string>, mode?: "insert" | "insert-ref" | "insert-embed") => Promise<boolean>;
+    insertToDoc: (itemId: string, docId: string, hPath: string, fills?: Record<string, string>, mode?: "insert" | "insert-content" | "insert-ref" | "insert-embed") => Promise<boolean>;
     duplicateItem: (itemId: string) => Promise<void>;
     /** AI 变换结果存为新条目（来源=原条目；原条目不被修改） */
     saveTransformed: (itemId: string, transformLabel: string, text: string) => Promise<void>;
@@ -1281,19 +1282,41 @@ export class CommonSearchDialog {
                 });
                 empty.appendChild(clear);
             }
+            // 范围限制回退引导（ADR 0046 / T-0073）：
+            // 若在收藏/最近等受限范围下搜索无结果，优先提供一键切换到全库范围搜索该词的推荐动作。
+            const query = this.lastQueryText.trim();
+            const hasScopeLimitation = shouldShowScopeFallback(query, this.currentScope);
+            if (hasScopeLimitation) {
+                const scopeFallback = document.createElement("button");
+                scopeFallback.type = "button";
+                scopeFallback.className = "b3-button xlc-btn-primary xlc-empty-action";
+                scopeFallback.dataset.xlcControl = "empty.scope-fallback";
+                scopeFallback.dataset.xlcAction = "scope-all";
+                const shortQ = formatScopeFallbackQuery(query);
+                const label = this.deps.t("searchAllScopeAction", shortQ);
+                scopeFallback.textContent = "⤢ " + label;
+                scopeFallback.setAttribute("aria-label", label);
+                scopeFallback.title = label;
+                scopeFallback.addEventListener("click", () => {
+                    this.currentScope = "all";
+                    this.syncScopeChips();
+                    void this.refresh().then(() => this.restoreFocusToSearch());
+                });
+                empty.appendChild(scopeFallback);
+            }
+
             // 搜索无命中时同样提供下一步，避免用户只能返回其他入口再新建。
             // 空库分支沿用既有按钮；收藏/最近空态不显示，防止动作与当前范围语义冲突。
             if (this.emptyMessage === this.deps.t("emptyLibrary")
                 || this.emptyMessage === this.deps.t("emptyFiltered")
-                || this.lastQueryText.trim()) {
+                || query) {
                 const create = document.createElement("button");
                 create.type = "button";
-                create.className = "b3-button xlc-btn-primary xlc-empty-action";
+                create.className = "b3-button " + (hasScopeLimitation ? "xlc-btn-ghost" : "xlc-btn-primary") + " xlc-empty-action";
                 create.dataset.xlcAction = "new-item";
                 create.dataset.xlcControl = "empty.new-item";
-                const query = this.lastQueryText.trim();
                 const fullTitleCandidate = query && !query.startsWith("?") ? query.slice(0, 120) : "";
-        const buttonTitle = fullTitleCandidate.length > 24
+                const buttonTitle = fullTitleCandidate.length > 24
                     ? `${fullTitleCandidate.slice(0, 24)}…`
                     : fullTitleCandidate;
                 create.textContent = buttonTitle
@@ -2133,6 +2156,11 @@ export class CommonSearchDialog {
                 addAction("＋", this.deps.t("insertRef"), () => this.insertTarget
                     ? this.deps.insertToDoc(entry.id, this.insertTarget.docId, this.insertTarget.hPath, undefined, "insert-ref")
                     : this.deps.runAction(entry.id, "insert-ref"));
+                addAction("↳", this.deps.t("insertSourceContent"), () => this.insertEntryWithVars(entry, (fills) => this.insertTarget
+                    ? this.deps.insertToDoc(entry.id, this.insertTarget.docId, this.insertTarget.hPath, fills, "insert-content")
+                    : fills
+                        ? this.deps.runActionWithFills(entry.id, "insert-content", fills)
+                        : this.deps.runAction(entry.id, "insert-content"), {beforePerform: () => this.destroy()}), "xlc-menu-item", false);
                 addAction("⊞", this.deps.t("insertEmbed"), () => this.insertTarget
                     ? this.deps.insertToDoc(entry.id, this.insertTarget.docId, this.insertTarget.hPath, undefined, "insert-embed")
                     : this.deps.runAction(entry.id, "insert-embed"));

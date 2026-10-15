@@ -5,6 +5,7 @@ import {
     IKernelClient,
     parseAttrs,
     parseBatchAttrs,
+    parseBatchKramdowns,
     parseChildBlocks,
     parseDocId,
     parseDocSearch,
@@ -14,6 +15,7 @@ import {
 } from "../kernel/client";
 import {
     CommonItem,
+    deriveSummary,
     ISourceRef,
     ItemType,
     isBlockId,
@@ -22,6 +24,7 @@ import {
     isSourceType,
     newLogicalId,
     normalizeCommonItem,
+    resolveBlockRefTarget,
 } from "../model/item";
 import {LibraryConfig} from "../model/storage";
 import {SearchEntry} from "../model/search";
@@ -81,7 +84,10 @@ function sameManagedItem(actual: CommonItem, expected: CommonItem): boolean {
         && actual.tags.length === expected.tags.length
         && actual.tags.every((tag, index) => tag === expected.tags[index])
         && actual.category === expected.category
-        && actual.varCount === expected.varCount
+        // blockref 的变量数来自源块实时正文，是可重建派生缓存；源块更新不等于用户编辑了库入口。
+        && (actual.itemType === "blockref" && expected.itemType === "blockref"
+            ? true
+            : actual.varCount === expected.varCount)
         && actual.source.sourceDocId === expected.source.sourceDocId
         && actual.source.sourceBlockId === expected.source.sourceBlockId
         && actual.source.sourceType === expected.source.sourceType
@@ -511,6 +517,8 @@ export class LibraryService {
         const {docIds, errors} = resolved;
         const items = new Map<string, CommonItem>();
         const entries: SearchEntry[] = [];
+        const searchEntryById = new Map<string, SearchEntry>();
+        const referenceItems: CommonItem[] = [];
         let stopped = resolved.stopped;
         let truncated = stopped;
         let docsScanned = 0;
@@ -576,6 +584,13 @@ export class LibraryService {
                     kramdown,
                 });
                 if (!item) continue;
+                // 引用入口的库块只保存 marker；稍后批量读取源块，为摘要/变量徽标建立可重建缓存。
+                const targetBlockId = resolveBlockRefTarget(item);
+                if (item.itemType === "blockref") {
+                    item.summary = "";
+                    item.varCount = 0;
+                    if (targetBlockId && targetBlockId !== child.id) referenceItems.push(item);
+                }
                 // 拼音注解（仅当适配器具备首字母能力；noop 适配器零开销零字段）
                 const searchEntry = toSearchEntry(item);
                 const adapter = getPinyinAdapter();
@@ -588,6 +603,33 @@ export class LibraryService {
                 }
                 items.set(item.id, item);
                 entries.push(searchEntry);
+                searchEntryById.set(item.id, searchEntry);
+            }
+        }
+
+        // 批量读取引用目标，避免大批常用入口把索引构建变成逐条网络往返。
+        const referenceTargetIds = Array.from(new Set(referenceItems.map(resolveBlockRefTarget).filter(Boolean)));
+        if (referenceTargetIds.length) {
+            try {
+                const raw = await this.kernel.request("getBlockKramdowns", {ids: referenceTargetIds, mode: "md"});
+                const bodies = parseBatchKramdowns(raw);
+                let missing = 0;
+                for (const item of referenceItems) {
+                    const body = bodies[resolveBlockRefTarget(item)];
+                    if (typeof body !== "string") { missing++; continue; }
+                    item.summary = deriveSummary(body);
+                    item.varCount = countAskFields(body);
+                    const entry = searchEntryById.get(item.id);
+                    if (entry) {
+                        entry.summary = item.summary;
+                        entry.varCount = item.varCount;
+                    }
+                }
+                if (missing) errors.push(`blockref targets unavailable: ${missing}`);
+            } catch (err) {
+                // Keep reference records searchable by their title/tags while clearly
+                // reporting that source-derived summary metadata could not be refreshed.
+                errors.push(`blockref targets: ${(err as Error).message}`);
             }
         }
         return {entries, items, truncated, ...(stopped ? {stopped: true} : {}), docsScanned, errors, builtAt: Date.now()};
@@ -663,11 +705,26 @@ export class LibraryService {
         return expand(text, 1, new Set());
     }
 
-    async getItemKramdown(item: CommonItem): Promise<Receipt<string>> {
+    /** 读取条目在专用库中的物理正文（编辑、导出、撤销恢复使用）。 */
+    async getStoredItemKramdown(item: CommonItem): Promise<Receipt<string>> {
         try {
             const data = parseKramdown(await this.kernel.request("getBlockKramdown", {id: item.blockId}));
             if (!data) return fail("not-found", `block ${item.blockId} kramdown unavailable`);
             return ok(data.kramdown);
+        } catch (err) {
+            return toFailureReceipt(err);
+        }
+    }
+
+    /** 读取条目当前有效正文；引用入口永远跟随目标源块，不读取 marker。 */
+    async getItemKramdown(item: CommonItem): Promise<Receipt<string>> {
+        if (item.itemType !== "blockref") return this.getStoredItemKramdown(item);
+        const target = resolveBlockRefTarget(item);
+        if (!target) return fail("invalid-input", "blockref target is missing or invalid");
+        try {
+            const data = parseKramdown(await this.kernel.request("getBlockKramdown", {id: target}));
+            if (!data) return fail("not-found", `target block ${target} kramdown unavailable`);
+            return ok(normalizeKramdownIal(data.kramdown));
         } catch (err) {
             return toFailureReceipt(err);
         }
@@ -680,7 +737,9 @@ export class LibraryService {
         const health: SourceHealth = {blockMissing: false, docMissing: false, assetMissing: false};
         try {
             const docCandidate = item.source.sourceDocId || "";
-            const blockCandidate = item.source.sourceBlockId || "";
+            const blockCandidate = item.itemType === "blockref"
+                ? resolveBlockRefTarget(item)
+                : (item.source.sourceBlockId || "");
             const ids = [docCandidate, blockCandidate].filter((id) => isBlockId(id));
             if (ids.length > 0) {
                 const existMap = parseExistingMap(await this.kernel.request("checkBlocksExist", {ids}));

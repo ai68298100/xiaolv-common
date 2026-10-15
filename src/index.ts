@@ -11,9 +11,9 @@ import {getDialogBody} from "./ui/dialog-dom";
 import "@/styles/index.scss";
 import {LIMITS, SIDECAR_LOAD_TIMEOUT_MS, STORAGE_KEYS} from "./constants";
 import {createKernelClient, parseExistingMap, type IKernelClient, type SyncPost, type SyncPostContext} from "./kernel/client";
-import {CommonItem, isBlockId, isItemType, isSafeHttpUrl} from "./model/item";
+import {CommonItem, isBlockId, isItemType, isSafeHttpUrl, resolveBlockRefTarget} from "./model/item";
 import {getSingleDocTreeDiscoveryTarget} from "./model/discovery-target";
-import {buildEmbedBlock} from "./model/actions";
+import {buildBlockRef, buildEmbedBlock} from "./model/actions";
 import {ExportedItem, buildBundle, validateImport, ConflictPolicy, ImportReceipt} from "./model/transfer";
 import {importBundle as importBundleCore} from "./service/importer";
 import {importMarkdownBundle} from "./service/import-markdown";
@@ -967,12 +967,13 @@ export default class XiaolvCommonPlugin extends Plugin {
                     return false;
                 }
                 const item = got.data;
-                // blockref 条目：插引用语法（而非条目块自身的空 kramdown）
+                // blockref 条目：插引用语法（而非条目块自身的 marker 正文）
                 let markdown: string;
-                if (item.itemType === "blockref" && item.targetBlockId) {
+                const blockrefTarget = resolveBlockRefTarget(item);
+                if (item.itemType === "blockref" && blockrefTarget && mode !== "insert-content") {
                     markdown = mode === "insert-embed"
-                        ? buildEmbedBlock(item.targetBlockId)
-                        : `((${item.targetBlockId} '${(item.title || "ref").replace(/'/g, "\\'")}'))`;
+                        ? buildEmbedBlock(blockrefTarget)
+                        : buildBlockRef(blockrefTarget, item.title || "ref");
                 } else {
                     const kd = await this.library.getItemKramdown(item);
                     if (!kd.ok) {
@@ -995,7 +996,7 @@ export default class XiaolvCommonPlugin extends Plugin {
             duplicateItem: async (itemId) => {
                 const got = await this.library.getItem(itemId);
                 if (!got.ok) return;
-                const kd = await this.library.getItemKramdown(got.data);
+                const kd = await this.library.getStoredItemKramdown(got.data);
                 if (!kd.ok) {
                     this.notify("error", kd.message);
                     return;
@@ -1389,7 +1390,7 @@ export default class XiaolvCommonPlugin extends Plugin {
 
     private async openEditDialog(item: CommonItem): Promise<void> {
         const t = this.i18nFn();
-        const kd = await this.library.getItemKramdown(item);
+        const kd = await this.library.getStoredItemKramdown(item);
         const initialKramdown = kd.ok ? kd.data : "";
         const dialog = new Dialog({
             // 标题带条目名（截断 24 字）：确认正在编辑哪一条
@@ -1653,7 +1654,7 @@ export default class XiaolvCommonPlugin extends Plugin {
         const items: CommonItem[] = [];
         const kramdownById = new Map<string, string>();
         for (const item of idx.items.values()) {
-            const kd = await this.library.getItemKramdown(item);
+            const kd = await this.library.getStoredItemKramdown(item);
             if (kd.ok) {
                 items.push(item);
                 kramdownById.set(item.id, kd.data);

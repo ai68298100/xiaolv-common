@@ -3304,6 +3304,20 @@ ${exception.mark.snippet}`;
     return bar;
   }
 
+  // src/ui/empty-state.ts
+  function shouldShowScopeFallback(query, scope) {
+    return Boolean(query.trim()) && scope !== "all";
+  }
+  function formatScopeFallbackQuery(query, maxCharacters = 20) {
+    const limit = Math.max(0, Math.floor(maxCharacters));
+    const characters = [];
+    for (const character of query.trim()) {
+      if (characters.length === limit) return `${characters.join("")}\u2026`;
+      characters.push(character);
+    }
+    return characters.join("");
+  }
+
   // src/model/pinyin-tiny.ts
   var import_tiny_pinyin = __toESM(require_dist());
 
@@ -4560,13 +4574,32 @@ ${exception.mark.snippet}`;
           });
           empty.appendChild(clear);
         }
-        if (this.emptyMessage === this.deps.t("emptyLibrary") || this.emptyMessage === this.deps.t("emptyFiltered") || this.lastQueryText.trim()) {
+        const query = this.lastQueryText.trim();
+        const hasScopeLimitation = shouldShowScopeFallback(query, this.currentScope);
+        if (hasScopeLimitation) {
+          const scopeFallback = document.createElement("button");
+          scopeFallback.type = "button";
+          scopeFallback.className = "b3-button xlc-btn-primary xlc-empty-action";
+          scopeFallback.dataset.xlcControl = "empty.scope-fallback";
+          scopeFallback.dataset.xlcAction = "scope-all";
+          const shortQ = formatScopeFallbackQuery(query);
+          const label = this.deps.t("searchAllScopeAction", shortQ);
+          scopeFallback.textContent = "\u2922 " + label;
+          scopeFallback.setAttribute("aria-label", label);
+          scopeFallback.title = label;
+          scopeFallback.addEventListener("click", () => {
+            this.currentScope = "all";
+            this.syncScopeChips();
+            void this.refresh().then(() => this.restoreFocusToSearch());
+          });
+          empty.appendChild(scopeFallback);
+        }
+        if (this.emptyMessage === this.deps.t("emptyLibrary") || this.emptyMessage === this.deps.t("emptyFiltered") || query) {
           const create = document.createElement("button");
           create.type = "button";
-          create.className = "b3-button xlc-btn-primary xlc-empty-action";
+          create.className = "b3-button " + (hasScopeLimitation ? "xlc-btn-ghost" : "xlc-btn-primary") + " xlc-empty-action";
           create.dataset.xlcAction = "new-item";
           create.dataset.xlcControl = "empty.new-item";
-          const query = this.lastQueryText.trim();
           const fullTitleCandidate = query && !query.startsWith("?") ? query.slice(0, 120) : "";
           const buttonTitle = fullTitleCandidate.length > 24 ? `${fullTitleCandidate.slice(0, 24)}\u2026` : fullTitleCandidate;
           create.textContent = buttonTitle ? this.deps.t("newItemActionWithQuery", buttonTitle) : this.deps.t("newItemAction");
@@ -5333,6 +5366,7 @@ ${exception.mark.snippet}`;
         };
         if (entry.itemType === "blockref") {
           addAction("\uFF0B", this.deps.t("insertRef"), () => this.insertTarget ? this.deps.insertToDoc(entry.id, this.insertTarget.docId, this.insertTarget.hPath, void 0, "insert-ref") : this.deps.runAction(entry.id, "insert-ref"));
+          addAction("\u21B3", this.deps.t("insertSourceContent"), () => this.insertEntryWithVars(entry, (fills) => this.insertTarget ? this.deps.insertToDoc(entry.id, this.insertTarget.docId, this.insertTarget.hPath, fills, "insert-content") : fills ? this.deps.runActionWithFills(entry.id, "insert-content", fills) : this.deps.runAction(entry.id, "insert-content"), { beforePerform: () => this.destroy() }), "xlc-menu-item", false);
           addAction("\u229E", this.deps.t("insertEmbed"), () => this.insertTarget ? this.deps.insertToDoc(entry.id, this.insertTarget.docId, this.insertTarget.hPath, void 0, "insert-embed") : this.deps.runAction(entry.id, "insert-embed"));
           addAction("\u29C9", this.deps.t("insertCopy"), () => this.deps.runAction(entry.id, "copy-content"));
         } else {
@@ -6941,7 +6975,7 @@ ${exception.mark.snippet}`;
   async function collectKramdown(ctx, items) {
     const kramdownById = /* @__PURE__ */ new Map();
     for (const item of items) {
-      const kd = await ctx.library.getItemKramdown(item);
+      const kd = await ctx.library.getStoredItemKramdown(item);
       if (kd.ok) kramdownById.set(item.id, kd.data);
     }
     return kramdownById;
@@ -9152,8 +9186,8 @@ ${exception.mark.snippet}`;
     discoveryScopeSelectedNotebook: "\u6307\u5B9A\u7B14\u8BB0\u672C",
     discoveryScopeAllNotebooks: "\u5168\u90E8\u7B14\u8BB0\u672C\uFF08\u9AD8\u7EA7\uFF09",
     discoveryScopeUnavailable: "\u5F53\u524D\u73AF\u5883\u6682\u4E0D\u53EF\u7528\u6B64\u626B\u63CF\u8303\u56F4",
-    discoveryScopeTreeHint: "\u626B\u63CF\u6240\u9009\u6839\u6587\u6863\u53CA\u5176\u4E0B\u7EA7\u6587\u6863\u9876\u5C42\u5757\uFF1B\u52A0\u5165\u5185\u5BB9\u53EA\u590D\u5236\u5230\u4E13\u7528\u5E93\u3002",
-    discoveryScopeSelectedNotebookHint: "\u626B\u63CF\u6240\u9009\u7B14\u8BB0\u672C\u7684\u6587\u6863\u9876\u5C42\u5757\uFF1B\u52A0\u5165\u5185\u5BB9\u53EA\u590D\u5236\u5230\u4E13\u7528\u5E93\u3002",
+    discoveryScopeTreeHint: "\u626B\u63CF\u6240\u9009\u6839\u6587\u6863\u53CA\u5176\u4E0B\u7EA7\u6587\u6863\u9876\u5C42\u5757\uFF1B\u6536\u5F55\u65B9\u5F0F\u53EF\u9009\u5F15\u7528\u6216\u72EC\u7ACB\u526F\u672C\u3002",
+    discoveryScopeSelectedNotebookHint: "\u626B\u63CF\u6240\u9009\u7B14\u8BB0\u672C\u7684\u6587\u6863\u9876\u5C42\u5757\uFF1B\u6536\u5F55\u65B9\u5F0F\u53EF\u9009\u5F15\u7528\u6216\u72EC\u7ACB\u526F\u672C\u3002",
     discoveryScopeLockedForUndo: "\u5F53\u524D\u4ECD\u6709\u53EF\u64A4\u9500\u7684\u6536\u5F55\u6279\u6B21\uFF1B\u8BF7\u5148\u64A4\u9500\u6216\u5173\u95ED\u672C\u7A97\u53E3\uFF0C\u518D\u66F4\u6362\u626B\u63CF\u8303\u56F4\u3002",
     discoverySelectTree: "\u8F93\u5165\u5173\u952E\u8BCD\u67E5\u627E\u6587\u6863\u6811\u6839\u6587\u6863",
     discoverySelectTreeRoot: "\u8BF7\u9009\u62E9\u6587\u6863\u6811\u6839\u6587\u6863",
@@ -9190,7 +9224,7 @@ ${exception.mark.snippet}`;
     discoveryRescanKeepsUndo: "\u8BF7\u5148\u64A4\u9500\u6216\u5173\u95ED\u672C\u6279\u6B21\uFF0C\u518D\u91CD\u65B0\u626B\u63CF\u3002",
     discoveryCloseKeepsUndo: "\u672C\u6B21\u53D1\u73B0\u4ECD\u6709\u53EF\u64A4\u9500\u7684\u6536\u5F55\u6279\u6B21\u3002\u5173\u95ED\u4F1A\u4E22\u5931\u64A4\u9500\u5165\u53E3\uFF1B\u4ECD\u8981\u5173\u95ED\u5417\uFF1F",
     discoveryScopeHintDocument: "\u53EA\u8BFB\u53D6\u5F53\u524D\u6587\u6863\u7684\u9876\u5C42\u5757\uFF1B\u6536\u5F55\u524D\u53EF\u9884\u89C8\uFF0C\u539F\u6587\u4E0D\u4F1A\u88AB\u4FEE\u6539\u3002",
-    discoveryScopeHintNotebook: "\u626B\u63CF\u5F53\u524D\u6587\u6863\u6240\u5C5E\u7B14\u8BB0\u672C\u7684\u9876\u5C42\u5757\uFF1B\u5019\u9009\u4F1A\u663E\u793A\u5404\u81EA\u6765\u6E90\uFF0C\u6536\u5F55\u53EA\u590D\u5236\u5230\u4E13\u7528\u5E93\u3002",
+    discoveryScopeHintNotebook: "\u626B\u63CF\u5F53\u524D\u6587\u6863\u6240\u5C5E\u7B14\u8BB0\u672C\u7684\u9876\u5C42\u5757\uFF1B\u5019\u9009\u4F1A\u663E\u793A\u5404\u81EA\u6765\u6E90\uFF0C\u6536\u5F55\u65B9\u5F0F\u53EF\u9009\u5F15\u7528\u6216\u72EC\u7ACB\u526F\u672C\u3002",
     discoveryNotebookUnavailable: "\u5F53\u524D\u7248\u672C\u6682\u4E0D\u652F\u6301\u7B14\u8BB0\u672C\u8303\u56F4\u53D1\u73B0",
     discoveryScanningDocument: "\u6B63\u5728\u626B\u63CF\u5F53\u524D\u6587\u6863\u2026",
     discoveryScanningNotebook: "\u6B63\u5728\u626B\u63CF\u5F53\u524D\u7B14\u8BB0\u672C\u2026",
@@ -9253,12 +9287,14 @@ ${exception.mark.snippet}`;
     discoveryAddingBatch: "\u6B63\u5728\u6536\u5F55\u9009\u4E2D\u9879\uFF1A%s / %s",
     discoveryAdd: "\u52A0\u5165\u5E38\u7528\u5E93",
     discoveryAddSelected: "\u52A0\u5165\u9009\u4E2D\u9879",
+    discoverySelectFiltered: "\u9009\u4E2D\u5F53\u524D\u7B5B\u9009\uFF08%s\uFF09",
+    discoveryClearFilteredSelection: "\u6E05\u9664\u5F53\u524D\u7B5B\u9009\u9009\u62E9",
     discoveryForceSameContent: "\u6279\u91CF\u5141\u8BB8\u6536\u5F55\u5185\u5BB9\u76F8\u540C\u7684\u5019\u9009",
     discoverySelected: "\u5DF2\u9009 %s \u9879",
     discoveryClose: "\u5173\u95ED",
     discoveryClosePendingWrites: "\u6709\u6536\u5F55\u6B63\u5728\u5199\u5165\u5185\u5BB9\u5E93\u3002\u8BF7\u7B49\u5F85\u6536\u5F55\u56DE\u6267\uFF0C\u5FC5\u8981\u65F6\u5148\u64A4\u9500\u672C\u6279\u65B0\u589E\uFF0C\u518D\u5173\u95ED\u6B64\u7A97\u53E3\u3002",
     discoveryReceiptTitle: "\u6536\u5F55\u56DE\u6267",
-    discoveryReceiptAdded: "\u5DF2\u590D\u5236\u5230\u5E38\u7528\u5E93\uFF1A%s\uFF1B\u539F\u7B14\u8BB0\u672A\u4FEE\u6539\uFF0C\u4E4B\u540E\u4E0D\u4F1A\u81EA\u52A8\u540C\u6B65\u3002",
+    discoveryReceiptAdded: "\u5DF2\u52A0\u5165\u5E38\u7528\u5E93\uFF1A%s\uFF1B\u539F\u7B14\u8BB0\u672A\u4FEE\u6539\u3002",
     discoveryReceiptSameContent: "\u5185\u5BB9\u4E0E\u300C%s\u300D\u76F8\u540C\uFF0C\u672A\u81EA\u52A8\u6536\u5F55\uFF1B\u5982\u4ECD\u8981\u6536\u5F55\uFF0C\u8BF7\u660E\u786E\u786E\u8BA4\u3002",
     discoveryReceiptAlready: "\u5DF2\u5728\u5E38\u7528\u5E93\u4E2D\uFF1A%s",
     discoveryReceiptFailed: "\u6536\u5F55\u5931\u8D25\uFF1A%s",
@@ -9323,6 +9359,9 @@ ${exception.mark.snippet}`;
       this.filterStatus = null;
       this.filterType = null;
       this.filterText = null;
+      this.filterTag = null;
+      this.selectFilteredButton = null;
+      this.addMode = null;
       this.forceSameContent = null;
       this.defaultCategoryInput = null;
       this.candidateCategoryInput = null;
@@ -9343,7 +9382,8 @@ ${exception.mark.snippet}`;
       this.filter = {
         status: "all",
         type: "all",
-        text: ""
+        text: "",
+        tag: ""
       };
       this.scope = options.scope === "tree" && deps.service.discoverTree && deps.searchDocs ? "tree" : options.scope === "notebook" && deps.service.discoverCurrentNotebook ? "notebook" : "document";
       if (this.scope === "tree" && options.initialTreeRootId) {
@@ -9611,7 +9651,47 @@ ${exception.mark.snippet}`;
         this.renderList();
       });
       filters.appendChild(this.filterText);
+      this.filterTag = document.createElement("input");
+      this.filterTag.className = "b3-text-field";
+      this.filterTag.dataset.xlcControl = "discovery.filter.tag";
+      this.filterTag.placeholder = this.tx("discoveryTagFilterPlaceholder");
+      this.filterTag.setAttribute("aria-label", this.tx("discoveryTagFilterPlaceholder"));
+      this.filterTag.addEventListener("input", () => {
+        var _a, _b;
+        this.filter.tag = (_b = (_a = this.filterTag) == null ? void 0 : _a.value.trim().toLocaleLowerCase()) != null ? _b : "";
+        this.page = 0;
+        this.renderList();
+      });
+      filters.appendChild(this.filterTag);
+      this.selectFilteredButton = document.createElement("button");
+      this.selectFilteredButton.type = "button";
+      this.selectFilteredButton.className = "b3-button xlc-btn-ghost";
+      this.selectFilteredButton.dataset.xlcDiscoveryAction = "select-filtered";
+      this.selectFilteredButton.setAttribute("aria-pressed", "false");
+      this.selectFilteredButton.addEventListener("click", () => this.toggleFilteredSelection());
+      filters.appendChild(this.selectFilteredButton);
       root.appendChild(filters);
+      const modeRow = document.createElement("label");
+      modeRow.className = "xlc-form-label xlc-discovery-mode-row";
+      const modeLabel = document.createElement("span");
+      modeLabel.textContent = this.tx("discoveryAddMode");
+      modeRow.appendChild(modeLabel);
+      this.addMode = document.createElement("select");
+      this.addMode.className = "b3-select";
+      this.addMode.dataset.xlcControl = "discovery.add-mode";
+      const reference = document.createElement("option");
+      reference.value = "reference";
+      reference.textContent = this.tx("discoveryAddModeReference");
+      const copy = document.createElement("option");
+      copy.value = "copy";
+      copy.textContent = this.tx("discoveryAddModeCopy");
+      this.addMode.append(reference, copy);
+      modeRow.appendChild(this.addMode);
+      const modeHint = document.createElement("span");
+      modeHint.className = "xlc-form-hint";
+      modeHint.textContent = this.tx("discoveryAddModeHint");
+      modeRow.appendChild(modeHint);
+      root.appendChild(modeRow);
       const categorySettings = document.createElement("div");
       categorySettings.className = "xlc-discovery-category-settings";
       const defaultCategoryLabel = document.createElement("label");
@@ -9761,6 +9841,8 @@ ${exception.mark.snippet}`;
       if (this.filterStatus) this.filterStatus.disabled = scanning || this.actionBusy;
       if (this.filterType) this.filterType.disabled = scanning || this.actionBusy;
       if (this.filterText) this.filterText.disabled = scanning || this.actionBusy;
+      if (this.filterTag) this.filterTag.disabled = scanning || this.actionBusy;
+      if (this.addMode) this.addMode.disabled = scanning || this.actionBusy;
       if (this.scopeSelect) {
         this.scopeSelect.disabled = scanning || this.actionBusy || locked;
         this.scopeSelect.title = locked ? this.tx("discoveryScopeLockedForUndo") : "";
@@ -10087,9 +10169,22 @@ ${exception.mark.snippet}`;
     matches(candidate) {
       if (this.filter.status !== "all" && candidate.status !== this.filter.status) return false;
       if (this.filter.type !== "all" && candidate.itemType !== this.filter.type) return false;
+      if (this.filter.tag && !candidate.tags.some((tag) => tag.toLocaleLowerCase().includes(this.filter.tag))) return false;
       if (!this.filter.text) return true;
       const haystack = `${candidate.title} ${candidate.summary} ${candidate.sourcePath}`.toLocaleLowerCase();
       return haystack.includes(this.filter.text);
+    }
+    toggleFilteredSelection() {
+      var _a;
+      const eligible = Array.from(this.candidates.values()).filter((candidate) => this.canAdd(candidate) && this.matches(candidate));
+      if (!eligible.length || this.actionBusy || !this.sessionId) return;
+      const allSelected = eligible.every((candidate) => this.selected.has(candidate.key));
+      for (const candidate of eligible) {
+        if (allSelected) this.selected.delete(candidate.key);
+        else this.selected.add(candidate.key);
+      }
+      this.renderList();
+      (_a = this.selectFilteredButton) == null ? void 0 : _a.focus();
     }
     canAdd(candidate) {
       return candidate.status === "candidate" || candidate.status === "same-content" || candidate.status === "library-unverified";
@@ -10111,7 +10206,7 @@ ${exception.mark.snippet}`;
         empty.className = "xlc-discovery-empty";
         empty.setAttribute("role", "listitem");
         const scanning = ((_a = this.root) == null ? void 0 : _a.getAttribute("aria-busy")) === "true";
-        const hasFilters = this.filter.status !== "all" || this.filter.type !== "all" || !!this.filter.text;
+        const hasFilters = this.filter.status !== "all" || this.filter.type !== "all" || !!this.filter.text || !!this.filter.tag;
         empty.textContent = scanning ? this.tx("discoveryScanningCandidates") : this.scanState === "failed" ? this.tx("discoveryScanIncompleteEmpty") : this.scanState === "cancelled" ? this.tx("discoveryScanStoppedEmpty") : this.candidates.size === 0 && this.scanState === "ready" ? this.tx("discoveryEmptyScope") : this.candidates.size === 0 ? this.tx("discoveryAwaitingScan") : this.tx("discoveryNoCandidates");
         results.appendChild(empty);
         if (!scanning && this.candidates.size > 0 && hasFilters) {
@@ -10121,10 +10216,11 @@ ${exception.mark.snippet}`;
           clear.textContent = this.tx("discoveryClearFilters");
           clear.dataset.xlcDiscoveryAction = "clear-filters";
           clear.addEventListener("click", () => {
-            this.filter = { status: "all", type: "all", text: "" };
+            this.filter = { status: "all", type: "all", text: "", tag: "" };
             if (this.filterStatus) this.filterStatus.value = "all";
             if (this.filterType) this.filterType.value = "all";
             if (this.filterText) this.filterText.value = "";
+            if (this.filterTag) this.filterTag.value = "";
             this.page = 0;
             this.renderList();
           });
@@ -10170,7 +10266,7 @@ ${exception.mark.snippet}`;
         body.appendChild(title);
         const meta = document.createElement("div");
         meta.className = "xlc-discovery-row-meta";
-        meta.textContent = `${typeLabel(this.deps.t, candidate.itemType)} \xB7 ${candidate.sourcePath}`;
+        meta.textContent = `${typeLabel(this.deps.t, candidate.itemType)} \xB7 ${candidate.sourcePath}${candidate.tags.length ? ` \xB7 ${candidate.tags.join(", ")}` : ""}`;
         body.appendChild(meta);
         const summary = document.createElement("div");
         summary.className = "xlc-discovery-row-summary";
@@ -10246,6 +10342,14 @@ ${exception.mark.snippet}`;
       if (this.addSelectedButton) {
         this.addSelectedButton.disabled = this.actionBusy || !this.sessionId || count === 0;
       }
+      if (this.selectFilteredButton) {
+        const eligible = Array.from(this.candidates.values()).filter((candidate) => this.canAdd(candidate) && this.matches(candidate));
+        const allSelected = eligible.length > 0 && eligible.every((candidate) => this.selected.has(candidate.key));
+        this.selectFilteredButton.textContent = this.tx(allSelected ? "discoveryClearFilteredSelection" : "discoverySelectFiltered", String(eligible.length));
+        this.selectFilteredButton.disabled = this.actionBusy || !this.sessionId || eligible.length === 0;
+        this.selectFilteredButton.setAttribute("aria-pressed", String(allSelected));
+        this.selectFilteredButton.setAttribute("aria-label", this.tx(allSelected ? "discoveryClearFilteredSelection" : "discoverySelectFiltered", String(eligible.length)));
+      }
       if (this.defaultCategoryInput) this.defaultCategoryInput.disabled = this.actionBusy;
       if (this.candidateCategoryInput) this.candidateCategoryInput.disabled = this.actionBusy || !this.activeKey || !this.sessionId;
       this.updateCategoryResetState();
@@ -10304,18 +10408,23 @@ ${exception.mark.snippet}`;
       return this.previewed.has(key);
     }
     async addOne(key, allowSameContent) {
-      var _a, _b;
+      var _a, _b, _c;
       if (!this.sessionId || this.actionBusy) return;
+      const mode = ((_a = this.addMode) == null ? void 0 : _a.value) === "copy" ? "copy" : "reference";
       const candidate = this.candidates.get(key);
       if (!candidate || !this.canAdd(candidate)) return;
-      const previousStatus = (_b = (_a = this.status) == null ? void 0 : _a.textContent) != null ? _b : "";
+      const previousStatus = (_c = (_b = this.status) == null ? void 0 : _b.textContent) != null ? _c : "";
       this.actionBusy = true;
       this.setStatus(this.tx("discoveryAddingSingle"));
       this.updateSelectionState();
       this.renderList();
       try {
         if (!await this.ensurePreview(key) || !this.sessionId) return;
-        const result = await this.deps.service.addCandidate(this.sessionId, key, { allowSameContent, category: this.getCategory(key) });
+        const result = await this.deps.service.addCandidate(this.sessionId, key, {
+          allowSameContent,
+          category: this.getCategory(key),
+          mode
+        });
         if (!result.ok) {
           this.handleFailure(result, key);
           return;
@@ -10330,22 +10439,23 @@ ${exception.mark.snippet}`;
       }
     }
     async addSelected() {
-      var _a, _b, _c, _d;
+      var _a, _b, _c, _d, _e;
       if (!this.sessionId || this.actionBusy || this.selected.size === 0) return;
       const sessionId = this.sessionId;
+      const mode = ((_a = this.addMode) == null ? void 0 : _a.value) === "copy" ? "copy" : "reference";
       const batchStart = this.deps.service.beginAddBatch(sessionId);
       if (!batchStart.ok) {
         this.handleFailure(batchStart);
         return;
       }
       const batchId = batchStart.data.batchId;
-      const previousStatus = (_b = (_a = this.status) == null ? void 0 : _a.textContent) != null ? _b : "";
+      const previousStatus = (_c = (_b = this.status) == null ? void 0 : _b.textContent) != null ? _c : "";
       this.actionBusy = true;
       this.updateSelectionState();
       this.renderList();
       const keys = Array.from(this.selected);
       const categories = new Map(keys.map((key) => [key, this.getCategory(key)]));
-      const allowSameContent = ((_c = this.forceSameContent) == null ? void 0 : _c.checked) === true;
+      const allowSameContent = ((_d = this.forceSameContent) == null ? void 0 : _d.checked) === true;
       let added = 0;
       let skipped = 0;
       let failed = 0;
@@ -10367,7 +10477,8 @@ ${exception.mark.snippet}`;
           const result = await this.deps.service.addCandidate(this.sessionId, key, {
             allowSameContent,
             batchId,
-            category: (_d = categories.get(key)) != null ? _d : this.tx("discoveryUnsortedCategory")
+            category: (_e = categories.get(key)) != null ? _e : this.tx("discoveryUnsortedCategory"),
+            mode
           });
           if (!result.ok) {
             if (result.reason === "session-expired") {
@@ -10723,6 +10834,7 @@ ${details.join("\n")}` : ""}`;
       discoveryFilterAdded: "\u5DF2\u6536\u5F55",
       discoveryTypeAll: "\u5168\u90E8\u7C7B\u578B",
       discoverySearchPlaceholder: "\u7B5B\u9009\u6807\u9898\u3001\u6458\u8981\u6216\u6765\u6E90",
+      discoveryTagFilterPlaceholder: "\u6309\u6807\u7B7E\u7B5B\u9009",
       discoveryNoCandidates: "\u6CA1\u6709\u7B26\u5408\u6761\u4EF6\u7684\u5019\u9009",
       discoveryPreviewTitle: "\u5019\u9009\u9884\u89C8",
       discoveryPreviewEmpty: "\u9009\u62E9\u5DE6\u4FA7\u5019\u9009\u540E\u67E5\u770B\u6B63\u6587\uFF1B\u6536\u5F55\u524D\u4F1A\u518D\u6B21\u6821\u9A8C\u6765\u6E90\u3002",
@@ -10963,6 +11075,7 @@ ${details.join("\n")}` : ""}`;
       aiSuggestion: "AI \u5EFA\u8BAE",
       clearSearch: "\u6E05\u7A7A\u641C\u7D22",
       shortcutLabel: "\u64CD\u4F5C\u63D0\u793A",
+      searchAllScopeAction: "\u5728\u5168\u90E8\u5185\u5BB9\u4E2D\u641C\u7D22\u300C%s\u300D",
       newItemActionWithQuery: "\uFF0B \u65B0\u5EFA\u300C%s\u300D",
       newItemWithTitle: "\u5C06\u300C%s\u300D\u9884\u586B\u4E3A\u6807\u9898\u5E76\u65B0\u5EFA\u6761\u76EE",
       emptyQueryHint: "\u65B0\u5EFA\u65F6\u4F1A\u628A\u5F53\u524D\u641C\u7D22\u8BCD\u586B\u5165\u6807\u9898\uFF0C\u4F60\u53EF\u4EE5\u7EE7\u7EED\u4FEE\u6539\u3002",
@@ -11069,6 +11182,7 @@ ${details.join("\n")}` : ""}`;
     const aiOn = (_a = overrides.aiEnabled) != null ? _a : true;
     let activeFilters = { ...(_b = overrides.filters) != null ? _b : { type: "", tag: "", category: "" } };
     const favorites = /* @__PURE__ */ new Set(["xlc-demo0000001"]);
+    const recents = /* @__PURE__ */ new Set(["xlc-demo0000001", "xlc-demo0000002"]);
     return {
       t: (key, ...args) => key === "newItemAction" && overrides.newItemAction ? overrides.newItemAction : T(key, ...args),
       search: async (query) => {
@@ -11089,6 +11203,8 @@ ${details.join("\n")}` : ""}`;
           return hay.includes(searchText.toLowerCase());
         });
         if (typeof query !== "string") {
+          if (query.scope === "favorites") entries = entries.filter((entry) => favorites.has(entry.id));
+          if (query.scope === "recent") entries = entries.filter((entry) => recents.has(entry.id));
           if (query.itemType) entries = entries.filter((entry) => entry.itemType === query.itemType);
           if (query.tag) entries = entries.filter((entry) => {
             var _a3, _b3;
@@ -11448,8 +11564,8 @@ ${details.join("\n")}` : ""}`;
       let notebookRequests = 0;
       let treeSearchRequests = 0;
       const sampleCandidates = [
-        { key: "candidate-1", sourceDocId: "20240101120001-hijklmn", sourceBlockId: "20240101120002-bbbbbbb", sourcePath: "/\u9879\u76EE\u7B14\u8BB0", itemType: "markdown", title: "\u5BA2\u6237\u5EF6\u671F\u56DE\u590D", summary: "\u5173\u4E8E\u4EA4\u4ED8\u5EF6\u671F\u7684\u8BF4\u660E", status: "candidate" },
-        { key: "candidate-2", sourceDocId: "20240101120001-hijklmn", sourceBlockId: "20240101120003-ccccccc", sourcePath: "/\u9879\u76EE\u7B14\u8BB0", itemType: "text", title: "\u6536\u4EF6\u5730\u5740", summary: "\u90AE\u5BC4\u5730\u5740\u6A21\u677F", status: "same-content", match: { itemId: "xlc-existing0001", title: "\u5DF2\u6709\u6536\u4EF6\u5730\u5740" } }
+        { key: "candidate-1", sourceDocId: "20240101120001-hijklmn", sourceBlockId: "20240101120002-bbbbbbb", sourcePath: "/\u9879\u76EE\u7B14\u8BB0", itemType: "markdown", title: "\u5BA2\u6237\u5EF6\u671F\u56DE\u590D", summary: "\u5173\u4E8E\u4EA4\u4ED8\u5EF6\u671F\u7684\u8BF4\u660E", tags: ["\u5BA2\u670D", "\u5EF6\u671F"], status: "candidate" },
+        { key: "candidate-2", sourceDocId: "20240101120001-hijklmn", sourceBlockId: "20240101120003-ccccccc", sourcePath: "/\u9879\u76EE\u7B14\u8BB0", itemType: "text", title: "\u6536\u4EF6\u5730\u5740", summary: "\u90AE\u5BC4\u5730\u5740\u6A21\u677F", tags: ["\u5BA2\u670D", "\u5730\u5740"], status: "same-content", match: { itemId: "xlc-existing0001", title: "\u5DF2\u6709\u6536\u4EF6\u5730\u5740" } }
       ];
       const candidates = (options == null ? void 0 : options.candidateCount) ? Array.from({ length: options.candidateCount }, (_, index) => ({
         key: `page-candidate-${String(index + 1).padStart(4, "0")}`,
@@ -11459,6 +11575,7 @@ ${details.join("\n")}` : ""}`;
         itemType: "markdown",
         title: `\u5206\u9875\u5019\u9009 ${String(index + 1).padStart(3, "0")}`,
         summary: "\u7528\u4E8E\u9A8C\u8BC1\u5019\u9009\u5206\u9875\u4E0E\u952E\u76D8\u7126\u70B9\u6062\u590D\u3002",
+        tags: [],
         status: "candidate"
       })) : sampleCandidates;
       const makeView = (scope, stopped = false) => ({ id: sessionId, scope, sourceDocId: "20240101120001-hijklmn", sourcePath: "/\u9879\u76EE\u7B14\u8BB0", candidates: candidates.map((candidate) => ({ ...candidate })), scannedBlocks: 4, scannedDocs: 1, scannedNotebooks: scope === "all-notebooks" ? 2 : 1, skippedEmpty: 1, skippedLong: 0, truncated: stopped, stopped, truncationReasons: stopped ? ["cancelled"] : [], errors: [] });

@@ -70,6 +70,66 @@ test("索引摘要：从真实块正文派生摘要供正文关键词搜索使�
     assert.ok(kernel.calls.some((c) => c.endpoint === "getBlockKramdown" && c.payload.id === B1));
 });
 
+test("引用条目摘要和变量数取源块最新内容，库内正文仍只保留块引用", async () => {
+    const source = "20240101120005-eeeeeee";
+    const {service, kernel} = makeService({
+        getChildBlocks: () => [{id: B1, type: "p"}],
+        batchGetBlockAttrs: () => ({[B1]: {
+            "custom-xlc-id": "xlc-refsource0001",
+            "custom-xlc-type": "blockref",
+            "custom-xlc-title": "原文模板",
+            "custom-xlc-target": source,
+        }}),
+        getBlockKramdown: ({id}) => ({id, kramdown: id === source ? "最新答复 {{xlc:ask:姓名}}" : `((${source} '原文模板'))`}),
+        getBlockKramdowns: ({ids, mode}) => {
+            assert.equal(mode, "md");
+            return Object.fromEntries(ids.map((id) => [id, "最新答复 {{xlc:ask:姓名}}"]));
+        },
+    });
+    const idx = await service.buildIndex();
+    const item = idx.items.get("xlc-refsource0001");
+    assert.equal(item.summary, "最新答复");
+    assert.equal(item.varCount, 1);
+    assert.ok(kernel.calls.some((call) => call.endpoint === "getBlockKramdowns" && call.payload.ids.includes(source)));
+});
+
+test("引用有效正文跟随 targetBlockId，编辑与导出仍可取库内原生块引用", async () => {
+    const source = "20240101120005-eeeeeee";
+    const {service, kernel} = makeService({
+        getBlockKramdown: ({id}) => ({id, kramdown: id === B1 ? `((${source} '短语'))` : "源块刚更新的正文"}),
+    });
+    const item = {
+        id: "xlc-reference01", blockId: B1, libraryDocId: DOC, itemType: "blockref", title: "短语", alias: "",
+        tags: [], category: "", summary: "", varCount: 0,
+        source: {sourceDocId: DOC, sourceBlockId: source, sourceType: "block"},
+        url: "", targetBlockId: source, createdAt: 1, updatedAt: 1, droppedFields: [],
+    };
+    const resolved = await service.getItemKramdown(item);
+    const stored = await service.getStoredItemKramdown(item);
+    assert.equal(resolved.data, "源块刚更新的正文");
+    assert.match(stored.data, new RegExp(source));
+    assert.equal(kernel.calls.at(-2).payload.id, source);
+    assert.equal(kernel.calls.at(-1).payload.id, B1);
+});
+
+test("引用插入正文会剥离源块物理 IAL，但库内 marker 保持原样", async () => {
+    const source = "20240101120005-eeeeeee";
+    const {service} = makeService({
+        getBlockKramdown: ({id}) => ({id, kramdown: id === source ? "源正文\n{: id='20240101120006-fffffff' custom-xlc-id='xlc-source0001'}" : `((${source} '短语'))`}),
+    });
+    const item = {
+        id: "xlc-reference02", blockId: B1, libraryDocId: DOC, itemType: "blockref", title: "短语", alias: "",
+        tags: [], category: "", summary: "", varCount: 0,
+        source: {sourceDocId: DOC, sourceBlockId: source, sourceType: "block"},
+        url: "", targetBlockId: source, createdAt: 1, updatedAt: 1, droppedFields: [],
+    };
+    const resolved = await service.getItemKramdown(item);
+    assert.equal(resolved.data.includes("custom-xlc-id"), false);
+    assert.equal(resolved.data.includes("20240101120006-fffffff"), false);
+    const stored = await service.getStoredItemKramdown(item);
+    assert.match(stored.data, new RegExp(source));
+});
+
 test("门禁：条目超过上限截断并标记 truncated（不静默丢数据）", async () => {
     const many = Array.from({length: 50}, (_, i) => ({id: `2024010112${String(i).padStart(4, "0")}-xxxxxxx`, type: "p"}));
     const {service} = makeService({
@@ -223,6 +283,25 @@ test("来源失效检测：块/文档/资源三态", async () => {
     imgService.setConfig({mode: "doc", notebookIds: [], containerDocIds: [DOC], createdDocIds: [], configuredAt: 1});
     const imgHealth = await imgService.checkSourceHealth({...item, itemType: "image"});
     assert.equal(imgHealth.data.assetMissing, true);
+});
+
+test("引用健康检查校验目标块，即使来源字段缺失也不误报健康", async () => {
+    let requestedIds = [];
+    const {service} = makeService({
+        checkBlocksExist: ({ids}) => {
+            requestedIds = ids;
+            return Object.fromEntries(ids.map((id) => [id, false]));
+        },
+    });
+    const item = {
+        id: "xlc-reference02", blockId: B1, libraryDocId: DOC, itemType: "blockref", title: "坏引用", alias: "",
+        tags: [], category: "", summary: "", varCount: 0,
+        source: {sourceDocId: "", sourceBlockId: "", sourceType: "manual"},
+        url: "", targetBlockId: B2, createdAt: 1, updatedAt: 1, droppedFields: [],
+    };
+    const health = await service.checkSourceHealth(item);
+    assert.deepEqual(requestedIds, [B2]);
+    assert.equal(health.data.blockMissing, true);
 });
 
 test("relinkSource：非法来源 ID 拒绝", async () => {

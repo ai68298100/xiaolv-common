@@ -1596,7 +1596,15 @@ fs.writeFileSync(path.join(OUT, "harness.html"), html);
         const dialogRoot = document.querySelector(".b3-dialog");
         if (dialogRoot) stage.appendChild(dialogRoot);
     });
-    await page.waitForTimeout(500);
+    // The initial scan is asynchronous even in the harness. A fixed delay can
+    // race the scan completion on a busy CI host, leaving the list/landmarks or
+    // final status in their loading state when the smoke assertions run.
+    await page.waitForFunction(() => {
+        const root = document.querySelector(".xlc-discovery");
+        const readyScan = root?.querySelector("[data-xlc-discovery-action='retry-scan']");
+        const rows = root?.querySelectorAll(".xlc-discovery-list [role='list'] .xlc-discovery-row").length ?? 0;
+        return !!root && root.getAttribute("aria-busy") === "false" && !!readyScan && rows === 2;
+    }, undefined, {timeout: 3000});
     const discoveryAssertions = await page.evaluate(() => {
         const root = document.querySelector(".xlc-discovery");
         const rows = Array.from(document.querySelectorAll(".xlc-discovery-row"));
@@ -1640,7 +1648,7 @@ fs.writeFileSync(path.join(OUT, "harness.html"), html);
     if (Object.values(discoveryAssertions).some((v) => !v)) {
         throw new Error("discovery smoke failed: " + JSON.stringify(discoveryAssertions));
     }
-    await page.locator(".xlc-discovery-filters input").fill("无匹配候选");
+    await page.locator(".xlc-discovery-filters [data-xlc-control='discovery.filter.text']").fill("无匹配候选");
     const discoveryEmptyList = await page.evaluate(() => {
         const list = document.querySelector(".xlc-discovery-list [role='list']");
         const empty = list?.querySelector(".xlc-discovery-empty");
@@ -1666,6 +1674,11 @@ fs.writeFileSync(path.join(OUT, "harness.html"), html);
         throw new Error("notebook discovery progress smoke failed: " + notebookProgressAssertion);
     }
     await page.locator("[data-xlc-discovery-action='cancel-scan']").click();
+    await page.waitForFunction(() => {
+        const button = document.querySelector("[data-xlc-discovery-action='cancel-scan']");
+        const status = document.querySelector(".xlc-discovery-status-row")?.textContent ?? "";
+        return button?.hasAttribute("disabled") === true || status.includes("已停止扫描");
+    }, undefined, {timeout: 2000});
     const stopPending = await page.evaluate(() => ({
         busy: document.querySelector(".xlc-discovery")?.getAttribute("aria-busy") === "true",
         disabled: document.querySelector("[data-xlc-discovery-action='cancel-scan']")?.hasAttribute("disabled") === true,

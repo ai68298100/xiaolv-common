@@ -477,6 +477,7 @@ $roots: ".xlc-dialog, .xlc-form, .xlc-varform, .b3-dialog__container.xlc-dialog-
   .xlc-discovery-filters { gap: var(--xlc-space-2); }
   .xlc-discovery-filters .b3-select { flex-basis: 136px; min-width: 110px; }
   .xlc-discovery-filters :is(.b3-select, .b3-text-field) { min-height: 36px; height: 36px; padding-top: var(--xlc-space-2); padding-bottom: var(--xlc-space-2); font-size: var(--xlc-font-sm); }
+  .xlc-discovery-filters > .b3-button { min-height: 36px; font-size: var(--xlc-font-sm); }
   .xlc-discovery-category-settings { gap: var(--xlc-space-2) var(--xlc-space-3); }
   .xlc-discovery-category-settings > .b3-text-field { flex: 0 1 150px; min-height: 36px; font-size: var(--xlc-font-sm); }
   .xlc-discovery-category-settings > .xlc-form-hint { flex: 1 1 220px; }
@@ -565,7 +566,7 @@ $roots: ".xlc-dialog, .xlc-form, .xlc-varform, .b3-dialog__container.xlc-dialog-
   }
 
   :is(#{$roots}).xlc-discovery {
-    :is(.xlc-discovery-scope-select, .xlc-discovery-filters .b3-select, .xlc-discovery-filters .b3-text-field) { min-height: 44px; height: 44px; font-size: var(--xlc-font-xl); }
+    :is(.xlc-discovery-scope-select, .xlc-discovery-filters .b3-select, .xlc-discovery-filters .b3-text-field, .xlc-discovery-filters > .b3-button) { min-height: 44px; height: 44px; font-size: var(--xlc-font-xl); }
     :is(.xlc-discovery-category-settings, .xlc-discovery-candidate-category) .b3-text-field { min-height: 44px; font-size: var(--xlc-font-xl); }
     .xlc-discovery-row-side .b3-button { min-height: 44px; }
   }

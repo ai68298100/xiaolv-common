@@ -11,6 +11,7 @@
 | `/api/filetree/createDocWithMd` | 创建库文档（先 confirm） | L193 | 结构✓ / 真机待 |
 | `/api/block/getChildBlocks` | 库文档有序遍历（无 SQL） | L286 | 结构✓ / 真机待 |
 | `/api/block/getBlockKramdown` | 条目正文现场取用 | L284 | 结构✓ / 真机待 |
+| `/api/block/getBlockKramdowns` | 批量读取候选标签（`mode:"textmark"`）与引用源块摘要（`mode:"md"`） | 官方 block API；隔离探测 2026-10-15 | 3.8.7 隔离内核✓ / Electron 壳待 B-001 |
 | `/api/block/getBlockInfo` | tree 模式取 box/path | L278 | 结构✓ / 真机待 |
 | `/api/block/checkBlocksExist` | 来源失效检测 | L305 | 结构✓ / 真机待 |
 | `/api/block/appendBlock` | 创建条目块 | L312；响应 `[{doOperations:[{id}]}]`（apicontract/block_transaction.go） | 结构✓ / 真机待 |
@@ -50,4 +51,5 @@
 - 传输：官方 `fetchSyncPost`（自动端口/鉴权）；插件侧白名单 + 8s 超时 + `{code,msg,data}` 信封校验；缺失 syncPost 时构造即失败（防裸 fetch 绕过）。
 - 遍历上限：条目 2000 / 文档 200 / tree 模式根文档下最多展开 3 层子文档；超出 `truncated=true` 明示。
 - 失败语义：一切写操作带回执；属性写入失败回滚已插块；超时/断网/只读模式均可见错误，不静默。
+- 标签发现：原生标签只接受 `textmark` 返回的 `span[data-type="tag"]`；`custom-xlc-tags` 通过批量块属性读取并与原生标签合并。标签扫描只在用户选定范围内进行，超出预算会显示截断或错误。
 - DOM 边界（ADR 0003）：仅插件自建 UI、官方编辑器实例 API、选区 + `data-node-id`；不碰布局栈/页签内部结构/坐标猜测。
