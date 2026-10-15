@@ -2616,6 +2616,7 @@
     align-items: center;
     flex-wrap: wrap;
     gap: var(--xlc-space-2);
+    position: relative;
   }
 
   .xlc-discovery-filters .xlc-form-label {
@@ -2639,6 +2640,43 @@
     flex: 0 0 auto;
     min-height: 36px;
     white-space: nowrap;
+  }
+
+  .xlc-discovery-tag-facets {
+    display: flex;
+    align-items: center;
+    position: absolute;
+    right: 0;
+    top: 4px;
+    width: min(44%, 360px);
+    flex: none;
+    flex-wrap: nowrap;
+    gap: var(--xlc-space-1);
+    min-width: 0;
+    max-height: 32px;
+    overflow: hidden;
+  }
+
+  .xlc-discovery-tag-facets-label {
+    color: var(--b3-theme-on-surface-light);
+    font-size: var(--xlc-font-xs);
+    margin-right: var(--xlc-space-1);
+    white-space: nowrap;
+  }
+
+  .xlc-tag-facet {
+    min-height: 28px;
+    padding: 2px var(--xlc-space-2);
+    border-radius: 999px;
+    color: var(--b3-theme-on-surface-light);
+    font-size: var(--xlc-font-xs);
+    white-space: nowrap;
+  }
+
+  .xlc-tag-facet[aria-pressed="true"] {
+    color: var(--b3-theme-primary);
+    border-color: var(--b3-theme-primary);
+    background: color-mix(in srgb, var(--b3-theme-primary) 10%, transparent);
   }
 
   .xlc-discovery-mode-row {

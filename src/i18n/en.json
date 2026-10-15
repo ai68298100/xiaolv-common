@@ -486,6 +486,8 @@
   "discoveryTypeAll": "All types",
   "discoverySearchPlaceholder": "Filter title, summary, or source",
   "discoveryTagFilterPlaceholder": "Filter by native or library tag",
+  "discoveryTagFacets": "Candidate tags",
+  "discoveryTagFacetApply": "Filter by tag %s (%s items)",
   "discoveryAddMode": "Add mode",
   "discoveryAddModeReference": "Create reference (keep source in place)",
   "discoveryAddModeCopy": "Copy into library (snapshot)",

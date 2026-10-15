@@ -117,6 +117,55 @@ export interface SearchPrefs {
     lastQuery: string;
     /** 最近搜索词历史（上限 10 条，LRU 去重保序，ADR 0043 / T-0070） */
     recentQueries?: string[];
+    /** Saved tag-scoped discovery shortcuts. Sidecar UI state only; source blocks remain canonical. */
+    savedDiscoveryViews?: SavedDiscoveryView[];
+}
+
+export type SavedDiscoveryScope = "document" | "notebook" | "tree" | "selected-notebook" | "all-notebooks";
+
+export interface SavedDiscoveryView {
+    id: string;
+    name: string;
+    tag: string;
+    scope: SavedDiscoveryScope;
+    targetDocId: string;
+    targetNotebookId: string;
+    pathLabel: string;
+    defaultCategory: string;
+}
+
+const SAVED_VIEW_ID_RE = /^xlc-view-[0-9a-z]{6,32}$/;
+const SAVED_DISCOVERY_SCOPES: readonly SavedDiscoveryScope[] = [
+    "document", "notebook", "tree", "selected-notebook", "all-notebooks",
+];
+
+export function isSavedDiscoveryScope(value: unknown): value is SavedDiscoveryScope {
+    return typeof value === "string" && (SAVED_DISCOVERY_SCOPES as readonly string[]).includes(value);
+}
+
+export function normalizeSavedDiscoveryViews(raw: unknown): SavedDiscoveryView[] {
+    if (!Array.isArray(raw)) return [];
+    const result: SavedDiscoveryView[] = [];
+    const seen = new Set<string>();
+    for (const value of raw) {
+        if (!value || typeof value !== "object") continue;
+        const item = value as Partial<SavedDiscoveryView>;
+        const id = typeof item.id === "string" ? item.id : "";
+        const name = typeof item.name === "string" ? item.name.trim().slice(0, LIMITS.savedViewNameChars) : "";
+        const tag = typeof item.tag === "string" ? item.tag.trim().slice(0, LIMITS.tag) : "";
+        const scope = item.scope;
+        if (!SAVED_VIEW_ID_RE.test(id) || seen.has(id) || !name || !tag || !isSavedDiscoveryScope(scope)) continue;
+        const targetDocId = typeof item.targetDocId === "string" && isBlockId(item.targetDocId) ? item.targetDocId : "";
+        const targetNotebookId = typeof item.targetNotebookId === "string" && NOTEBOOK_ID_RE.test(item.targetNotebookId) ? item.targetNotebookId : "";
+        if ((scope === "document" || scope === "notebook" || scope === "tree") && !targetDocId) continue;
+        if (scope === "selected-notebook" && !targetNotebookId) continue;
+        const pathLabel = typeof item.pathLabel === "string" ? item.pathLabel.trim().slice(0, LIMITS.savedViewPathChars) : "";
+        const defaultCategory = typeof item.defaultCategory === "string" ? item.defaultCategory.trim().slice(0, LIMITS.category) : "";
+        seen.add(id);
+        result.push({id, name, tag, scope, targetDocId, targetNotebookId, pathLabel, defaultCategory});
+        if (result.length >= LIMITS.maxSavedDiscoveryViews) break;
+    }
+    return result;
 }
 
 /** 追加并更新最近搜索历史队列（LRU 去重保序，上限 10 条） */
@@ -245,6 +294,9 @@ export function normalizeState(raw: unknown): PluginState {
                         .filter((q): q is string => typeof q === "string" && q.trim().length > 0)
                         .map((q) => q.trim().slice(0, LIMITS.queryChars))
                 )).slice(0, 10)
+                : [],
+            savedDiscoveryViews: obj.search !== null && typeof obj.search === "object"
+                ? normalizeSavedDiscoveryViews((obj.search as SearchPrefs).savedDiscoveryViews)
                 : [],
         },
         // 插入偏好默认开（F1/F3）；显式 false 才关

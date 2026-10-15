@@ -486,6 +486,8 @@
   "discoveryTypeAll": "全部类型",
   "discoverySearchPlaceholder": "筛选标题、摘要或来源",
   "discoveryTagFilterPlaceholder": "按思源原生标签或常用标签筛选",
+  "discoveryTagFacets": "候选标签",
+  "discoveryTagFacetApply": "按标签「%s」筛选，共 %s 条",
   "discoveryAddMode": "加入方式",
   "discoveryAddModeReference": "建立引用入口（源块不动）",
   "discoveryAddModeCopy": "复制到常用库（独立副本）",

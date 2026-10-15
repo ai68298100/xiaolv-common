@@ -45,6 +45,9 @@ export const LIMITS = {
     maxUsage: 2000,
     maxAskFields: 16,
     maxCustomTransforms: 10,
+    maxSavedDiscoveryViews: 20,
+    savedViewNameChars: 32,
+    savedViewPathChars: 256,
     customNameChars: 20,
     customPromptChars: 500,
 } as const;

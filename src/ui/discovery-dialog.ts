@@ -1,6 +1,7 @@
 import {Dialog} from "siyuan";
 import {getDialogBody} from "./dialog-dom";
 import {ITEM_TYPES, ItemType} from "../model/item";
+import {buildDiscoveryTagFacets, matchesDiscoveryTag} from "../model/discovery-facets";
 import type {
     AddCandidateResult,
     DiscoveryCandidate,
@@ -48,6 +49,10 @@ export interface DiscoveryDialogOptions {
     scope?: "document" | "notebook" | "tree";
     /** Initial root for a document-tree entry point; later tree searches still require explicit selection. */
     initialTreeRootId?: string;
+    /** Optional saved-view preset. The dialog still revalidates the target before scanning. */
+    initialTag?: string;
+    autoSelectFiltered?: boolean;
+    referenceOnly?: boolean;
 }
 
 export interface DiscoveryDialogController {
@@ -239,6 +244,7 @@ export class DiscoveryDialog implements DiscoveryDialogController {
     private filterType: HTMLSelectElement | null = null;
     private filterText: HTMLInputElement | null = null;
     private filterTag: HTMLInputElement | null = null;
+    private tagFacets: HTMLElement | null = null;
     private selectFilteredButton: HTMLButtonElement | null = null;
     private addMode: HTMLSelectElement | null = null;
     private forceSameContent: HTMLInputElement | null = null;
@@ -271,6 +277,9 @@ export class DiscoveryDialog implements DiscoveryDialogController {
         if (this.scope === "tree" && options.initialTreeRootId) {
             this.targetDocId = options.initialTreeRootId;
             this.initialTreeRootId = options.initialTreeRootId;
+        }
+        if (typeof options.initialTag === "string") {
+            this.filter.tag = options.initialTag.trim().slice(0, 64).toLocaleLowerCase();
         }
     }
 
@@ -545,7 +554,13 @@ export class DiscoveryDialog implements DiscoveryDialogController {
             this.page = 0;
             this.renderList();
         });
+        if (this.filter.tag) this.filterTag.value = this.options.initialTag?.trim().slice(0, 64) ?? "";
         filters.appendChild(this.filterTag);
+        this.tagFacets = document.createElement("div");
+        this.tagFacets.className = "xlc-discovery-tag-facets";
+        this.tagFacets.setAttribute("role", "list");
+        this.tagFacets.setAttribute("aria-label", this.tx("discoveryTagFacets"));
+        filters.appendChild(this.tagFacets);
         this.selectFilteredButton = document.createElement("button");
         this.selectFilteredButton.type = "button";
         this.selectFilteredButton.className = "b3-button xlc-btn-ghost";
@@ -570,6 +585,10 @@ export class DiscoveryDialog implements DiscoveryDialogController {
         copy.value = "copy";
         copy.textContent = this.tx("discoveryAddModeCopy");
         this.addMode.append(reference, copy);
+        if (this.options.referenceOnly) {
+            this.addMode.value = "reference";
+            this.addMode.disabled = true;
+        }
         modeRow.appendChild(this.addMode);
         const modeHint = document.createElement("span");
         modeHint.className = "xlc-form-hint";
@@ -738,6 +757,7 @@ export class DiscoveryDialog implements DiscoveryDialogController {
         if (this.filterType) this.filterType.disabled = scanning || this.actionBusy;
         if (this.filterText) this.filterText.disabled = scanning || this.actionBusy;
         if (this.filterTag) this.filterTag.disabled = scanning || this.actionBusy;
+        if (this.tagFacets) this.tagFacets.setAttribute("aria-busy", String(scanning || this.actionBusy));
         if (this.addMode) this.addMode.disabled = scanning || this.actionBusy;
         if (this.scopeSelect) {
             this.scopeSelect.disabled = scanning || this.actionBusy || locked;
@@ -1056,6 +1076,11 @@ export class DiscoveryDialog implements DiscoveryDialogController {
         this.setStatus(`${this.tx("discoveryScanned", String(result.data.scannedBlocks), String(result.data.candidates.length))}${docsSuffix}${notebooksSuffix} · ${this.tx("discoverySkipped", String(result.data.skippedEmpty))}${skippedLong}${suffix}${reasons}${stoppedSuffix}${errorSuffix}`);
         if (result.data.errors.length) this.setReceipt(result.data.errors.map((error) => `${error.sourcePath || this.tx("discoveryScope")}：${this.errorMessage(error.message)}`).join("\n"), true);
         this.renderList();
+        if (this.options.autoSelectFiltered) {
+            const eligible = Array.from(this.candidates.values()).filter((candidate) => this.canAdd(candidate) && this.matches(candidate));
+            for (const candidate of eligible) this.selected.add(candidate.key);
+            this.updateSelectionState();
+        }
     }
 
     private missingScopeTarget(): boolean {
@@ -1084,7 +1109,7 @@ export class DiscoveryDialog implements DiscoveryDialogController {
     private matches(candidate: DiscoveryCandidate): boolean {
         if (this.filter.status !== "all" && candidate.status !== this.filter.status) return false;
         if (this.filter.type !== "all" && candidate.itemType !== this.filter.type) return false;
-        if (this.filter.tag && !candidate.tags.some((tag) => tag.toLocaleLowerCase().includes(this.filter.tag))) return false;
+        if (!matchesDiscoveryTag(candidate.tags, this.filter.tag)) return false;
         if (!this.filter.text) return true;
         const haystack = `${candidate.title} ${candidate.summary} ${candidate.sourcePath}`.toLocaleLowerCase();
         return haystack.includes(this.filter.text);
@@ -1109,6 +1134,7 @@ export class DiscoveryDialog implements DiscoveryDialogController {
     private renderList(): void {
         const list = this.list;
         if (!list) return;
+        this.renderTagFacets();
         list.textContent = "";
         const visible = Array.from(this.candidates.values()).filter((candidate) => this.matches(candidate));
         const pages = Math.max(1, Math.ceil(visible.length / this.pageSize));
@@ -1242,6 +1268,43 @@ export class DiscoveryDialog implements DiscoveryDialogController {
             list.appendChild(pager);
         }
         this.updateSelectionState();
+    }
+
+    private renderTagFacets(): void {
+        const host = this.tagFacets;
+        if (!host) return;
+        host.textContent = "";
+        const facets = buildDiscoveryTagFacets(Array.from(this.candidates.values()));
+        if (!facets.length) {
+            host.style.display = "none";
+            return;
+        }
+        host.style.display = "flex";
+        const label = document.createElement("span");
+        label.className = "xlc-discovery-tag-facets-label";
+        label.textContent = this.tx("discoveryTagFacets");
+        host.appendChild(label);
+        for (const facet of facets) {
+            const button = document.createElement("button");
+            button.type = "button";
+            button.className = "b3-button xlc-tag-facet";
+            button.dataset.xlcControl = "discovery.tag-facet";
+            button.dataset.tag = facet.tag;
+            button.setAttribute("role", "listitem");
+            const active = this.filter.tag === facet.tag.toLocaleLowerCase();
+            button.setAttribute("aria-pressed", String(active));
+            button.setAttribute("aria-label", this.tx("discoveryTagFacetApply", facet.tag, String(facet.count)));
+            button.textContent = `#${facet.tag} · ${facet.count}`;
+            button.addEventListener("click", () => {
+                const next = active ? "" : facet.tag;
+                this.filter.tag = next.toLocaleLowerCase();
+                if (this.filterTag) this.filterTag.value = next;
+                this.page = 0;
+                this.renderList();
+                this.filterTag?.focus();
+            });
+            host.appendChild(button);
+        }
     }
 
     private changePage(delta: -1 | 1, direction: "previous" | "next"): void {

@@ -18,7 +18,7 @@
 
 ## 验证证据
 
-最终门禁复验（2026-10-16）：`pnpm run check` 通过；当前代码 `pnpm test` 399/399；`pnpm run build`、`pnpm run test:ui`、`pnpm run test:ix`（59/59）、`pnpm run e2e:iso`（12/12）、`pnpm run e2e:discovery:iso`（12/12）、`pnpm run scan`、`pnpm run check:package`（13 项）和 `git diff --check` 均通过。隔离探测已确认 v3.8.7 `batchGetBlockAttrs` 与 `getBlockKramdowns({ids, mode:"textmark"})` 形状；发现 E2E 进一步验证原生标签与自定义标签合并、引用只存 marker、源块更新后实时读取和安全撤销。
+最终门禁复验（2026-10-16）：`pnpm run check` 通过；当前代码 `pnpm test` 404/404；`pnpm run build`、`pnpm run test:ui`、`pnpm run test:ix`（59/59）、`pnpm run e2e:iso`（12/12）、`pnpm run e2e:discovery:iso`（12/12）、`pnpm run scan`、`pnpm run check:package`（13 项）和 `git diff --check` 均通过。隔离探测已确认 v3.8.7 `batchGetBlockAttrs` 与 `getBlockKramdowns({ids, mode:"textmark"})` 形状；发现 E2E 进一步验证原生标签与自定义标签合并、引用只存 marker、源块更新后实时读取和安全撤销。
 
 门禁负向验证也有效：把 T-0073 最近范围判定断言临时反转后专项单测失败；把 B17 交互期望临时注入 `false` 后审计为 58/59，准确报出 B17。两处均已恢复，完整门禁复验通过。
 
@@ -42,3 +42,7 @@ T-0074/R221 的 Electron 壳核心运行时验收已完成；T-0077/R224 已补�
 T-0075/R222 补查了常用语产品的真实组织模型。主流 GUI 多采用“独立条目 + 搜索/标签/主题组”，配置型工具才更常见多文件拆分；Obsidian Core Templates 是文件夹中的 Markdown 模板，插入时展开文本，不能作为双链复用证据。PhraseExpress 是最贴近当前问题的先例：同一 phrase/folder 可用链接出现在多个文件夹或 phrase files 中，正文只保存一份；massCode 则提供独立 snippet、嵌套文件夹、跨文件夹多标签和导入前预览。
 
 后续产品路线已按两层落地：用户在明确范围内用指定标签视图发现原块，再用只保存来源块 ID 与元数据的引用入口形成长期精选和跨集合排序。隔离内核已验证标签 API 形状；真实 Electron/Android 的源块实时读取、桌面插入和触控仍待现场证据，详见 [ADR 0048](adr/0048-reference-collections-without-moving-source-blocks.md)。
+
+## T-0078/R225 当前开发进度
+
+针对“常用语不知道加什么、又不想搬动原文”的问题，已开始实现标签智能集合路线：发现候选现在会按标签聚合并提供可点击筛选，侧车也已具备严格归一化的 `savedDiscoveryViews` 字段。当前只完成阶段一的可发现性和数据模型，尚未把保存视图入口接入设置页或自动批量同步，不能视为完整交付。
