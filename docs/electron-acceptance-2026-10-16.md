@@ -28,3 +28,12 @@
 - 没有配置宿主 AI 模型，因此真实 AI 端到端仍为“未验证”。
 - 发现视图的真实 Electron 手工动作、块引用/嵌入/源正文三种插入动作和 Android 触控未在本轮执行；不能据此解除对应限制。
 - 这次为可复现的临时镜像启动方式，镜像只为隔离 `appData`/配置而建，不改动仓库源码或日常工作区；临时进程已关闭。
+
+## T-0077 动作补充证据（第二个隔离副本）
+
+- 使用新的临时工作区 `C:\\Users\\Admin\\AppData\\Local\\Temp\\xlc-electron-r223b-20261016022438`、Electron 镜像 `xlc-electron-r223b-mirror-202610160230`，CDP 端口 `9345`，未触碰日常工作区。
+- 通过真实插件服务调用验证普通文本条目的复制：回执 `ok=true`，Electron `navigator.clipboard` 读回文本与源正文一致。
+- 通过真实 `openDoc` 激活目标 Protyle 后验证当前编辑器插入：`service.insert({mode:"insert"})` 回执 `ok=true`、`downgraded=false`，目标文档子块由 1 增至 2，新增正文落盘。
+- 通过 `service.openSource` 验证普通条目来源打开：回执 `ok=true`、`opened="doc"`，普通手工条目没有 `sourceDocId` 时按设计回退到 `libraryDocId`；不能用空的 `sourceDocId` 作为失败判据。
+- 首次打开设置触发插件目录下 `702.js` 请求，响应为 `200 text/javascript`；未观察到站点根 `/702.js` 请求。
+- 本轮未形成可采信的指定文档插入、引用条目块引用/嵌入/源正文、来源失效和移动端降级证据；前一次脚本移除设置 DOM 后遗留宿主 Dialog 状态，后续设置重开与压力序列失去有效前置条件。B-004 继续开放。
