@@ -20,6 +20,6 @@
 
 ## 验收结果
 
-- 插件安装与启用、onload、核心交互、异步 chunk 和异常分类形成独立工作区证据。
-- B-001 仅按已覆盖项目逐项解除；真实 AI、Android 和设置异常根因仍分别受其环境与证据约束。
+- **2026-10-16 完成 Electron 壳核心运行时验收**：使用可销毁的思源 3.8.7 副本 `C:\Users\Admin\AppData\Local\Temp\xlc-siyuan-r221-clone-2026101601` 和工作区 `C:\Users\Admin\AppData\Local\Temp\xlc-electron-r221-20261016`，候选包版本 0.4.1。通过 CDP 9335 观察到真实 Electron 页面、`window.siyuan.ready=true`、`xiaolv-common` 已加载、13 个公开协议命令、顶栏入口、空库引导、捕获保存、真实块写入和条目搜索；插件目录资源可访问。内核实际动态使用端口 2211；退出后已清理副本进程和端口。
+- 该证据只解除 B-001 的 Electron 插件核心运行时部分；完整异步 chunk 请求审计、复制/插入/来源动作、隔离宿主模型和真实 AI 仍未验证。Android、图片位图剪贴板和 B-004 压力根因继续按各自阻塞项跟踪。
 - 若无法建立隔离 Electron 工作区，记录阻塞原因并转做不依赖 Electron 的工作；不把当前不明用户工作区作为替代。

@@ -2,7 +2,7 @@
 
 > 定位：**思源笔记的内容资产层**——高频内容是有元数据、有来源、可检索、可变通、可共享的真实块资产（v3，2026-10-07 调研后修订）。三大一级场景：客服/邮件模板、AI 提示词库、研发/写作常用件。
 > 精准定位与调研证据：[docs/positioning.md](docs/positioning.md)。UI 唯一视觉事实源：[docs/design/prototype.html](docs/design/prototype.html)（v4 实现镜像）+ [docs/design/design-spec.md](docs/design/design-spec.md)；组件清单：[docs/ui-component-catalog.md](docs/ui-component-catalog.md)。生产证据：docs/design/production-*.png。
-> 状态：v0.4.1 已发布（2026-10-14）；**内核链路已真机验收（隔离内核 v3.8.7，12/12）**；发现隔离内核 12/12；Electron 插件运行时与真实 AI 仍待现场确认（B-001 部分解除）。T-0073/R220 与 T-0076/R223 已在本地完成验证，尚未发布；本轮 399/399 单测、59/59 交互审计、生产 UI smoke、构建、密钥扫描与包检查通过。当前状态审计：[docs/status-audit-2026-10-15.md](docs/status-audit-2026-10-15.md)；历史 UI 验收快照：[docs/acceptance-audit-2026-10-12.md](docs/acceptance-audit-2026-10-12.md)；当期账本：[docs/dev-plan-2026-10-06.md](docs/dev-plan-2026-10-06.md)。
+> 状态：v0.4.1 已发布（2026-10-14）；**内核链路已真机验收（隔离内核 v3.8.7，12/12）**；发现隔离内核 12/12；**Electron 壳核心运行时已在可销毁隔离副本验收（思源 3.8.7，2026-10-16）**，真实 AI 与部分动作仍待现场确认（B-001 部分解除）。T-0073/R220 与 T-0076/R223 已在本地完成验证，尚未发布；本轮 399/399 单测、59/59 交互审计、生产 UI smoke、构建、密钥扫描与包检查通过。当前状态审计：[docs/status-audit-2026-10-15.md](docs/status-audit-2026-10-15.md)；历史 UI 验收快照：[docs/acceptance-audit-2026-10-12.md](docs/acceptance-audit-2026-10-12.md)；当期账本：[docs/dev-plan-2026-10-06.md](docs/dev-plan-2026-10-06.md)。
 
 ## R2：AI 融入与原型质感（2026-10-06，用户指令立项）
 
@@ -520,19 +520,19 @@
 - **交付状态**：本地源码与 `dist/package.zip` 已包含 R220，但版本仍为 0.4.1；尚未提交或发布。
 - [ ] 真实 Electron 与 Android 上的空态视觉/触控仍按 B-001/B-002 现场验收。
 
-## 下一步计划：T-0074 / R221（Electron 壳现场验收）
+## T-0074 / R221（2026-10-16 Electron 壳现场验收）
 
-- [ ] 按 [ADR 0047](docs/adr/0047-electron-shell-acceptance-workspace.md) 在独立、可销毁的思源工作区安装候选包，不触碰日常用户数据。
-- [ ] 验收插件 onload、搜索/捕获/插入/复制、插件目录异步 chunk 与真实宿主动作；AI 仅在宿主模型已配置时执行端到端验证。
+- [x] 按 [ADR 0047](docs/adr/0047-electron-shell-acceptance-workspace.md) 在可销毁隔离副本和独立工作区安装候选包，不触碰日常用户数据。
+- [x] 在思源 3.8.7 Electron 壳中验收插件 onload、协议命令、搜索/捕获/保存和真实条目搜索；独立副本使用 CDP 9335，内核动态端口 2211。插件目录资源可访问，完整异步 chunk 请求审计和复制/插入/来源动作留待下一轮。
 - [ ] 同一 Electron 版本复核 B-004 设置弹窗压力序列，记录插件/宿主异常来源；先取证再决定是否改代码。
-- **依赖**：确认可用的隔离 Electron 工作区与人工交互/自动化入口；当前活动思源进程未暴露工作区参数，常规安装目录未发现 `xiaolv-common`，不能作为已就绪验收环境。
+- **状态**：Electron 壳运行时验收完成；B-001 仅剩真实 AI 配置链路待验证。Android、图片剪贴板和 B-004 继续由 B-002/B-003/B-004 跟踪。
 
 ## T-0075 / R222（2026-10-15 常用语管理模式调研与零搬迁方案）
 
 - [x] 对照独立条目、主题组、层级文件、标签、模板文件和跨集合链接模型；证据与来源见 [外部参考调研 §2026-10-15](docs/research-2026-10-14.md#2026-10-15-常用语信息组织模型补充调研)。
 - [x] 提出“源块不动 + 标签视图发现 + 可选轻量引用入口”方案，记录于 [ADR 0048](docs/adr/0048-reference-collections-without-moving-source-blocks.md)。
 - [x] 核对现有发现流程会复制正文、现有 `blockref` 插入引用语法但不直接读取目标内容；将实现差距和后续 API 验证要求明确记录。
-- **状态**：调研与方案已完成；实现已在 T-0076/R223 收口。隔离内核已确认标签/批量 Kramdown API 形状；Electron 壳、Android 触控和真实宿主现场仍待 B-001/B-002。
+- **状态**：调研与方案已完成；实现已在 T-0076/R223 收口。隔离内核已确认标签/批量 Kramdown API 形状；Electron 壳已由 T-0074 验收，Android 触控仍待 B-002。
 
 ## T-0076 / R223（2026-10-15 零搬运标签发现与引用入口实现）
 
@@ -542,4 +542,4 @@
 - [x] 动作语义拆分为插入块引用、插入嵌入、插入源块正文、打开来源；移动端插入仍诚实降级为复制。
 - [x] 收紧批次模式快照、非法模式拒绝、空属性响应和引用目标回退；源正文读取会清理物理 IAL，避免复制来源块 ID。
 - [x] 补充隔离发现 E2E 对 `getBlockKramdowns(textmark)`、标签合并、引用实时更新和撤销保留源块的覆盖；`pnpm run e2e:discovery:iso` 全部通过。
-- **当前状态**：代码、文档和本地构建包已完成；尚未提交、发布或推送集市。Electron/Android 现场验收仍按 B-001/B-002 待完成。
+- **当前状态**：代码、文档和本地构建包已完成；尚未提交、发布或推送集市。Electron 壳已在 T-0074 验收，Android 现场仍按 B-002 待完成。
