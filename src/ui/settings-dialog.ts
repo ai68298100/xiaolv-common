@@ -208,7 +208,7 @@ export function openSettingsDialog(ctx: SettingsUiContext): void {
     buildAiSection(ctx, root);
     buildInsertSection(ctx, root);
     buildSearchSection(ctx, root);
-    buildSavedViewsSection(ctx, root);
+    buildSavedViewsSection(ctx, root, () => dialog.destroy());
     buildProviderSection(ctx, root);
     buildDataSection(ctx, root);
     body.appendChild(root);
@@ -1284,7 +1284,7 @@ function buildSearchSection(ctx: SettingsUiContext, root: HTMLElement): void {
 }
 
 /** 已保存的标签发现视图：只管理侧车快捷配置，不触碰源块或内容库条目。 */
-function buildSavedViewsSection(ctx: SettingsUiContext, root: HTMLElement): void {
+function buildSavedViewsSection(ctx: SettingsUiContext, root: HTMLElement, beforeOpen?: () => void): void {
     const t = ctx.t;
     const sec = document.createElement("div");
     sec.className = "xlc-form-field xlc-card xlc-saved-views";
@@ -1352,6 +1352,7 @@ function buildSavedViewsSection(ctx: SettingsUiContext, root: HTMLElement): void
             open.disabled = !ctx.openSavedDiscoveryView;
             open.addEventListener("click", () => {
                 if (!ctx.openSavedDiscoveryView) return;
+                beforeOpen?.();
                 ctx.openSavedDiscoveryView(view);
             });
             actions.appendChild(open);
