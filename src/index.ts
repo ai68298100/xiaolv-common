@@ -1379,6 +1379,7 @@ export default class XiaolvCommonPlugin extends Plugin {
         if (code === "no-editor-copied") return t("insertNoEditor");
         if (code === "target-unavailable-copied") return t("insertTargetUnavailableCopied");
         if (code === "no-editor-copy-failed" || code === "copy-failed") return t("copyFailed");
+        if (code === "source-missing" || code === "doc-missing") return t("sourceGone");
         if (code === "insert-failed") return t("insertFailed");
         if (code === "copied") return t("copied", shortTitle(title));
         if (code === "inserted") return t("inserted", shortTitle(title));
