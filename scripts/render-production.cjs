@@ -305,6 +305,10 @@ fs.writeFileSync(path.join(OUT, "harness.html"), html);
     await page.waitForTimeout(400);
     const settingsAssertions = await page.evaluate(() => ({
         sections: ["AI 助手", "搜索", "数据与模板", "其他插件内容"].every((s) => document.body.textContent.includes(s)),
+        savedViews: (document.body.textContent || "").includes("常用视图")
+            && (document.body.textContent || "").includes("客服话术")
+            && !!document.querySelector("[data-xlc-control='settings.saved-view.open']")
+            && !!document.querySelector("[data-xlc-control='settings.saved-view.delete']"),
         toggles: document.querySelectorAll(".xlc-setting-row input[type=checkbox]").length >= 3,
         providerRow: (document.body.textContent || "").includes("小驴打卡"),
         dataButtons: (document.body.textContent || "").includes("重建索引") && (document.body.textContent || "").includes("导出"),
@@ -339,7 +343,7 @@ fs.writeFileSync(path.join(OUT, "harness.html"), html);
     if (Object.values(settingsAssertions).some((v) => !v)) {
         throw new Error("settings smoke failed: " + JSON.stringify(settingsAssertions));
     }
-    console.log("  smoke ✓ settings: 10 assertions");
+    console.log("  smoke ✓ settings: 11 assertions");
     await page.screenshot({path: path.join(OUT, "production-settings-light.png")});
     // 模板包导出对话框（R71/F6，原型屏 8 右帧：分类筛选 / 包名 / 内容清单）
     await page.evaluate(() => {
@@ -1648,6 +1652,43 @@ fs.writeFileSync(path.join(OUT, "harness.html"), html);
     if (Object.values(discoveryAssertions).some((v) => !v)) {
         throw new Error("discovery smoke failed: " + JSON.stringify(discoveryAssertions));
     }
+    // R225/B19：精确标签筛选后保存视图；保存只记录规则，不搬迁源块正文。
+    await page.locator("[data-xlc-control='discovery.filter.tag']").fill("客服");
+    const saveViewEnabled = await page.locator("[data-xlc-discovery-action='save-view']").isEnabled();
+    page.once("dialog", async (dialog) => { await dialog.accept("客服话术"); });
+    await page.locator("[data-xlc-discovery-action='save-view']").click();
+    await page.waitForFunction(() => Boolean(document.body.dataset.xlcDiscoverySavedView));
+    const savedViewData = await page.evaluate(() => {
+        const saved = JSON.parse(document.body.dataset.xlcDiscoverySavedView ?? "null");
+        return {
+            name: saved?.name === "客服话术",
+            tag: saved?.tag === "客服",
+            scope: saved?.scope === "document",
+            noBody: !Object.prototype.hasOwnProperty.call(saved ?? {}, "content"),
+        };
+    });
+    const savedViewAssertion = {saveViewEnabled, ...savedViewData};
+    if (!Object.values(savedViewAssertion).every(Boolean)) throw new Error("saved discovery view smoke failed: " + JSON.stringify(savedViewAssertion));
+    await page.evaluate(() => window.XlcHarness.closeDiscovery());
+    await page.evaluate(() => {
+        const stage = document.getElementById("stage");
+        document.querySelectorAll(".b3-dialog").forEach((el) => el.remove());
+        stage.innerHTML = "";
+        window.XlcHarness.openDiscovery({initialTag: "客服", autoSelectFiltered: true, referenceOnly: true});
+        const dialogRoot = document.querySelector(".b3-dialog");
+        if (dialogRoot) stage.appendChild(dialogRoot);
+    });
+    await page.waitForFunction(() => document.querySelector(".xlc-discovery")?.getAttribute("aria-busy") === "false"
+        && document.querySelector("[data-xlc-control='discovery.filter.tag']")?.value === "客服");
+    const reopenedViewAssertion = await page.evaluate(() => ({
+        tag: document.querySelector("[data-xlc-control='discovery.filter.tag']")?.value === "客服",
+        selected: Array.from(document.querySelectorAll(".xlc-discovery-footer .xlc-form-hint"), (el) => el.textContent ?? "").some((text) => text.includes("已选 1 项")),
+        syncLabel: document.querySelector("[data-xlc-discovery-action='add-selected']")?.textContent?.includes("同步到常用库") === true,
+        modeLocked: document.querySelector("[data-xlc-control='discovery.add-mode']")?.disabled === true,
+        modeReference: document.querySelector("[data-xlc-control='discovery.add-mode']")?.value === "reference",
+    }));
+    if (!Object.values(reopenedViewAssertion).every(Boolean)) throw new Error("reopened discovery view smoke failed: " + JSON.stringify(reopenedViewAssertion));
+    console.log("  smoke ✓ saved tag view reopens with filtered reference selection");
     await page.locator(".xlc-discovery-filters [data-xlc-control='discovery.filter.text']").fill("无匹配候选");
     const discoveryEmptyList = await page.evaluate(() => {
         const list = document.querySelector(".xlc-discovery-list [role='list']");

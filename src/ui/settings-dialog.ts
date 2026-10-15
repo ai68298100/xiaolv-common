@@ -14,6 +14,7 @@ import {ProviderRegistry} from "../service/providers";
 import {CommonItem} from "../model/item";
 import {collectTags} from "../model/search";
 import {PROMPT_PACK_MD} from "../service/prompt-pack";
+import type {SavedDiscoveryScope, SavedDiscoveryView} from "../model/storage";
 
 type TFn = (key: string, ...args: string[]) => string;
 
@@ -71,6 +72,10 @@ export interface SettingsUiContext {
     aiErrorText(err: unknown): string;
     applyPinyinAdapter(): void;
     refreshSearch?(): void;
+    /** Saved tag-scoped discovery shortcuts. The source blocks remain canonical. */
+    getSavedDiscoveryViews?(): readonly SavedDiscoveryView[];
+    openSavedDiscoveryView?(view: SavedDiscoveryView): void;
+    deleteSavedDiscoveryView?(id: string): void;
 }
 
 export interface SetupDialogOptions {
@@ -203,6 +208,7 @@ export function openSettingsDialog(ctx: SettingsUiContext): void {
     buildAiSection(ctx, root);
     buildInsertSection(ctx, root);
     buildSearchSection(ctx, root);
+    buildSavedViewsSection(ctx, root);
     buildProviderSection(ctx, root);
     buildDataSection(ctx, root);
     body.appendChild(root);
@@ -1275,6 +1281,106 @@ function buildSearchSection(ctx: SettingsUiContext, root: HTMLElement): void {
     });
     searchSec.appendChild(phRow);
     root.appendChild(searchSec);
+}
+
+/** 已保存的标签发现视图：只管理侧车快捷配置，不触碰源块或内容库条目。 */
+function buildSavedViewsSection(ctx: SettingsUiContext, root: HTMLElement): void {
+    const t = ctx.t;
+    const sec = document.createElement("div");
+    sec.className = "xlc-form-field xlc-card xlc-saved-views";
+    sec.dataset.xlcControl = "settings.saved-views";
+    const label = document.createElement("span");
+    label.className = "xlc-form-label";
+    label.textContent = t("savedViewsSection");
+    sec.appendChild(label);
+    const list = document.createElement("div");
+    list.className = "xlc-saved-view-list";
+    list.setAttribute("role", "list");
+    list.setAttribute("aria-label", t("savedViewsSection"));
+    sec.appendChild(list);
+
+    const readViews = (): readonly SavedDiscoveryView[] => {
+        const fromContext = ctx.getSavedDiscoveryViews?.();
+        return fromContext ?? ctx.state.search.savedDiscoveryViews ?? [];
+    };
+    const scopeLabel = (scope: SavedDiscoveryScope): string => {
+        switch (scope) {
+            case "document": return t("discoveryScopeDocument");
+            case "notebook": return t("discoveryScopeNotebook");
+            case "tree": return t("discoveryScopeTree");
+            case "selected-notebook": return t("discoveryScopeSelectedNotebook");
+            case "all-notebooks": return t("discoveryScopeAllNotebooks");
+        }
+    };
+    const render = (): void => {
+        list.replaceChildren();
+        const views = readViews();
+        if (views.length === 0) {
+            const empty = document.createElement("span");
+            empty.className = "xlc-form-hint xlc-saved-view-empty";
+            empty.textContent = t("savedViewsEmpty");
+            list.appendChild(empty);
+            return;
+        }
+        for (const view of views) {
+            const row = document.createElement("div");
+            row.className = "xlc-setting-row xlc-saved-view-row";
+            row.dataset.xlcSavedViewId = view.id;
+            row.setAttribute("role", "listitem");
+
+            const text = document.createElement("span");
+            text.className = "xlc-setting-text";
+            const name = document.createElement("strong");
+            name.className = "xlc-saved-view-name";
+            name.textContent = view.name;
+            text.appendChild(name);
+            const meta = document.createElement("span");
+            meta.className = "xlc-setting-sub xlc-saved-view-meta";
+            const pieces = [`#${view.tag}`, scopeLabel(view.scope)];
+            if (view.pathLabel) pieces.push(view.pathLabel);
+            meta.textContent = pieces.join(" · ");
+            text.appendChild(meta);
+            row.appendChild(text);
+
+            const actions = document.createElement("span");
+            actions.className = "xlc-setting-actions";
+            const open = document.createElement("button");
+            open.type = "button";
+            open.className = "b3-button xlc-btn-ghost";
+            open.dataset.xlcControl = "settings.saved-view.open";
+            open.textContent = t("savedViewsOpen");
+            open.disabled = !ctx.openSavedDiscoveryView;
+            open.addEventListener("click", () => {
+                if (!ctx.openSavedDiscoveryView) return;
+                ctx.openSavedDiscoveryView(view);
+            });
+            actions.appendChild(open);
+
+            const remove = document.createElement("button");
+            remove.type = "button";
+            remove.className = "b3-button xlc-btn-ghost";
+            remove.dataset.xlcControl = "settings.saved-view.delete";
+            remove.textContent = t("savedViewsDelete");
+            remove.addEventListener("click", () => {
+                confirm("⚠️ " + t("savedViewsDelete"), t("savedViewsDeleteConfirm", view.name), () => {
+                    if (ctx.deleteSavedDiscoveryView) {
+                        ctx.deleteSavedDiscoveryView(view.id);
+                    } else {
+                        ctx.state.search.savedDiscoveryViews = (ctx.state.search.savedDiscoveryViews ?? [])
+                            .filter((entry) => entry.id !== view.id);
+                        ctx.persistSoon();
+                    }
+                    ctx.notify("info", `${t("savedViewsDelete")}: ${view.name}`);
+                    render();
+                });
+            });
+            actions.appendChild(remove);
+            row.appendChild(actions);
+            list.appendChild(row);
+        }
+    };
+    render();
+    root.appendChild(sec);
 }
 
 function buildDataSection(ctx: SettingsUiContext, root: HTMLElement): void {

@@ -1764,6 +1764,34 @@
   }
 }
 
+.xlc-saved-view-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--xlc-space-1);
+  margin-top: var(--xlc-space-2);
+}
+
+.xlc-saved-view-row {
+  border-top: 1px solid color-mix(in srgb, var(--b3-border-color) 72%, transparent);
+  padding-top: var(--xlc-space-2);
+}
+
+.xlc-saved-view-name,
+.xlc-saved-view-meta {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.xlc-saved-view-meta { margin-top: var(--xlc-space-0-5); }
+
+.xlc-setting-actions {
+  display: inline-flex;
+  flex: 0 0 auto;
+  gap: var(--xlc-space-1);
+}
+
 // ---------- 变量填充卡片（F1，原型屏 4）----------
 .xlc-varform {
   display: flex;
@@ -2640,6 +2668,8 @@
     flex: 0 0 auto;
     min-height: 36px;
     white-space: nowrap;
+    position: relative;
+    z-index: 2;
   }
 
   .xlc-discovery-tag-facets {

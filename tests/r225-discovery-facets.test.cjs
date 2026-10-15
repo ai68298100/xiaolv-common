@@ -55,3 +55,41 @@ test("保存标签视图使用精确标签匹配，不把常用误匹配为常�
     assert.equal(matchesDiscoveryTag(["常用2"], "常用"), false);
     assert.equal(matchesDiscoveryTag(["常用"], "常用"), true);
 });
+
+test("保存标签视图拒绝缺失目标，并限制为 20 条侧车规则", () => {
+    const views = normalizeSavedDiscoveryViews([
+        {id: "xlc-view-missing1", name: "无笔记本", tag: "常用", scope: "selected-notebook", targetNotebookId: ""},
+        ...Array.from({length: 22}, (_, index) => ({
+            id: `xlc-view-${String(index + 1).padStart(6, "0")}`,
+            name: `视图 ${index}`,
+            tag: "常用",
+            scope: "document",
+            targetDocId: "20240101120001-abcdefg",
+        })),
+    ]);
+    assert.equal(views.length, 20);
+    assert.equal(views.some((view) => view.name === "无笔记本"), false);
+});
+
+test("保存标签视图字段归一化不保存正文或未知字段", () => {
+    const [view] = normalizeSavedDiscoveryViews([{
+        id: "xlc-view-abcdef",
+        name: "  客服视图  ",
+        tag: "  常用  ",
+        scope: "tree",
+        targetDocId: "20240101120001-abcdefg",
+        content: "不应落入侧车",
+        sourceBlockId: "20240101120002-hijklmn",
+        unknown: true,
+    }]);
+    assert.deepEqual(view, {
+        id: "xlc-view-abcdef",
+        name: "客服视图",
+        tag: "常用",
+        scope: "tree",
+        targetDocId: "20240101120001-abcdefg",
+        targetNotebookId: "",
+        pathLabel: "",
+        defaultCategory: "",
+    });
+});

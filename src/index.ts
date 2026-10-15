@@ -17,7 +17,7 @@ import {buildBlockRef, buildEmbedBlock} from "./model/actions";
 import {ExportedItem, buildBundle, validateImport, ConflictPolicy, ImportReceipt} from "./model/transfer";
 import {importBundle as importBundleCore} from "./service/importer";
 import {importMarkdownBundle} from "./service/import-markdown";
-import {LibraryConfig, CONFIG_VERSION, migrateState, normalizeLibraryConfig, normalizeState, PluginState, pushRecentQuery} from "./model/storage";
+import {LibraryConfig, CONFIG_VERSION, migrateState, normalizeLibraryConfig, normalizeSavedDiscoveryViews, normalizeState, PluginState, pushRecentQuery, type SavedDiscoveryView} from "./model/storage";
 import {SearchContext, collectCategories, collectTags, searchEntries, applyBasicFilters} from "./model/search";
 import {findDuplicateByContent} from "./model/dedupe";
 import {LruCache, PREVIEW_CACHE_CAPACITY, PREVIEW_CACHE_TTL_MS} from "./model/lru";
@@ -450,7 +450,13 @@ export default class XiaolvCommonPlugin extends Plugin {
         });
     }
 
-    private showDiscoveryDialog(docId: string, scope: "document" | "notebook" | "tree", sourcePath?: string, initialTreeRootId?: string): void {
+    private showDiscoveryDialog(
+        docId: string,
+        scope: "document" | "notebook" | "tree",
+        sourcePath?: string,
+        initialTreeRootId?: string,
+        preset?: {initialTag?: string; autoSelectFiltered?: boolean; referenceOnly?: boolean; defaultCategory?: string},
+    ): void {
         if (this.discoveryDialog) {
             if (!this.discoveryDialog.close()) return;
             this.discoveryDialog = null;
@@ -472,7 +478,76 @@ export default class XiaolvCommonPlugin extends Plugin {
             onAdded: () => {
                 this.searchDialog?.refreshAfterExternalChange();
             },
-        }, {docId, sourcePath, scope, initialTreeRootId, title: scope === "tree" ? this.i18nFn()("discoveryTitleTree") : undefined});
+            savedViews: this.state.search.savedDiscoveryViews ?? [],
+            onSaveView: (view) => this.saveDiscoveryView(view),
+        }, {
+            docId,
+            sourcePath,
+            scope,
+            initialTreeRootId,
+            title: scope === "tree" ? this.i18nFn()("discoveryTitleTree") : undefined,
+            ...preset,
+        });
+    }
+
+    /** 保存发现面板的标签规则；侧车只保留规则和入口元数据，不保存源块正文。 */
+    private saveDiscoveryView(view: Omit<SavedDiscoveryView, "id">): void {
+        const current = this.state.search.savedDiscoveryViews ?? [];
+        const sameRule = current.find((entry) => entry.name === view.name
+            && entry.tag === view.tag
+            && entry.scope === view.scope
+            && entry.targetDocId === view.targetDocId
+            && entry.targetNotebookId === view.targetNotebookId);
+        const id = sameRule?.id ?? `xlc-view-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 10)}`;
+        const next = normalizeSavedDiscoveryViews([
+            {id, ...view},
+            ...current.filter((entry) => entry.id !== sameRule?.id),
+        ]);
+        this.state.search.savedDiscoveryViews = next;
+        this.persistSoon();
+        this.notify("info", this.i18nFn()("discoverySaveViewDone", view.name));
+    }
+
+    /** 从设置页重开保存的标签视图；打开前校验目标，避免失效 ID 回退到当前文档。 */
+    private openSavedDiscoveryView(view: SavedDiscoveryView): void {
+        if (!this.sidecarReady) {
+            this.notify("info", this.i18nFn()("sidecarLoading"));
+            return;
+        }
+        if (!this.config) {
+            this.openSetup();
+            return;
+        }
+        if (view.scope === "selected-notebook" || view.scope === "all-notebooks") {
+            this.notify("info", this.i18nFn()("discoveryScopeUnavailable"));
+            return;
+        }
+        if (view.scope === "notebook" && !this.discovery.discoverCurrentNotebook) {
+            this.notify("info", this.i18nFn()("discoveryNotebookUnavailable"));
+            return;
+        }
+        if (view.scope === "tree" && (!this.discovery.discoverTree || !this.library.searchDocs)) {
+            this.notify("info", this.i18nFn()("discoveryScopeUnavailable"));
+            return;
+        }
+        if (!isBlockId(view.targetDocId)) {
+            this.notify("error", this.i18nFn()("discoverySourceUnavailable"));
+            return;
+        }
+        this.showDiscoveryDialog(view.targetDocId, view.scope, view.pathLabel || undefined, view.scope === "tree" ? view.targetDocId : undefined, {
+            initialTag: view.tag,
+            autoSelectFiltered: true,
+            referenceOnly: true,
+            defaultCategory: view.defaultCategory,
+        });
+    }
+
+    private deleteSavedDiscoveryView(id: string): void {
+        const current = this.state.search.savedDiscoveryViews ?? [];
+        const next = current.filter((view) => view.id !== id);
+        if (next.length === current.length) return;
+        this.state.search.savedDiscoveryViews = next;
+        this.persistSoon();
     }
 
     private discoveryFailureText(result: Extract<DiscoveryReceipt<unknown>, {ok: false}>): string {
@@ -1591,6 +1666,9 @@ export default class XiaolvCommonPlugin extends Plugin {
             aiErrorText: (err) => this.aiErrorText(err),
             applyPinyinAdapter: () => this.applyPinyinAdapter(),
             refreshSearch: () => this.searchDialog?.refreshAfterExternalChange(),
+            getSavedDiscoveryViews: () => this.state.search.savedDiscoveryViews ?? [],
+            openSavedDiscoveryView: (view) => this.openSavedDiscoveryView(view),
+            deleteSavedDiscoveryView: (id) => this.deleteSavedDiscoveryView(id),
         };
     }
 

@@ -7,6 +7,7 @@ import {openDiscoveryDialog} from "../../src/ui/discovery-dialog";
 import type {DiscoveryDialogController} from "../../src/ui/discovery-dialog";
 import type {SearchEntry} from "../../src/model/search";
 import type {TransformKind} from "../../src/service/ai";
+import type {SavedDiscoveryView} from "../../src/model/storage";
 
 const ENTRIES: SearchEntry[] = [
     {id: "xlc-demo0000001", blockId: "20240101120000-aaaaaaa", libraryDocId: "20240101120001-hijklmn", itemType: "markdown", title: "项目延期道歉与补偿方案", alias: "延期道歉", tags: ["客户沟通", "模板"], category: "客服", summary: "尊敬的王总：关于本期交付延期……", createdAt: 1, updatedAt: Date.now() - 3 * 86_400_000, sourceDocId: "20240101120001-hijklmn", sourceBlockId: "20240101120002-bbbbbbb", varCount: 2},
@@ -46,6 +47,7 @@ const captureAiTidyCalls: string[] = [];
 const captureAiDraftCalls: string[] = [];
 let deferredTidyResponse: ((value: {ok: true; title: string; alias: string; tags: string[]; category: string}) => void) | null = null;
 let lastSearchDialog: CommonSearchDialog | null = null;
+let savedDiscoveryViews: SavedDiscoveryView[] = [];
 
 const T = (key: string, ...args: string[]): string => {
     const map: Record<string, string> = {
@@ -92,7 +94,14 @@ const T = (key: string, ...args: string[]): string => {
         discoveryFilterSameContent: "内容相同", discoveryFilterAlready: "已在库中", discoveryFilterAdded: "已收录", discoveryTypeAll: "全部类型",
         discoverySearchPlaceholder: "筛选标题、摘要或来源", discoveryTagFilterPlaceholder: "按标签筛选", discoveryNoCandidates: "没有符合条件的候选", discoveryPreviewTitle: "候选预览",
         discoveryPreviewEmpty: "选择左侧候选后查看正文；收录前会再次校验来源。", discoveryPreviewLoading: "正在读取候选正文…",
-        discoveryAdd: "加入常用库", discoveryAddSelected: "加入选中项", discoveryDefaultCategory: "默认分类",
+        discoveryAdd: "加入常用库", discoveryAddSelected: "加入选中项", discoverySyncView: "同步到常用库", discoveryAddMode: "加入方式",
+        discoveryAddModeReference: "建立引用入口（源块不动）", discoveryAddModeCopy: "复制到常用库（独立副本）",
+        discoveryAddModeHint: "引用入口只保存来源块 ID 和元数据，调用时读取源块最新正文。", discoveryDefaultCategory: "默认分类",
+        discoveryTagFacets: "候选标签", discoveryTagFacetApply: "按标签「%s」筛选，共 %s 条",
+        discoverySaveView: "保存视图", discoverySaveViewPrompt: "为当前标签视图命名：",
+        discoverySaveViewInvalid: "视图名称或扫描目标无效，未保存。", discoverySaveViewDone: "已保存视图「%s」",
+        savedViewsSection: "常用视图", savedViewsEmpty: "还没有保存的视图。可在发现面板输入标签后保存。",
+        savedViewsOpen: "打开", savedViewsDelete: "删除", savedViewsDeleteConfirm: "删除视图「%s」？只会删除快捷配置，不会删除源块或已有引用。",
         discoveryUnsortedCategory: "待整理",
         discoveryDefaultCategoryHint: "新收录项默认使用此分类；预览中可单独修改当前条目。",
         discoveryCandidateCategory: "本条分类", discoveryUseDefaultCategory: "恢复默认",
@@ -389,6 +398,16 @@ function makeDeps(overrides: {aiEnabled?: boolean; missing?: boolean; mobile?: b
         lastSearchDialog?.showKernelAccessIssue(kind, T(key));
     },
         openSettings(mode: "doc" | "tree" | "notebook" = "doc"): void {
+            savedDiscoveryViews = [{
+                id: "xlc-view-settings01",
+                name: "客服话术",
+                tag: "客服",
+                scope: "document",
+                targetDocId: "20240101120001-hijklmn",
+                targetNotebookId: "",
+                pathLabel: "/项目笔记",
+                defaultCategory: "客服",
+            }];
             const ctx: SettingsUiContext = {
             t: T,
             state: {
@@ -435,6 +454,9 @@ function makeDeps(overrides: {aiEnabled?: boolean; missing?: boolean; mobile?: b
             fetchAssetBytes: async () => null,
             aiErrorText: (err) => String(err),
             applyPinyinAdapter: () => {},
+            getSavedDiscoveryViews: () => savedDiscoveryViews,
+            openSavedDiscoveryView: (view) => { document.body.dataset.xlcSavedViewOpened = view.id; },
+            deleteSavedDiscoveryView: (id) => { savedDiscoveryViews = savedDiscoveryViews.filter((view) => view.id !== id); },
         } as unknown as SettingsUiContext;
         openSettingsDialog(ctx);
     },
@@ -558,7 +580,7 @@ function makeDeps(overrides: {aiEnabled?: boolean; missing?: boolean; mobile?: b
         const issues = [{line: 3, reason: "bad shape"}, {line: 7, reason: "bad shape"}, {line: 11, reason: "bad shape"}];
         openImportPolicyDialog(ctx, parsed, issues, {kind: "json", text: "{}"});
     },
-    openDiscovery(options?: {notebookLoadErrorOnce?: boolean; emptyNotebookList?: boolean; initialTreeRoot?: boolean; candidateCount?: number}): void {
+    openDiscovery(options?: {notebookLoadErrorOnce?: boolean; emptyNotebookList?: boolean; initialTreeRoot?: boolean; candidateCount?: number; initialTag?: string; autoSelectFiltered?: boolean; referenceOnly?: boolean; defaultCategory?: string}): void {
         let sessionId = "discovery-harness";
         let stopRequested = false;
         let notebookRequests = 0;
@@ -662,12 +684,22 @@ function makeDeps(overrides: {aiEnabled?: boolean; missing?: boolean; mobile?: b
                 if (keyword === "新项目") return [{id: "20240102120001-qrstuvw", hPath: "/新项目", box: "20240102", name: "新项目"}];
                 return [];
             },
+            savedViews: savedDiscoveryViews,
+            onSaveView: (view) => {
+                const saved: SavedDiscoveryView = {id: "xlc-view-harness01", ...view};
+                savedDiscoveryViews = [saved, ...savedDiscoveryViews.filter((entry) => entry.id !== saved.id)];
+                document.body.dataset.xlcDiscoverySavedView = JSON.stringify(saved);
+            },
         }, {
             docId: "20240101120001-hijklmn",
             sourcePath: "/项目笔记",
             scope: options?.initialTreeRoot ? "tree" : undefined,
             initialTreeRootId: options?.initialTreeRoot ? "20240101120001-hijklmn" : undefined,
             title: options?.initialTreeRoot ? "从此文档发现常用语" : undefined,
+            initialTag: options?.initialTag,
+            autoSelectFiltered: options?.autoSelectFiltered,
+            referenceOnly: options?.referenceOnly,
+            defaultCategory: options?.defaultCategory,
         });
     },
     closeDiscovery(): void {

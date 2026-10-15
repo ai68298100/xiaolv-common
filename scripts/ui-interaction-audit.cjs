@@ -396,6 +396,47 @@ const check = (name, ok, detail = "") => {
             && recentFallback.recovered.hasSql && recentFallback.recovered.queryScope === "all",
         JSON.stringify(recentFallback));
 
+    // B19/B20：标签发现视图保存与重开。规则只保存标签/范围元数据，重开自动选中并锁定引用模式。
+    await page.evaluate(() => {
+        const stage = document.getElementById("stage");
+        document.querySelectorAll(".b3-dialog").forEach((el) => el.remove());
+        stage.innerHTML = "";
+        window.XlcHarness.openDiscovery();
+        const dialogRoot = document.querySelector(".b3-dialog");
+        if (dialogRoot) stage.appendChild(dialogRoot);
+    });
+    await page.waitForFunction(() => document.querySelector(".xlc-discovery")?.getAttribute("aria-busy") === "false"
+        && document.querySelectorAll(".xlc-discovery-row").length === 2, undefined, {timeout: 3000});
+    await page.locator("[data-xlc-control='discovery.filter.tag']").fill("客服");
+    page.once("dialog", async (dialog) => { await dialog.accept("客服话术"); });
+    await page.locator("[data-xlc-discovery-action='save-view']").click();
+    await page.waitForFunction(() => Boolean(document.body.dataset.xlcDiscoverySavedView));
+    const savedView = await page.evaluate(() => JSON.parse(document.body.dataset.xlcDiscoverySavedView ?? "null"));
+    check("B19 标签筛选后保存视图并保留规则元数据",
+        savedView?.name === "客服话术" && savedView?.tag === "客服" && savedView?.scope === "document" && !Object.hasOwn(savedView ?? {}, "content"),
+        JSON.stringify(savedView));
+    await page.evaluate(() => {
+        window.XlcHarness.closeDiscovery();
+        const stage = document.getElementById("stage");
+        document.querySelectorAll(".b3-dialog").forEach((el) => el.remove());
+        stage.innerHTML = "";
+        window.XlcHarness.openDiscovery({initialTag: "客服", autoSelectFiltered: true, referenceOnly: true});
+        const dialogRoot = document.querySelector(".b3-dialog");
+        if (dialogRoot) stage.appendChild(dialogRoot);
+    });
+    await page.waitForFunction(() => document.querySelector(".xlc-discovery")?.getAttribute("aria-busy") === "false"
+        && document.querySelector("[data-xlc-control='discovery.filter.tag']")?.value === "客服", undefined, {timeout: 3000});
+    const reopened = await page.evaluate(() => ({
+        tag: document.querySelector("[data-xlc-control='discovery.filter.tag']")?.value,
+        selected: Array.from(document.querySelectorAll(".xlc-discovery-footer .xlc-form-hint"), (el) => el.textContent ?? "").find((text) => text.includes("已选")),
+        syncLabel: document.querySelector("[data-xlc-discovery-action='add-selected']")?.textContent?.includes("同步到常用库"),
+        modeLocked: document.querySelector("[data-xlc-control='discovery.add-mode']")?.disabled === true,
+        mode: document.querySelector("[data-xlc-control='discovery.add-mode']")?.value,
+    }));
+    check("B20 打开保存视图后自动选中并锁定引用模式",
+        reopened.tag === "客服" && reopened.selected?.includes("已选 1 项") && reopened.syncLabel && reopened.modeLocked && reopened.mode === "reference",
+        JSON.stringify(reopened));
+
     // ── C. Esc 关闭弹窗 ──
     await open({});
     await sleep(200);

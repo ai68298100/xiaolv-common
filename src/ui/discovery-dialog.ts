@@ -2,6 +2,7 @@ import {Dialog} from "siyuan";
 import {getDialogBody} from "./dialog-dom";
 import {ITEM_TYPES, ItemType} from "../model/item";
 import {buildDiscoveryTagFacets, matchesDiscoveryTag} from "../model/discovery-facets";
+import type {SavedDiscoveryView} from "../model/storage";
 import type {
     AddCandidateResult,
     DiscoveryCandidate,
@@ -36,6 +37,8 @@ export interface DiscoveryDialogDeps {
     onAdded?: (itemId: string, title: string) => void;
     listNotebooks?: () => Promise<DiscoveryNotebook[]>;
     searchDocs?: (keyword: string) => Promise<DiscoveryDoc[]>;
+    savedViews?: readonly SavedDiscoveryView[];
+    onSaveView?: (view: Omit<SavedDiscoveryView, "id">) => void;
 }
 
 export interface DiscoveryDialogOptions {
@@ -46,13 +49,14 @@ export interface DiscoveryDialogOptions {
     /** Optional title override for host-specific entry points. */
     title?: string;
     /** Initial scan scope; notebook scope is offered only when supported by the service. */
-    scope?: "document" | "notebook" | "tree";
+    scope?: DiscoveryScope;
     /** Initial root for a document-tree entry point; later tree searches still require explicit selection. */
     initialTreeRootId?: string;
     /** Optional saved-view preset. The dialog still revalidates the target before scanning. */
     initialTag?: string;
     autoSelectFiltered?: boolean;
     referenceOnly?: boolean;
+    defaultCategory?: string;
 }
 
 export interface DiscoveryDialogController {
@@ -174,6 +178,7 @@ const FALLBACKS: Record<string, string> = {
     discoveryAddingBatch: "正在收录选中项：%s / %s",
     discoveryAdd: "加入常用库",
     discoveryAddSelected: "加入选中项",
+    discoverySyncView: "同步到常用库",
     discoverySelectFiltered: "选中当前筛选（%s）",
     discoveryClearFilteredSelection: "清除当前筛选选择",
     discoveryForceSameContent: "批量允许收录内容相同的候选",
@@ -245,6 +250,7 @@ export class DiscoveryDialog implements DiscoveryDialogController {
     private filterText: HTMLInputElement | null = null;
     private filterTag: HTMLInputElement | null = null;
     private tagFacets: HTMLElement | null = null;
+    private saveViewButton: HTMLButtonElement | null = null;
     private selectFilteredButton: HTMLButtonElement | null = null;
     private addMode: HTMLSelectElement | null = null;
     private forceSameContent: HTMLInputElement | null = null;
@@ -561,6 +567,15 @@ export class DiscoveryDialog implements DiscoveryDialogController {
         this.tagFacets.setAttribute("role", "list");
         this.tagFacets.setAttribute("aria-label", this.tx("discoveryTagFacets"));
         filters.appendChild(this.tagFacets);
+        if (this.deps.onSaveView) {
+            this.saveViewButton = document.createElement("button");
+            this.saveViewButton.type = "button";
+            this.saveViewButton.className = "b3-button xlc-btn-ghost";
+            this.saveViewButton.dataset.xlcDiscoveryAction = "save-view";
+            this.saveViewButton.textContent = this.tx("discoverySaveView");
+            this.saveViewButton.addEventListener("click", () => this.saveCurrentView());
+            filters.appendChild(this.saveViewButton);
+        }
         this.selectFilteredButton = document.createElement("button");
         this.selectFilteredButton.type = "button";
         this.selectFilteredButton.className = "b3-button xlc-btn-ghost";
@@ -605,7 +620,7 @@ export class DiscoveryDialog implements DiscoveryDialogController {
         this.defaultCategoryInput = document.createElement("input");
         this.defaultCategoryInput.type = "text";
         this.defaultCategoryInput.className = "b3-text-field";
-        this.defaultCategoryInput.value = this.tx("discoveryUnsortedCategory");
+        this.defaultCategoryInput.value = this.options.defaultCategory?.trim().slice(0, 64) || this.tx("discoveryUnsortedCategory");
         this.defaultCategoryInput.maxLength = 64;
         this.defaultCategoryInput.id = "xlc-discovery-default-category";
         this.defaultCategoryInput.dataset.xlcDiscoveryAction = "default-category";
@@ -696,7 +711,7 @@ export class DiscoveryDialog implements DiscoveryDialogController {
         this.addSelectedButton = document.createElement("button");
         this.addSelectedButton.type = "button";
         this.addSelectedButton.className = "b3-button xlc-btn-primary";
-        this.addSelectedButton.textContent = this.tx("discoveryAddSelected");
+        this.addSelectedButton.textContent = this.options.referenceOnly ? this.tx("discoverySyncView") : this.tx("discoveryAddSelected");
         this.addSelectedButton.dataset.xlcDiscoveryAction = "add-selected";
         this.addSelectedButton.addEventListener("click", () => void this.addSelected());
         footer.appendChild(this.addSelectedButton);
@@ -757,8 +772,10 @@ export class DiscoveryDialog implements DiscoveryDialogController {
         if (this.filterType) this.filterType.disabled = scanning || this.actionBusy;
         if (this.filterText) this.filterText.disabled = scanning || this.actionBusy;
         if (this.filterTag) this.filterTag.disabled = scanning || this.actionBusy;
+        if (this.saveViewButton) this.saveViewButton.disabled = scanning || this.actionBusy || !this.filter.tag
+            || (this.scope !== "document" && this.scope !== "notebook" && this.scope !== "tree");
         if (this.tagFacets) this.tagFacets.setAttribute("aria-busy", String(scanning || this.actionBusy));
-        if (this.addMode) this.addMode.disabled = scanning || this.actionBusy;
+        if (this.addMode) this.addMode.disabled = this.options.referenceOnly === true || scanning || this.actionBusy;
         if (this.scopeSelect) {
             this.scopeSelect.disabled = scanning || this.actionBusy || locked;
             this.scopeSelect.title = locked ? this.tx("discoveryScopeLockedForUndo") : "";
@@ -1077,7 +1094,8 @@ export class DiscoveryDialog implements DiscoveryDialogController {
         if (result.data.errors.length) this.setReceipt(result.data.errors.map((error) => `${error.sourcePath || this.tx("discoveryScope")}：${this.errorMessage(error.message)}`).join("\n"), true);
         this.renderList();
         if (this.options.autoSelectFiltered) {
-            const eligible = Array.from(this.candidates.values()).filter((candidate) => this.canAdd(candidate) && this.matches(candidate));
+            // 预设视图只自动勾选确定可新增的候选；内容相同/待核验项保留给用户显式确认，避免批量动作误触重复收录。
+            const eligible = Array.from(this.candidates.values()).filter((candidate) => candidate.status === "candidate" && this.matches(candidate));
             for (const candidate of eligible) this.selected.add(candidate.key);
             this.updateSelectionState();
         }
@@ -1307,6 +1325,42 @@ export class DiscoveryDialog implements DiscoveryDialogController {
         }
     }
 
+    private saveCurrentView(): void {
+        const tag = this.filterTag?.value.trim() ?? "";
+        if (!tag || !this.deps.onSaveView) return;
+        let name: string | null;
+        try {
+            name = typeof window.prompt === "function" ? window.prompt(this.tx("discoverySaveViewPrompt"), tag) : null;
+        } catch {
+            name = null;
+        }
+        if (name === null) return;
+        const trimmedName = name.trim().slice(0, 32);
+        if (!trimmedName) {
+            this.setReceipt(this.tx("discoverySaveViewInvalid"), true);
+            return;
+        }
+        if (this.scope !== "document" && this.scope !== "notebook" && this.scope !== "tree") {
+            this.setReceipt(this.tx("discoverySaveViewInvalid"), true);
+            return;
+        }
+        const targetDocId = this.scope === "tree" ? this.targetDocId : this.options.docId;
+        if (!targetDocId) {
+            this.setReceipt(this.tx("discoverySaveViewInvalid"), true);
+            return;
+        }
+        this.deps.onSaveView({
+            name: trimmedName,
+            tag: tag.slice(0, 64),
+            scope: this.scope,
+            targetDocId,
+            targetNotebookId: "",
+            pathLabel: (this.options.sourcePath ?? "").slice(0, 256),
+            defaultCategory: (this.defaultCategoryInput?.value ?? "").trim().slice(0, 64),
+        });
+        this.setReceipt(this.tx("discoverySaveViewDone", trimmedName));
+    }
+
     private changePage(delta: -1 | 1, direction: "previous" | "next"): void {
         this.page += delta;
         this.renderList();
@@ -1336,6 +1390,8 @@ export class DiscoveryDialog implements DiscoveryDialogController {
         }
         if (this.defaultCategoryInput) this.defaultCategoryInput.disabled = this.actionBusy;
         if (this.candidateCategoryInput) this.candidateCategoryInput.disabled = this.actionBusy || !this.activeKey || !this.sessionId;
+        if (this.saveViewButton) this.saveViewButton.disabled = this.scanState === "scanning" || this.actionBusy || !this.filter.tag
+            || (this.scope !== "document" && this.scope !== "notebook" && this.scope !== "tree");
         this.updateCategoryResetState();
         this.receipt?.querySelectorAll<HTMLButtonElement>("button")
             .forEach((button) => { button.disabled = this.actionBusy; });
