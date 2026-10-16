@@ -101,4 +101,6 @@ T-0084 最终只做离线加固：四个近期 Electron 采集器统一接入 `e
 
 ## v0.4.2 发布记录
 
-T-0085（2026-10-16）按用户“发版”指令准备 GitHub main/tag/Release，版本元数据与中英文 README、CHANGELOG 同步。发布门禁重新执行类型、单元、构建、Chrome 生产 UI/交互、密钥与包检查；T-0083 的核心/发现内核证据按源码身份复用，本轮没有重启或附着宿主。远端 CI、Release 附件和哈希核验结果见 [当期账本 T-0085](dev-plan-2026-10-06.md)。B-005 继续开放；集市没有获得明确授权，不发起上架 PR。
+T-0085（2026-10-16）已完成 [GitHub v0.4.2 发布](https://github.com/ai68298100/xiaolv-common/releases/tag/v0.4.2)，发布提交 `fac2a4450141bc491be2b96ce2c4418345b4b53d`，版本元数据与中英文 README、CHANGELOG 同步。类型、484/484 单元、构建、Chrome 生产 UI smoke、74/74 交互、密钥与包检查通过；T-0083 的核心/发现内核证据按相同生产 JS/CSS 身份复用，本轮没有重启或附着宿主。
+
+[main CI](https://github.com/ai68298100/xiaolv-common/actions/runs/38846012571) 和 [tag CI/Release](https://github.com/ai68298100/xiaolv-common/actions/runs/38846012546) 均成功。下载正式附件 `package.zip` 为 498742 bytes，SHA256 `9bd5251cc823ffe1ed4b306431fa7477db576e5117865c523b6847e4bfb58b4a`，与 API digest 相同；实际 manifest 为 `xiaolv-common / 0.4.2`，13 项资源核验通过，10 项逐字节一致，中英 README 和 LICENSE 仅平台换行差异。完整证据见 [当期账本 T-0085](dev-plan-2026-10-06.md)。B-005 继续开放；集市没有获得明确授权，未发起上架 PR。

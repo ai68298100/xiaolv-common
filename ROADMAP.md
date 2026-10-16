@@ -4,7 +4,7 @@
 
 > 定位：**思源笔记的内容资产层**——高频内容是有元数据、有来源、可检索、可变通、可共享的真实块资产（v3，2026-10-07 调研后修订）。三大一级场景：客服/邮件模板、AI 提示词库、研发/写作常用件。
 > 精准定位与调研证据：[docs/positioning.md](docs/positioning.md)。UI 唯一视觉事实源：[docs/design/prototype.html](docs/design/prototype.html)（v4 实现镜像）+ [docs/design/design-spec.md](docs/design/design-spec.md)；组件清单：[docs/ui-component-catalog.md](docs/ui-component-catalog.md)。生产证据：docs/design/production-*.png。
-> 状态：T-0085/R232 正在准备 **v0.4.2 GitHub 发版（2026-10-16）**，上一发布为 v0.4.1。范围包含 T-0059–T-0084 的搜索/快捷工作流、标签引用和保存视图、编辑器目标修复及验收工具加固。最终单元 484/484；此前生产交互 74/74、核心隔离内核 v3.8.8-alpha.1 12/12 和发现链路通过，本次按源码身份复用内核证据，其他发布门禁重新执行。**Electron 临时 renderer 已有局部功能观测，镜像整体隔离声明已撤回**；Android、真实 AI、连续嵌入后选区、B-004 与 B-005 继续开放，后续宿主实验停止。发布说明保留这些边界，集市未获推送授权。当前状态：[docs/status-audit-2026-10-15.md](docs/status-audit-2026-10-15.md)；当期账本：[docs/dev-plan-2026-10-06.md](docs/dev-plan-2026-10-06.md)。
+> 状态：**[v0.4.2 已在 GitHub 发布](https://github.com/ai68298100/xiaolv-common/releases/tag/v0.4.2)（2026-10-16）**。T-0059–T-0084 的搜索/快捷工作流、标签引用和保存视图、编辑器目标修复及验收工具加固均已包含。发版单元 484/484、Chrome UI smoke、交互 74/74、构建/密钥/包检查及分支与标签 CI 通过；核心隔离内核 v3.8.8-alpha.1 12/12 和发现链路按相同生产 JS/CSS 身份复用 T-0083 证据，本轮未重跑宿主。**Electron 临时 renderer 已有局部功能观测，镜像整体隔离声明已撤回**；Android、真实 AI、连续嵌入后选区、B-004 与 B-005 继续开放，后续宿主实验停止。发布说明保留这些边界，集市未获推送授权。当前状态：[docs/status-audit-2026-10-15.md](docs/status-audit-2026-10-15.md)；当期账本：[docs/dev-plan-2026-10-06.md](docs/dev-plan-2026-10-06.md)。
 
 ## R2：AI 融入与原型质感（2026-10-06，用户指令立项）
 
@@ -617,8 +617,9 @@
 - [x] 最终单元 484/484、类型、六脚本语法、密钥、包检查和 diff 检查通过。本轮未重新启动或附着宿主。
 - **阻塞与下一步**：[ADR 0054](docs/adr/0054-electron-process-workspace-guard.md)、[事故记录](docs/electron-isolation-incident-2026-10-16.md)。B-005 仍开放；进程采样只能检测，后续 Electron 需先建立操作系统层隔离及独立宿主配置/profile，并只读核查日常影响。T-0082–T-0084 本地阶段提交，未推送或发布。
 
-## T-0085 / R232（2026-10-16 v0.4.2 GitHub 发版，进行中）
+## T-0085 / R232（2026-10-16 v0.4.2 GitHub 发版，完成）
 
-- 版本元数据、中英文 README 和 CHANGELOG 同步，覆盖 v0.4.1 之后全部用户可见改动；GitHub main/tag/Release 发布按既有 CI 流程进行。
-- 本轮不重启或附着宿主，保留 B-005 和其他现场边界；本地发布门禁、远端 CI 与下载附件核验结果见当期账本。
+- [x] 版本元数据、中英文 README 和 CHANGELOG 同步，覆盖 v0.4.1 之后全部用户可见改动；发布提交 `fac2a44`，GitHub main/tag CI 均通过。
+- [x] [v0.4.2 Release](https://github.com/ai68298100/xiaolv-common/releases/tag/v0.4.2) 已发布为 latest；下载 `package.zip` 498742 bytes / SHA256 `9bd5251cc823ffe1ed4b306431fa7477db576e5117865c523b6847e4bfb58b4a`，实际 manifest、13 项结构及生产资源核验通过。
+- 本轮不重启或附着宿主，保留 B-005 和其他现场边界；本地 484/484 单元、74/74 交互与其他发布门禁、远端 CI 和附件逐项核验见当期账本。
 - **依据**：[ADR 0055](docs/adr/0055-v042-github-release.md)。集市未获明确授权，不发起上架 PR。
