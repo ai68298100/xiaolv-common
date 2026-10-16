@@ -1,48 +1,23 @@
 /* Real Electron acceptance. Never point this at a daily workspace.
+ * Requires OS-level isolation plus dedicated host config/profile; neither a
+ * copied mirror nor a dedicated profile alone provides OS isolation.
  * Example:
  * node scripts/electron-saved-views-acceptance.cjs --cdp http://127.0.0.1:9356 --workspace C:\\Users\\Admin\\AppData\\Local\\Temp\\xlc-electron-r226-20261016061028
  * Requires a configured dedicated library. Fixtures/evidence remain in the disposable workspace.
  */
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
-const os = require("node:os");
 const path = require("node:path");
-const {execFileSync} = require("node:child_process");
 const {setTimeout: pause} = require("node:timers/promises");
 const {chromium} = require("playwright");
 
+const {argumentsForRun: strictElectronArguments} = require("./electron-settings-stress-acceptance.cjs");
+const {createIsolationGuard} = require("./electron-isolation.cjs");
+const {guardElectronPage, watchElectronTargets} = require("./electron-isolation-playwright.cjs");
+
 function argumentsForRun(argv) {
-    const options = {};
-    for (let i = 0; i < argv.length; i += 2) {
-        assert(["--cdp", "--workspace"].includes(argv[i]), `Unknown argument: ${argv[i]}`);
-        assert(argv[i + 1], `Missing value: ${argv[i]}`);
-        options[argv[i].slice(2)] = argv[i + 1];
-    }
-    assert(options.cdp && options.workspace, "Required: --cdp <loopback URL> --workspace <dedicated temp workspace>");
-    const url = new URL(options.cdp);
-    assert.equal(url.protocol, "http:", "CDP must use local HTTP");
-    assert(["127.0.0.1", "localhost"].includes(url.hostname), "CDP must be loopback");
-    assert(url.port && !url.username && !url.password && url.pathname === "/" && !url.search && !url.hash, "Unexpected CDP URL");
-    const workspace = fs.realpathSync(options.workspace);
-    const temp = fs.realpathSync(os.tmpdir());
-    const relative = path.relative(temp, workspace);
-    assert(relative && !relative.startsWith("..") && !path.isAbsolute(relative), "Workspace must be inside the current user's temp directory");
-    assert(/^xlc-electron-[a-z0-9-]+$/i.test(path.basename(workspace)), "Workspace must be a dedicated xlc-electron-* directory");
-    assert(fs.existsSync(path.join(workspace, "data", "plugins", "xiaolv-common", "index.js")), "Missing isolated plugin installation");
-    // Verify the matching Electron process before connecting or creating any fixtures.
-    assert.equal(process.platform, "win32", "This acceptance script verifies Windows Electron isolation");
-    const processes = JSON.parse(execFileSync("powershell.exe", ["-NoProfile", "-Command",
-        "Get-CimInstance Win32_Process | Where-Object { $_.Name -eq 'SiYuan.exe' } | Select-Object ProcessId,ExecutablePath,CommandLine | ConvertTo-Json -Compress"], {encoding: "utf8"}) || "[]");
-    const candidates = (Array.isArray(processes) ? processes : [processes]).filter((entry) =>
-        new RegExp(`--remote-debugging-port=${url.port}(?:\\s|$)`).test(entry.CommandLine || "")
-        && entry.CommandLine.includes(workspace)
-        && !entry.CommandLine.includes("--type="));
-    assert.equal(candidates.length, 1, "Expected exactly one Electron process matching CDP and workspace");
-    const mirror = fs.realpathSync(path.dirname(candidates[0].ExecutablePath));
-    const mirrorRelative = path.relative(temp, mirror);
-    assert(mirrorRelative && !mirrorRelative.startsWith("..") && !path.isAbsolute(mirrorRelative), "Electron must run from a disposable temp mirror");
-    assert(/^xlc-electron-.*mirror/i.test(path.basename(mirror)), "Expected a dedicated Electron mirror");
-    return {cdp: url.origin, workspace, processId: candidates[0].ProcessId};
+    for (let index = 0; index < argv.length; index += 2) assert(["--cdp", "--workspace"].includes(argv[index]), `Unknown argument: ${argv[index]}`);
+    return strictElectronArguments(argv);
 }
 
 const control = (value) => `[data-xlc-control="${value}"]`;
@@ -50,16 +25,36 @@ const action = (value) => `[data-xlc-discovery-action="${value}"]`;
 
 async function main() {
     const options = argumentsForRun(process.argv.slice(2));
-    const browser = await chromium.connectOverCDP(options.cdp);
+    let browser;
+    let stopWatching;
     const report = {task: "T-0080/R227", date: new Date().toISOString(), workspace: options.workspace, cdp: options.cdp, processId: options.processId, checks: [], errors: [], nativeDialogs: [], rendererReloads: [], boundaries: ["Naming and post-sync close use real host Dialog forms. A fresh renderer reload begins the acceptance run; post-sync close must complete through the actual cancel/confirm controls without reload."]};
     let page;
-    let outputDir;
+    const outputDir = path.join(options.workspace, "temp", `saved-view-acceptance-${Date.now()}`);
+    fs.mkdirSync(outputDir, {recursive: true});
     let hasSynced = false;
     function check(name, evidence) {
         report.checks.push({name, passed: true, evidence});
         console.log(`PASS ${name}`);
     }
+    const guard = createIsolationGuard(options, {
+        onVerified: (identity) => { report.isolation = identity; },
+        onViolation: async (error, reason) => {
+            report.passed = false;
+            process.exitCode = 1;
+            report.isolationFailure = {message: error.message, reason};
+            await browser?.close().catch(() => {});
+        },
+    });
     try {
+        await guard.verify("before-cdp", {force: true});
+        browser = await chromium.connectOverCDP(options.cdp);
+        stopWatching = await watchElectronTargets(browser, guard);
+        const browserCDP = await browser.newBrowserCDPSession();
+        try {
+            const main = (await browserCDP.send("SystemInfo.getProcessInfo")).processInfo.filter((entry) => entry.type === "browser");
+            assert.equal(main.length, 1);
+            assert.equal(main[0].id, options.processId, "CDP PID must match the validated mirror");
+        } finally { await browserCDP.detach(); }
         const matches = [];
         for (const context of browser.contexts()) {
             for (const candidate of context.pages()) {
@@ -68,26 +63,27 @@ async function main() {
             }
         }
         assert.equal(matches.length, 1, "Expected exactly one renderer for the supplied workspace");
-        page = matches[0];
+        page = guardElectronPage(matches[0], guard, options);
         assert(["127.0.0.1", "localhost"].includes(new URL(page.url()).hostname), "Renderer must use loopback");
         await page.waitForFunction(() => window.siyuan?.ws?.app?.plugins?.find((entry) => entry.name === "xiaolv-common")?.sidecarReady === true);
         const identity = await page.evaluate(() => ({workspace: window.siyuan.config.system.workspaceDir, kernel: window.siyuan.config.system.kernelVersion, electron: window.process?.versions?.electron}));
         assert(identity.electron, "This must be an Electron renderer, not a Chromium harness");
         report.host = identity;
-        outputDir = path.join(options.workspace, "temp", `saved-view-acceptance-${Date.now()}`);
-        fs.mkdirSync(outputDir, {recursive: true});
+
         check("isolated Electron identity", identity);
         page.on("pageerror", (error) => report.errors.push(String(error.message).slice(0, 1500)));
         page.on("dialog", async (dialog) => {
             const message = dialog.message();
             report.nativeDialogs.push({type: dialog.type(), message});
-            await dialog.dismiss();
+            if (!guard.failed) { await guard.verify("native dialog dismissal"); await dialog.dismiss(); }
         });
+        await guard.verify("before renderer reload", {force: true});
         await page.reload({waitUntil: "domcontentloaded"});
         await page.waitForFunction(() => window.siyuan?.ws?.app?.plugins?.find((entry) => entry.name === "xiaolv-common")?.sidecarReady === true);
         report.rendererReloads.push({reason: "start with a fresh plugin lifecycle and no prior temporary undo session"});
 
         async function api(endpoint, body = {}) {
+            await guard.verify(`kernel API ${endpoint}`, {force: true});
             return page.evaluate(async ({endpoint, body}) => {
                 const response = await fetch(endpoint, {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(body)});
                 if (!response.ok) throw new Error(`${endpoint}: HTTP ${response.status}`);
@@ -127,11 +123,13 @@ async function main() {
         report.fixture = {notebookId: notebook.id, sourceDocId, childDocId, decoyDocId, anchorDocId, movedNotebookId: movedNotebook.id, libraryDocId, tag};
 
         async function openDocument(docId) {
+            await guard.verify("openDocument", {force: true});
             const opened = await page.evaluate((id) => window.siyuan.ws.app.plugins.find((entry) => entry.name === "xiaolv-common").host.openDoc(id), docId);
             assert.equal(opened, true);
             await page.waitForFunction((id) => window.siyuan.ws.app.plugins.find((entry) => entry.name === "xiaolv-common").host.currentDocId() === id, docId);
         }
         async function closeDiscovery(exercise = false) {
+            await guard.verify("closeDiscovery", {force: true});
             if (await page.locator(".xlc-discovery").count()) {
                 const entriesBeforeClose = hasSynced ? await referenceEntries() : null;
                 await page.locator(`.xlc-discovery ${action("close")}`).click();
@@ -194,6 +192,7 @@ async function main() {
             });
         }
         async function switchDiscoveryWithPendingBatch(targetDocId) {
+            await guard.verify("switchDiscoveryWithPendingBatch", {force: true});
             assert.equal(hasSynced, true, "Switch acceptance requires a real undoable sync batch");
             const previous = await viewState();
             const entriesBeforeSwitch = await referenceEntries();
@@ -243,6 +242,7 @@ async function main() {
             throw new Error("Saved view did not reach the real sidecar file before reload");
         }
         async function saveThroughForm(name, testForm = false, target = {docId: sourceDocId, notebookId: ""}) {
+            await guard.verify("saveThroughForm", {force: true});
             const beforeCount = (await savedViews()).length;
             await page.locator(action("save-view")).click();
             const input = page.locator(control("discovery.view.name"));
@@ -279,6 +279,7 @@ async function main() {
             return view;
         }
         async function openSaved(viewId) {
+            await guard.verify("openSaved", {force: true});
             await closeDiscovery();
             await page.evaluate(() => window.siyuan.ws.app.plugins.find((entry) => entry.name === "xiaolv-common").openSettings());
             const row = page.locator(`[data-xlc-saved-view-id="${viewId}"]`);
@@ -310,6 +311,7 @@ async function main() {
             }
         }
         async function syncSelected() {
+            await guard.verify("syncSelected", {force: true});
             await page.locator(action("add-selected")).click();
             await page.waitForFunction(() => {
                 const root = document.querySelector(".xlc-discovery");
@@ -399,6 +401,7 @@ async function main() {
         await api("/api/filetree/moveDocs", {fromPaths: [`${notebook.id}${anchorBeforeMove.path}`], toNotebook: movedNotebook.id, toPath: "/"});
         const anchorAfterMove = await api("/api/block/getBlockInfo", {id: anchorDocId});
         assert.equal(anchorAfterMove.box, movedNotebook.id, "Fixture anchor must actually move to the other notebook");
+        await guard.verify("before renderer reload", {force: true});
         await page.reload({waitUntil: "domcontentloaded"});
         await page.waitForFunction(() => window.siyuan?.ws?.app?.plugins?.find((entry) => entry.name === "xiaolv-common")?.sidecarReady === true);
         report.rendererReloads.push({reason: "verify persisted notebook rule after its original anchor moved; all post-sync sessions were closed through real Dialog controls"});
@@ -439,14 +442,15 @@ async function main() {
     } catch (error) {
         report.passed = false;
         report.failure = {message: error.message, stack: error.stack};
-        if (page && outputDir) await page.screenshot({path: path.join(outputDir, "failure.png")}).catch(() => {});
+        if (!guard.failed && page && outputDir) await page.screenshot({path: path.join(outputDir, "failure.png")}).catch(() => {});
         throw error;
     } finally {
         if (outputDir) {
             fs.writeFileSync(path.join(outputDir, "result.json"), JSON.stringify(report, null, 2));
             console.log(`Evidence: ${path.join(outputDir, "result.json")}`);
         }
-        await browser.close(); // disconnect CDP; do not terminate the Electron process
+        await stopWatching?.();
+        await browser?.close(); // disconnect CDP; do not terminate the Electron process
     }
 }
 

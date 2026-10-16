@@ -6,7 +6,7 @@ import {InsertMode} from "../model/actions";
 import {CommonItem, isItemType} from "../model/item";
 import {PluginState} from "../model/storage";
 import {EVENTS, PROTOCOL_VERSION} from "../constants";
-import {ActionExecutor} from "./commands";
+import {ActionExecutor, type EditorInsertTargetSnapshot} from "./commands";
 import {AiAssistant} from "./ai";
 import {LibraryService, NewItemInput} from "./library";
 import {ProviderRegistry} from "./providers";
@@ -205,7 +205,7 @@ export class XiaolvCommonService {
         const idempotencyKey = typeof rawKey === "string" && rawKey.length >= 8 && rawKey.length <= 128 ? rawKey : "";
         const mode = normalizeInsertMode(options);
         const lockKey = idempotencyKey ? `insert:${itemId}:${idempotencyKey}` : "";
-        const action = async (): Promise<ActionResult<{mode: string; downgraded: boolean}>> => {
+        const action = async (editorTarget?: EditorInsertTargetSnapshot | null): Promise<ActionResult<{mode: string; downgraded: boolean}>> => {
             if (idempotencyKey) {
                 const previous = this.insertReceipts.get(lockKey);
                 if (previous) return previous;
@@ -215,7 +215,7 @@ export class XiaolvCommonService {
             if (!got.ok || !got.data) {
                 return failureEnvelope(got.reason === "timeout" ? "timeout" : got.reason === "kernel-error" ? "kernel-error" : "not-found", got.message);
             }
-            const receipt = await this.deps.executor.run(got.data, mode);
+            const receipt = await this.deps.executor.run(got.data, mode, editorTarget !== undefined ? {editorTarget} : undefined);
             if (!receipt.ok) {
                 return failureEnvelope(executionFailureReason(receipt.message), receipt.message);
             }
@@ -230,7 +230,15 @@ export class XiaolvCommonService {
             }
             return result;
         };
-        return lockKey ? this.withInsertLock(lockKey, action) : action();
+        const perform = (editorTarget?: EditorInsertTargetSnapshot | null) => {
+            const execute = () => action(editorTarget);
+            return lockKey ? this.withInsertLock(lockKey, execute) : execute();
+        };
+        // Freeze before both item lookup and idempotency-lock waits. Legacy executor
+        // adapters without the optional scope keep their existing call contract.
+        return typeof this.deps.executor.withInsertTargetScope === "function"
+            ? this.deps.executor.withInsertTargetScope(mode, perform)
+            : perform();
     }
 
     async copy(itemId: string): Promise<ActionResult<{kind: string; pendingVerification?: string[]}>> {

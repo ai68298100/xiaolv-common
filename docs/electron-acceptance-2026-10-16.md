@@ -1,5 +1,7 @@
 # Electron 壳隔离验收记录（2026-10-16）
 
+> **隔离声明更正（T-0081–T-0083）**：退出复核发现镜像额外启动了日常工作区内核 PID `51040`（`1228`，10:12:15–10:45:26），并发生自动云同步。测试脚本匹配的 renderer/API 确属临时工作区，但整个镜像不满足严格隔离；这些轮次中“日常实例未操作/未触碰”的笼统声明作废，不能声称数据未改或无影响。原始操作结果作为特定临时夹具的局部证据保留，T-0082 另有同镜像多工作区并存限制。详见 [隔离失效记录](electron-isolation-incident-2026-10-16.md)。
+
 ## 环境与隔离边界
 
 - 思源版本：`3.8.7`（`D:\RJ\SiYuan\SiYuan.exe`）。
@@ -131,7 +133,7 @@
 
 ### 环境和构建
 
-- 启动前精确核对 R226 镜像路径下进程为 `[]`，`6856/9356` 无监听；随后仅启动该临时镜像，主进程 PID `36280`。真实版本仍为思源 `3.8.7`、Electron `44.7.0`，工作区不变，日常实例未操作。
+- 启动前精确核对 R226 镜像路径下进程为 `[]`，`6856/9356` 无监听；随后启动该临时镜像，主进程 PID `36280`。真实版本仍为思源 `3.8.7`、Electron `44.7.0`，本脚本匹配的 renderer/API 工作区不变。后续该镜像还启动日常工作区，不能以此启动检查证明全生命周期隔离，见本文更正。
 - 新入口：`node scripts/electron-editor-actions-acceptance.cjs --cdp http://127.0.0.1:9356 --workspace C:\Users\Admin\AppData\Local\Temp\xlc-electron-r226-20261016061028`。脚本先验证 loopback、临时工作区、镜像主进程与 renderer 身份；测试夹具用真实内核和公开插件 service 创建，没有替换活动编辑器、选区或宿主返回值。
 - 最终部署逐字节等于本轮 `dist`：`index.js` 为 `347523` bytes，SHA256 `0c0f6bd7036b7330108548b5d6ca5d22e1e58d4927534b90401acab20a5fd6ad`；CSS 为 `132927` bytes，SHA256 `acf610026b83c2a58705aa8517c242b4e8c602d0b2381edaeaa95d8f29f416db`。证据见最终目录 `build-identity.json`。
 
@@ -161,4 +163,64 @@
 - **误写来源 B 负向**：复制仓库验收脚本到本工作区 `temp\r228-negative-source-snapshot\electron-editor-actions-negative-source.cjs`，仅在 `frozenClipboard` 精确断言之后、A/B 完整快照断言之前，调用真实 `/api/block/appendBlock`，向本次负向夹具 B `20261016095810-sa3d8m1` 追加 `injected-redirect-mvabj30q`。原交互及快照断言不变。前六项通过，`The newly opened source must not receive a redirected insert` 准确失败，差异为新增真实段落 `20261016095845-za8dv3c`，进程退出 `1`；证据 `temp\editor-actions-acceptance-1792115890436\result.json`。该违规仅写入这次负向的专属 B，没有改生产代码或其他源文档。
 - 临时副本保留在证据目录，仓库原脚本字节始终未变，注入前后 SHA256 均为 `de20f9c3e674232181e598b5e512621c841bb2f390d959613f9db72c752f2fd8`；真实 API 回执、失败点、原脚本身份见 `temp\r228-negative-source-snapshot\injection-report.json`。
 - 随后运行仓库原脚本完整复验，最终再次 **7/7**，renderer 异常 `[]`、原生 dialog 事件 `[]`。最终证据目录更新为 `temp\editor-actions-acceptance-1792115945932`，含 `result.json`、`frozen-target-copied.png`、`build-identity.json`；版本仍为思源 `3.8.7` / Electron `44.7.0`，部署 JS/CSS 与上述 `dist` 字节和 SHA256 一致。最终正向 B `20261016095906-009i5dr`、A `20261016095930-bttuhqy`；连续动作仍为引用和嵌入真实新增，第三步正文诚实复制降级、目标全部块不变。
-- 按后续压力验收交接要求，保留已核验的隔离 Electron 主进程 PID `36280` 和 `6856/9356` 监听，不执行退出；本阶段不生成退出完成回执。工作区和镜像仍为本节所述 R226 专用临时副本，日常实例未操作。
+- 按后续压力验收交接要求，保留测试 Electron 主进程 PID `36280` 和 `6856/9356` 监听，不执行退出；本阶段不生成退出完成回执。本脚本指定工作区为 R226 临时副本；镜像后续多工作区并存使“日常实例未操作”的环境声明失效，见本文更正。
+
+## T-0082 / R229 设置压力的有限矩阵与完整归因
+
+### 环境、隔离与实际交互
+
+- 复用 T-0081 交接的主进程 PID `36280`，工作区为 `C:\Users\Admin\AppData\Local\Temp\xlc-electron-r226-20261016061028`，内核 `6856`、CDP `9356`。未新启宿主、未退出宿主、未修改生产源码或部署构建。现场回读为思源 `3.8.7` / Electron `44.7.0` / Chromium `152.0.7977.130`。
+- 新增 `scripts/electron-settings-stress-acceptance.cjs`。连接前检查显式绝对临时工作区、`xlc-electron-*` 名称、临时镜像可执行文件真实路径，以及命令行精确工作区和端口对应的唯一主 PID；连接后再通过 CDP `SystemInfo.getProcessInfo` 对照 browser PID，并核对 renderer 工作区与 Electron 身份。非 loopback、HTTPS、凭据、CDP 子路径、重复参数及非法步数均在连接前被拒绝。
+- 使用已配置的独立 doc 库 `20261016061211-7pfws4w`，没有替换或新建库配置；每次运行仅新增唯一来源文档、引用条目和独立目标夹具。完整前置组用真实目标文本点击激活编辑器，从已注册搜索命令进入窗口，输入唯一标题，真实复制来源正文并回读系统剪贴板，再仅点一次主按钮插入，内核确认目标只新增一个精确引用 marker。随后通过可见宿主关闭控件或聚焦弹窗真实控件后按 Escape 关闭，等待实际 DOM 断开；没有删除宿主 DOM、强点隐藏控件或穿过遮罩。
+- 每组重载建立独立 renderer 生命周期；直接设置对照不执行搜索/插入前置。设置经插件正常入口打开，强断言六个开关、至少四个可用开关、唯一官方 Dialog、真实库选择器已构建并展开。快切采用固定 seed `20261009`，每步调用实际 checkbox/button click handler，校验每次选中状态和 picker 的 `aria-expanded` 确实变化，步间约 `30ms`；人工速度组采用 Playwright 正常 pointer 点击，两动作各留 `250ms` 间隔。后者是自动化人工速度对照，不冒充人工现场验收。
+- 每组结束仅通过真实 UI 恢复本轮改变的开关，等待实际 `400ms` 侧车节流后再继续；记录完整 state/config 前后快照，配置逐项相等。搜索历史、使用计数等真实前置动作自然产生的侧车状态保留，不用整份旧状态覆盖。来源与目标的子块 ID/完整 Kramdown 均比较不变。
+- 部署 JS 为 `347523` bytes / SHA256 `0c0f6bd7036b7330108548b5d6ca5d22e1e58d4927534b90401acab20a5fd6ad`；CSS 为 `132927` bytes / SHA256 `acf610026b83c2a58705aa8517c242b4e8c602d0b2381edaeaa95d8f29f416db`，与 T-0081 构建一致。每次证据目录包含 `result.json` 和逐步 `trace.jsonl`，异常保留完整 CDP `Runtime.exceptionThrown` 及异步 parent callFrames、URL、行列，不用只有无堆栈的 `pageerror` 代替归因。
+
+### 正式矩阵：11/11
+
+命令为 `node scripts/electron-settings-stress-acceptance.cjs --cdp http://127.0.0.1:9356 --workspace C:\Users\Admin\AppData\Local\Temp\xlc-electron-r226-20261016061028 --rounds 3 --steps 200`；`--rounds` 范围 `1..5`，`--steps` 范围 `1..250`，人工速度组至多十二步，避免无限加压。
+
+| 组别 | 实际步数 | 实际开关激活 | 完整搜索/复制/插入前置 | 异常 / 崩溃 |
+| --- | ---: | ---: | --- | --- |
+| 直接设置快切对照 | 200 | 465 | 无 | 0 / 无 |
+| 完整前置快切 1 | 200 | 464 | 有 | 0 / 无 |
+| 完整前置快切 2 | 200 | 455 | 有 | 0 / 无 |
+| 完整前置快切 3 | 200 | 453 | 有 | 0 / 无 |
+| 完整前置人工速度 pointer | 12 | 12 | 有 | 0 / 无 |
+
+合计 `812` 步、`1849` 次实际开关激活；每步均有真实 picker 状态反转，禁用开关不会被计入激活数。五组 renderer 均存活，正常关闭后可见 Dialog 均为零；Runtime、pageerror、console error、native dialog 事件全部为零，`styleNullExceptions=0`、`crashed=false`。正式证据目录为工作区 `temp\settings-stress-acceptance-1792117848679`。这表示本轮有限矩阵没有复现，**不代表 B-004 已解除，也没有证明旧版硬崩溃和宿主 `null.style` 的根因**。
+
+### 真实负向、恢复正向与无效尝试
+
+- **源文档快照负向**：在临时脚本副本中，保持原交互和原不变性断言不变，仅在首组压力结束后通过真实 `/api/block/appendBlock` 向本次专属来源文档追加 `XLC_R229_NEGATIVE_SOURCE_WITNESS`。原断言 `Settings pressure must leave the source unchanged` 准确显示新增块 `20261016103416-ckjd3md` 的 ID/Kramdown 差异并失败，退出 `1`；`finally` 通过真实 `/api/block/deleteBlock` 删除该唯一 witness，API 成功回执一并保留。证据 `temp\settings-stress-acceptance-1792118053216\result.json`。
+- **未知异常归因负向**：另一临时副本在完整小样矩阵后，通过真实 renderer `setTimeout` 抛出 `XLC_R229_NEGATIVE_UNKNOWN_RUNTIME`。CDP 实际捕获一条 `unknown` 异常，`pageerror` 与同条 CDP 配对；原门禁 `Plugin or unknown runtime exceptions require investigation` 准确失败，退出 `1`，没有把无可归因 URL 的异常并入宿主白名单。证据 `temp\settings-stress-acceptance-1792118057627\result.json`。
+- 临时副本、注入日志、API 回执和合并报告保留于 `temp\r229-negative-injections-1792118052503\injection-report.json`。仓库原脚本字节始终未改，前后 SHA256 均为 `2328be3c862fede78e2baecdca9cc78b5e91dafb31dc934448fe76553ebcc6eb`。负向之后运行原脚本 `--rounds 1 --steps 2`，三组各两步、共 `16` 次实际开关激活，最终 **7/7**，全部异常为零、设置恢复且源/目标快照不变；证据 `temp\settings-stress-acceptance-1792118115472\result.json`。该最终小样证明恢复后的原脚本有效，正式压力数字仍取前述 `11/11` 目录，不把小样冒充正式矩阵。
+- 三次较早小样仅定位验收脚本问题，均未观测到 renderer 异常或崩溃：`1792116152837` 在宿主启动过渡 Dialog 消失前断言，尚未执行压力；`1792116574293` 完成两步且恢复设置后尝试点击隐藏的宿主 close SVG 超时；`1792116983921` 的真实插入后焦点回到编辑器，Escape 未关闭搜索窗口而超时。分别修正为等待宿主启动生命周期、尊重可见关闭控件、先聚焦真实弹窗控件再 Escape。首次完整小样 `temp\settings-stress-acceptance-1792117682821` 已 `7/7` 通过；上述失败不计为 B-004 复现，也不用于解除阻塞。
+- 离线 `node --check`、脚本格式检查、两个参数正向、十二个非法参数负向和六个异常归因检查均通过。没有修改插件生产代码、实际 AI 配置、兄弟插件或集市。B-004 保持开放；后续若需定位旧症状，仍需同内核可重复触发序列或实际崩溃堆栈。
+- 本阶段结束保留隔离主进程 PID `36280` 和 `6856/9356`，已交接给下一阶段独占 UI；没有生成退出完成回执。
+
+## T-0083 / R230 协议入口等待期间切页与关闭目标
+
+### 身份、夹具与延迟方法
+
+- 在 T-0082 串行交接后复用同一可销毁思源 `3.8.7` / Electron `44.7.0` 副本，镜像主 PID `36280`，内核 `6856`、CDP `9356`。入口为 `scripts/electron-protocol-target-acceptance.cjs`，复用 T-0082 严格临时目录、命令行、镜像检查，并在连接后核对 CDP `SystemInfo.getProcessInfo` 的 browser PID；renderer 的实际工作区也必须匹配。
+- 通过真实内核和公开 `service.save/get` 创建本轮专属来源、引用条目和两组干净 A/B 文档。每次先实际打开 B，再激活 A、点击其真实段落文本；检查选区的 anchor 为非空文本节点且位于 A。调用 `service.insert(...,{mode:"insert-ref"})` 后，只用 Playwright route 暂停该条目物理块的第一次真实 `/api/attr/getBlockAttrs` 请求；等待确实命中，再切到 B 的真实文本，最后 `route.continue()` 放行原请求。没有伪造响应、替换 service/get、stub 宿主/编辑器、删除 DOM 或人工注入写入。
+- 两组分别保留 A 连接、真实点 A 页签关闭按钮后确认 A Protyle 销毁；随后都激活已打开 B 的真实文本。报告记录请求 hold/release 时间、真实选区、完整公开回执、系统剪贴板，以及 A/B 的全部子块 ID、完整 Kramdown 和属性；完成后 `1100ms` 及再过 `500ms` 回读，检查延迟写入。
+
+### 旧部署自然负向：两组均检出误写 B
+
+- 使用未经篡改的旧部署（`index.js` `347523` bytes，SHA256 `0c0f6bd7036b7330108548b5d6ca5d22e1e58d4927534b90401acab20a5fd6ad`），完整运行同一脚本，证据 `temp\protocol-target-acceptance-1792118260724\result.json`。身份和夹具两项通过；两组均被 `later active B must not receive the pending insert` 拒绝，最终退出 `1`，renderer 异常与原生 dialog 均 `[]`。
+- **A 仍连接时切 B**：A `20261016103742-svc6svl` 原块不变，B `20261016103742-v2mq766` 却新增引用块 `20261016103743-aysff7k`；正文精确为本轮预期 marker `((20261016103742-jgmlwcx '协议目标条目mvacxx3r'))`，公开回执为 `ok=true,mode=insert-ref,downgraded=false`。
+- **等待期间关闭 A 再切 B**：A `20261016103744-oqkm7vi` 的 Protyle 确认销毁、原块不变，B `20261016103744-dzi2xf5` 却新增 `20261016103745-o8d56ii`，正文同样是精确 marker，回执仍为非降级成功。两次 A/B 选区均为真实文本，负向是旧产品自然发生的目标重定向，不是无效选区造成的降级，也不是测试另造违规块。
+
+### 修复部署正向：4/4，原编辑器验收再过 7/7
+
+- 将主线程完成的构建部署到同一隔离插件目录，逐字节核对等于当前 `dist`，重载后运行原脚本。最终 JS `347852` bytes，SHA256 `d35df4117be430cb9dd987a5aa65a4ae41a3dfef11d8a0872ceb052a50250857`；CSS `132927` bytes，SHA256 `acf610026b83c2a58705aa8517c242b4e8c602d0b2381edaeaa95d8f29f416db`。身份文件为最终证据目录 `build-identity.json`。
+- T-0083 最终 **4/4**，证据 `temp\protocol-target-acceptance-1792118414814\result.json`，附两组截图。A 仍连接时，A `20261016104016-fr2tdtq` 唯一新增 `20261016104017-1gkm9ym`，去掉末尾物理 IAL 后精确等于 `((20261016104016-7ark3cz '协议目标条目mvad17zd'))`；B `20261016104016-5ce8exj` 全部快照不变，回执 `ok=true,mode=insert-ref,downgraded=false`，没有延迟重复。关闭 A `20261016104018-npyk3ix` 后切到 B `20261016104018-2noilfu`，回执 `ok=true,mode=insert-ref,downgraded=true`，真实剪贴板精确等于同一 marker，A/B 全部快照不变。来源文档全部块快照及库配置均不变；renderer 异常、原生 dialog 事件均 `[]`。
+- 随后在同一新构建运行既有 `scripts/electron-editor-actions-acceptance.cjs`，再次完整 **7/7**，证据 `temp\editor-actions-acceptance-1792118451043\result.json`。无活动编辑器复制、同窗关闭 A 打开来源 B 的冻结目标不误写均通过。连续协议引用/嵌入分别真实新增，第三步正文仍因嵌入后的宿主选区不可用而明确复制降级，目标子块数保持 `3`；不将其标为第三次插入成功。
+
+### 本副本最终退出
+
+- 再次核对精确镜像主 PID、CDP browser PID 和 renderer 工作区后，首次 `/api/system/exit` 虽 HTTP `200`，JSON 为 `code=2`，只提示隔离工作区内已有更新安装包；这不是退出成功，没有执行安装。读取本镜像的官方 Electron `main.js` 和 app `common` bundle，确认其“取消安装并退出”分支使用 `execInstallPkg:1`；再次发送 `{force:true,setCurrentWorkspace:false,execInstallPkg:1}`，实际 HTTP `200,code=0`。
+- 内核退出后的清理前列表实际仍包含镜像主进程、renderer 以及 PID `51040`（日常工作区、端口 `1228`），此前“只剩主进程”的表述错误。直接停止的是 PID `36280`，其后列表中的其他进程消失；不能据此宣称日常内核未受影响。最终镜像进程 `[]`，`1228/6856/9356` 监听 `[]`，没有执行更新包。两份最终证据目录均有 `cleanup-request.json` / `cleanup.json`，`completed=true` 只证明进程/端口清理结果，不证明工作区隔离或无影响；原始越界命令行保留在回执中。详细时间、同步事实及未知项见 [隔离失效记录](electron-isolation-incident-2026-10-16.md)。
+- T-0082 的未复现结果继续保持原构建和有限矩阵的边界；本轮协议目标修复不解除 B-004、Android 或真实 AI 限制，也不解除嵌入后的宿主选区边界。

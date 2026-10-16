@@ -313,46 +313,47 @@ export class ActionExecutor {
         return content;
     }
 
-    async run(item: CommonItem, mode: InsertMode, opts?: {fills?: Record<string, string>; editorTarget?: EditorInsertTargetSnapshot | null}): Promise<ExecutionReceipt> {
-        const needsEditorTarget = mode.startsWith("insert");
-        const suppliedTarget = opts?.editorTarget;
-        // Protocol callers do not have the search dialog's frozen target. Capture once
-        // before the first async content read, then use that same target for the action.
-        // This prevents a tab switch while resolving content from redirecting an insert
-        // into a different active editor. The internally captured handle is released here;
-        // dialog-owned targets remain managed by openSearch's lifecycle.
-        const editorTarget = suppliedTarget !== undefined
-            ? suppliedTarget
-            : needsEditorTarget && typeof this.host.captureInsertTarget === "function"
-                ? this.host.captureInsertTarget() : undefined;
-        const ownsTarget = suppliedTarget === undefined && editorTarget !== undefined;
+    /** Capture before a caller starts lookup/queue work and release after its entire action. */
+    async withInsertTargetScope<T>(mode: InsertMode, action: (target: EditorInsertTargetSnapshot | null | undefined) => Promise<T>): Promise<T> {
+        if (!mode.startsWith("insert") || typeof this.host.captureInsertTarget !== "function") return action(undefined);
+        const editorTarget = this.host.captureInsertTarget();
         try {
-            const content = await this.resolveWithFills(item, opts?.fills);
-            if (!content) {
-                return {ok: false, mode, message: "kernel-error:content", downgraded: false, pendingVerification: []};
-            }
-            if (item.itemType === "blockref" && content.sourceMissing && (mode === "copy" || mode === "copy-content" || mode === "insert-content")) {
-                return {ok: false, mode, message: "source-missing", downgraded: true, pendingVerification: []};
-            }
-            const ctx: ActionContext = {
-                surface: this.host.isMobile() ? "mobile" : "desktop",
-                hasActiveEditor: editorTarget !== undefined
-                    ? this.host.canInsertAtTarget(editorTarget)
-                    : this.host.hasActiveEditor(),
-                content,
-            };
-            const plan: InsertPlan = planAction(item, mode, ctx);
-            if (plan.downgraded && plan.downgradeReason === "source-missing") {
-                return {ok: false, mode: plan.mode, message: "source-missing", downgraded: true, pendingVerification: plan.pendingVerification};
-            }
-            if ((plan.mode === "copy" || plan.mode === "copy-content") && !plan.clipboardText) {
-                return {ok: false, mode: plan.mode, message: "empty-plan", downgraded: plan.downgraded, pendingVerification: plan.pendingVerification};
-            }
-            // Keep an owned tracked range alive across execute's async rendering.
-            return await this.execute(item, plan, editorTarget);
+            // Await is required: execute can still resolve placeholders or the clipboard.
+            return await action(editorTarget);
         } finally {
-            if (ownsTarget) this.host.releaseInsertTarget(editorTarget ?? null);
+            if (editorTarget !== undefined) this.host.releaseInsertTarget(editorTarget);
         }
+    }
+
+    run(item: CommonItem, mode: InsertMode, opts?: {fills?: Record<string, string>; editorTarget?: EditorInsertTargetSnapshot | null}): Promise<ExecutionReceipt> {
+        // Supplied targets belong to a search dialog or an outer service scope.
+        if (opts?.editorTarget !== undefined) return this.runAtTarget(item, mode, opts.fills, opts.editorTarget);
+        return this.withInsertTargetScope(mode, (target) => this.runAtTarget(item, mode, opts?.fills, target));
+    }
+
+    private async runAtTarget(item: CommonItem, mode: InsertMode, fills: Record<string, string> | undefined, editorTarget: EditorInsertTargetSnapshot | null | undefined): Promise<ExecutionReceipt> {
+        const content = await this.resolveWithFills(item, fills);
+        if (!content) {
+            return {ok: false, mode, message: "kernel-error:content", downgraded: false, pendingVerification: []};
+        }
+        if (item.itemType === "blockref" && content.sourceMissing && (mode === "copy" || mode === "copy-content" || mode === "insert-content")) {
+            return {ok: false, mode, message: "source-missing", downgraded: true, pendingVerification: []};
+        }
+        const ctx: ActionContext = {
+            surface: this.host.isMobile() ? "mobile" : "desktop",
+            hasActiveEditor: editorTarget !== undefined
+                ? this.host.canInsertAtTarget(editorTarget)
+                : this.host.hasActiveEditor(),
+            content,
+        };
+        const plan: InsertPlan = planAction(item, mode, ctx);
+        if (plan.downgraded && plan.downgradeReason === "source-missing") {
+            return {ok: false, mode: plan.mode, message: "source-missing", downgraded: true, pendingVerification: plan.pendingVerification};
+        }
+        if ((plan.mode === "copy" || plan.mode === "copy-content") && !plan.clipboardText) {
+            return {ok: false, mode: plan.mode, message: "empty-plan", downgraded: plan.downgraded, pendingVerification: plan.pendingVerification};
+        }
+        return this.execute(item, plan, editorTarget);
     }
 
     private async execute(item: CommonItem, plan: InsertPlan, editorTarget?: EditorInsertTargetSnapshot | null): Promise<ExecutionReceipt> {

@@ -1,51 +1,28 @@
 /* Real Electron acceptance for editor fallback and consecutive action selection.
  * Never point this at a daily workspace.
+ * Requires OS-level isolation plus dedicated host config/profile. A mirror,
+ * profile, or process observer alone cannot prevent workspace escape.
  */
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
-const os = require("node:os");
 const path = require("node:path");
-const {execFileSync} = require("node:child_process");
 const {chromium} = require("playwright");
 
+const {argumentsForRun: strictElectronArguments} = require("./electron-settings-stress-acceptance.cjs");
+const {createIsolationGuard} = require("./electron-isolation.cjs");
+const {guardElectronPage, watchElectronTargets} = require("./electron-isolation-playwright.cjs");
+
 function argumentsForRun(argv) {
-    const options = {};
-    for (let i = 0; i < argv.length; i += 2) {
-        assert(["--cdp", "--workspace"].includes(argv[i]), `Unknown argument: ${argv[i]}`);
-        assert(argv[i + 1], `Missing value: ${argv[i]}`);
-        options[argv[i].slice(2)] = argv[i + 1];
-    }
-    assert(options.cdp && options.workspace, "Required: --cdp <loopback URL> --workspace <dedicated temp workspace>");
-    const url = new URL(options.cdp);
-    assert.equal(url.protocol, "http:");
-    assert(["127.0.0.1", "localhost"].includes(url.hostname));
-    assert(url.port && !url.username && !url.password && url.pathname === "/" && !url.search && !url.hash, "Unexpected CDP URL");
-    const workspace = fs.realpathSync(options.workspace);
-    const temp = fs.realpathSync(os.tmpdir());
-    const relative = path.relative(temp, workspace);
-    assert(relative && !relative.startsWith("..") && !path.isAbsolute(relative), "Workspace must be inside temp");
-    assert(/^xlc-electron-[a-z0-9-]+$/i.test(path.basename(workspace)), "Workspace must be xlc-electron-*");
-    assert(fs.existsSync(path.join(workspace, "data", "plugins", "xiaolv-common", "index.js")));
-    assert.equal(process.platform, "win32");
-    const processes = JSON.parse(execFileSync("powershell.exe", ["-NoProfile", "-Command",
-        "Get-CimInstance Win32_Process | Where-Object { $_.Name -eq 'SiYuan.exe' } | Select-Object ProcessId,ExecutablePath,CommandLine | ConvertTo-Json -Compress"], {encoding: "utf8"}) || "[]");
-    const candidates = (Array.isArray(processes) ? processes : [processes]).filter((entry) =>
-        new RegExp(`--remote-debugging-port=${url.port}(?:\\s|$)`).test(entry.CommandLine || "")
-        && entry.CommandLine.includes(workspace)
-        && !entry.CommandLine.includes("--type="));
-    assert.equal(candidates.length, 1, "Expected exactly one matching Electron process");
-    const mirror = fs.realpathSync(path.dirname(candidates[0].ExecutablePath));
-    const mirrorRelative = path.relative(temp, mirror);
-    assert(mirrorRelative && !mirrorRelative.startsWith("..") && !path.isAbsolute(mirrorRelative));
-    assert(/^xlc-electron-.*mirror/i.test(path.basename(mirror)));
-    return {cdp: url.origin, workspace, processId: candidates[0].ProcessId, mirror};
+    for (let index = 0; index < argv.length; index += 2) assert(["--cdp", "--workspace"].includes(argv[index]), `Unknown argument: ${argv[index]}`);
+    return strictElectronArguments(argv);
 }
 
 const control = (value) => `[data-xlc-control="${value}"]`;
 
 async function main() {
     const options = argumentsForRun(process.argv.slice(2));
-    const browser = await chromium.connectOverCDP(options.cdp);
+    let browser;
+    let stopWatching;
     const report = {
         task: "T-0081/R228",
         date: new Date().toISOString(),
@@ -58,12 +35,31 @@ async function main() {
         boundaries: ["This run uses a real Electron renderer and host APIs. It does not stub active editor or selection and does not remove host DOM nodes.", "The continuous sequence calls the public service protocol against one real target document; it records each real receipt and kernel result. It does not claim that one search dialog's frozen target survives between separate protocol calls.", "A host selection failure remains a failure boundary rather than being converted to success."],
     };
     let page;
-    let outputDir;
+    const outputDir = path.join(options.workspace, "temp", `editor-actions-acceptance-${Date.now()}`);
+    fs.mkdirSync(outputDir, {recursive: true});
     const check = (name, evidence) => {
         report.checks.push({name, passed: true, evidence});
         console.log(`PASS ${name}`);
     };
+    const guard = createIsolationGuard(options, {
+        onVerified: (identity) => { report.isolation = identity; },
+        onViolation: async (error, reason) => {
+            report.passed = false;
+            process.exitCode = 1;
+            report.isolationFailure = {message: error.message, reason};
+            await browser?.close().catch(() => {});
+        },
+    });
     try {
+        await guard.verify("before-cdp", {force: true});
+        browser = await chromium.connectOverCDP(options.cdp);
+        stopWatching = await watchElectronTargets(browser, guard);
+        const browserCDP = await browser.newBrowserCDPSession();
+        try {
+            const main = (await browserCDP.send("SystemInfo.getProcessInfo")).processInfo.filter((entry) => entry.type === "browser");
+            assert.equal(main.length, 1);
+            assert.equal(main[0].id, options.processId, "CDP PID must match the validated mirror");
+        } finally { await browserCDP.detach(); }
         const matches = [];
         for (const context of browser.contexts()) {
             for (const candidate of context.pages()) {
@@ -72,19 +68,20 @@ async function main() {
             }
         }
         assert.equal(matches.length, 1);
-        page = matches[0];
+        page = guardElectronPage(matches[0], guard, options);
         await page.waitForFunction(() => window.siyuan?.ws?.app?.plugins?.find((entry) => entry.name === "xiaolv-common")?.sidecarReady === true);
         report.host = await page.evaluate(() => ({workspace: window.siyuan.config.system.workspaceDir, kernel: window.siyuan.config.system.kernelVersion, electron: window.process?.versions?.electron}));
         assert(report.host.electron);
+        await guard.verify("before renderer reload", {force: true});
         await page.reload({waitUntil: "domcontentloaded"});
         await page.waitForFunction(() => window.siyuan?.ws?.app?.plugins?.find((entry) => entry.name === "xiaolv-common")?.sidecarReady === true);
         report.rendererReload = "fresh renderer lifecycle before fixture and real tab closure";
-        outputDir = path.join(options.workspace, "temp", `editor-actions-acceptance-${Date.now()}`);
-        fs.mkdirSync(outputDir, {recursive: true});
+
         page.on("pageerror", (error) => report.errors.push(String(error.message).slice(0, 1500)));
-        page.on("dialog", async (dialog) => { report.nativeDialogs.push({type: dialog.type(), message: dialog.message()}); await dialog.dismiss(); });
+        page.on("dialog", async (dialog) => { report.nativeDialogs.push({type: dialog.type(), message: dialog.message()}); if (!guard.failed) { await guard.verify("native dialog dismissal"); await dialog.dismiss(); } });
 
         async function api(endpoint, body = {}) {
+            await guard.verify(`kernel API ${endpoint}`, {force: true});
             return page.evaluate(async ({endpoint, body}) => {
                 const response = await fetch(endpoint, {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(body)});
                 if (!response.ok) throw new Error(`${endpoint}: HTTP ${response.status}`);
@@ -99,6 +96,7 @@ async function main() {
         const sourceDocId = await api("/api/filetree/createDocWithMd", {notebook: notebook.id, path: `/动作来源${runId}`, markdown: `连续动作源正文 ${runId}`});
         const sourceBlock = (await api("/api/block/getChildBlocks", {id: sourceDocId}))[0];
         const targetDocId = await api("/api/filetree/createDocWithMd", {notebook: notebook.id, path: `/动作目标${runId}`, markdown: "连续动作目标文档"});
+        await guard.verify("before public save", {force: true});
         const item = await page.evaluate(async ({sourceDocId, sourceBlock, runId}) => window.siyuan.ws.app.plugins.find((entry) => entry.name === "xiaolv-common").service.save({
             itemType: "blockref",
             markdown: `((${sourceBlock.id} '连续动作条目${runId}'))`,
@@ -178,6 +176,7 @@ async function main() {
 
         // Close any nested search surface via a real renderer lifecycle before the
         // continuous sequence; the target editor itself is opened normally below.
+        await guard.verify("before renderer reload", {force: true});
         await page.reload({waitUntil: "domcontentloaded"});
         await page.waitForFunction(() => window.siyuan?.ws?.app?.plugins?.find((entry) => entry.name === "xiaolv-common")?.sidecarReady === true);
         await page.waitForTimeout(1000);
@@ -209,6 +208,7 @@ async function main() {
         for (const mode of ["insert-ref", "insert-embed", "insert-content"]) {
             const prior = await documentSnapshot(targetDocId);
             const selection = await selectionState();
+            await guard.verify("before public insert", {force: true});
             const receipt = await page.evaluate(({id, mode}) => window.siyuan.ws.app.plugins.find((entry) => entry.name === "xiaolv-common").service.insert(id, {mode}), {id: itemId, mode});
             await page.waitForTimeout(1000);
             const after = await documentSnapshot(targetDocId);
@@ -292,14 +292,15 @@ async function main() {
     } catch (error) {
         report.passed = false;
         report.failure = {message: error.message, stack: error.stack};
-        if (page && outputDir) await page.screenshot({path: path.join(outputDir, "failure.png")}).catch(() => {});
+        if (!guard.failed && page && outputDir) await page.screenshot({path: path.join(outputDir, "failure.png")}).catch(() => {});
         throw error;
     } finally {
         if (outputDir) {
             fs.writeFileSync(path.join(outputDir, "result.json"), JSON.stringify(report, null, 2));
             console.log(`Evidence: ${path.join(outputDir, "result.json")}`);
         }
-        await browser.close();
+        await stopWatching?.();
+        await browser?.close();
     }
 }
 

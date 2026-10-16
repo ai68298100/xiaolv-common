@@ -72,17 +72,24 @@ pnpm run build
 
 ## 验收回归与当前边界
 
-截至 2026-10-16，T-0081/R228 组合复验通过：`pnpm run check`、`pnpm test`（457/457）、生产 build、`test:ui`、`test:ix`（74/74）、隔离内核（12/12）、发现链路、secret scan 和 package check（13 项）。新增门禁完成真实违规注入、恢复和正向复验。固定思源 3.8.7 / Electron 44.7.0 隔离副本已通过无活动编辑器降级、真实剪贴板/协议回执和协议层引用/嵌入内核读回及紧接源正文动作的安全复制降级；部署最新 dist 后前置提示为未来式，失败回执保持失败。内核门禁另用 v3.8.8-alpha.1，两层版本分别记录。分项结果见当前状态审计 [`status-audit-2026-10-15.md`](status-audit-2026-10-15.md) 与 [`electron-acceptance-2026-10-16.md`](electron-acceptance-2026-10-16.md)；[`acceptance-audit-2026-10-12.md`](acceptance-audit-2026-10-12.md) 保留为 R191-R198 历史快照。原型 screen 11 提供五态/边界/断点视觉样例；卡片里的动作是静态标签，不是交互证据。当前交互审计不是所有页面控件的全量清点，映射范围和缺口见 [`ui-component-catalog.md`](ui-component-catalog.md)。
+2026-10-16 收尾发现 Electron 镜像隔离失效：同一镜像曾额外启动访问 `D:\SIYUAN` 的内核并自动云同步。临时 renderer 的功能结果保留，但不能称为整个宿主未触碰日常环境的安全验收。进程已退出，日常数据影响范围未确定，B-005 开放；后续 Electron 实验停止，详见 [事故记录](electron-isolation-incident-2026-10-16.md)。
 
-样式变量覆盖和视觉尺度现状见 [`design-spec.md`](design/design-spec.md) 与 ADR 0017/0018。2026-10-16 本轮构建的 `dist/index.js` 为 347,523 B、`dist/index.css` 为 132,927 B、`dist/package.zip` 为 496,821 B；这些是原始文件大小，不等于 gzip 传输或 Electron 首屏时间。性能趋势沿用 [`perf-baseline-2026-10-14.md`](perf-baseline-2026-10-14.md)，当前构建变化不构成性能提升声明。
+截至 2026-10-16，T-0083/R230 组合复验通过：`pnpm run check`、`pnpm test`（468/468）、生产 build、`test:ui`、`test:ix`（74/74）、隔离内核（12/12）、发现链路、secret scan 和 package check（13 项）。新增门禁完成真实违规注入、恢复和正向复验。固定思源 3.8.7 / Electron 44.7.0 隔离副本已通过无活动编辑器降级、真实剪贴板/协议回执和协议层引用/嵌入内核读回及紧接源正文动作的安全复制降级；部署最新 dist 后前置提示为未来式，失败回执保持失败。内核门禁另用 v3.8.8-alpha.1，两层版本分别记录。分项结果见当前状态审计 [`status-audit-2026-10-15.md`](status-audit-2026-10-15.md) 与 [`electron-acceptance-2026-10-16.md`](electron-acceptance-2026-10-16.md)；[`acceptance-audit-2026-10-12.md`](acceptance-audit-2026-10-12.md) 保留为 R191-R198 历史快照。原型 screen 11 提供五态/边界/断点视觉样例；卡片里的动作是静态标签，不是交互证据。当前交互审计不是所有页面控件的全量清点，映射范围和缺口见 [`ui-component-catalog.md`](ui-component-catalog.md)。
+
+样式变量覆盖和视觉尺度现状见 [`design-spec.md`](design/design-spec.md) 与 ADR 0017/0018。2026-10-16 本轮构建的 `dist/index.js` 为 347,852 B、`dist/index.css` 为 132,927 B、`dist/package.zip` 为 496,928 B；这些是原始文件大小，不等于 gzip 传输或 Electron 首屏时间。性能趋势沿用 [`perf-baseline-2026-10-14.md`](perf-baseline-2026-10-14.md)，当前构建变化不构成性能提升声明。
 
 同一搜索窗口冻结目标的现场检查也已完成：关闭原目标 A、打开来源 B 后再次主操作精确复制，A/B 的立即及延迟完整块快照不变；故意向 B 写入违规块时同一断言失败，恢复后完整 7/7。
+
+T-0083 又补齐协议入口更早的查询/排队阶段：真实 Electron 延迟条目属性请求并切页，旧构建两场景均误写 B、新构建 4/4 通过；A 保持打开时写回 A，A 关闭时降级复制，B 的立即和延迟块 ID/正文/属性快照不变。修复后的同窗/无编辑器回归仍为 7/7。
+
+T-0084 最终只做离线加固：四个近期 Electron 采集器统一接入 `electron-isolation.cjs` 与 `electron-isolation-playwright.cjs`，检查所有镜像进程、后代内核的精确工作区及页面导航身份，失败后不再向宿主操作。永久专项共 16/16，全套单元更新为 484/484；类型、六脚本语法、密钥、包和 diff 检查通过。源码绕过保护负向检出后均原字节恢复；四入口真实参数入口在离线事故夹具中全部连接前拒绝，合法对照仅到阻断 spy，零真实连接。生产源码/构建保持 T-0083 最终 SHA，未重新启动或附着宿主。该工具只检测，后续 Electron 实验仍需操作系统层隔离与独立宿主配置/profile，不能凭这些测试解除 B-005；证据见 [ADR 0054](adr/0054-electron-process-workspace-guard.md)。
 
 仍未完成的事项：
 
 - B-001 部分解除：Electron 安装启用、核心运行时、普通/引用条目动作、来源失效、保存视图和无活动编辑器降级已现场验收；同一编辑器连续引用动作后的宿主选区边界和真实 AI 模型端到端仍待现场收口。
 - B-002/B-003：没有 Android 真机/模拟器，移动端直接插入和图片位图复制继续诚实降级为复制文本/Markdown 链接。
-- B-004：极端快速切换设置和库选择器可能触发宿主 Chromium/Electron 页面异常，已有缓解但根因待宿主确认。
+- B-004：历史 Chromium harness 崩溃与 stage 前端异常仍待定位；rAF 后 harness 三轮未复现，stage 需正常生命周期复现。T-0082 的真实 Electron 五组 812 步/1849 次开关矩阵未复现，不能据此解除；历史含直接删除 Dialog DOM 的流程不作为可信 Electron 复现。
+- B-005：镜像额外启动日常工作区内核并自动同步，影响未完整确定；全进程检查只能检测，后续宿主实验需有操作系统层隔离证据。
 
 本轮已补齐请求层的在途去重、latest 竞态取消、超时 AbortSignal、网络限次重试和写端点禁重试；服务层写入按目标串行、支持受限幂等键、快照回滚和精确预览缓存失效。鉴权/权限失败会统一清理派生状态、保留搜索上下文并显示可重试错误态。插件仍借助思源宿主登录态，没有独立登录页；宿主未提供公开登录跳转 API，因此恢复登录后由用户点 Retry 回到原搜索条件。
 
