@@ -227,6 +227,42 @@ test("共享目标任一失效状态：不调用插入，只走复制降级", as
     }
 });
 
+test("执行器在异步读取正文前冻结目标，并释放自己持有的跟踪句柄", async () => {
+    const events = [];
+    const target = {editor: {rootID: DOC, disabled: false, connected: true}, handle: {id: "tracked"}, docId: DOC};
+    const kernel = {
+        request(endpoint, payload = {}) {
+            events.push(`kernel:${endpoint}`);
+            if (endpoint === "getBlockKramdown") return Promise.resolve({id: payload.id, kramdown: "正文内容"});
+            if (endpoint === "checkBlocksExist") return Promise.resolve({[DOC]: true, [BLOCK]: true});
+            return Promise.resolve(null);
+        },
+    };
+    const library = new LibraryService(kernel);
+    library.setConfig({mode: "doc", notebookIds: [], containerDocIds: [DOC], createdDocIds: [], configuredAt: 1});
+    const host = makeHost({
+        captureInsertTarget: () => {
+            events.push("capture");
+            return target;
+        },
+        canInsertAtTarget: (actual) => actual === target,
+        insertMarkdown: (_text, actual) => {
+            assert.equal(actual, target);
+            return true;
+        },
+        releaseInsertTarget: (actual) => {
+            assert.equal(actual, target);
+            events.push("release");
+        },
+    });
+    const executor = new ActionExecutor(library, host, () => {});
+    const receipt = await executor.run(makeItem(), "insert");
+    assert.equal(receipt.ok, true);
+    assert.equal(events[0], "capture");
+    assert(events.findIndex((event) => event.startsWith("kernel:")) > 0);
+    assert.equal(events.at(-1), "release");
+});
+
 test("门禁：复制失败时回执 ok=false（不伪造成功）", async () => {
     const executor = makeExecutor(makeHost({writeClipboard: async () => false}));
     const receipt = await executor.run(makeItem(), "copy");
