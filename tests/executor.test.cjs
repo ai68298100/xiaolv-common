@@ -137,6 +137,96 @@ test("移动端块引用和嵌入动作也降级为复制，不绕过未验证�
     assert.equal(copied.length, 2);
 });
 
+test("移动端降级复制失败：回执仍为失败，不把待验证提示当成成功", async () => {
+    const executor = makeExecutor(makeHost({
+        isMobile: () => true,
+        writeClipboard: async () => false,
+    }));
+    const receipt = await executor.run(makeItem(), "insert");
+    assert.equal(receipt.ok, false);
+    assert.equal(receipt.downgraded, true);
+    assert.equal(receipt.message, "copy-failed");
+    assert.ok(receipt.pendingVerification.includes("mobile-insert-unverified"));
+});
+
+test("连续共享目标：第三次目标失效时只复制，不重复写入编辑器", async () => {
+    const target = {editor: {}, handle: {id: "tracked"}, docId: DOC};
+    const inserted = [];
+    const copied = [];
+    let insertCount = 0;
+    const host = makeHost({
+        hasActiveEditor: () => false,
+        canInsertAtTarget: () => insertCount < 2,
+        insertMarkdown: (text, actual) => {
+            assert.equal(actual, target);
+            inserted.push(text);
+            insertCount += 1;
+            return true;
+        },
+        writeClipboard: async (text) => {
+            copied.push(text);
+            return true;
+        },
+    });
+    const executor = makeExecutor(host);
+    const item = makeItem({
+        itemType: "blockref",
+        targetBlockId: BLOCK,
+        source: {sourceDocId: DOC, sourceBlockId: BLOCK, sourceType: "block"},
+    });
+
+    const first = await executor.run(item, "insert-ref", {editorTarget: target});
+    const second = await executor.run(item, "insert-embed", {editorTarget: target});
+    const third = await executor.run(item, "insert-content", {editorTarget: target});
+
+    assert.equal(first.message, "inserted");
+    assert.equal(second.message, "inserted");
+    assert.equal(third.ok, true);
+    assert.equal(third.downgraded, true);
+    assert.equal(third.message, "target-unavailable-copied");
+    assert.equal(inserted.length, 2);
+    assert.equal(copied.length, 1);
+    assert.equal(copied[0], "正文内容");
+});
+
+test("共享目标任一失效状态：不调用插入，只走复制降级", async () => {
+    const states = ["root-changed", "disabled", "disconnected", "range-invalid"];
+    for (const state of states) {
+        const target = {
+            editor: {
+                rootID: state === "root-changed" ? "20240101120002-zzzzzzz" : DOC,
+                disabled: state === "disabled",
+                connected: state !== "disconnected",
+            },
+            handle: {id: state === "range-invalid" ? "invalid" : "tracked"},
+            docId: DOC,
+        };
+        let insertCalls = 0;
+        let copyCalls = 0;
+        const executor = makeExecutor(makeHost({
+            hasActiveEditor: () => false,
+            canInsertAtTarget: (actual) => actual.editor.rootID === DOC
+                && !actual.editor.disabled
+                && actual.editor.connected
+                && actual.handle.id === "tracked",
+            insertMarkdown: () => {
+                insertCalls += 1;
+                return true;
+            },
+            writeClipboard: async () => {
+                copyCalls += 1;
+                return true;
+            },
+        }));
+        const receipt = await executor.run(makeItem(), "insert", {editorTarget: target});
+        assert.equal(receipt.ok, true, state);
+        assert.equal(receipt.downgraded, true, state);
+        assert.equal(receipt.message, "target-unavailable-copied", state);
+        assert.equal(insertCalls, 0, state);
+        assert.equal(copyCalls, 1, state);
+    }
+});
+
 test("门禁：复制失败时回执 ok=false（不伪造成功）", async () => {
     const executor = makeExecutor(makeHost({writeClipboard: async () => false}));
     const receipt = await executor.run(makeItem(), "copy");
