@@ -1532,7 +1532,7 @@ export class CommonSearchDialog {
             const hint = this.deps.isMobile() && !this.insertTarget
                 ? this.deps.t("insertMobileActionHint")
                 : !this.insertTarget && !(this.deps.hasInsertTarget?.() ?? this.deps.hasActiveEditor?.() ?? true)
-                    ? this.deps.t((this.deps.hasActiveEditor?.() ?? true) ? "insertTargetUnavailableCopied" : "insertNoEditor")
+                    ? this.deps.t((this.deps.hasActiveEditor?.() ?? true) ? "insertTargetUnavailableBanner" : "insertNoEditorBanner")
                     : "";
             insertBtn.title = hint;
             if (hint) insertBtn.setAttribute("aria-label", hint);

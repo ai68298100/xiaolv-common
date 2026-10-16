@@ -888,7 +888,7 @@ const check = (name, ok, detail = "") => {
             enabled: Boolean(insert && !insert.disabled),
         };
     });
-    check("H2 无活动编辑器时显示复制降级语义", noEditor.banner.includes("没有活动编辑器") && noEditor.action.includes("复制") && noEditor.hint.includes("复制") && noEditor.enabled, JSON.stringify(noEditor));
+    check("H2 无活动编辑器时显示将复制的前置提示", noEditor.banner.includes("主操作会复制到剪贴板") && noEditor.action.includes("复制") && noEditor.hint.includes("主操作会复制到剪贴板") && noEditor.enabled, JSON.stringify(noEditor));
 
     await open({activeEditor: true, insertTargetAvailable: false, query: "延期"});
     await sleep(300);
@@ -898,7 +898,44 @@ const check = (name, ok, detail = "") => {
         const target = root?.querySelector(".xlc-target-banner");
         return {banner: target?.textContent ?? "", action: insert?.textContent ?? "", hint: insert?.getAttribute("title") ?? "", enabled: Boolean(insert && !insert.disabled)};
     });
-    check("H2b 插入位置失效时不改投其他编辑器", staleTarget.banner.includes("原插入位置不可用") && staleTarget.action.includes("复制") && staleTarget.hint.includes("原插入位置已失效") && staleTarget.enabled, JSON.stringify(staleTarget));
+    check("H2b 插入位置失效时显示将复制的前置提示", staleTarget.banner.includes("原插入位置不可用") && staleTarget.action.includes("复制") && staleTarget.hint.includes("原插入位置不可用") && staleTarget.enabled, JSON.stringify(staleTarget));
+
+    const realFallback = async (options) => {
+        await page.evaluate(() => {
+            delete document.body.dataset.xlcRealReceipt;
+            delete document.body.dataset.xlcRealRequestedMode;
+            delete document.body.dataset.xlcRealClipboardText;
+            delete document.body.dataset.xlcRealInsertedText;
+            document.body.dataset.xlcRealInsertCalls = "0";
+        });
+        await open({...options, promptVariables: false, realExecutor: true, query: "延期"});
+        await page.locator('[data-xlc-pane-act="insert"]').click();
+        await page.waitForFunction(() => Boolean(document.body.dataset.xlcRealReceipt));
+        return page.evaluate(() => ({
+            requested: document.body.dataset.xlcRealRequestedMode,
+            receipt: JSON.parse(document.body.dataset.xlcRealReceipt ?? "null"),
+            hostHasEditor: document.body.dataset.xlcRealHostHasEditor,
+            hostHasEditorCalls: Number(document.body.dataset.xlcRealHasEditorCalls ?? 0),
+            clipboard: document.body.dataset.xlcRealClipboardText,
+            inserted: Number(document.body.dataset.xlcRealInsertCalls ?? 0),
+            buttonBusy: document.querySelector('[data-xlc-pane-act="insert"]')?.getAttribute("aria-busy"),
+        }));
+    };
+    const noEditorFallback = await realFallback({activeEditor: false});
+    check("H2c 无编辑器点击主动作由真实执行器复制降级", noEditorFallback.requested === "insert"
+        && noEditorFallback.receipt?.ok === true && noEditorFallback.receipt?.message === "no-editor-copied"
+        && noEditorFallback.receipt?.downgraded === true && noEditorFallback.clipboard === "真实执行器正文"
+        && noEditorFallback.inserted === 0 && noEditorFallback.buttonBusy === "false", JSON.stringify(noEditorFallback));
+    const noEditorCopyFailure = await realFallback({activeEditor: false, realClipboardAvailable: false});
+    check("H2d 无编辑器剪贴板失败由真实执行器诚实回执", noEditorCopyFailure.requested === "insert"
+        && noEditorCopyFailure.receipt?.ok === false && noEditorCopyFailure.receipt?.message === "no-editor-copy-failed"
+        && noEditorCopyFailure.receipt?.downgraded === true && noEditorCopyFailure.inserted === 0
+        && noEditorCopyFailure.buttonBusy === "false", JSON.stringify(noEditorCopyFailure));
+    const staleTargetFallback = await realFallback({activeEditor: true, insertTargetAvailable: false});
+    check("H2e 原插入位置失效时真实执行器只复制不改投", staleTargetFallback.requested === "insert"
+        && staleTargetFallback.receipt?.ok === true && staleTargetFallback.receipt?.message === "target-unavailable-copied"
+        && staleTargetFallback.receipt?.downgraded === true && staleTargetFallback.clipboard === "真实执行器正文"
+        && staleTargetFallback.inserted === 0 && staleTargetFallback.buttonBusy === "false", JSON.stringify(staleTargetFallback));
 
     // 执行期间锁住主动作，避免双击/重复 Enter 产生两次写入。
     await open({actionDelayMs: 300, query: "SLA"});

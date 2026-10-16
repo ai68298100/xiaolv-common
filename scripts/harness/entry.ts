@@ -6,6 +6,9 @@ import {CaptureDialog} from "../../src/ui/capture";
 import {openDiscoveryDialog} from "../../src/ui/discovery-dialog";
 import type {DiscoveryDialogController} from "../../src/ui/discovery-dialog";
 import type {SearchEntry} from "../../src/model/search";
+import type {CommonItem} from "../../src/model/item";
+import {ActionExecutor} from "../../src/service/commands";
+import {LibraryService} from "../../src/service/library";
 import type {TransformKind} from "../../src/service/ai";
 import type {SavedDiscoveryView} from "../../src/model/storage";
 
@@ -223,11 +226,68 @@ const T = (key: string, ...args: string[]): string => {
     return text;
 };
 
-function makeDeps(overrides: {aiEnabled?: boolean; missing?: boolean; mobile?: boolean; empty?: boolean; largeResults?: boolean; filters?: {type: string; tag: string; category: string}; newItemAction?: string; activeEditor?: boolean; insertTargetAvailable?: boolean; actionDelayMs?: number} = {}) {
+function makeDeps(overrides: {aiEnabled?: boolean; missing?: boolean; mobile?: boolean; empty?: boolean; largeResults?: boolean; filters?: {type: string; tag: string; category: string}; newItemAction?: string; activeEditor?: boolean; insertTargetAvailable?: boolean; actionDelayMs?: number; promptVariables?: boolean; realExecutor?: boolean; realClipboardAvailable?: boolean} = {}) {
     const aiOn = overrides.aiEnabled ?? true;
     let activeFilters = {...(overrides.filters ?? {type: "", tag: "", category: ""})};
     const favorites = new Set(["xlc-demo0000001"]);
     const recents = new Set(["xlc-demo0000001", "xlc-demo0000002"]);
+    const realItem: CommonItem = {
+        id: "xlc-demo0000001", blockId: "20240101120000-aaaaaaa", libraryDocId: "20240101120001-hijklmn",
+        itemType: "markdown", title: "项目延期道歉与补偿方案", alias: "延期道歉", tags: ["客户沟通", "模板"], category: "客服",
+        summary: "尊敬的王总：关于本期交付延期……", varCount: 0,
+        source: {sourceDocId: "20240101120001-hijklmn", sourceBlockId: "20240101120002-bbbbbbb", sourceType: "manual"},
+        url: "", targetBlockId: "", createdAt: 1, updatedAt: 1, droppedFields: [],
+    };
+    let realExecutor: ActionExecutor | null = null;
+    let realTarget: {editor: object; handle: object; docId: string} | null = null;
+    if (overrides.realExecutor) {
+        const library = new LibraryService({request: async (endpoint: string) => {
+            if (endpoint === "getBlockKramdown") return {id: realItem.blockId, kramdown: "真实执行器正文"};
+            if (endpoint === "checkBlocksExist") return {"20240101120001-hijklmn": true, "20240101120002-bbbbbbb": true};
+            if (endpoint === "getBlockAttrs") return {};
+            return null;
+        }} as never);
+        const patched = library as unknown as {
+            ensureIndex: () => Promise<{entries: SearchEntry[]; items: Map<string, CommonItem>; truncated: boolean; docsScanned: number; errors: string[]; builtAt: number}>;
+            getItemKramdown: (item: CommonItem) => Promise<{ok: true; data: string}>;
+            checkSourceHealth: (item: CommonItem) => Promise<{ok: true; data: {blockMissing: boolean; docMissing: boolean; assetMissing: boolean}}>;
+            expandSnippetRefs: (text: string) => Promise<string>;
+        };
+        patched.ensureIndex = async () => ({entries: [ENTRIES[0]], items: new Map([[realItem.id, realItem]]), truncated: false, docsScanned: 1, errors: [], builtAt: 1});
+        patched.getItemKramdown = async () => ({ok: true, data: "真实执行器正文"});
+        patched.checkSourceHealth = async () => ({ok: true, data: {blockMissing: false, docMissing: false, assetMissing: false}});
+        patched.expandSnippetRefs = async (text) => text;
+        realTarget = {editor: overrides.activeEditor === false ? null : {}, handle: {}, docId: realItem.source.sourceDocId};
+        const host = {
+            isMobile: () => false,
+            hasActiveEditor: () => {
+                document.body.dataset.xlcRealHasEditorCalls = String(Number(document.body.dataset.xlcRealHasEditorCalls ?? 0) + 1);
+                return overrides.activeEditor !== false;
+            },
+            insertMarkdown: (text: string) => {
+                document.body.dataset.xlcRealInsertCalls = String(Number(document.body.dataset.xlcRealInsertCalls ?? 0) + 1);
+                document.body.dataset.xlcRealInsertedText = text;
+                return true;
+            },
+            captureInsertTarget: () => realTarget,
+            canInsertAtTarget: () => overrides.insertTargetAvailable !== false && overrides.activeEditor !== false,
+            releaseInsertTarget: () => {},
+            writeClipboard: async (text: string) => {
+                document.body.dataset.xlcRealClipboardText = text;
+                return overrides.realClipboardAvailable !== false;
+            },
+            openDoc: () => true, openAsset: () => true, openExternal: () => true,
+            currentDocId: () => realItem.source.sourceDocId,
+        };
+        document.body.dataset.xlcRealHostHasEditor = String(overrides.activeEditor !== false);
+        realExecutor = new ActionExecutor(library, host as never, () => {});
+    }
+    const runRealAction = async (_itemId: string, mode: string) => {
+        const receipt = await realExecutor!.run(realItem, mode as never, {editorTarget: realTarget as never});
+        document.body.dataset.xlcRealRequestedMode = mode;
+        document.body.dataset.xlcRealReceipt = JSON.stringify({ok: receipt.ok, message: receipt.message, downgraded: receipt.downgraded});
+        return {ok: receipt.ok, message: receipt.message};
+    };
     return {
         t: (key: string, ...args: string[]) => key === "newItemAction" && overrides.newItemAction
             ? overrides.newItemAction
@@ -265,6 +325,7 @@ function makeDeps(overrides: {aiEnabled?: boolean; missing?: boolean; mobile?: b
         getCategories: async () => ["客服", "开发"],
         preview: async (itemId: string) => PREVIEWS[itemId] ?? "",
         runAction: async (itemId: string, mode: string) => {
+            if (realExecutor) return runRealAction(itemId, mode);
             const w = window as unknown as {__xlcActions?: Array<{id: string; mode: string}>};
             const observedMode = overrides.mobile && !overrides.insertTarget ? "copy" : mode;
             (w.__xlcActions ??= []).push({id: itemId, mode: observedMode});
@@ -331,7 +392,7 @@ function makeDeps(overrides: {aiEnabled?: boolean; missing?: boolean; mobile?: b
         },
         insertTarget: null,
         openSetup: () => (window as unknown as {XlcHarness: {openSettings: () => void}}).XlcHarness.openSettings(),
-        promptVariables: () => true,
+        promptVariables: () => overrides.promptVariables ?? true,
         getUsage: () => ({
             "xlc-demo0000001": {count: 32, lastAt: 400},
             "xlc-demo0000002": {count: 18, lastAt: 300},
@@ -380,7 +441,7 @@ function makeDeps(overrides: {aiEnabled?: boolean; missing?: boolean; mobile?: b
 }
 
 (window as unknown as {XlcHarness: unknown}).XlcHarness = {
-    openDialog(overrides?: {aiEnabled?: boolean; missing?: boolean; scope?: "all" | "favorites"; query?: string; mobile?: boolean; empty?: boolean; largeResults?: boolean; insertTarget?: {docId: string; hPath: string}; filters?: {type: string; tag: string; category: string}; newItemAction?: string; activeEditor?: boolean; insertTargetAvailable?: boolean; actionDelayMs?: number}): CommonSearchDialog {
+    openDialog(overrides?: {aiEnabled?: boolean; missing?: boolean; scope?: "all" | "favorites"; query?: string; mobile?: boolean; empty?: boolean; largeResults?: boolean; insertTarget?: {docId: string; hPath: string}; filters?: {type: string; tag: string; category: string}; newItemAction?: string; activeEditor?: boolean; insertTargetAvailable?: boolean; actionDelayMs?: number; promptVariables?: boolean; realExecutor?: boolean; realClipboardAvailable?: boolean}): CommonSearchDialog {
         const dialog = new CommonSearchDialog(makeDeps(overrides));
         lastSearchDialog = dialog;
         if (overrides?.insertTarget) dialog.insertTarget = overrides.insertTarget;

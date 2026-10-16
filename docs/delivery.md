@@ -72,13 +72,15 @@ pnpm run build
 
 ## 验收回归与当前边界
 
-截至 2026-10-16，T-0080/R227 组合复验通过：`pnpm run check`、`pnpm test`（445/445）、生产 build、`test:ui`、`test:ix`（71/71）、隔离内核（12/12）、发现链路、secret scan 和 package check（13 项）。新增门禁完成真实违规注入、恢复和正向复验。固定思源 3.8.7 / Electron 44.7.0 现场 21/21，覆盖文档/树/笔记本视图、同步后关闭和切换续开；部署 JS/CSS 与当前 dist 逐字节一致。内核门禁另用 v3.8.8-alpha.1，两层版本分别记录。分项结果见当前状态审计 [`status-audit-2026-10-15.md`](status-audit-2026-10-15.md) 与 [`electron-acceptance-2026-10-16.md`](electron-acceptance-2026-10-16.md)；[`acceptance-audit-2026-10-12.md`](acceptance-audit-2026-10-12.md) 保留为 R191-R198 历史快照。原型 screen 11 提供五态/边界/断点视觉样例；卡片里的动作是静态标签，不是交互证据。当前交互审计不是所有页面控件的全量清点，映射范围和缺口见 [`ui-component-catalog.md`](ui-component-catalog.md)。
+截至 2026-10-16，T-0081/R228 组合复验通过：`pnpm run check`、`pnpm test`（457/457）、生产 build、`test:ui`、`test:ix`（74/74）、隔离内核（12/12）、发现链路、secret scan 和 package check（13 项）。新增门禁完成真实违规注入、恢复和正向复验。固定思源 3.8.7 / Electron 44.7.0 隔离副本已通过无活动编辑器降级、真实剪贴板/协议回执和协议层引用/嵌入内核读回及紧接源正文动作的安全复制降级；部署最新 dist 后前置提示为未来式，失败回执保持失败。内核门禁另用 v3.8.8-alpha.1，两层版本分别记录。分项结果见当前状态审计 [`status-audit-2026-10-15.md`](status-audit-2026-10-15.md) 与 [`electron-acceptance-2026-10-16.md`](electron-acceptance-2026-10-16.md)；[`acceptance-audit-2026-10-12.md`](acceptance-audit-2026-10-12.md) 保留为 R191-R198 历史快照。原型 screen 11 提供五态/边界/断点视觉样例；卡片里的动作是静态标签，不是交互证据。当前交互审计不是所有页面控件的全量清点，映射范围和缺口见 [`ui-component-catalog.md`](ui-component-catalog.md)。
 
-样式变量覆盖和视觉尺度现状见 [`design-spec.md`](design/design-spec.md) 与 ADR 0017/0018。2026-10-15 本机构建的 `dist/index.js` 为 322,351 B、`dist/index.css` 为 130,700 B、`dist/package.zip` 为 488,635 B；这些是原始文件大小，不等于 gzip 传输或 Electron 首屏时间。性能趋势沿用 [`perf-baseline-2026-10-14.md`](perf-baseline-2026-10-14.md)，当前构建变化不构成性能提升声明。
+样式变量覆盖和视觉尺度现状见 [`design-spec.md`](design/design-spec.md) 与 ADR 0017/0018。2026-10-16 本轮构建的 `dist/index.js` 为 347,523 B、`dist/index.css` 为 132,927 B、`dist/package.zip` 为 496,821 B；这些是原始文件大小，不等于 gzip 传输或 Electron 首屏时间。性能趋势沿用 [`perf-baseline-2026-10-14.md`](perf-baseline-2026-10-14.md)，当前构建变化不构成性能提升声明。
+
+同一搜索窗口冻结目标的现场检查也已完成：关闭原目标 A、打开来源 B 后再次主操作精确复制，A/B 的立即及延迟完整块快照不变；故意向 B 写入违规块时同一断言失败，恢复后完整 7/7。
 
 仍未完成的事项：
 
-- B-001 部分解除：Electron 安装启用、核心运行时、普通/引用条目动作、来源失效和保存视图已现场验收；无活动编辑器降级、同一编辑器连续引用动作后的选区边界和真实 AI 模型端到端仍待现场收口。
+- B-001 部分解除：Electron 安装启用、核心运行时、普通/引用条目动作、来源失效、保存视图和无活动编辑器降级已现场验收；同一编辑器连续引用动作后的宿主选区边界和真实 AI 模型端到端仍待现场收口。
 - B-002/B-003：没有 Android 真机/模拟器，移动端直接插入和图片位图复制继续诚实降级为复制文本/Markdown 链接。
 - B-004：极端快速切换设置和库选择器可能触发宿主 Chromium/Electron 页面异常，已有缓解但根因待宿主确认。
 

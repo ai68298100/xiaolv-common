@@ -229,6 +229,7 @@ test("共享目标任一失效状态：不调用插入，只走复制降级", as
 
 test("执行器在异步读取正文前冻结目标，并释放自己持有的跟踪句柄", async () => {
     const events = [];
+    let released = false;
     const target = {editor: {rootID: DOC, disabled: false, connected: true}, handle: {id: "tracked"}, docId: DOC};
     const kernel = {
         request(endpoint, payload = {}) {
@@ -245,22 +246,29 @@ test("执行器在异步读取正文前冻结目标，并释放自己持有的�
             events.push("capture");
             return target;
         },
-        canInsertAtTarget: (actual) => actual === target,
+        canInsertAtTarget: (actual) => actual === target && !released,
         insertMarkdown: (_text, actual) => {
             assert.equal(actual, target);
+            assert.equal(released, false, "tracked range must stay alive until insertion completes");
+            events.push("insert");
             return true;
         },
         releaseInsertTarget: (actual) => {
             assert.equal(actual, target);
+            released = true;
             events.push("release");
         },
     });
     const executor = new ActionExecutor(library, host, () => {});
     const receipt = await executor.run(makeItem(), "insert");
     assert.equal(receipt.ok, true);
+    assert.equal(receipt.message, "inserted");
+    assert.equal(receipt.downgraded, false);
     assert.equal(events[0], "capture");
     assert(events.findIndex((event) => event.startsWith("kernel:")) > 0);
     assert.equal(events.at(-1), "release");
+    assert.equal(events.filter((event) => event === "release").length, 1);
+    assert(events.indexOf("insert") < events.indexOf("release"));
 });
 
 test("门禁：复制失败时回执 ok=false（不伪造成功）", async () => {

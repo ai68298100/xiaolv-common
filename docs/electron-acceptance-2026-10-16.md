@@ -126,3 +126,39 @@
 ### 退出与保留边界
 
 再次核验 renderer 工作区和本轮主 PID 后，隔离 `/api/system/exit` 返回 HTTP `200`；随后只停止精确镜像路径下已验证的 PID `51596`、`33916`、`19344`、`52992`、`15028`。退出复查镜像进程为 `[]`，`6856/9356` 监听为 `[]`；所有夹具及证据保留，日常实例未操作。Android、真实 AI、无活动编辑器降级和 B-004 的其他既有边界不因本轮通过而解除。
+
+## T-0081 / R228 无编辑器、连续动作与冻结目标失效
+
+### 环境和构建
+
+- 启动前精确核对 R226 镜像路径下进程为 `[]`，`6856/9356` 无监听；随后仅启动该临时镜像，主进程 PID `36280`。真实版本仍为思源 `3.8.7`、Electron `44.7.0`，工作区不变，日常实例未操作。
+- 新入口：`node scripts/electron-editor-actions-acceptance.cjs --cdp http://127.0.0.1:9356 --workspace C:\Users\Admin\AppData\Local\Temp\xlc-electron-r226-20261016061028`。脚本先验证 loopback、临时工作区、镜像主进程与 renderer 身份；测试夹具用真实内核和公开插件 service 创建，没有替换活动编辑器、选区或宿主返回值。
+- 最终部署逐字节等于本轮 `dist`：`index.js` 为 `347523` bytes，SHA256 `0c0f6bd7036b7330108548b5d6ca5d22e1e58d4927534b90401acab20a5fd6ad`；CSS 为 `132927` bytes，SHA256 `acf610026b83c2a58705aa8517c242b4e8c602d0b2381edaeaa95d8f29f416db`。证据见最终目录 `build-identity.json`。
+
+### 最终现场结果：7/7
+
+1. 真实 Electron、隔离工作区与夹具核验通过；源/目标文档、源块与库内引用入口由真实内核回读。
+2. 通过真实页签 `.item__close` 逐一关闭全部文档，宿主 `hasActiveEditor()` 为 `false`、`currentDocId()` 为 `null`。没有 stub 活动编辑器或直接删除宿主 DOM。
+3. 通过已注册 `open` 命令打开搜索，仅唯一标题条目显示。操作前 banner、按钮 title 和 aria-label 均为将来式“当前没有活动编辑器，主操作会复制到剪贴板”，主按钮为“复制”。先向系统剪贴板写入本轮唯一 sentinel，再仅点击一次主按钮，真实剪贴板精确变为预期源块引用 marker；界面完成提示为“当前没有活动编辑器，已复制到剪贴板，可手动粘贴”。另行调用公开协议 `service.insert(...,{mode:"insert-ref"})` 得到 `ok=true, mode=insert-ref, downgraded=true`。UI 动作与协议回执分别观测，不将后者冒充前者的直接返回值。
+4. 同一无编辑器搜索窗口的复制按钮真实写入源块正文，精确等于本轮源文本；`service.copy` 回执为 `ok=true,kind=clipboard`。整个无编辑器动作组前后，目标和来源的 `getChildBlocks` ID 集合及每块完整 Kramdown 快照一致。
+5. 连续协议动作在一个干净真实目标文档中执行，期间不重开文档、不修造选区：`insert-ref` 回执 `ok=true,downgraded=false`，子块由 `1→2`，唯一新增块正文为精确引用 marker；`insert-embed` 同样成功，子块 `2→3`，唯一新增块为预期原生嵌入语法。第三步 `insert-content` 的真实选区停在 `<div class="protyle-cursor">`，回执 `ok=true,downgraded=true`，子块仍为 `3`、无新增块、全部 Kramdown 快照不变，真实剪贴板精确等于源正文。**此项通过表示安全降级检查成立，不表示第三步插入成功，也不表示同一搜索窗口的冻结目标在独立协议调用之间持续存在。**
+6. 另建干净目标 A，真实点击其首段文本后打开搜索。仅点一次主操作，内核确认 A 只新增一个精确引用块；保留搜索 input 的实际 `ElementHandle` 身份。
+7. 在原搜索仍打开时用真实 `Ctrl+W` 关闭 A，核对 A 的 Protyle 已销毁且原 input 仍连接；点击同窗“打开来源”，来源 B 真实打开，宿主 `currentDocId()` 精确等于 B。该 input 身份保持不变；主按钮改为“复制”，banner 显示“原插入位置不可用”。再次先写唯一 sentinel，再仅点一次主按钮：剪贴板精确为引用 marker，完成提示为“原插入位置已失效，内容已复制到剪贴板；请手动粘贴”。A 和 B 的全部子块 ID/完整 Kramdown 在点击后 `500ms` 及再过 `1s` 均保持原样，没有重定向写入 B。
+
+最终证据目录：工作区 `temp\editor-actions-acceptance-1792115483966`，含 `result.json`、`build-identity.json`、`frozen-target-copied.png`。最终 renderer 异常 `[]`、原生 dialog 事件 `[]`。夹具：笔记本 `20261016095123-ifk1l3i`，源文档 `20261016095124-qmum2t4`，源块 `20261016095124-7yltehg`，连续动作目标 `20261016095124-k7is0lg`，同窗冻结目标 A `20261016095141-yra2uq6`，条目 `xlc-mvabadog2wyohndf90`。
+
+脚本有两次真实 renderer 重载，分别建立干净起始生命周期、隔离无编辑器段与连续协议段；同窗 A 打开搜索、插入、关闭 A、来源 B 打开和后续复制之间没有重载。目标编辑器用真实文本点击激活；`openDoc` 创建页签本身不被假定为有效活动编辑器。
+
+### 回归失败、恢复与剩余边界
+
+- **前置提示真实负向**：只在隔离部署 bundle 的主按钮 title/aria-label 分支把 `insertNoEditorBanner` 改回完成时 `insertNoEditor`，未改 banner 及宿主能力。两项通过后，将来式 label 断言准确拒绝“当前没有活动编辑器，已复制到剪贴板，可手动粘贴”，进程退出 `1`；证据 `temp\editor-actions-acceptance-1792115395401\result.json`。`finally` 恢复原始 bundle 字节，前后 SHA256 均为 `0c0f6bd7036b7330108548b5d6ca5d22e1e58d4927534b90401acab20a5fd6ad`，回执 `temp\r228-negative-hint.json`；恢复后上述完整 `7/7` 通过。
+- **tracked range 生命周期实测**：在 `ActionExecutor.run` 未等待 `execute` 的中间构建，首个 `insert-ref` 返回 `ok=true,downgraded=true`；脚本准确失败，证据 `temp\editor-actions-acceptance-1792113951650\result.json`。主线程随后以源码测试复现提前释放 handle，改为等待 execute 完成后释放；最终构建的前两个连续动作已真实插入。最初怀疑是空白点击的判断不作为最终归因。
+- **嵌入后的选区边界**：最终构建首次严格要求三次都插入时，第三步 `insert-content` 被“未新增内核块”检查拒绝，证据 `temp\editor-actions-acceptance-1792114958416\result.json`，三步完整回执均保留。随后只把验收定义调整为“精确插入或可验证安全复制”两种诚实分支，未伪造插入成功。该失败夹具另有一次明确的人工重选文本恢复实验：重选真实段落后 `insert-content` 回执 `downgraded=false`，内核新增正确正文块；见同目录 `manual-selection-recovery.json`，不能把这次重选算作无干预连续成功。
+- Android、真实 AI 与 B-004 仍未由本轮解除。连续协议第三步的自动插入限制继续保留，产品以复制降级表达，不自动重试写入新编辑器。
+
+### 同窗来源快照门禁补证与交接
+
+- **误写来源 B 负向**：复制仓库验收脚本到本工作区 `temp\r228-negative-source-snapshot\electron-editor-actions-negative-source.cjs`，仅在 `frozenClipboard` 精确断言之后、A/B 完整快照断言之前，调用真实 `/api/block/appendBlock`，向本次负向夹具 B `20261016095810-sa3d8m1` 追加 `injected-redirect-mvabj30q`。原交互及快照断言不变。前六项通过，`The newly opened source must not receive a redirected insert` 准确失败，差异为新增真实段落 `20261016095845-za8dv3c`，进程退出 `1`；证据 `temp\editor-actions-acceptance-1792115890436\result.json`。该违规仅写入这次负向的专属 B，没有改生产代码或其他源文档。
+- 临时副本保留在证据目录，仓库原脚本字节始终未变，注入前后 SHA256 均为 `de20f9c3e674232181e598b5e512621c841bb2f390d959613f9db72c752f2fd8`；真实 API 回执、失败点、原脚本身份见 `temp\r228-negative-source-snapshot\injection-report.json`。
+- 随后运行仓库原脚本完整复验，最终再次 **7/7**，renderer 异常 `[]`、原生 dialog 事件 `[]`。最终证据目录更新为 `temp\editor-actions-acceptance-1792115945932`，含 `result.json`、`frozen-target-copied.png`、`build-identity.json`；版本仍为思源 `3.8.7` / Electron `44.7.0`，部署 JS/CSS 与上述 `dist` 字节和 SHA256 一致。最终正向 B `20261016095906-009i5dr`、A `20261016095930-bttuhqy`；连续动作仍为引用和嵌入真实新增，第三步正文诚实复制降级、目标全部块不变。
+- 按后续压力验收交接要求，保留已核验的隔离 Electron 主进程 PID `36280` 和 `6856/9356` 监听，不执行退出；本阶段不生成退出完成回执。工作区和镜像仍为本节所述 R226 专用临时副本，日常实例未操作。
