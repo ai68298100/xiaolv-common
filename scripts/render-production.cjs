@@ -3,6 +3,7 @@
 const path = require("node:path");
 const fs = require("node:fs");
 const esbuild = require("esbuild");
+const assert = require("node:assert/strict");
 
 const ROOT = path.resolve(__dirname, "..");
 const OUT = path.join(ROOT, "docs", "design");
@@ -1609,6 +1610,16 @@ fs.writeFileSync(path.join(OUT, "harness.html"), html);
         const rows = root?.querySelectorAll(".xlc-discovery-list [role='list'] .xlc-discovery-row").length ?? 0;
         return !!root && root.getAttribute("aria-busy") === "false" && !!readyScan && rows === 2;
     }, undefined, {timeout: 3000});
+    const discoveryFacetControlsDoNotOverlap = () => {
+        const filters = document.querySelector(".xlc-discovery-filters");
+        const facets = filters?.querySelector(".xlc-discovery-tag-facets")?.getBoundingClientRect();
+        const controls = Array.from(filters?.querySelectorAll(":scope > input, :scope > select, :scope > button") ?? []);
+        return !!facets && facets.width > 0 && controls.length >= 6 && controls.every((control) => {
+            const rect = control.getBoundingClientRect();
+            return facets.right <= rect.left + 1 || facets.left >= rect.right - 1
+                || facets.bottom <= rect.top + 1 || facets.top >= rect.bottom - 1;
+        });
+    };
     const discoveryAssertions = await page.evaluate(() => {
         const root = document.querySelector(".xlc-discovery");
         const rows = Array.from(document.querySelectorAll(".xlc-discovery-row"));
@@ -1642,21 +1653,39 @@ fs.writeFileSync(path.join(OUT, "harness.html"), html);
                 && titleRect.top >= rootRect.top - 1 && titleRect.bottom <= rootRect.bottom + 1
                 && scopeRect.top >= rootRect.top - 1 && scopeRect.bottom <= rootRect.bottom + 1,
             discoveryRootDoesNotScroll: root instanceof HTMLElement && root.scrollTop === 0,
-            desktopFiltersStayCompact: filters instanceof HTMLElement && filters.getBoundingClientRect().height <= 50,
+            desktopFiltersStayCompact: filters instanceof HTMLElement && filters.getBoundingClientRect().height <= 150,
             statuses: rows.map((row) => row.textContent ?? "").some((text) => text.includes("待收录")) && rows.map((row) => row.textContent ?? "").some((text) => text.includes("内容相同")),
             scopeOptions: scope instanceof HTMLSelectElement
                 && scope.options.length === 5
                 && Array.from(scope.options).slice(1).every((option) => !option.disabled),
         };
     });
+    discoveryAssertions.tagFacetsDoNotOverlapControls = await page.evaluate(discoveryFacetControlsDoNotOverlap);
     if (Object.values(discoveryAssertions).some((v) => !v)) {
         throw new Error("discovery smoke failed: " + JSON.stringify(discoveryAssertions));
     }
+    // Negative validation: inject an actual overlay, confirm the same layout
+    // assertion rejects it, then restore the production CSS before continuing.
+    const facetOverlapFixture = await page.addStyleTag({content: `
+        .xlc-discovery-filters { position: relative !important; }
+        .xlc-discovery-tag-facets { position: absolute !important; inset: 0 0 auto 0 !important;
+            width: 100% !important; height: 60px !important; max-height: none !important; z-index: 99 !important; }
+    `});
+    try {
+        const invalidFacetLayoutPasses = await page.evaluate(discoveryFacetControlsDoNotOverlap);
+        assert.throws(() => assert.equal(invalidFacetLayoutPasses, true), {code: "ERR_ASSERTION"});
+    } finally {
+        await facetOverlapFixture.evaluate((style) => style.remove());
+        await facetOverlapFixture.dispose();
+    }
+    assert.equal(await page.evaluate(discoveryFacetControlsDoNotOverlap), true, "facet layout must recover after the negative fixture");
+    console.log("  smoke ✓ facet overlap negative fixture rejected and production layout restored");
     // R225/B19：精确标签筛选后保存视图；保存只记录规则，不搬迁源块正文。
     await page.locator("[data-xlc-control='discovery.filter.tag']").fill("客服");
     const saveViewEnabled = await page.locator("[data-xlc-discovery-action='save-view']").isEnabled();
-    page.once("dialog", async (dialog) => { await dialog.accept("客服话术"); });
     await page.locator("[data-xlc-discovery-action='save-view']").click();
+    await page.locator(".xlc-save-view-form [data-xlc-control='discovery.view.name']").fill("客服话术");
+    await page.locator("[data-xlc-control='discovery.view.save']").click();
     await page.waitForFunction(() => Boolean(document.body.dataset.xlcDiscoverySavedView));
     const savedViewData = await page.evaluate(() => {
         const saved = JSON.parse(document.body.dataset.xlcDiscoverySavedView ?? "null");
@@ -1665,6 +1694,8 @@ fs.writeFileSync(path.join(OUT, "harness.html"), html);
             tag: saved?.tag === "客服",
             scope: saved?.scope === "document",
             noBody: !Object.prototype.hasOwnProperty.call(saved ?? {}, "content"),
+            namingFormClosed: !document.querySelector(".xlc-save-view-form"),
+            savedOnce: document.body.dataset.xlcDiscoverySaveViewCalls === "1",
         };
     });
     const savedViewAssertion = {saveViewEnabled, ...savedViewData};
@@ -1683,6 +1714,8 @@ fs.writeFileSync(path.join(OUT, "harness.html"), html);
     const reopenedViewAssertion = await page.evaluate(() => ({
         tag: document.querySelector("[data-xlc-control='discovery.filter.tag']")?.value === "客服",
         selected: Array.from(document.querySelectorAll(".xlc-discovery-footer .xlc-form-hint"), (el) => el.textContent ?? "").some((text) => text.includes("已选 1 项")),
+        candidateChecked: document.querySelector(".xlc-discovery-row [data-xlc-control='discovery.candidate.select']")?.checked === true,
+        duplicateUnchecked: document.querySelectorAll(".xlc-discovery-row [data-xlc-control='discovery.candidate.select']:checked").length === 1,
         syncLabel: document.querySelector("[data-xlc-discovery-action='add-selected']")?.textContent?.includes("同步到常用库") === true,
         modeLocked: document.querySelector("[data-xlc-control='discovery.add-mode']")?.disabled === true,
         modeReference: document.querySelector("[data-xlc-control='discovery.add-mode']")?.value === "reference",
@@ -1817,6 +1850,36 @@ fs.writeFileSync(path.join(OUT, "harness.html"), html);
     if (singleCategory?.key !== "candidate-1" || singleCategory.category !== "本条分类") {
         throw new Error("single discovery add should pass the candidate category override: " + JSON.stringify(singleCategory));
     }
+    const discoveryUndoIsReachable = () => {
+        const root = document.querySelector(".xlc-discovery");
+        const button = document.querySelector("[data-xlc-discovery-action='undo-batch']");
+        if (!root || !button) return false;
+        const rect = button.getBoundingClientRect();
+        const rootRect = root.getBoundingClientRect();
+        const hit = document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2);
+        return rect.width > 0 && rect.height > 0
+            && rect.top >= Math.max(0, rootRect.top) - 1 && rect.bottom <= Math.min(innerHeight, rootRect.bottom) + 1
+            && rect.left >= Math.max(0, rootRect.left) - 1 && rect.right <= Math.min(innerWidth, rootRect.right) + 1
+            && (hit === button || button.contains(hit));
+    };
+    await page.locator("[data-xlc-discovery-action='undo-batch']").scrollIntoViewIfNeeded();
+    assert.equal(await page.evaluate(discoveryUndoIsReachable), true, "undo must fit its visible region and receive pointer events at 720px height");
+    const undoClipFixture = await page.addStyleTag({content: `
+        .b3-dialog__container.xlc-discovery-host :is(.b3-dialog__body, .b3-dialog__content) { overflow: hidden !important; }
+        .xlc-form.xlc-discovery { gap: 12px !important; overflow: clip !important; }
+        .xlc-discovery-content { min-height: 120px !important; }
+    `});
+    try {
+        await page.locator("[data-xlc-discovery-action='undo-batch']").scrollIntoViewIfNeeded();
+        const clippedUndoPasses = await page.evaluate(discoveryUndoIsReachable);
+        assert.throws(() => assert.equal(clippedUndoPasses, true), {code: "ERR_ASSERTION"});
+    } finally {
+        await undoClipFixture.evaluate((style) => style.remove());
+        await undoClipFixture.dispose();
+    }
+    await page.locator("[data-xlc-discovery-action='undo-batch']").scrollIntoViewIfNeeded();
+    assert.equal(await page.evaluate(discoveryUndoIsReachable), true, "undo must recover after the clipping fixture");
+    console.log("  smoke ✓ 720px undo remains reachable; old clipping fixture rejected and restored");
     await page.locator("[data-xlc-discovery-action='undo-batch']").click();
     await page.waitForFunction(() => document.querySelector(".xlc-discovery-receipt")?.textContent?.includes("已撤销新增 1 条；已跳过 1 条"));
     await page.locator(".xlc-discovery-row[data-xlc-discovery-key='candidate-1'] input[type='checkbox']").check();
@@ -1857,6 +1920,9 @@ fs.writeFileSync(path.join(OUT, "harness.html"), html);
             && !document.querySelector("[data-xlc-discovery-action='undo-batch']");
     });
     if (!discoveryUndoAssertion) throw new Error("discovery batch undo smoke failed");
+    // The root now scrolls when controls and receipts need more room. Returning
+    // to the heading must reveal both the title and scope after add/undo.
+    await page.locator(".xlc-discovery-heading .xlc-form-title").scrollIntoViewIfNeeded();
     const finalDiscoveryGeometry = await page.evaluate(() => {
         const root = document.querySelector(".xlc-discovery");
         const list = root?.querySelector(".xlc-discovery-list");
@@ -2109,6 +2175,42 @@ fs.writeFileSync(path.join(OUT, "harness.html"), html);
     }
     await page.evaluate(() => window.XlcHarness.closeDiscovery());
     console.log("  smoke ✓ on-demand discovery: scope, category, responsive layouts and 4 keyboard pager transitions");
+
+    // Long native tags must wrap within the facet row and keep input/action hit areas clear.
+    const longDiscoveryTag = "客服验收".repeat(12);
+    await page.evaluate((longTag) => {
+        const stage = document.getElementById("stage");
+        stage.innerHTML = "";
+        window.XlcHarness.openDiscovery({longTag});
+        const dialogRoot = document.querySelector(".b3-dialog");
+        if (dialogRoot) stage.appendChild(dialogRoot);
+    }, longDiscoveryTag);
+    await page.waitForFunction(() => document.querySelector(".xlc-discovery")?.getAttribute("aria-busy") === "false");
+    await page.locator("[data-xlc-control='discovery.tag-facet']").filter({hasText: longDiscoveryTag}).click();
+    const longTagLayout = await page.evaluate((longTag) => {
+        const filters = document.querySelector(".xlc-discovery-filters");
+        const facets = filters?.querySelector(".xlc-discovery-tag-facets");
+        return {
+            tagValue: document.querySelector("[data-xlc-control='discovery.filter.tag']")?.value === longTag,
+            onlyMatchingRow: document.querySelectorAll(".xlc-discovery-row").length === 1,
+            facetsBounded: !!facets && facets.scrollWidth <= facets.clientWidth + 1,
+        };
+    }, longDiscoveryTag);
+    longTagLayout.noOverlap = await page.evaluate(discoveryFacetControlsDoNotOverlap);
+    if (!Object.values(longTagLayout).every(Boolean)) throw new Error("long discovery tag layout failed: " + JSON.stringify(longTagLayout));
+    await page.locator("[data-xlc-discovery-action='select-filtered']").click();
+    if (await page.locator("[data-xlc-control='discovery.candidate.select']:checked").count() !== 1) {
+        throw new Error("long discovery tag must leave select-filtered clickable");
+    }
+    await page.locator("[data-xlc-discovery-action='save-view']").click();
+    await page.locator("[data-xlc-control='discovery.view.name']").fill("长标签视图");
+    await page.locator("[data-xlc-control='discovery.view.save']").click();
+    const longTagSaved = await page.evaluate(() => JSON.parse(document.body.dataset.xlcDiscoverySavedView ?? "null"));
+    if (longTagSaved?.name !== "长标签视图" || longTagSaved?.tag !== longDiscoveryTag) {
+        throw new Error("long discovery tag must leave save-view clickable: " + JSON.stringify(longTagSaved));
+    }
+    await page.evaluate(() => window.XlcHarness.closeDiscovery());
+    console.log("  smoke ✓ long tag facets do not overlap inputs, select-filtered or save-view");
     // 导入策略卡（R69，原型屏 8：三选 + 推荐档 + 逐项回执提示）
     await page.evaluate(() => {
         const stage = document.getElementById("stage");

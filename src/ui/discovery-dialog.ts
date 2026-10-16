@@ -1,4 +1,5 @@
 import {Dialog} from "siyuan";
+import {LIMITS} from "../constants";
 import {getDialogBody} from "./dialog-dom";
 import {ITEM_TYPES, ItemType} from "../model/item";
 import {buildDiscoveryTagFacets, matchesDiscoveryTag} from "../model/discovery-facets";
@@ -225,6 +226,7 @@ function replaceArgs(value: string, args: string[]): string {
  */
 export class DiscoveryDialog implements DiscoveryDialogController {
     private dialog: Dialog | null = null;
+    private saveViewDialog: Dialog | null = null;
     private root: HTMLElement | null = null;
     private list: HTMLElement | null = null;
     private preview: HTMLElement | null = null;
@@ -313,6 +315,8 @@ export class DiscoveryDialog implements DiscoveryDialogController {
             destroyCallback: () => {
                 if (this.closed) return;
                 this.closed = true;
+                this.saveViewDialog?.destroy();
+                this.saveViewDialog = null;
                 const closed = this.deps.service.closeSession(this.sessionId ?? undefined);
                 if (!closed.ok) {
                     this.deps.notify?.("error", closed.reason === "conflict" ? this.tx("discoveryClosePendingWrites") : this.failureMessage(closed));
@@ -350,6 +354,8 @@ export class DiscoveryDialog implements DiscoveryDialogController {
             }
         }
         this.closed = true;
+        this.saveViewDialog?.destroy();
+        this.saveViewDialog = null;
         this.scanSeq++;
         this.previewSeq++;
         this.session = null;
@@ -1092,13 +1098,12 @@ export class DiscoveryDialog implements DiscoveryDialogController {
             ? ` · ${result.data.truncationReasons.filter((reason) => reason !== "cancelled").map((reason) => this.tx(limitKeys[reason] ?? "discoveryTruncated")).join("、")}` : "";
         this.setStatus(`${this.tx("discoveryScanned", String(result.data.scannedBlocks), String(result.data.candidates.length))}${docsSuffix}${notebooksSuffix} · ${this.tx("discoverySkipped", String(result.data.skippedEmpty))}${skippedLong}${suffix}${reasons}${stoppedSuffix}${errorSuffix}`);
         if (result.data.errors.length) this.setReceipt(result.data.errors.map((error) => `${error.sourcePath || this.tx("discoveryScope")}：${this.errorMessage(error.message)}`).join("\n"), true);
-        this.renderList();
         if (this.options.autoSelectFiltered) {
             // 预设视图只自动勾选确定可新增的候选；内容相同/待核验项保留给用户显式确认，避免批量动作误触重复收录。
             const eligible = Array.from(this.candidates.values()).filter((candidate) => candidate.status === "candidate" && this.matches(candidate));
             for (const candidate of eligible) this.selected.add(candidate.key);
-            this.updateSelectionState();
         }
+        this.renderList();
     }
 
     private missingScopeTarget(): boolean {
@@ -1327,19 +1332,7 @@ export class DiscoveryDialog implements DiscoveryDialogController {
 
     private saveCurrentView(): void {
         const tag = this.filterTag?.value.trim() ?? "";
-        if (!tag || !this.deps.onSaveView) return;
-        let name: string | null;
-        try {
-            name = typeof window.prompt === "function" ? window.prompt(this.tx("discoverySaveViewPrompt"), tag) : null;
-        } catch {
-            name = null;
-        }
-        if (name === null) return;
-        const trimmedName = name.trim().slice(0, 32);
-        if (!trimmedName) {
-            this.setReceipt(this.tx("discoverySaveViewInvalid"), true);
-            return;
-        }
+        if (!tag || !this.deps.onSaveView || this.saveViewDialog || this.closed || this.actionBusy || this.scanState === "scanning") return;
         if (this.scope !== "document" && this.scope !== "notebook" && this.scope !== "tree") {
             this.setReceipt(this.tx("discoverySaveViewInvalid"), true);
             return;
@@ -1349,16 +1342,110 @@ export class DiscoveryDialog implements DiscoveryDialogController {
             this.setReceipt(this.tx("discoverySaveViewInvalid"), true);
             return;
         }
-        this.deps.onSaveView({
-            name: trimmedName,
-            tag: tag.slice(0, 64),
+        // Freeze the rule while the naming form is open; background controls must not
+        // change the saved scope or tag. Electron does not support window.prompt().
+        const rule = {
+            tag: tag.slice(0, LIMITS.tag),
             scope: this.scope,
             targetDocId,
             targetNotebookId: "",
-            pathLabel: (this.options.sourcePath ?? "").slice(0, 256),
-            defaultCategory: (this.defaultCategoryInput?.value ?? "").trim().slice(0, 64),
+            pathLabel: (this.options.sourcePath ?? "").slice(0, LIMITS.savedViewPathChars),
+            defaultCategory: (this.defaultCategoryInput?.value ?? "").trim().slice(0, LIMITS.category),
+        };
+        const dialog = new Dialog({
+            title: this.tx("discoverySaveView"),
+            content: "",
+            width: "min(440px, 92vw)",
+            disableClose: true,
+            destroyCallback: () => {
+                this.saveViewDialog = null;
+                if (!this.closed) this.saveViewButton?.focus();
+            },
         });
-        this.setReceipt(this.tx("discoverySaveViewDone", trimmedName));
+        this.saveViewDialog = dialog;
+        dialog.element.querySelector(".b3-dialog__container")?.classList.add("xlc-form-host");
+        const body = getDialogBody(dialog.element);
+        if (!body) {
+            dialog.destroy();
+            this.setReceipt(this.tx("discoverySaveViewInvalid"), true);
+            return;
+        }
+        const form = document.createElement("form");
+        form.className = "xlc-form xlc-save-view-form";
+        form.noValidate = true;
+        const label = document.createElement("label");
+        label.className = "xlc-form-field";
+        const caption = document.createElement("span");
+        caption.className = "xlc-form-label";
+        caption.textContent = this.tx("discoverySaveViewPrompt");
+        const input = document.createElement("input");
+        input.className = "b3-text-field";
+        input.dataset.xlcControl = "discovery.view.name";
+        input.maxLength = LIMITS.savedViewNameChars;
+        input.value = tag.slice(0, LIMITS.savedViewNameChars);
+        input.required = true;
+        const error = document.createElement("div");
+        error.id = `xlc-save-view-error-${Date.now().toString(36)}`;
+        error.className = "xlc-form-error xlc-save-view-error";
+        error.setAttribute("role", "alert");
+        input.setAttribute("aria-describedby", error.id);
+        label.append(caption, input);
+        const actions = document.createElement("div");
+        actions.className = "xlc-form-actions";
+        let settled = false;
+        const cancelNaming = () => {
+            settled = true;
+            dialog.destroy();
+        };
+        const cancel = document.createElement("button");
+        cancel.type = "button";
+        cancel.className = "b3-button b3-button--cancel";
+        cancel.dataset.xlcControl = "discovery.view.cancel";
+        cancel.textContent = this.tx("cancel");
+        cancel.addEventListener("click", cancelNaming);
+        const save = document.createElement("button");
+        save.type = "submit";
+        save.className = "b3-button b3-button--text";
+        save.dataset.xlcControl = "discovery.view.save";
+        save.textContent = this.tx("save");
+        actions.append(cancel, save);
+        form.append(label, error, actions);
+        body.appendChild(form);
+        let composing = false;
+        input.addEventListener("compositionstart", () => { composing = true; });
+        input.addEventListener("compositionend", () => { composing = false; });
+        form.addEventListener("keydown", (event) => {
+            if (event.key === "Enter" && (event.isComposing || composing || event.keyCode === 229)) event.preventDefault();
+            if (event.key === "Escape" && !event.isComposing && !composing) {
+                event.preventDefault();
+                cancelNaming();
+            }
+            event.stopPropagation();
+        });
+        input.addEventListener("input", () => {
+            error.textContent = "";
+            input.removeAttribute("aria-invalid");
+        });
+        form.addEventListener("submit", (event) => {
+            event.preventDefault();
+            if (settled || composing || this.closed || this.saveViewDialog !== dialog) return;
+            const name = input.value.trim().slice(0, LIMITS.savedViewNameChars);
+            if (!name) {
+                error.textContent = this.tx("discoverySaveViewInvalid");
+                input.setAttribute("aria-invalid", "true");
+                input.focus();
+                return;
+            }
+            settled = true;
+            this.deps.onSaveView?.({name, ...rule});
+            this.setReceipt(this.tx("discoverySaveViewDone", name));
+            dialog.destroy();
+        });
+        requestAnimationFrame(() => {
+            if (settled || this.closed || this.saveViewDialog !== dialog) return;
+            input.focus();
+            input.select();
+        });
     }
 
     private changePage(delta: -1 | 1, direction: "previous" | "next"): void {

@@ -57,8 +57,8 @@ const T = (key: string, ...args: string[]): string => {
         discoveryTitle: "从当前文档发现", discoveryTitleNotebook: "从当前笔记本发现", discoveryTitleGeneral: "发现已有内容", discoveryTitleTree: "从此文档发现常用语",
         discoveryScope: "扫描范围", discoveryScopeDocument: "当前文档", discoveryScopeNotebook: "当前笔记本",
         discoveryScopeTree: "指定文档树", discoveryScopeSelectedNotebook: "指定笔记本", discoveryScopeAllNotebooks: "全部笔记本（高级）",
-        discoveryScopeTreeHint: "扫描所选根文档及其下级文档顶层块；加入内容只复制到专用库。",
-        discoveryScopeSelectedNotebookHint: "扫描所选笔记本的文档顶层块；加入内容只复制到专用库。",
+        discoveryScopeTreeHint: "扫描所选根文档及其下级文档顶层块；确认后加入常用库；源文档不变，加入方式见下方。",
+        discoveryScopeSelectedNotebookHint: "扫描所选笔记本的文档顶层块；确认后加入常用库；源文档不变，加入方式见下方。",
         discoverySelectTree: "输入关键词查找文档树根文档", discoverySelectNotebook: "选择要扫描的笔记本", discoverySearch: "搜索",
         discoveryFromTreeMenu: "从此文档发现常用语", discoverySelectTreeRoot: "请选择文档树根文档", discoverySearchingDocs: "正在搜索文档…",
         discoveryNoDocsFound: "没有找到匹配的文档", discoveryNoNotebooks: "当前没有可扫描的笔记本",
@@ -580,7 +580,7 @@ function makeDeps(overrides: {aiEnabled?: boolean; missing?: boolean; mobile?: b
         const issues = [{line: 3, reason: "bad shape"}, {line: 7, reason: "bad shape"}, {line: 11, reason: "bad shape"}];
         openImportPolicyDialog(ctx, parsed, issues, {kind: "json", text: "{}"});
     },
-    openDiscovery(options?: {notebookLoadErrorOnce?: boolean; emptyNotebookList?: boolean; initialTreeRoot?: boolean; candidateCount?: number; initialTag?: string; autoSelectFiltered?: boolean; referenceOnly?: boolean; defaultCategory?: string}): void {
+    openDiscovery(options?: {notebookLoadErrorOnce?: boolean; emptyNotebookList?: boolean; initialTreeRoot?: boolean; candidateCount?: number; initialTag?: string; autoSelectFiltered?: boolean; referenceOnly?: boolean; defaultCategory?: string; longTag?: string}): void {
         let sessionId = "discovery-harness";
         let stopRequested = false;
         let notebookRequests = 0;
@@ -589,6 +589,7 @@ function makeDeps(overrides: {aiEnabled?: boolean; missing?: boolean; mobile?: b
             {key: "candidate-1", sourceDocId: "20240101120001-hijklmn", sourceBlockId: "20240101120002-bbbbbbb", sourcePath: "/项目笔记", itemType: "markdown", title: "客户延期回复", summary: "关于交付延期的说明", tags: ["客服", "延期"], status: "candidate"},
             {key: "candidate-2", sourceDocId: "20240101120001-hijklmn", sourceBlockId: "20240101120003-ccccccc", sourcePath: "/项目笔记", itemType: "text", title: "收件地址", summary: "邮寄地址模板", tags: ["客服", "地址"], status: "same-content", match: {itemId: "xlc-existing0001", title: "已有收件地址"}},
         ];
+        if (options?.longTag) sampleCandidates[0].tags.push(options.longTag);
         const candidates = options?.candidateCount
             ? Array.from({length: options.candidateCount}, (_, index) => ({
                 key: `page-candidate-${String(index + 1).padStart(4, "0")}`,
@@ -686,6 +687,7 @@ function makeDeps(overrides: {aiEnabled?: boolean; missing?: boolean; mobile?: b
             },
             savedViews: savedDiscoveryViews,
             onSaveView: (view) => {
+                document.body.dataset.xlcDiscoverySaveViewCalls = String(Number(document.body.dataset.xlcDiscoverySaveViewCalls ?? 0) + 1);
                 const saved: SavedDiscoveryView = {id: "xlc-view-harness01", ...view};
                 savedDiscoveryViews = [saved, ...savedDiscoveryViews.filter((entry) => entry.id !== saved.id)];
                 document.body.dataset.xlcDiscoverySavedView = JSON.stringify(saved);

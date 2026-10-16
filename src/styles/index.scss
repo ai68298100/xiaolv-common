@@ -2543,10 +2543,7 @@
 .xlc-discovery {
   flex: 1 1 auto;
   height: 100%;
-  overflow: clip;
   min-height: 0;
-  // 标签筛选增加了一个控制项；保持桌面低高度下回执和撤销按钮在首屏内。
-  gap: var(--xlc-space-1);
 
   .xlc-discovery-head,
   .xlc-discovery-status-row,
@@ -2653,13 +2650,13 @@
   }
 
   .xlc-discovery-filters .b3-select {
-    flex: 0 1 160px;
+    flex: 0 1 128px;
     width: auto;
     min-width: 116px;
   }
 
   .xlc-discovery-filters .b3-text-field {
-    flex: 1 1 190px;
+    flex: 1 1 160px;
     width: auto;
     min-width: 150px;
   }
@@ -2675,16 +2672,13 @@
   .xlc-discovery-tag-facets {
     display: flex;
     align-items: center;
-    position: absolute;
-    right: 0;
-    top: 4px;
-    width: min(44%, 360px);
-    flex: none;
-    flex-wrap: nowrap;
+    flex: 1 1 100%;
+    order: 1;
+    flex-wrap: wrap;
     gap: var(--xlc-space-1);
     min-width: 0;
-    max-height: 32px;
-    overflow: hidden;
+    max-height: 96px;
+    overflow-y: auto;
   }
 
   .xlc-discovery-tag-facets-label {
@@ -2695,12 +2689,15 @@
   }
 
   .xlc-tag-facet {
+    max-width: 100%;
+    flex: 0 1 auto;
     min-height: 28px;
     padding: 2px var(--xlc-space-2);
     border-radius: 999px;
     color: var(--b3-theme-on-surface-light);
     font-size: var(--xlc-font-xs);
-    white-space: nowrap;
+    white-space: normal;
+    overflow-wrap: anywhere;
   }
 
   .xlc-tag-facet[aria-pressed="true"] {
@@ -2946,6 +2943,16 @@
     color: var(--b3-theme-on-surface);
     text-align: center;
   }
+}
+
+.b3-dialog__container.xlc-discovery-host .xlc-discovery {
+  // 与 token 根作用域同级，避免宽松间距在低高度窗口挤出回执。
+  gap: var(--xlc-space-1);
+  overflow: auto;
+  overscroll-behavior: contain;
+
+  // 控件和回执保持完整；可用高度不足时允许整个发现工作面滚动。
+  > :not(.xlc-discovery-content) { flex-shrink: 0; }
 }
 
 @media (max-width: 620px) {

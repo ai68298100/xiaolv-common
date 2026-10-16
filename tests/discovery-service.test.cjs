@@ -1122,9 +1122,9 @@ test("指定文档树只扫描根文档及其后代，预览时再次验证树�
     const {service} = makeHarness({
         getBlockInfo: ({id}) => id === treeRoot
             ? {box: NOTEBOOK, path: "/项目/树根.sy"}
-            : {box: NOTEBOOK, path: moved ? "/其他/移动.sy" : "/项目/树根.sy/子文档.sy"},
+            : {box: NOTEBOOK, path: moved ? "/其他/移动.sy" : "/项目/树根/子文档.sy"},
         listDocsByPath: ({path}) => path === "/项目/树根.sy"
-            ? {files: [{id: nestedDoc, path: "/项目/树根.sy/子文档.sy"}]}
+            ? {files: [{id: nestedDoc, path: "/项目/树根/子文档.sy"}]}
             : {files: []},
         getChildBlocks: ({id}) => [{id: id === treeRoot ? BLOCK : BLOCK_TWO, type: "p", content: `来自 ${id}`}],
         bodies: {[BLOCK]: "树根内容", [BLOCK_TWO]: "子文档内容"},
@@ -1135,10 +1135,112 @@ test("指定文档树只扫描根文档及其后代，预览时再次验证树�
     assert.deepEqual(scan.data.candidates.map((candidate) => candidate.sourceDocId), [treeRoot, nestedDoc]);
     const child = scan.data.candidates.find((candidate) => candidate.sourceDocId === nestedDoc);
     assert.ok(child);
+    assert.equal((await service.previewCandidate(scan.data.id, child.key)).ok, true);
     moved = true;
     const preview = await service.previewCandidate(scan.data.id, child.key);
     assert.equal(preview.ok, false);
     assert.equal(preview.reason, "source-changed");
+});
+
+const TREE_SOURCE_MARKDOWN = "子文档标题\n\n留在子文档的正文";
+
+function makePhysicalTreeHarness({rootPath = `/项目/${DOC}.sy`, childPath = `/项目/${DOC}/${DOC_TWO}.sy`} = {}) {
+    const locations = new Map([
+        [DOC, {box: NOTEBOOK, path: rootPath}],
+        [DOC_TWO, {box: NOTEBOOK, path: childPath}],
+    ]);
+    const harness = makeHarness({
+        getBlockInfo: ({id}) => locations.get(id) ?? {box: NOTEBOOK, path: `/${id}.sy`},
+        listDocsByPath: ({path: requestedPath}) => ({files: requestedPath === rootPath
+            ? [{id: DOC_TWO, path: childPath}]
+            : []}),
+        getChildBlocks: ({id}) => id === DOC_TWO ? [{id: BLOCK_TWO, type: "p", content: TREE_SOURCE_MARKDOWN}] : [],
+        bodies: {[BLOCK_TWO]: TREE_SOURCE_MARKDOWN},
+    });
+    return {...harness, locations};
+}
+
+test("树范围按真实 .sy 文件与后代目录关系允许预览和收录", async (t) => {
+    for (const mode of ["copy", "reference"]) {
+        for (const [name, rootPath, childPath] of [
+            ["直属子文档", `/项目/${DOC}.sy`, `/项目/${DOC}/${DOC_TWO}.sy`],
+            ["多层后代及尾部斜线", `/项目/${DOC}.sy/`, `/项目/${DOC}/${DOC_THREE}/${DOC_TWO}.sy/`],
+        ]) {
+            await t.test(`${mode} ${name}`, async () => {
+                const {service, calls} = makePhysicalTreeHarness({rootPath, childPath});
+                const scan = await service.discoverTree(DOC);
+                assert.equal(scan.ok, true);
+                const child = scan.data.candidates.find((candidate) => candidate.sourceDocId === DOC_TWO);
+                assert.ok(child);
+                const preview = await service.previewCandidate(scan.data.id, child.key);
+                assert.equal(preview.ok, true);
+                assert.equal(preview.data.markdown, TREE_SOURCE_MARKDOWN);
+                const added = await service.addCandidate(scan.data.id, child.key, {mode});
+                assert.equal(added.ok, true);
+                assert.equal(added.data.status, "added");
+                const creates = calls.filter((call) => call.endpoint === "library.createItem");
+                assert.equal(creates.length, 1);
+                assert.equal(creates[0].payload.source.sourceDocId, DOC_TWO);
+                if (mode === "reference") {
+                    assert.equal(creates[0].payload.itemType, "blockref");
+                    assert.equal(creates[0].payload.targetBlockId, BLOCK_TWO);
+                    assert.equal(creates[0].payload.markdown.includes("留在子文档的正文"), false);
+                } else {
+                    assert.equal(creates[0].payload.markdown, TREE_SOURCE_MARKDOWN);
+                }
+                assert.equal(calls.some((call) => ["updateBlock", "deleteBlock"].includes(call.endpoint)), false);
+            });
+        }
+    }
+});
+
+test("树范围在预览和写入前拒绝移出、相似路径前缀及跨笔记本", async (t) => {
+    for (const mode of ["copy", "reference"]) {
+        for (const [name, move] of [
+            ["来源移出文档树", (locations) => { locations.get(DOC_TWO).path = `/其他/${DOC_TWO}.sy`; }],
+            ["来源位于相似目录前缀", (locations) => { locations.get(DOC_TWO).path = `/项目/${DOC}-其他/${DOC_TWO}.sy`; }],
+            ["来源移到另一笔记本相同路径", (locations) => { locations.get(DOC_TWO).box = NOTEBOOK_TWO; }],
+            ["树根移到另一笔记本而来源留在原处", (locations) => { locations.get(DOC).box = NOTEBOOK_TWO; }],
+        ]) {
+            await t.test(`${mode} ${name}`, async () => {
+                const {service, calls, locations} = makePhysicalTreeHarness();
+                const scan = await service.discoverTree(DOC);
+                assert.equal(scan.ok, true);
+                const child = scan.data.candidates.find((candidate) => candidate.sourceDocId === DOC_TWO);
+                assert.ok(child);
+                assert.equal((await service.previewCandidate(scan.data.id, child.key)).ok, true);
+                move(locations);
+                // The earlier preview remains cached: adding must independently recheck scope.
+                const added = await service.addCandidate(scan.data.id, child.key, {mode});
+                assert.equal(added.ok, false);
+                assert.equal(added.reason, "source-changed");
+                const preview = await service.previewCandidate(scan.data.id, child.key);
+                assert.equal(preview.ok, false);
+                assert.equal(preview.reason, "source-changed");
+                assert.equal(calls.some((call) => call.endpoint === "library.createItem"), false);
+            });
+        }
+    }
+});
+
+test("树范围跟随根文档当前路径，不沿用扫描时的旧路径", async (t) => {
+    for (const followsRoot of [true, false]) {
+        await t.test(followsRoot ? "整棵树在同一笔记本移动后仍可引用同步" : "来源留在旧位置时不再属于该树", async () => {
+            const {service, calls, locations} = makePhysicalTreeHarness();
+            const scan = await service.discoverTree(DOC);
+            assert.equal(scan.ok, true);
+            const child = scan.data.candidates.find((candidate) => candidate.sourceDocId === DOC_TWO);
+            assert.ok(child);
+            assert.equal((await service.previewCandidate(scan.data.id, child.key)).ok, true);
+            locations.get(DOC).path = `/归档/${DOC}.sy`;
+            if (followsRoot) locations.get(DOC_TWO).path = `/归档/${DOC}/${DOC_TWO}.sy`;
+            const added = await service.addCandidate(scan.data.id, child.key, {mode: "reference"});
+            assert.equal(added.ok, followsRoot);
+            const creates = calls.filter((call) => call.endpoint === "library.createItem");
+            assert.equal(creates.length, followsRoot ? 1 : 0);
+            if (!followsRoot) assert.equal(added.reason, "source-changed");
+        });
+    }
 });
 
 test("全部笔记本要求显式确认，并在单笔记本枚举失败时保留其他结果", async () => {

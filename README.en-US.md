@@ -12,6 +12,14 @@ A quick-recall content launcher for SiYuan Notes: turn frequently used content �
 
 > **Released: v0.4.1 (2026-10-14)** · [Download the latest release](https://github.com/ai68298100/xiaolv-common/releases/latest) · This release includes the token convergence, desktop/mobile density refinements, on-demand discovery, and lazy-loading path fixes.
 
+## Unreleased development (2026-10-16)
+
+- Discovery merges native and custom tags and can create reference entries in batches. Entries contain references and metadata; source blocks stay in place and their current content is read when used.
+- Save an exact tag filter as a view, then reopen document, notebook, or document-tree views from Settings. New candidates are selected automatically in reference mode; syncing again skips existing sources.
+- Saving uses a host naming dialog. Fixes cover checkbox selection, overlapping long tags, clipped undo buttons in small windows, and child-document scope validation.
+
+These changes are unreleased; the local package still reports 0.4.1. See the [Electron acceptance record](docs/electron-acceptance-2026-10-16.md) for verified behavior and remaining boundaries. Android and real AI acceptance remain pending.
+
 ## This release (v0.4.1)
 
 Overall: keep the dedicated library as the default work set while letting users discover existing content from documents, trees, or notebooks and copy selected items into the library.

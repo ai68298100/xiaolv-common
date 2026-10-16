@@ -142,7 +142,6 @@ interface InternalSession {
     scopeKind: DiscoverySessionView["scope"];
     notebookIds: Set<string>;
     treeRootDocId?: string;
-    treeRootPath?: string;
     candidates: Map<string, InternalCandidate>;
     batches: Map<string, InternalAddBatch>;
     acceptingWrites: boolean;
@@ -432,7 +431,7 @@ export class DiscoveryService {
         const displayPath = this.isStopRequested(generation) ? rootPath : await this.getDisplayPath(rootDocId, rootPath);
         if (this.isCancelled(generation)) return this.cancelled();
         return this.scanDocuments(docs, rootDocId, displayPath, "tree", enumerated.truncationReasons, generation,
-            [location.data.notebookId], options.onProgress, enumerated.errors, {rootDocId, rootPath});
+            [location.data.notebookId], options.onProgress, enumerated.errors, {rootDocId});
     }
 
     async discoverNotebook(notebookId: string, options: DiscoverScopeOptions = {}): Promise<DiscoveryReceipt<DiscoverySessionView>> {
@@ -973,7 +972,7 @@ export class DiscoveryService {
         notebookIds: string[],
         onProgress?: DiscoveryProgressCallback,
         initialErrors: Array<{sourcePath: string; message: string}> = [],
-        treeRoot?: {rootDocId: string; rootPath: string},
+        treeRoot?: {rootDocId: string},
         scannedNotebooks = notebookIds.length,
     ): Promise<DiscoveryReceipt<DiscoverySessionView>> {
         const scannedDocuments: Array<{
@@ -1237,7 +1236,6 @@ export class DiscoveryService {
             scopeKind: scope,
             notebookIds: new Set(notebookIds),
             treeRootDocId: treeRoot?.rootDocId,
-            treeRootPath: treeRoot?.rootPath,
             candidates,
             batches: new Map(),
             acceptingWrites: true,
@@ -1393,7 +1391,7 @@ export class DiscoveryService {
         }
     }
 
-    private async isDocumentWithinTree(docId: string, rootDocId: string, rootPath: string): Promise<DiscoveryReceipt<boolean>> {
+    private async isDocumentWithinTree(docId: string, rootDocId: string): Promise<DiscoveryReceipt<boolean>> {
         if (docId === rootDocId) return ok(true);
         const location = await this.getDocumentLocation(docId);
         if (!location.ok) return location;
@@ -1401,7 +1399,9 @@ export class DiscoveryService {
         if (!root.ok) return root;
         if (location.data.notebookId !== root.data.notebookId) return ok(false);
         const candidatePath = location.data.path.replace(/\/+$/, "");
-        const normalizedRoot = (rootPath || root.data.path).replace(/\/+$/, "");
+        // SiYuan stores /root.sy beside the /root/ directory containing its descendants.
+        // Resolve the root again so moving the tree does not leave a stale scope boundary.
+        const normalizedRoot = root.data.path.replace(/\/+$/, "").replace(/\.sy$/, "");
         return ok(candidatePath.startsWith(`${normalizedRoot}/`));
     }
 
@@ -1454,7 +1454,7 @@ export class DiscoveryService {
             return fail("source-changed", "source document moved outside the scanned notebook scope");
         }
         if (session.treeRootDocId) {
-            const withinTree = await this.isDocumentWithinTree(candidate.sourceDocId, session.treeRootDocId, session.treeRootPath || "");
+            const withinTree = await this.isDocumentWithinTree(candidate.sourceDocId, session.treeRootDocId);
             if (!withinTree.ok) return withinTree;
             if (!withinTree.data) return fail("source-changed", "source document moved outside the scanned document tree");
         }

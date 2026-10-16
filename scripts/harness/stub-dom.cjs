@@ -40,8 +40,22 @@ class StubDialog {
     }
 
     destroy() {
-        if (this._destroy) this._destroy();
-        else if (this.element) this.element.remove();
+        if (this._destroyed) return;
+        this._destroyed = true;
+        const finish = () => {
+            if (this._destroy) this._destroy();
+            else {
+                if (this.element) this.element.remove();
+                // The real host mounts Dialog in its constructor; production code
+                // therefore need not call open() before destruction callbacks work.
+                if (typeof this.options.destroyCallback === "function") this.options.destroyCallback();
+            }
+        };
+        if (globalThis.__xlcDeferDialogDestroy === true) {
+            // Exercise the host's closing-animation window before destroyCallback.
+            this.element.dataset.dialogClosing = "true";
+            setTimeout(finish, 100);
+        } else finish();
     }
 }
 

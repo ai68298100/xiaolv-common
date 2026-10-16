@@ -401,6 +401,8 @@ const check = (name, ok, detail = "") => {
         const stage = document.getElementById("stage");
         document.querySelectorAll(".b3-dialog").forEach((el) => el.remove());
         stage.innerHTML = "";
+        delete document.body.dataset.xlcDiscoverySavedView;
+        document.body.dataset.xlcDiscoverySaveViewCalls = "0";
         window.XlcHarness.openDiscovery();
         const dialogRoot = document.querySelector(".b3-dialog");
         if (dialogRoot) stage.appendChild(dialogRoot);
@@ -408,12 +410,18 @@ const check = (name, ok, detail = "") => {
     await page.waitForFunction(() => document.querySelector(".xlc-discovery")?.getAttribute("aria-busy") === "false"
         && document.querySelectorAll(".xlc-discovery-row").length === 2, undefined, {timeout: 3000});
     await page.locator("[data-xlc-control='discovery.filter.tag']").fill("客服");
-    page.once("dialog", async (dialog) => { await dialog.accept("客服话术"); });
     await page.locator("[data-xlc-discovery-action='save-view']").click();
+    await page.locator("[data-xlc-control='discovery.view.name']").fill("客服话术");
+    await page.locator("[data-xlc-control='discovery.view.save']").click();
     await page.waitForFunction(() => Boolean(document.body.dataset.xlcDiscoverySavedView));
-    const savedView = await page.evaluate(() => JSON.parse(document.body.dataset.xlcDiscoverySavedView ?? "null"));
-    check("B19 标签筛选后保存视图并保留规则元数据",
-        savedView?.name === "客服话术" && savedView?.tag === "客服" && savedView?.scope === "document" && !Object.hasOwn(savedView ?? {}, "content"),
+    const savedView = await page.evaluate(() => ({
+        rule: JSON.parse(document.body.dataset.xlcDiscoverySavedView ?? "null"),
+        calls: Number(document.body.dataset.xlcDiscoverySaveViewCalls),
+        formClosed: !document.querySelector(".xlc-save-view-form"),
+    }));
+    check("B19 标签筛选后通过命名表单保存一次并保留规则元数据",
+        savedView.rule?.name === "客服话术" && savedView.rule?.tag === "客服" && savedView.rule?.scope === "document"
+            && !Object.hasOwn(savedView.rule ?? {}, "content") && savedView.calls === 1 && savedView.formClosed,
         JSON.stringify(savedView));
     await page.evaluate(() => {
         window.XlcHarness.closeDiscovery();
@@ -432,10 +440,101 @@ const check = (name, ok, detail = "") => {
         syncLabel: document.querySelector("[data-xlc-discovery-action='add-selected']")?.textContent?.includes("同步到常用库"),
         modeLocked: document.querySelector("[data-xlc-control='discovery.add-mode']")?.disabled === true,
         mode: document.querySelector("[data-xlc-control='discovery.add-mode']")?.value,
+        checkedTitles: Array.from(document.querySelectorAll(".xlc-discovery-row"))
+            .filter((row) => row.querySelector("[data-xlc-control='discovery.candidate.select']")?.checked)
+            .map((row) => row.querySelector(".xlc-discovery-row-title")?.textContent),
     }));
     check("B20 打开保存视图后自动选中并锁定引用模式",
-        reopened.tag === "客服" && reopened.selected?.includes("已选 1 项") && reopened.syncLabel && reopened.modeLocked && reopened.mode === "reference",
+        reopened.tag === "客服" && reopened.selected?.includes("已选 1 项") && reopened.syncLabel && reopened.modeLocked && reopened.mode === "reference"
+            && reopened.checkedTitles.length === 1 && reopened.checkedTitles[0] === "客户延期回复",
         JSON.stringify(reopened));
+
+    // R226：使用真实命名 DOM，原生 prompt 的桩不能覆盖 Electron 兼容边界。
+    await page.locator("[data-xlc-discovery-action='save-view']").click();
+    await page.locator("[data-xlc-control='discovery.view.name']").fill("取消后不应保存");
+    const cancelPending = await page.locator("[data-xlc-control='discovery.view.cancel']").evaluate((button) => {
+        const form = button.closest("form");
+        window.__xlcDeferDialogDestroy = true;
+        button.click();
+        // Official Dialog destruction includes an animation; a pending Enter/submit
+        // during that interval must already be settled as cancelled.
+        form.dispatchEvent(new Event("submit", {bubbles: true, cancelable: true}));
+        window.__xlcDeferDialogDestroy = false;
+        return {calls: Number(document.body.dataset.xlcDiscoverySaveViewCalls), stillConnected: form.isConnected};
+    });
+    await page.waitForFunction(() => !document.querySelector(".xlc-save-view-form"));
+    const cancelledView = await page.evaluate(() => ({
+        calls: Number(document.body.dataset.xlcDiscoverySaveViewCalls),
+        formClosed: !document.querySelector(".xlc-save-view-form"),
+        parentOpen: Boolean(document.querySelector(".xlc-discovery")),
+        focusRestored: document.activeElement?.matches("[data-xlc-discovery-action='save-view']"),
+    }));
+    await page.locator("[data-xlc-discovery-action='save-view']").click();
+    await page.locator("[data-xlc-control='discovery.view.name']").fill("   ");
+    await page.locator("[data-xlc-control='discovery.view.save']").click();
+    const blankView = await page.evaluate(() => ({
+        calls: Number(document.body.dataset.xlcDiscoverySaveViewCalls),
+        formOpen: Boolean(document.querySelector(".xlc-save-view-form")),
+        error: document.querySelector(".xlc-save-view-error")?.textContent,
+        invalid: document.querySelector("[data-xlc-control='discovery.view.name']")?.getAttribute("aria-invalid"),
+    }));
+    check("B21 取消命名不保存并恢复焦点，空名称阻断保存并显示错误",
+        cancelPending.calls === 1 && cancelPending.stillConnected
+            && cancelledView.calls === 1 && cancelledView.formClosed && cancelledView.parentOpen && cancelledView.focusRestored
+            && blankView.calls === 1 && blankView.formOpen && blankView.error?.includes("未保存") && blankView.invalid === "true",
+        JSON.stringify({cancelPending, cancelledView, blankView}));
+    if (await page.locator("[data-xlc-control='discovery.view.cancel']").count()) {
+        await page.locator("[data-xlc-control='discovery.view.cancel']").click();
+    }
+
+    await page.locator("[data-xlc-discovery-action='save-view']").click();
+    await page.locator("[data-xlc-control='discovery.view.name']").fill("输入法确认后的视图");
+    const imeForm = await page.$(".xlc-save-view-form");
+    const composingEnterPrevented = await page.evaluate(() => {
+        const input = document.querySelector("[data-xlc-control='discovery.view.name']");
+        const legacyEnterPrevented = !input.dispatchEvent(new KeyboardEvent("keydown", {key: "Enter", keyCode: 229, bubbles: true, cancelable: true}));
+        input.dispatchEvent(new CompositionEvent("compositionstart", {bubbles: true}));
+        return legacyEnterPrevented
+            && !input.dispatchEvent(new KeyboardEvent("keydown", {key: "Enter", isComposing: true, bubbles: true, cancelable: true}));
+    });
+    await page.keyboard.press("Enter");
+    await imeForm.evaluate((form) => form.dispatchEvent(new Event("submit", {bubbles: true, cancelable: true})));
+    const composingView = await page.evaluate(() => ({
+        calls: Number(document.body.dataset.xlcDiscoverySaveViewCalls),
+        formOpen: Boolean(document.querySelector(".xlc-save-view-form")),
+    }));
+    if (composingView.formOpen) {
+        await page.locator("[data-xlc-control='discovery.view.name']").dispatchEvent("compositionend");
+        await page.keyboard.press("Enter");
+        await page.waitForFunction(() => !document.querySelector(".xlc-save-view-form"));
+    }
+    // A delayed submit from the detached form must not save a second time.
+    await imeForm.evaluate((form) => form.dispatchEvent(new Event("submit", {bubbles: true, cancelable: true})));
+    await imeForm.dispose();
+    const keyboardView = await page.evaluate(() => ({
+        calls: Number(document.body.dataset.xlcDiscoverySaveViewCalls),
+        rule: JSON.parse(document.body.dataset.xlcDiscoverySavedView ?? "null"),
+    }));
+    check("B22 输入法确认不误提交，组合结束后 Enter 保存一次且忽略迟到提交",
+        composingEnterPrevented && composingView.calls === 1 && composingView.formOpen
+            && keyboardView.calls === 2 && keyboardView.rule?.name === "输入法确认后的视图",
+        JSON.stringify({composingEnterPrevented, composingView, keyboardView}));
+
+    await page.locator("[data-xlc-discovery-action='save-view']").click();
+    await page.locator("[data-xlc-control='discovery.view.name']").fill("关闭父窗后不应保存");
+    const orphanForm = await page.$(".xlc-save-view-form");
+    await page.evaluate(() => window.XlcHarness.closeDiscovery());
+    await orphanForm.evaluate((form) => form.dispatchEvent(new Event("submit", {bubbles: true, cancelable: true})));
+    await orphanForm.dispose();
+    const closedView = await page.evaluate(() => ({
+        calls: Number(document.body.dataset.xlcDiscoverySaveViewCalls),
+        parentClosed: !document.querySelector(".xlc-discovery"),
+        namingClosed: !document.querySelector(".xlc-save-view-form"),
+        sessionClosed: document.body.dataset.xlcDiscoverySessionClosed === "true",
+    }));
+    check("B23 关闭发现父窗清理命名窗并阻断残留表单保存",
+        closedView.calls === 2 && closedView.parentClosed && closedView.namingClosed && closedView.sessionClosed,
+        JSON.stringify(closedView));
 
     // ── C. Esc 关闭弹窗 ──
     await open({});
