@@ -10,18 +10,26 @@ A quick-recall content launcher for SiYuan Notes: turn frequently used content �
 
 > Runs fully standalone (no dependency on other Lv plugins), and exposes the `xiaolv-common/v1` protocol for sibling plugins.
 
-> **Released: v0.4.1 (2026-10-14)** · [Download the latest release](https://github.com/ai68298100/xiaolv-common/releases/latest) · This release includes the token convergence, desktop/mobile density refinements, on-demand discovery, and lazy-loading path fixes.
+> **Released: v0.4.2 (2026-10-16)** · [Download the latest release](https://github.com/ai68298100/xiaolv-common/releases/latest) · Keep source notes in place with tag discovery, saved views, and reference syncing, plus improved search, keyboard workflows, and insert-target protection.
 
-## Unreleased development (2026-10-16)
+## This release (v0.4.2)
 
-- Discovery merges native and custom tags and can create reference entries in batches. Entries contain references and metadata; source blocks stay in place and their current content is read when used.
-- Save an exact tag filter as a view, then reopen document, notebook, or document-tree views from Settings. New candidates are selected automatically in reference mode; syncing again skips existing sources.
+Build reusable collections while keeping source notes in place:
+
+- Discovery merges native and custom tags, with exact filtering, tag counts, select-all for the current filter, and batch reference entries. Entries contain references and metadata; source blocks stay in place and their current content is read when used. Copying a content snapshot remains an explicit option.
+- Save an exact tag filter as a view, then reopen document, notebook, or document-tree views from Settings. New candidates are selected automatically in reference mode; syncing again skips existing sources. Reference entries offer separate actions to insert current source content, a block reference, or an embed, copy content, and open the source.
 - Saving uses a host naming dialog. Fixes cover checkbox selection, overlapping long tags, clipped undo buttons in small windows, and child-document scope validation.
 - Notebook views keep the notebook captured during scanning even if the entry document moves. Older rules require saving again. After syncing, closing offers a choice to keep the undo controls or close while retaining added entries. When switching discovery views, confirmation opens the requested target and cancellation keeps the current view.
 
-These changes are unreleased; the local package still reports 0.4.1. See the [Electron acceptance record](docs/electron-acceptance-2026-10-16.md) for verified behavior and remaining boundaries. Android and real AI acceptance remain pending.
+Search and reuse improvements:
 
-## This release (v0.4.1)
+- Multi-keyword matching across fields, highlighting of Chinese characters matched by pinyin, and common polyphonic-word corrections. Query history, clickable tag filters, category badges, per-item usage reset, and a wider search scope from empty Favorites/Recent results make items easier to find.
+- Number shortcuts for insert/copy, Tab navigation, and edit/duplicate/delete/favorite shortcuts. Drop text or links into the search panel, or paste outside an input, to open a capture form. The built-in scene pack now contains 20 templates.
+- Insert targets are captured before asynchronous lookup, content reads, and queue waits. Closed editors or invalid selections fall back to explicit clipboard copy, avoiding insertion into a newly active document. Failed copies remain failures; missing reference sources never silently use stale content.
+
+Verification boundaries: Electron evidence covers specific observed features only. The test mirror also opened the daily workspace and triggered automatic cloud sync; the data impact remains undetermined. Its overall isolation claim has been withdrawn, and further Electron experiments are stopped under B-005. Process checks provide detection only. See the [incident record](https://github.com/ai68298100/xiaolv-common/blob/v0.4.2/docs/electron-isolation-incident-2026-10-16.md) and [acceptance record](https://github.com/ai68298100/xiaolv-common/blob/v0.4.2/docs/electron-acceptance-2026-10-16.md). Android, real AI, selection compatibility after consecutive embeds, and the B-004 settings issue remain open.
+
+## Previous release (v0.4.1)
 
 Overall: keep the dedicated library as the default work set while letting users discover existing content from documents, trees, or notebooks and copy selected items into the library.
 
@@ -63,7 +71,7 @@ Powered by the model **you** configured in SiYuan Settings → AI; the plugin st
 | **AI transform** | action menu ✦ polish / shorten / formalize / translate / bulletize → preview, then insert-transformed / copy / insert-original (**original never modified**) | item content (same toggle) |
 | **AI semantic search** | type `?` + description in the search box → results flagged "AI-picked" | **metadata only** (title/alias/tags/category/summary; never content or source ids) |
 
-If AI tidy or draft generation fails, the form keeps a readable error beside the action and offers retry using the latest content or description. Automated checks cover UI recovery; real-model and Electron-host acceptance remain pending.
+If AI tidy or draft generation fails, the form keeps a readable error beside the action and offers retry using the latest content or description. Automated checks cover UI recovery; real-model acceptance remains pending.
 
 Also built-in: **dynamic placeholders** `{{xlc:date}} / {{xlc:time}} / {{xlc:datetime}} / {{xlc:weekday}} / {{xlc:title}} / {{xlc:doc}} / {{xlc:path}} / {{xlc:clipboard}}` replaced at insert/copy time (stored content always keeps the template; `xlc:` namespace never collides with SiYuan templates).
 
@@ -77,16 +85,16 @@ Also built-in: **dynamic placeholders** `{{xlc:date}} / {{xlc:time}} / {{xlc:dat
 | **Frequent sort** | Insert/copy counts usage (local, clearable); "⇅ Frequent" = count × recency |
 | **Template packs** | Settings → Data → "Template pack": filter by category, export a named `.md` pack with variable list; recipients get real SiYuan blocks |
 | **Custom AI transforms** | Settings → AI assistant → custom transforms (≤10), listed beside the five built-ins in the action menu ✦ section |
-| **Prompt scene pack** | Settings → AI assistant → import the built-in pack: 16 editable templates across quick guide / address / email / contacts / support / AI prompts / dev writing |
+| **Prompt scene pack** | Settings → AI assistant → import the built-in pack: 20 editable templates across quick guide / address / email / contacts / support / AI prompts / dev writing / invoices / returns / reminders / FAQ |
 | **Quick capture** | Command "Quick capture clipboard as item" (⌥⇧V): form-less one-step save with type inference and honest duplicate skip |
 
-## B-001 desktop acceptance (one-shot script)
+## B-001 kernel acceptance script
 
 ```bash
 SIYUAN_ORIGIN=http://127.0.0.1:6806 SIYUAN_TOKEN=<your token> pnpm e2e
 ```
 
-Mirrors every kernel flow the plugin uses (create library doc → append items + attrs → read-back / search / export → update → cleanup) and prints a per-item ✔/✖ summary.
+Covers library creation, items and attributes, read-back/search/export, updates, and cleanup, with a per-item ✔/✖ summary. Kernel acceptance does not establish Electron, real AI, or Android behavior. See [Known limitations](#known-limitations-honest-list) for the partial Electron evidence and the B-005 isolation incident and stop condition.
 
 ## Insert semantics per type
 
@@ -98,7 +106,7 @@ Mirrors every kernel flow the plugin uses (create library doc → append items +
 | code | code block (language kept) | raw code | source doc/block |
 | image | `![](assets/…)` | markdown link (bitmap copy pending device verification) | asset preview |
 | asset | `[name](assets/…)` | markdown link | asset preview |
-| blockref | `((id 'anchor'))` reference | content copy (`copy-content`) | target block |
+| blockref | `((id 'anchor'))` reference; separate source-content and embed actions | current source content (`copy-content`) | target block |
 | structure | structure as-is (superblock unwrapped) | markdown | source doc/block |
 
 Missing assets: insert/open fail honestly, copy-link still works. Deleted sources show a "source missing" badge — never silently disappearing.
@@ -108,9 +116,9 @@ Missing assets: insert/open fail honestly, copy-link still works. Deleted source
 After choosing a library, build it in this order:
 
 1. **Capture**: save a selection from the context menu, use Quick capture for the clipboard, or click **＋ New** in the panel. To reuse existing notes, choose **Discover common phrases from current document** from the editor context menu or command palette, preview candidates, then add the ones you want. Add a clear title, tags, and category so later searches can find it.
-2. **Reuse**: open the top-bar panel, press `Enter` to insert and `Ctrl/⌘+Enter` to copy. On mobile, tap an item to select it and update the preview; use the bottom action to insert when a target is available, or copy as an explicit fallback when no target is available. Long-press opens more actions. Favorites and Frequent sort keep high-use items close.
+2. **Reuse**: open the top-bar panel, press `Enter` to insert and `Ctrl/⌘+Enter` to copy. On mobile, tap an item to select it and update the preview; use the bottom action to insert when a target is available, or copy as an explicit fallback when no target is available. Long-press opens more actions. Favorites and Frequent sort keep high-use items close. Save a tag-filtered discovery view and reopen it from Settings → Saved views to sync reference entries.
 3. **Template**: write `{{xlc:ask:field}}` for a value requested on insert and `{{xlc:ask:field|A,B}}` for a dropdown. Date and clipboard placeholders expand only when called; the stored template stays unchanged.
-4. **Organize**: start with categories such as support, email, address, contacts, prompts, writing, and development. Settings → AI assistant → **Import prompt scene pack** provides 16 editable examples, including a usage guide, email signature, address, and contact card. Import is explicit and goes through the duplicate policy; it never writes silently.
+4. **Organize**: start with categories such as support, email, address, contacts, prompts, writing, and development. Settings → AI assistant → **Import prompt scene pack** provides 20 editable examples, including a usage guide, email signature, address, contact card, invoice details, return instructions, reminders, and FAQ. Import is explicit and goes through the duplicate policy; it never writes silently.
 
 Keep one scenario per item, turn changing details (recipient, date, amount) into variables, and use tags to connect related variants.
 
@@ -119,7 +127,7 @@ Keep one scenario per item, turn changing details (recipient, date, amount) into
 ```js
 const common = app.plugins.find((p) => p.name === "xiaolv-common");
 await common.service.search({text: "apology", itemType: "", tag: "", scope: "all"});
-await common.service.insert(itemId, {mode: "insert"}); // insert|copy|copy-content|insert-ref|insert-embed|open
+await common.service.insert(itemId, {mode: "insert"}); // insert|insert-content|copy|copy-content|insert-ref|insert-embed|open
 common.registerProvider({protocol: "xiaolv-common", protocolVersion: 1, pluginId: "your-plugin", displayName: "Your Plugin"});
 common.protocolCommands["xiaolv.common.open"]();
 ```
@@ -139,17 +147,19 @@ Interfaces: `getCapabilities / search / get / save / update / remove / insert / 
 ```bash
 pnpm i
 pnpm run check   # tsc --noEmit
-pnpm test        # esbuild + node --test (209 tests)
+pnpm test        # esbuild + node --test
 pnpm run build   # dist/ + package.zip
-pnpm run test:ui # production UI smoke (15 suites + screenshots)
+pnpm run test:ui # production UI smoke + screenshots
 ```
 
 Protocol docs: [AGENTS.md](AGENTS.md) (dev protocol) · [ROADMAP.md](ROADMAP.md) · [docs/adr/](docs/adr/) · [docs/host-contract.md](docs/host-contract.md) · [docs/positioning.md](docs/positioning.md)
 
 ## Known limitations (honest list)
 
-- **Desktop/Android real-host acceptance not completed yet** (kernel token + device session pending, see BLOCKERS B-001/B-002/B-003): mobile actions without a target degrade to clipboard copy; insertion with a selected target is not yet device-verified. Bitmap image copy degrades to a markdown link.
-- Pinyin search ships with tiny-pinyin (local annotation, toggleable, ADR 0004/R5).
+- **Host evidence has limits**: independent kernel flows have passed, and SiYuan 3.8.7 / Electron 44.7.0 has partial feature observations. The test mirror's overall isolation claim was withdrawn after it opened the daily workspace and triggered cloud sync; the data impact is undetermined. Further Electron experiments remain stopped under B-005; process checks do not replace operating-system isolation. See the [incident record](https://github.com/ai68298100/xiaolv-common/blob/v0.4.2/docs/electron-isolation-incident-2026-10-16.md) and [blockers](https://github.com/ai68298100/xiaolv-common/blob/v0.4.2/BLOCKERS.md).
+- Real AI, Android touch behavior, and bitmap clipboard copy remain unverified. Mobile actions without a target fall back to copy; targeted insertion remains unverified on a real device. Bitmap copy falls back to a Markdown link. Consecutive reference/embed actions can invalidate the host selection and cause explicit copy fallback. The B-004 settings issue remains open despite finite stress samples not reproducing it.
+- Saved views support documents, the current notebook, and document trees, up to 20 rules. Selected-notebook/all-notebook discovery remains available manually but cannot be saved as a view. Syncing requires a user action; it does not run automatically in the background. Older notebook rules without a fixed target must be saved again.
+- Pinyin search ships with tiny-pinyin (local annotation, toggleable, ADR 0004/R5), plus a small dictionary correcting common polyphonic words; it is not a complete pronunciation dictionary.
 - Tree mode expands root + 3 child-document levels; item index caps at 2000 (truncation is flagged, data stays safe in the library).
 - Import conflict detection is by stable logical id (no content-level diff).
 - "Pick existing doc" uses keyword search; a full doc-picker awaits a public host API.
