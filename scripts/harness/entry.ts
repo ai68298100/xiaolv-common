@@ -580,7 +580,7 @@ function makeDeps(overrides: {aiEnabled?: boolean; missing?: boolean; mobile?: b
         const issues = [{line: 3, reason: "bad shape"}, {line: 7, reason: "bad shape"}, {line: 11, reason: "bad shape"}];
         openImportPolicyDialog(ctx, parsed, issues, {kind: "json", text: "{}"});
     },
-    openDiscovery(options?: {notebookLoadErrorOnce?: boolean; emptyNotebookList?: boolean; initialTreeRoot?: boolean; candidateCount?: number; initialTag?: string; autoSelectFiltered?: boolean; referenceOnly?: boolean; defaultCategory?: string; longTag?: string}): void {
+    openDiscovery(options?: {notebookLoadErrorOnce?: boolean; emptyNotebookList?: boolean; initialTreeRoot?: boolean; initialNotebookId?: string; candidateCount?: number; initialTag?: string; autoSelectFiltered?: boolean; referenceOnly?: boolean; defaultCategory?: string; longTag?: string; saveViewRejected?: boolean; unknownSourceNotebook?: boolean}): void {
         let sessionId = "discovery-harness";
         let stopRequested = false;
         let notebookRequests = 0;
@@ -603,10 +603,11 @@ function makeDeps(overrides: {aiEnabled?: boolean; missing?: boolean; mobile?: b
                 status: "candidate" as const,
             }))
             : sampleCandidates;
-        const makeView = (scope: "document" | "notebook" | "tree" | "all-notebooks", stopped = false) => ({id: sessionId, scope, sourceDocId: "20240101120001-hijklmn", sourcePath: "/项目笔记", candidates: candidates.map((candidate) => ({...candidate})), scannedBlocks: 4, scannedDocs: 1, scannedNotebooks: scope === "all-notebooks" ? 2 : 1, skippedEmpty: 1, skippedLong: 0, truncated: stopped, stopped, truncationReasons: stopped ? ["cancelled"] : [], errors: []});
+        const makeView = (scope: "document" | "notebook" | "tree" | "all-notebooks", stopped = false) => ({id: sessionId, scope, sourceDocId: "20240101120001-hijklmn", sourceNotebookId: options?.unknownSourceNotebook ? undefined : "20240101120000-notebk1", sourcePath: "/项目笔记", candidates: candidates.map((candidate) => ({...candidate})), scannedBlocks: 4, scannedDocs: 1, scannedNotebooks: scope === "all-notebooks" ? 2 : 1, skippedEmpty: 1, skippedLong: 0, truncated: stopped, stopped, truncationReasons: stopped ? ["cancelled"] : [], errors: []});
         const service = {
             discoverCurrentDocument: async () => ({ok: true as const, data: makeView("document")}),
             discoverCurrentNotebook: async (_docId: string, options?: {onProgress?: (progress: {phase: "enumerating" | "scanning"; scannedDocs: number; scannedBlocks: number; discoveredDocs: number; totalDocs?: number}) => void}) => {
+                document.body.dataset.xlcDiscoveryScopeUsed = "current-notebook";
                 stopRequested = false;
                 options?.onProgress?.({phase: "enumerating", scannedDocs: 0, scannedBlocks: 0, discoveredDocs: 3});
                 options?.onProgress?.({phase: "scanning", scannedDocs: 1, scannedBlocks: 4, discoveredDocs: 3, totalDocs: 3});
@@ -621,7 +622,7 @@ function makeDeps(overrides: {aiEnabled?: boolean; missing?: boolean; mobile?: b
             discoverNotebook: async (notebookId: string) => {
                 document.body.dataset.xlcDiscoveryScopeUsed = "selected-notebook";
                 document.body.dataset.xlcDiscoveryTargetNotebook = notebookId;
-                return {ok: true as const, data: makeView("notebook")};
+                return {ok: true as const, data: {...makeView("notebook"), sourceNotebookId: notebookId}};
             },
             discoverAllNotebooks: async (options?: {confirmed?: boolean}) => {
                 document.body.dataset.xlcDiscoveryScopeUsed = options?.confirmed ? "all-confirmed" : "all-unconfirmed";
@@ -659,14 +660,17 @@ function makeDeps(overrides: {aiEnabled?: boolean; missing?: boolean; mobile?: b
                 }};
             },
             closeSession: () => {
-                document.body.dataset.xlcDiscoverySessionClosed = "true";
+                document.body.dataset.xlcDiscoveryCloseAttempts = String(Number(document.body.dataset.xlcDiscoveryCloseAttempts ?? 0) + 1);
                 if (document.body.dataset.xlcDiscoveryCloseConflict === "true") {
                     return {ok: false as const, reason: "conflict" as const, message: "write pending"};
                 }
+                document.body.dataset.xlcDiscoverySessionClosed = "true";
+                document.body.dataset.xlcDiscoveryCloseSuccesses = String(Number(document.body.dataset.xlcDiscoveryCloseSuccesses ?? 0) + 1);
                 return {ok: true, data: {closed: true, activeWrites: 0}};
             },
             requestScanStop: () => { stopRequested = true; return true; },
         };
+        document.body.dataset.xlcDiscoverySaveViewRejected = String(options?.saveViewRejected === true);
         discoveryController = openDiscoveryDialog({
             t: T,
             service,
@@ -675,19 +679,20 @@ function makeDeps(overrides: {aiEnabled?: boolean; missing?: boolean; mobile?: b
                 notebookRequests++;
                 if (options?.notebookLoadErrorOnce && notebookRequests === 1) throw new Error("offline");
                 if (options?.emptyNotebookList) return [];
-                return [{id: "20240101", name: "笔记本一"}, {id: "20240102", name: "笔记本二"}];
+                return [{id: "20240101120000-notebk1", name: "笔记本一"}, {id: "20240102120000-notebk2", name: "笔记本二"}];
             },
             searchDocs: async (keyword) => {
                 treeSearchRequests++;
                 document.body.dataset.xlcDiscoveryTreeSearchRequests = String(treeSearchRequests);
                 if (keyword === "旧项目") await new Promise((resolve) => setTimeout(resolve, 100));
-                if (keyword === "项目") return [{id: "20240101120001-hijklmn", hPath: "/项目笔记", box: "20240101", name: "项目笔记"}];
-                if (keyword === "新项目") return [{id: "20240102120001-qrstuvw", hPath: "/新项目", box: "20240102", name: "新项目"}];
+                if (keyword === "项目") return [{id: "20240101120001-hijklmn", hPath: "/项目笔记", box: "20240101120000-notebk1", name: "项目笔记"}];
+                if (keyword === "新项目") return [{id: "20240102120001-qrstuvw", hPath: "/新项目", box: "20240102120000-notebk2", name: "新项目"}];
                 return [];
             },
             savedViews: savedDiscoveryViews,
             onSaveView: (view) => {
                 document.body.dataset.xlcDiscoverySaveViewCalls = String(Number(document.body.dataset.xlcDiscoverySaveViewCalls ?? 0) + 1);
+                if (document.body.dataset.xlcDiscoverySaveViewRejected === "true") return false;
                 const saved: SavedDiscoveryView = {id: "xlc-view-harness01", ...view};
                 savedDiscoveryViews = [saved, ...savedDiscoveryViews.filter((entry) => entry.id !== saved.id)];
                 document.body.dataset.xlcDiscoverySavedView = JSON.stringify(saved);
@@ -695,8 +700,9 @@ function makeDeps(overrides: {aiEnabled?: boolean; missing?: boolean; mobile?: b
         }, {
             docId: "20240101120001-hijklmn",
             sourcePath: "/项目笔记",
-            scope: options?.initialTreeRoot ? "tree" : undefined,
+            scope: options?.initialNotebookId ? "notebook" : options?.initialTreeRoot ? "tree" : undefined,
             initialTreeRootId: options?.initialTreeRoot ? "20240101120001-hijklmn" : undefined,
+            initialNotebookId: options?.initialNotebookId,
             title: options?.initialTreeRoot ? "从此文档发现常用语" : undefined,
             initialTag: options?.initialTag,
             autoSelectFiltered: options?.autoSelectFiltered,
@@ -704,8 +710,24 @@ function makeDeps(overrides: {aiEnabled?: boolean; missing?: boolean; mobile?: b
             defaultCategory: options?.defaultCategory,
         });
     },
-    closeDiscovery(): void {
-        if (discoveryController?.close() !== false) discoveryController = null;
+    closeDiscovery(force = false): boolean {
+        const closed = discoveryController?.close(force) ?? true;
+        if (closed) discoveryController = null;
+        return closed;
+    },
+    requestCloseDiscovery(callbackKey: string, force = false): boolean {
+        const onClosed = () => {
+            const calls = JSON.parse(document.body.dataset.xlcDiscoveryCloseCallbacks ?? "{}") as Record<string, number>;
+            calls[callbackKey] = (calls[callbackKey] ?? 0) + 1;
+            document.body.dataset.xlcDiscoveryCloseCallbacks = JSON.stringify(calls);
+        };
+        if (!discoveryController) {
+            onClosed();
+            return true;
+        }
+        const closed = discoveryController.close(force, onClosed);
+        if (closed) discoveryController = null;
+        return closed;
     },
     completeDeferredTidy(): void {
         deferredTidyResponse?.({ok: true, title: "迟到的旧建议", alias: "旧别名", tags: ["旧标签"], category: "旧分类"});

@@ -1243,6 +1243,29 @@ test("树范围跟随根文档当前路径，不沿用扫描时的旧路径", as
     }
 });
 
+test("单笔记本发现会话冻结实际扫描 ID，不随入口文档后续移动改变", async (t) => {
+    for (const method of ["discoverCurrentNotebook", "discoverNotebook"]) {
+        await t.test(method, async () => {
+            let anchorNotebook = NOTEBOOK;
+            const {service, calls} = makeHarness({
+                getBlockInfo: () => ({box: anchorNotebook, path: `/${DOC}.sy`}),
+                listDocsByPath: ({notebook, path: requestedPath}) => ({files: notebook === NOTEBOOK && requestedPath === "/"
+                    ? [{id: DOC, path: `/${DOC}.sy`}]
+                    : []}),
+            });
+            const scan = await service[method](method === "discoverNotebook" ? NOTEBOOK : DOC);
+            assert.equal(scan.ok, true);
+            assert.equal(scan.data.scope, "notebook");
+            assert.equal(scan.data.sourceNotebookId, NOTEBOOK);
+            anchorNotebook = NOTEBOOK_TWO;
+            assert.equal(scan.data.sourceNotebookId, NOTEBOOK);
+            const listedNotebooks = calls.filter((call) => call.endpoint === "listDocsByPath").map((call) => call.payload.notebook);
+            assert.ok(listedNotebooks.length > 0);
+            assert.equal(listedNotebooks.every((notebook) => notebook === NOTEBOOK), true);
+        });
+    }
+});
+
 test("全部笔记本要求显式确认，并在单笔记本枚举失败时保留其他结果", async () => {
     const {service, calls} = makeHarness({
         lsNotebooks: () => ({notebooks: [
@@ -1262,6 +1285,7 @@ test("全部笔记本要求显式确认，并在单笔记本枚举失败时保�
     const scan = await service.discoverAllNotebooks({confirmed: true});
     assert.equal(scan.ok, true);
     assert.equal(scan.data.scope, "all-notebooks");
+    assert.equal(scan.data.sourceNotebookId, undefined);
     assert.equal(scan.data.candidates.length, 1);
     assert.equal(scan.data.errors.length, 1);
     assert.match(scan.data.errors[0].message, /temporarily unavailable/);

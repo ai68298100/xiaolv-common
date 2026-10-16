@@ -49,6 +49,8 @@ export interface DiscoverySessionView {
     id: string;
     sourceDocId: string;
     sourcePath: string;
+    /** Actual notebook scanned for a single-notebook session; independent of the entry document's later location. */
+    sourceNotebookId?: string;
     scope: "document" | "tree" | "notebook" | "all-notebooks";
     scannedDocs?: number;
     scannedNotebooks?: number;
@@ -1217,6 +1219,7 @@ export class DiscoveryService {
             id: makeSessionId(),
             sourceDocId: rootDocId,
             sourcePath: rootPath,
+            ...(scope === "notebook" && notebookIds.length === 1 ? {sourceNotebookId: notebookIds[0]} : {}),
             scope,
             scannedDocs,
             scannedNotebooks,

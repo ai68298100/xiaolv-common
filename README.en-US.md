@@ -17,6 +17,7 @@ A quick-recall content launcher for SiYuan Notes: turn frequently used content â
 - Discovery merges native and custom tags and can create reference entries in batches. Entries contain references and metadata; source blocks stay in place and their current content is read when used.
 - Save an exact tag filter as a view, then reopen document, notebook, or document-tree views from Settings. New candidates are selected automatically in reference mode; syncing again skips existing sources.
 - Saving uses a host naming dialog. Fixes cover checkbox selection, overlapping long tags, clipped undo buttons in small windows, and child-document scope validation.
+- Notebook views keep the notebook captured during scanning even if the entry document moves. Older rules require saving again. After syncing, closing offers a choice to keep the undo controls or close while retaining added entries. When switching discovery views, confirmation opens the requested target and cancellation keeps the current view.
 
 These changes are unreleased; the local package still reports 0.4.1. See the [Electron acceptance record](docs/electron-acceptance-2026-10-16.md) for verified behavior and remaining boundaries. Android and real AI acceptance remain pending.
 

@@ -134,7 +134,7 @@
 | 类型/变量/AI/失效徽标 | text、markdown、url、code、image、asset、ref、var、ai、warn | 文字标签与色彩并用；亮暗主题颜色来自局部语义变量；来源告警附 aria-label/title。 | `dialog.ts`、`tokens-r187.scss` |
 | 状态行、计数和回执 | info/loading/error/success 文案由页面提供 | 搜索一般状态使用 `role=status`；鉴权/权限错误升为 `role=alert`，分别显示登录失效/访问权限不足；发现状态/回执 `aria-live`。通用 toast 状态组件未建立。 | `dialog.ts`、`discovery-dialog.ts`；auth failure smoke |
 | 空态 | 空库、无命中、筛选无命中、空预览、无发现候选、空 provider、鉴权/权限失败 | 区分原因与下一步：新建、清除筛选、重新扫描、改范围或选中条目。访问错误空态清空失效结果、不出现新建 CTA，仅提供可重试入口；其他主要为空态图形/符号和文案组合，未承诺统一 bitmap 插图。 | 搜索/发现/设置实现；empty、auth recovery smoke |
-| 确认弹窗 | 删除、重复内容、覆盖、退出时有撤销批次 | 破坏性动作说明对象/影响后再确认；可条件恢复的发现收录有撤销动作。关闭/取消有各自语义。 | `capture.ts`、`settings-dialog.ts`、`discovery-dialog.ts` |
+| 确认弹窗 | 删除、重复内容、覆盖、退出时有撤销批次 | 破坏性动作说明对象/影响后再确认；可条件恢复的发现收录有撤销动作。发现关闭使用官方 Dialog，`discovery.close.cancel` 默认聚焦并保留撤销，`discovery.close.confirm` 重新核验写入后关闭；切换入口在成功关闭后继续，取消不切换。 | `capture.ts`、`settings-dialog.ts`、`discovery-dialog.ts`；ADR 0050 |
 | 文档/笔记本选择器 | loading、ready、empty、error | 加载反馈、无匹配/空列表说明、错误原因和可触发重试；当前目标需显式选择或确认。 | `settings-dialog.ts`、`discovery-dialog.ts`；setup/discovery smoke |
 | 发现分页器 | 当前页、页数、前后页 | 第一页/最后一页边界按钮禁用；换页保留筛选与候选选择状态；页码以 `role=status`、`aria-live=polite` 播报；结果为空时仍保留 `role=list`/`listitem` 语义。 | `discovery-dialog.ts`；`test:ui` 205 候选场景验证 4 次键盘翻页 |
 | 原型状态样例控件 | 屏 11 样例动作 | 仅视觉标签，不触发生产功能；使用非按钮元素以免误认成可点交互。发现页实际静态镜像单独位于屏 10。 | `prototype.html`；通过截图渲染核对 |

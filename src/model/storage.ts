@@ -155,10 +155,14 @@ export function normalizeSavedDiscoveryViews(raw: unknown): SavedDiscoveryView[]
         const tag = typeof item.tag === "string" ? item.tag.trim().slice(0, LIMITS.tag) : "";
         const scope = item.scope;
         if (!SAVED_VIEW_ID_RE.test(id) || seen.has(id) || !name || !tag || !isSavedDiscoveryScope(scope)) continue;
-        const targetDocId = typeof item.targetDocId === "string" && isBlockId(item.targetDocId) ? item.targetDocId : "";
-        const targetNotebookId = typeof item.targetNotebookId === "string" && NOTEBOOK_ID_RE.test(item.targetNotebookId) ? item.targetNotebookId : "";
-        if ((scope === "document" || scope === "notebook" || scope === "tree") && !targetDocId) continue;
+        let targetDocId = typeof item.targetDocId === "string" && isBlockId(item.targetDocId) ? item.targetDocId : "";
+        const targetNotebookId = typeof item.targetNotebookId === "string" && isBlockId(item.targetNotebookId) ? item.targetNotebookId : "";
+        if ((scope === "document" || scope === "tree") && !targetDocId) continue;
+        // Keep legacy anchor-only notebook shortcuts visible, but callers must never infer
+        // their notebook from an anchor that may have moved. New rules use the frozen ID.
+        if (scope === "notebook" && !targetNotebookId && !targetDocId) continue;
         if (scope === "selected-notebook" && !targetNotebookId) continue;
+        if ((scope === "notebook" || scope === "selected-notebook") && targetNotebookId) targetDocId = "";
         const pathLabel = typeof item.pathLabel === "string" ? item.pathLabel.trim().slice(0, LIMITS.savedViewPathChars) : "";
         const defaultCategory = typeof item.defaultCategory === "string" ? item.defaultCategory.trim().slice(0, LIMITS.category) : "";
         seen.add(id);

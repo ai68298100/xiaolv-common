@@ -536,6 +536,238 @@ const check = (name, ok, detail = "") => {
         closedView.calls === 2 && closedView.parentClosed && closedView.namingClosed && closedView.sessionClosed,
         JSON.stringify(closedView));
 
+    const openDiscoveryForAudit = async (options = {}) => {
+        await page.evaluate((options) => {
+            document.body.dataset.xlcDiscoveryCloseConflict = "false";
+            window.XlcHarness.closeDiscovery(true);
+            document.querySelectorAll(".b3-dialog").forEach((el) => el.remove());
+            const stage = document.getElementById("stage");
+            stage.innerHTML = "";
+            document.body.dataset.xlcDiscoveryCloseAttempts = "0";
+            document.body.dataset.xlcDiscoveryCloseSuccesses = "0";
+            document.body.dataset.xlcDiscoveryCloseCallbacks = "{}";
+            document.body.dataset.xlcDiscoverySaveViewCalls = "0";
+            delete document.body.dataset.xlcDiscoveryNotice;
+            delete document.body.dataset.xlcDiscoverySessionClosed;
+            delete document.body.dataset.xlcDiscoverySavedView;
+            delete document.body.dataset.xlcDiscoveryScopeUsed;
+            delete document.body.dataset.xlcDiscoveryTargetNotebook;
+            window.XlcHarness.openDiscovery(options);
+            stage.appendChild(document.querySelector(".b3-dialog"));
+        }, options);
+        await page.waitForFunction(() => document.querySelector(".xlc-discovery")?.getAttribute("aria-busy") === "false");
+    };
+    const openDiscoveryWithBatch = async () => {
+        await openDiscoveryForAudit({candidateCount: 3});
+        await page.locator("[data-xlc-discovery-key='page-candidate-0001'] [data-xlc-discovery-action='add-one']").click();
+        await page.waitForFunction(() => Boolean(document.querySelector("[data-xlc-discovery-action='undo-batch']"))
+            && document.querySelector("[data-xlc-discovery-action='close']")?.disabled === false);
+    };
+    const discoveryCloseState = () => page.evaluate(() => ({
+        parentOpen: Boolean(document.querySelector(".xlc-discovery")),
+        undoAvailable: Boolean(document.querySelector("[data-xlc-discovery-action='undo-batch']")),
+        confirmations: document.querySelectorAll(".xlc-discovery-close-form").length,
+        attempts: Number(document.body.dataset.xlcDiscoveryCloseAttempts ?? 0),
+        successes: Number(document.body.dataset.xlcDiscoveryCloseSuccesses ?? 0),
+        closed: document.body.dataset.xlcDiscoverySessionClosed === "true",
+        pendingReceipt: document.querySelector(".xlc-discovery-receipt")?.textContent?.includes("有收录正在写入内容库") === true,
+    }));
+
+    await openDiscoveryWithBatch();
+    const deferredClose = await page.evaluate(() => [window.XlcHarness.closeDiscovery(), window.XlcHarness.closeDiscovery()]);
+    await page.locator(".xlc-discovery-close-form").waitFor({state: "visible"});
+    const singleConfirmation = await discoveryCloseState();
+    const cancelledCloseForm = await page.$(".xlc-discovery-close-form");
+    const cancelledWhileClosing = await page.locator("[data-xlc-control='discovery.close.cancel']").evaluate((button) => {
+        const form = button.closest("form");
+        window.__xlcDeferDialogDestroy = true;
+        try {
+            button.click();
+            form.dispatchEvent(new Event("submit", {bubbles: true, cancelable: true}));
+            return {connected: form.isConnected, attempts: Number(document.body.dataset.xlcDiscoveryCloseAttempts ?? 0)};
+        } finally { window.__xlcDeferDialogDestroy = false; }
+    });
+    await page.waitForFunction(() => !document.querySelector(".xlc-discovery-close-form"));
+    await cancelledCloseForm.evaluate((form) => form.dispatchEvent(new Event("submit", {bubbles: true, cancelable: true})));
+    await cancelledCloseForm.dispose();
+    const cancelledClose = await discoveryCloseState();
+    let escapedClose = null;
+    if (cancelledClose.parentOpen) {
+        await page.evaluate(() => window.XlcHarness.closeDiscovery());
+        await page.locator("[data-xlc-control='discovery.close.cancel']").focus();
+        await page.keyboard.press("Escape");
+        escapedClose = await discoveryCloseState();
+    }
+    check("B24 批次关闭同步返回false且只开一窗，取消/Esc和迟到提交保留会话与撤销",
+        deferredClose.every((result) => result === false) && singleConfirmation.confirmations === 1
+            && cancelledWhileClosing.connected && cancelledWhileClosing.attempts === 0
+            && cancelledClose.parentOpen && cancelledClose.undoAvailable && cancelledClose.attempts === 0 && !cancelledClose.closed
+            && escapedClose?.parentOpen && escapedClose.undoAvailable && escapedClose.confirmations === 0 && escapedClose.attempts === 0,
+        JSON.stringify({deferredClose, singleConfirmation, cancelledWhileClosing, cancelledClose, escapedClose}));
+
+    await openDiscoveryWithBatch();
+    await page.evaluate(() => {
+        window.XlcHarness.closeDiscovery();
+        document.body.dataset.xlcDiscoveryCloseConflict = "true";
+    });
+    await page.locator("[data-xlc-control='discovery.close.confirm']").click();
+    const pendingClose = await discoveryCloseState();
+    await openDiscoveryWithBatch();
+    await page.evaluate(() => window.XlcHarness.closeDiscovery());
+    const busyClose = await page.evaluate(() => {
+        // An action can begin after the confirmation is shown. Drive the real
+        // asynchronous add handler and submit within the same event turn.
+        document.querySelector("[data-xlc-discovery-key='page-candidate-0002'] [data-xlc-discovery-action='add-one']").click();
+        const wasBusy = document.querySelector("[data-xlc-discovery-action='close']")?.disabled === true;
+        document.querySelector("[data-xlc-control='discovery.close.confirm']").click();
+        return {wasBusy, parentOpen: Boolean(document.querySelector(".xlc-discovery")), attempts: Number(document.body.dataset.xlcDiscoveryCloseAttempts ?? 0)};
+    });
+    await page.waitForFunction(() => !document.querySelector(".xlc-discovery")
+        || document.querySelector("[data-xlc-discovery-action='close']")?.disabled === false);
+    const afterBusyClose = await discoveryCloseState();
+    check("B25 确认关闭重查service写入冲突和actionBusy并保留父窗与撤销",
+        pendingClose.parentOpen && pendingClose.undoAvailable && pendingClose.pendingReceipt
+            && pendingClose.attempts === 1 && pendingClose.successes === 0 && !pendingClose.closed
+            && busyClose.wasBusy && busyClose.parentOpen && busyClose.attempts === 0 && afterBusyClose.parentOpen && afterBusyClose.undoAvailable,
+        JSON.stringify({pendingClose, busyClose, afterBusyClose}));
+
+    await openDiscoveryWithBatch();
+    await page.evaluate(() => window.XlcHarness.closeDiscovery());
+    const acceptedCloseForm = await page.$(".xlc-discovery-close-form");
+    await page.locator("[data-xlc-control='discovery.close.confirm']").click();
+    await acceptedCloseForm.evaluate((form) => {
+        form.dispatchEvent(new Event("submit", {bubbles: true, cancelable: true}));
+        form.dispatchEvent(new Event("submit", {bubbles: true, cancelable: true}));
+    });
+    await acceptedCloseForm.dispose();
+    const acceptedClose = await discoveryCloseState();
+    check("B26 明确确认关闭父窗并只成功结束一次会话，重复提交无效",
+        !acceptedClose.parentOpen && acceptedClose.confirmations === 0 && acceptedClose.attempts === 1
+            && acceptedClose.successes === 1 && acceptedClose.closed,
+        JSON.stringify(acceptedClose));
+
+    await openDiscoveryWithBatch();
+    await page.evaluate(() => window.XlcHarness.closeDiscovery());
+    const hostClosedForm = await page.$(".xlc-discovery-close-form");
+    await page.evaluate(() => document.querySelector(".xlc-discovery").closest(".b3-dialog").__xlcHarnessDestroyDialog());
+    await hostClosedForm.evaluate((form) => form.dispatchEvent(new Event("submit", {bubbles: true, cancelable: true})));
+    await hostClosedForm.dispose();
+    const hostClosed = await discoveryCloseState();
+    check("B27 宿主销毁父窗清理确认窗并忽略残留提交",
+        !hostClosed.parentOpen && hostClosed.confirmations === 0 && hostClosed.closed && hostClosed.attempts === 1 && hostClosed.successes === 1,
+        JSON.stringify(hostClosed));
+
+    await openDiscoveryForAudit();
+    await page.locator(".xlc-discovery-scope-select").selectOption("notebook");
+    await page.waitForFunction(() => document.querySelector(".xlc-discovery")?.getAttribute("aria-busy") === "false");
+    await page.locator("[data-xlc-control='discovery.filter.tag']").fill("客服");
+    await page.locator("[data-xlc-discovery-action='save-view']").click();
+    await page.locator("[data-xlc-control='discovery.view.name']").fill("客服笔记本视图");
+    await page.locator("[data-xlc-control='discovery.view.save']").click();
+    const notebookRule = await page.evaluate(() => JSON.parse(document.body.dataset.xlcDiscoverySavedView ?? "null"));
+    await openDiscoveryForAudit({initialNotebookId: notebookRule?.targetNotebookId, initialTag: "客服", autoSelectFiltered: true, referenceOnly: true});
+    const notebookReopened = await page.evaluate(() => ({
+        dispatch: document.body.dataset.xlcDiscoveryScopeUsed,
+        target: document.body.dataset.xlcDiscoveryTargetNotebook,
+        scope: document.querySelector(".xlc-discovery-scope-select")?.value,
+        checked: document.querySelectorAll("[data-xlc-control='discovery.candidate.select']:checked").length,
+    }));
+    check("B28 笔记本视图冻结笔记本ID且重开严格调用discoverNotebook",
+        notebookRule?.scope === "notebook" && notebookRule?.targetNotebookId === "20240101120000-notebk1" && notebookRule?.targetDocId === ""
+            && notebookReopened.dispatch === "selected-notebook" && notebookReopened.target === notebookRule.targetNotebookId
+            && notebookReopened.scope === "notebook" && notebookReopened.checked === 1,
+        JSON.stringify({notebookRule, notebookReopened}));
+
+    const closeCallbacks = () => page.evaluate(() => JSON.parse(document.body.dataset.xlcDiscoveryCloseCallbacks ?? "{}"));
+    const submitCloseForm = (form) => form.evaluate((element) => element.dispatchEvent(new Event("submit", {bubbles: true, cancelable: true})));
+    await openDiscoveryForAudit();
+    const immediateReturns = await page.evaluate(() => [window.XlcHarness.requestCloseDiscovery("immediate"), window.XlcHarness.requestCloseDiscovery("already-closed")]);
+    const immediateCallbacks = await closeCallbacks();
+    await openDiscoveryWithBatch();
+    const continuationReturns = await page.evaluate(() => [window.XlcHarness.requestCloseDiscovery("first"), window.XlcHarness.requestCloseDiscovery("duplicate")]);
+    const continuationForm = await page.$(".xlc-discovery-close-form");
+    const beforeConfirmationCallbacks = await closeCallbacks();
+    await page.evaluate(() => { document.body.dataset.xlcDiscoveryCloseConflict = "true"; });
+    await submitCloseForm(continuationForm);
+    const rejectedCallbacks = await closeCallbacks();
+    const rejectedContinuation = await discoveryCloseState();
+    if (rejectedContinuation.parentOpen) {
+        await page.evaluate(() => { document.body.dataset.xlcDiscoveryCloseConflict = "false"; });
+        await submitCloseForm(continuationForm);
+    }
+    await submitCloseForm(continuationForm);
+    await continuationForm.dispose();
+    const confirmedCallbacks = await closeCallbacks();
+    await openDiscoveryWithBatch();
+    await page.evaluate(() => window.XlcHarness.requestCloseDiscovery("cancelled"));
+    const cancelledContinuationForm = await page.$(".xlc-discovery-close-form");
+    await page.locator("[data-xlc-control='discovery.close.cancel']").evaluate((button) => {
+        window.__xlcDeferDialogDestroy = true;
+        try {
+            button.click();
+            button.closest("form").dispatchEvent(new Event("submit", {bubbles: true, cancelable: true}));
+        } finally { window.__xlcDeferDialogDestroy = false; }
+    });
+    await page.waitForFunction(() => !document.querySelector(".xlc-discovery-close-form"));
+    await submitCloseForm(cancelledContinuationForm);
+    await cancelledContinuationForm.dispose();
+    const cancelledCallbacks = await closeCallbacks();
+    const cancelledContinuation = await discoveryCloseState();
+    await openDiscoveryWithBatch();
+    await page.evaluate(() => window.XlcHarness.requestCloseDiscovery("abandoned"));
+    const forcedContinuationForm = await page.$(".xlc-discovery-close-form");
+    const forcedReturn = await page.evaluate(() => window.XlcHarness.requestCloseDiscovery("force", true));
+    await submitCloseForm(forcedContinuationForm);
+    await forcedContinuationForm.dispose();
+    const forcedCallbacks = await closeCallbacks();
+    const forcedContinuation = await discoveryCloseState();
+    check("B29 关闭continuation仅成功后一次执行，取消/迟到/卸载丢弃旧回调",
+        immediateReturns.every(Boolean) && immediateCallbacks.immediate === 1 && immediateCallbacks["already-closed"] === 1
+            && continuationReturns.every((result) => result === false) && Object.keys(beforeConfirmationCallbacks).length === 0
+            && Object.keys(rejectedCallbacks).length === 0 && rejectedContinuation.parentOpen
+            && confirmedCallbacks.first === 1 && !confirmedCallbacks.duplicate
+            && Object.keys(cancelledCallbacks).length === 0 && cancelledContinuation.parentOpen && cancelledContinuation.undoAvailable
+            && forcedReturn === true && forcedCallbacks.force === 1 && !forcedCallbacks.abandoned && !forcedContinuation.parentOpen,
+        JSON.stringify({immediateReturns, immediateCallbacks, continuationReturns, beforeConfirmationCallbacks, rejectedCallbacks, rejectedContinuation, confirmedCallbacks, cancelledCallbacks, cancelledContinuation, forcedReturn, forcedCallbacks, forcedContinuation}));
+
+    await openDiscoveryForAudit({initialTag: "客服", saveViewRejected: true});
+    await page.locator("[data-xlc-discovery-action='save-view']").click();
+    await page.locator("[data-xlc-control='discovery.view.name']").fill("保存失败后重试");
+    const rejectedSaveForm = await page.$(".xlc-save-view-form");
+    await page.locator("[data-xlc-control='discovery.view.save']").click();
+    const rejectedSave = await page.evaluate(() => ({
+        formOpen: Boolean(document.querySelector(".xlc-save-view-form")),
+        error: document.querySelector(".xlc-save-view-error")?.textContent,
+        saved: document.body.dataset.xlcDiscoverySavedView,
+        calls: Number(document.body.dataset.xlcDiscoverySaveViewCalls ?? 0),
+        saysSaved: document.querySelector(".xlc-discovery-receipt")?.textContent?.includes("已保存") === true,
+    }));
+    await page.evaluate(() => { document.body.dataset.xlcDiscoverySaveViewRejected = "false"; });
+    if (rejectedSave.formOpen) await page.locator("[data-xlc-control='discovery.view.save']").click();
+    await rejectedSaveForm.evaluate((form) => form.dispatchEvent(new Event("submit", {bubbles: true, cancelable: true})));
+    await rejectedSaveForm.dispose();
+    const retriedSave = await page.evaluate(() => ({
+        formOpen: Boolean(document.querySelector(".xlc-save-view-form")),
+        saved: JSON.parse(document.body.dataset.xlcDiscoverySavedView ?? "null"),
+        calls: Number(document.body.dataset.xlcDiscoverySaveViewCalls ?? 0),
+    }));
+    await openDiscoveryForAudit({initialTag: "客服", unknownSourceNotebook: true});
+    await page.locator(".xlc-discovery-scope-select").selectOption("notebook");
+    await page.waitForFunction(() => document.querySelector(".xlc-discovery")?.getAttribute("aria-busy") === "false");
+    await page.locator("[data-xlc-discovery-action='save-view']").click();
+    const unknownNotebookSave = await page.evaluate(() => ({
+        formOpen: Boolean(document.querySelector(".xlc-save-view-form")),
+        saved: document.body.dataset.xlcDiscoverySavedView,
+        calls: Number(document.body.dataset.xlcDiscoverySaveViewCalls ?? 0),
+        receipt: document.querySelector(".xlc-discovery-receipt")?.textContent,
+    }));
+    check("B30 保存回调拒绝保留命名表单且可重试，未知笔记本真源阻断保存",
+        rejectedSave.formOpen && Boolean(rejectedSave.error) && !rejectedSave.saved && rejectedSave.calls === 1 && !rejectedSave.saysSaved
+            && !retriedSave.formOpen && retriedSave.saved?.name === "保存失败后重试" && retriedSave.calls === 2
+            && !unknownNotebookSave.formOpen && !unknownNotebookSave.saved && unknownNotebookSave.calls === 0 && Boolean(unknownNotebookSave.receipt),
+        JSON.stringify({rejectedSave, retriedSave, unknownNotebookSave}));
+    await page.evaluate(() => window.XlcHarness.closeDiscovery());
+
     // ── C. Esc 关闭弹窗 ──
     await open({});
     await sleep(200);

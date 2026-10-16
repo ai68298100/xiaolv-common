@@ -455,11 +455,16 @@ export default class XiaolvCommonPlugin extends Plugin {
         scope: "document" | "notebook" | "tree",
         sourcePath?: string,
         initialTreeRootId?: string,
-        preset?: {initialTag?: string; autoSelectFiltered?: boolean; referenceOnly?: boolean; defaultCategory?: string},
+        preset?: {initialTag?: string; initialNotebookId?: string; autoSelectFiltered?: boolean; referenceOnly?: boolean; defaultCategory?: string},
     ): void {
         if (this.discoveryDialog) {
-            if (!this.discoveryDialog.close()) return;
-            this.discoveryDialog = null;
+            const closingDialog = this.discoveryDialog;
+            closingDialog.close(false, () => {
+                if (this.discoveryDialog !== closingDialog || this.unloading) return;
+                this.discoveryDialog = null;
+                this.showDiscoveryDialog(docId, scope, sourcePath, initialTreeRootId, preset);
+            });
+            return;
         }
         this.discoveryDialog = openDiscoveryDialog({
             t: this.i18nFn(),
@@ -491,21 +496,30 @@ export default class XiaolvCommonPlugin extends Plugin {
     }
 
     /** 保存发现面板的标签规则；侧车只保留规则和入口元数据，不保存源块正文。 */
-    private saveDiscoveryView(view: Omit<SavedDiscoveryView, "id">): void {
+    private saveDiscoveryView(view: Omit<SavedDiscoveryView, "id">): boolean {
+        const [normalized] = normalizeSavedDiscoveryViews([{
+            id: `xlc-view-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 10)}`,
+            ...view,
+        }]);
+        if (!normalized || (normalized.scope === "notebook" && !isBlockId(normalized.targetNotebookId))) {
+            this.notify("error", this.i18nFn()("discoverySaveViewInvalid"));
+            return false;
+        }
         const current = this.state.search.savedDiscoveryViews ?? [];
-        const sameRule = current.find((entry) => entry.name === view.name
-            && entry.tag === view.tag
-            && entry.scope === view.scope
-            && entry.targetDocId === view.targetDocId
-            && entry.targetNotebookId === view.targetNotebookId);
-        const id = sameRule?.id ?? `xlc-view-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 10)}`;
+        const sameRule = current.find((entry) => entry.name === normalized.name
+            && entry.tag === normalized.tag
+            && entry.scope === normalized.scope
+            && entry.targetDocId === normalized.targetDocId
+            && entry.targetNotebookId === normalized.targetNotebookId);
+        const id = sameRule?.id ?? normalized.id;
         const next = normalizeSavedDiscoveryViews([
-            {id, ...view},
+            {...normalized, id},
             ...current.filter((entry) => entry.id !== sameRule?.id),
         ]);
         this.state.search.savedDiscoveryViews = next;
         this.persistSoon();
-        this.notify("info", this.i18nFn()("discoverySaveViewDone", view.name));
+        this.notify("info", this.i18nFn()("discoverySaveViewDone", normalized.name));
+        return true;
     }
 
     /** 从设置页重开保存的标签视图；打开前校验目标，避免失效 ID 回退到当前文档。 */
@@ -522,20 +536,27 @@ export default class XiaolvCommonPlugin extends Plugin {
             this.notify("info", this.i18nFn()("discoveryScopeUnavailable"));
             return;
         }
-        if (view.scope === "notebook" && !this.discovery.discoverCurrentNotebook) {
-            this.notify("info", this.i18nFn()("discoveryNotebookUnavailable"));
-            return;
+        if (view.scope === "notebook") {
+            if (!isBlockId(view.targetNotebookId)) {
+                this.notify("error", this.i18nFn()("discoverySavedNotebookUnfixed"));
+                return;
+            }
+            if (!this.discovery.discoverNotebook) {
+                this.notify("info", this.i18nFn()("discoveryNotebookUnavailable"));
+                return;
+            }
         }
         if (view.scope === "tree" && (!this.discovery.discoverTree || !this.library.searchDocs)) {
             this.notify("info", this.i18nFn()("discoveryScopeUnavailable"));
             return;
         }
-        if (!isBlockId(view.targetDocId)) {
+        if (view.scope !== "notebook" && !isBlockId(view.targetDocId)) {
             this.notify("error", this.i18nFn()("discoverySourceUnavailable"));
             return;
         }
-        this.showDiscoveryDialog(view.targetDocId, view.scope, view.pathLabel || undefined, view.scope === "tree" ? view.targetDocId : undefined, {
+        this.showDiscoveryDialog(view.scope === "notebook" ? "" : view.targetDocId, view.scope, view.pathLabel || undefined, view.scope === "tree" ? view.targetDocId : undefined, {
             initialTag: view.tag,
+            ...(view.scope === "notebook" ? {initialNotebookId: view.targetNotebookId} : {}),
             autoSelectFiltered: true,
             referenceOnly: true,
             defaultCategory: view.defaultCategory,

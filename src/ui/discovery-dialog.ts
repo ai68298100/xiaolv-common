@@ -1,7 +1,7 @@
 import {Dialog} from "siyuan";
 import {LIMITS} from "../constants";
 import {getDialogBody} from "./dialog-dom";
-import {ITEM_TYPES, ItemType} from "../model/item";
+import {isBlockId, ITEM_TYPES, ItemType} from "../model/item";
 import {buildDiscoveryTagFacets, matchesDiscoveryTag} from "../model/discovery-facets";
 import type {SavedDiscoveryView} from "../model/storage";
 import type {
@@ -39,7 +39,7 @@ export interface DiscoveryDialogDeps {
     listNotebooks?: () => Promise<DiscoveryNotebook[]>;
     searchDocs?: (keyword: string) => Promise<DiscoveryDoc[]>;
     savedViews?: readonly SavedDiscoveryView[];
-    onSaveView?: (view: Omit<SavedDiscoveryView, "id">) => void;
+    onSaveView?: (view: Omit<SavedDiscoveryView, "id">) => boolean | void;
 }
 
 export interface DiscoveryDialogOptions {
@@ -53,6 +53,8 @@ export interface DiscoveryDialogOptions {
     scope?: DiscoveryScope;
     /** Initial root for a document-tree entry point; later tree searches still require explicit selection. */
     initialTreeRootId?: string;
+    /** Frozen notebook target for a saved view; never infer it from the anchor document. */
+    initialNotebookId?: string;
     /** Optional saved-view preset. The dialog still revalidates the target before scanning. */
     initialTag?: string;
     autoSelectFiltered?: boolean;
@@ -62,7 +64,8 @@ export interface DiscoveryDialogOptions {
 
 export interface DiscoveryDialogController {
     open(): void;
-    close(force?: boolean): boolean;
+    /** Calls onClosed only after successful closure; cancelled confirmations discard it. */
+    close(force?: boolean, onClosed?: () => void): boolean;
 }
 
 const FALLBACKS: Record<string, string> = {
@@ -115,6 +118,13 @@ const FALLBACKS: Record<string, string> = {
     discoveryUseDefaultCategory: "恢复默认",
     discoveryRescanKeepsUndo: "请先撤销或关闭本批次，再重新扫描。",
     discoveryCloseKeepsUndo: "本次发现仍有可撤销的收录批次。关闭会丢失撤销入口；仍要关闭吗？",
+    discoveryCloseTitle: "关闭发现窗口",
+    discoveryCloseKeepsItems: "已加入的常用内容会保留；关闭不会撤销新增内容。",
+    discoveryCloseCancel: "返回并保留撤销",
+    discoveryCloseConfirm: "仍然关闭",
+    discoveryTitleSavedNotebook: "从已保存笔记本发现",
+    discoveryScopeSavedNotebook: "已保存笔记本",
+    discoveryScopeHintSavedNotebook: "扫描视图保存时的笔记本；入口文档移动不会更换扫描目标，源文档不会被修改。",
     discoveryScopeHintDocument: "只读取当前文档的顶层块；收录前可预览，原文不会被修改。",
     discoveryScopeHintNotebook: "扫描当前文档所属笔记本的顶层块；候选会显示各自来源，收录方式可选引用或独立副本。",
     discoveryNotebookUnavailable: "当前版本暂不支持笔记本范围发现",
@@ -227,6 +237,7 @@ function replaceArgs(value: string, args: string[]): string {
 export class DiscoveryDialog implements DiscoveryDialogController {
     private dialog: Dialog | null = null;
     private saveViewDialog: Dialog | null = null;
+    private closeConfirmationDialog: Dialog | null = null;
     private root: HTMLElement | null = null;
     private list: HTMLElement | null = null;
     private preview: HTMLElement | null = null;
@@ -281,7 +292,7 @@ export class DiscoveryDialog implements DiscoveryDialogController {
     constructor(private readonly deps: DiscoveryDialogDeps, private readonly options: DiscoveryDialogOptions) {
         this.scope = options.scope === "tree" && deps.service.discoverTree && deps.searchDocs
             ? "tree"
-            : options.scope === "notebook" && deps.service.discoverCurrentNotebook ? "notebook" : "document";
+            : options.scope === "notebook" && (options.initialNotebookId !== undefined || deps.service.discoverCurrentNotebook) ? "notebook" : "document";
         if (this.scope === "tree" && options.initialTreeRootId) {
             this.targetDocId = options.initialTreeRootId;
             this.initialTreeRootId = options.initialTreeRootId;
@@ -292,7 +303,7 @@ export class DiscoveryDialog implements DiscoveryDialogController {
     }
 
     private titleKey(): string {
-        return this.scope === "notebook" ? "discoveryTitleNotebook"
+        return this.scope === "notebook" ? this.options.initialNotebookId !== undefined ? "discoveryTitleSavedNotebook" : "discoveryTitleNotebook"
             : this.scope === "tree" ? "discoveryTitleTree"
                 : this.scope === "document" ? "discoveryTitle" : "discoveryTitleGeneral";
     }
@@ -317,6 +328,8 @@ export class DiscoveryDialog implements DiscoveryDialogController {
                 this.closed = true;
                 this.saveViewDialog?.destroy();
                 this.saveViewDialog = null;
+                this.closeConfirmationDialog?.destroy();
+                this.closeConfirmationDialog = null;
                 const closed = this.deps.service.closeSession(this.sessionId ?? undefined);
                 if (!closed.ok) {
                     this.deps.notify?.("error", closed.reason === "conflict" ? this.tx("discoveryClosePendingWrites") : this.failureMessage(closed));
@@ -341,21 +354,44 @@ export class DiscoveryDialog implements DiscoveryDialogController {
         void this.scan();
     }
 
-    close(force = false): boolean {
+    close(force = false, onClosed?: () => void): boolean {
+        if (!this.dialog) {
+            onClosed?.();
+            return true;
+        }
+        if (!force && this.closeConfirmationDialog) return false;
+        if (!force && this.undoableBatchIds.size && !this.actionBusy) {
+            this.openCloseConfirmation(onClosed);
+            return false;
+        }
+        const closed = this.finishClose(force);
+        if (closed) onClosed?.();
+        return closed;
+    }
+
+    private finishClose(force = false, onRejected?: (message: string) => void): boolean {
         if (!this.dialog) return true;
         if (!force) {
-            if (this.undoableBatchIds.size && !window.confirm(this.tx("discoveryCloseKeepsUndo"))) return false;
+            if (this.actionBusy) {
+                const message = this.tx("discoveryClosePendingWrites");
+                this.setReceipt(message, true, Array.from(this.undoableBatchIds));
+                onRejected?.(message);
+                return false;
+            }
             const closed = this.deps.service.closeSession(this.sessionId ?? undefined);
             if (!closed.ok) {
                 const message = closed.reason === "conflict" ? this.tx("discoveryClosePendingWrites") : this.failureMessage(closed);
-                this.setReceipt(message, true);
+                this.setReceipt(message, true, Array.from(this.undoableBatchIds));
                 this.deps.notify?.("error", message);
+                onRejected?.(message);
                 return false;
             }
         }
         this.closed = true;
         this.saveViewDialog?.destroy();
         this.saveViewDialog = null;
+        this.closeConfirmationDialog?.destroy();
+        this.closeConfirmationDialog = null;
         this.scanSeq++;
         this.previewSeq++;
         this.session = null;
@@ -364,6 +400,75 @@ export class DiscoveryDialog implements DiscoveryDialogController {
         this.dialog = null;
         dialog.destroy();
         return true;
+    }
+
+    private openCloseConfirmation(onClosed?: () => void): void {
+        if (this.closeConfirmationDialog || this.closed) return;
+        const dialog = new Dialog({
+            title: this.tx("discoveryCloseTitle"),
+            content: "",
+            width: "min(440px, 92vw)",
+            disableClose: true,
+            destroyCallback: () => {
+                if (this.closeConfirmationDialog === dialog) this.closeConfirmationDialog = null;
+                if (!this.closed) this.closeButton?.focus();
+            },
+        });
+        this.closeConfirmationDialog = dialog;
+        dialog.element.querySelector(".b3-dialog__container")?.classList.add("xlc-form-host");
+        const body = getDialogBody(dialog.element);
+        if (!body) {
+            dialog.destroy();
+            this.setReceipt(this.tx("discoveryCloseKeepsUndo"), true, Array.from(this.undoableBatchIds));
+            return;
+        }
+        const form = document.createElement("form");
+        form.className = "xlc-form xlc-discovery-close-form";
+        const warning = document.createElement("p");
+        warning.className = "xlc-form-hint";
+        warning.textContent = `${this.tx("discoveryCloseKeepsUndo")} ${this.tx("discoveryCloseKeepsItems")}`;
+        const error = document.createElement("div");
+        error.className = "xlc-form-error";
+        error.setAttribute("role", "alert");
+        const actions = document.createElement("div");
+        actions.className = "xlc-form-actions";
+        let settled = false;
+        const cancelClose = () => {
+            settled = true;
+            dialog.destroy();
+        };
+        const cancel = document.createElement("button");
+        cancel.type = "button";
+        cancel.className = "b3-button b3-button--cancel";
+        cancel.dataset.xlcControl = "discovery.close.cancel";
+        cancel.textContent = this.tx("discoveryCloseCancel");
+        cancel.addEventListener("click", cancelClose);
+        const confirm = document.createElement("button");
+        confirm.type = "submit";
+        confirm.className = "b3-button b3-button--text";
+        confirm.dataset.xlcControl = "discovery.close.confirm";
+        confirm.textContent = this.tx("discoveryCloseConfirm");
+        actions.append(cancel, confirm);
+        form.append(warning, error, actions);
+        body.appendChild(form);
+        form.addEventListener("keydown", (event) => {
+            if (event.key === "Escape" && !event.isComposing && event.keyCode !== 229) {
+                event.preventDefault();
+                cancelClose();
+            }
+            if (event.key === "Enter" && (event.isComposing || event.keyCode === 229)) event.preventDefault();
+            event.stopPropagation();
+        });
+        form.addEventListener("submit", (event) => {
+            event.preventDefault();
+            if (settled || this.closed || this.closeConfirmationDialog !== dialog) return;
+            if (!this.finishClose(false, (message) => { error.textContent = message; })) return;
+            settled = true;
+            onClosed?.();
+        });
+        requestAnimationFrame(() => {
+            if (!settled && !this.closed && this.closeConfirmationDialog === dialog) cancel.focus();
+        });
     }
 
     private renderShell(): void {
@@ -392,8 +497,9 @@ export class DiscoveryDialog implements DiscoveryDialogController {
         this.scopeSelect.appendChild(documentOption);
         const notebookOption = document.createElement("option");
         notebookOption.value = "notebook";
-        notebookOption.textContent = this.tx("discoveryScopeNotebook");
-        notebookOption.disabled = !this.deps.service.discoverCurrentNotebook;
+        notebookOption.textContent = this.tx(this.options.initialNotebookId !== undefined ? "discoveryScopeSavedNotebook" : "discoveryScopeNotebook");
+        notebookOption.disabled = this.options.initialNotebookId !== undefined
+            ? !this.deps.service.discoverNotebook : !this.deps.service.discoverCurrentNotebook;
         if (notebookOption.disabled) notebookOption.title = this.tx("discoveryNotebookUnavailable");
         this.scopeSelect.appendChild(notebookOption);
         for (const [value, key, enabled] of [
@@ -795,7 +901,7 @@ export class DiscoveryDialog implements DiscoveryDialogController {
 
     private scopeHintText(): string {
         const hint = this.scope === "document" ? this.tx("discoveryScopeHintDocument")
-            : this.scope === "notebook" ? this.tx("discoveryScopeHintNotebook")
+            : this.scope === "notebook" ? this.tx(this.options.initialNotebookId !== undefined ? "discoveryScopeHintSavedNotebook" : "discoveryScopeHintNotebook")
                 : this.scope === "tree" ? this.tx("discoveryScopeTreeHint")
                     : this.scope === "selected-notebook" ? this.tx("discoveryScopeSelectedNotebookHint")
                         : this.tx("discoveryAllWarning", "20", "200", "8", "2,000", "500", "100,000", "2,000,000", "60");
@@ -1028,8 +1134,18 @@ export class DiscoveryDialog implements DiscoveryDialogController {
                         this.setStatus(this.tx("discoveryNotebookProgress", String(progress.scannedDocs), total, String(progress.scannedBlocks)));
                     },
                 };
-            if (this.scope === "notebook" && this.deps.service.discoverCurrentNotebook) {
-                result = await this.deps.service.discoverCurrentNotebook(this.options.docId, progress);
+            if (this.scope === "notebook") {
+                if (this.options.initialNotebookId !== undefined) {
+                    result = !isBlockId(this.options.initialNotebookId)
+                        ? {ok: false, reason: "invalid-input", message: "saved notebook id is invalid"}
+                        : !this.deps.service.discoverNotebook
+                            ? {ok: false, reason: "kernel-error", message: this.tx("discoveryNotebookUnavailable")}
+                            : await this.deps.service.discoverNotebook(this.options.initialNotebookId, progress);
+                } else {
+                    result = this.deps.service.discoverCurrentNotebook
+                        ? await this.deps.service.discoverCurrentNotebook(this.options.docId, progress)
+                        : {ok: false, reason: "kernel-error", message: this.tx("discoveryNotebookUnavailable")};
+                }
             } else if (this.scope === "tree" && this.deps.service.discoverTree) {
                 result = await this.deps.service.discoverTree(this.targetDocId, progress);
             } else if (this.scope === "selected-notebook" && this.deps.service.discoverNotebook) {
@@ -1332,13 +1448,14 @@ export class DiscoveryDialog implements DiscoveryDialogController {
 
     private saveCurrentView(): void {
         const tag = this.filterTag?.value.trim() ?? "";
-        if (!tag || !this.deps.onSaveView || this.saveViewDialog || this.closed || this.actionBusy || this.scanState === "scanning") return;
+        if (!tag || !this.deps.onSaveView || this.saveViewDialog || this.closeConfirmationDialog || this.closed || this.actionBusy || this.scanState === "scanning") return;
         if (this.scope !== "document" && this.scope !== "notebook" && this.scope !== "tree") {
             this.setReceipt(this.tx("discoverySaveViewInvalid"), true);
             return;
         }
-        const targetDocId = this.scope === "tree" ? this.targetDocId : this.options.docId;
-        if (!targetDocId) {
+        const targetDocId = this.scope === "notebook" ? "" : this.scope === "tree" ? this.targetDocId : this.options.docId;
+        const targetNotebookId = this.scope === "notebook" ? this.session?.sourceNotebookId ?? "" : "";
+        if (this.scope === "notebook" ? !isBlockId(targetNotebookId) || this.session?.scope !== "notebook" : !isBlockId(targetDocId)) {
             this.setReceipt(this.tx("discoverySaveViewInvalid"), true);
             return;
         }
@@ -1348,7 +1465,7 @@ export class DiscoveryDialog implements DiscoveryDialogController {
             tag: tag.slice(0, LIMITS.tag),
             scope: this.scope,
             targetDocId,
-            targetNotebookId: "",
+            targetNotebookId,
             pathLabel: (this.options.sourcePath ?? "").slice(0, LIMITS.savedViewPathChars),
             defaultCategory: (this.defaultCategoryInput?.value ?? "").trim().slice(0, LIMITS.category),
         };
@@ -1437,7 +1554,12 @@ export class DiscoveryDialog implements DiscoveryDialogController {
                 return;
             }
             settled = true;
-            this.deps.onSaveView?.({name, ...rule});
+            if (this.deps.onSaveView?.({name, ...rule}) === false) {
+                settled = false;
+                error.textContent = this.tx("discoverySaveViewInvalid");
+                input.focus();
+                return;
+            }
             this.setReceipt(this.tx("discoverySaveViewDone", name));
             dialog.destroy();
         });

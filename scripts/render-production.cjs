@@ -1816,7 +1816,7 @@ fs.writeFileSync(path.join(OUT, "harness.html"), html);
         throw new Error("empty tree search must clear the previous target and disable scanning: " + JSON.stringify(treeTargetAfterEmptySearch));
     }
     await page.locator(".xlc-discovery-scope-select").selectOption("selected-notebook");
-    await page.locator(".xlc-discovery-scope-target select").selectOption("20240102");
+    await page.locator(".xlc-discovery-scope-target select").selectOption("20240102120000-notebk2");
     await page.waitForFunction(() => document.body.dataset.xlcDiscoveryScopeUsed === "selected-notebook");
     await page.locator(".xlc-discovery-scope-select").selectOption("all-notebooks");
     const allNotebookWarning = await page.locator(".xlc-discovery-notice").textContent();
@@ -2060,8 +2060,8 @@ fs.writeFileSync(path.join(OUT, "harness.html"), html);
     if (!notebookLoadRecovery.selectEnabled || !notebookLoadRecovery.retryHidden) {
         throw new Error("notebook retry must restore the selectable list: " + JSON.stringify(notebookLoadRecovery));
     }
-    await page.locator(".xlc-discovery-scope-target select").selectOption("20240101");
-    await page.waitForFunction(() => document.body.dataset.xlcDiscoveryTargetNotebook === "20240101");
+    await page.locator(".xlc-discovery-scope-target select").selectOption("20240101120000-notebk1");
+    await page.waitForFunction(() => document.body.dataset.xlcDiscoveryTargetNotebook === "20240101120000-notebk1");
     await page.evaluate(() => window.XlcHarness.closeDiscovery());
     await page.evaluate(() => {
         const stage = document.getElementById("stage");
@@ -2211,6 +2211,55 @@ fs.writeFileSync(path.join(OUT, "harness.html"), html);
     }
     await page.evaluate(() => window.XlcHarness.closeDiscovery());
     console.log("  smoke ✓ long tag facets do not overlap inputs, select-filtered or save-view");
+
+    await page.evaluate(() => {
+        const stage = document.getElementById("stage");
+        stage.innerHTML = "";
+        document.body.dataset.xlcDiscoveryCloseAttempts = "0";
+        document.body.dataset.xlcDiscoveryCloseSuccesses = "0";
+        delete document.body.dataset.xlcDiscoverySessionClosed;
+        window.XlcHarness.openDiscovery({candidateCount: 3});
+        stage.appendChild(document.querySelector(".b3-dialog"));
+    });
+    await page.waitForFunction(() => document.querySelector(".xlc-discovery")?.getAttribute("aria-busy") === "false");
+    await page.locator("[data-xlc-discovery-key='page-candidate-0001'] [data-xlc-discovery-action='add-one']").click();
+    await page.waitForFunction(() => Boolean(document.querySelector("[data-xlc-discovery-action='undo-batch']"))
+        && document.querySelector("[data-xlc-discovery-action='close']")?.disabled === false);
+    const deferredBatchClose = await page.evaluate(() => window.XlcHarness.closeDiscovery());
+    const closeFormIsVisible = () => {
+        const form = document.querySelector(".xlc-discovery-close-form");
+        const rect = form?.getBoundingClientRect();
+        return !!form && !!rect && rect.width > 0 && rect.height > 0 && rect.top >= 0 && rect.bottom <= innerHeight
+            && form.textContent?.includes("关闭会丢失撤销入口")
+            && !!form.querySelector("[data-xlc-control='discovery.close.cancel']")
+            && !!form.querySelector("[data-xlc-control='discovery.close.confirm']")
+            && Array.from(form.querySelectorAll("button")).every((button) => {
+                const bounds = button.getBoundingClientRect();
+                return bounds.width > 0 && bounds.height > 0 && bounds.top >= 0 && bounds.bottom <= innerHeight
+                    && bounds.left >= 0 && bounds.right <= innerWidth;
+            })
+            && Number(document.body.dataset.xlcDiscoveryCloseAttempts ?? 0) === 0;
+    };
+    assert.equal(deferredBatchClose, false, "batch close must wait for an explicit decision");
+    assert.equal(await page.evaluate(closeFormIsVisible), true, "batch close form must remain visible and defer closing the session");
+    const closeFormClippingFixture = await page.addStyleTag({content: ".xlc-discovery-close-form { transform: translateY(120vh) !important; }"});
+    try {
+        const clippedCloseFormPasses = await page.evaluate(closeFormIsVisible);
+        assert.throws(() => assert.equal(clippedCloseFormPasses, true), {code: "ERR_ASSERTION"});
+    } finally {
+        await closeFormClippingFixture.evaluate((style) => style.remove());
+        await closeFormClippingFixture.dispose();
+    }
+    assert.equal(await page.evaluate(closeFormIsVisible), true, "batch close form must recover after the clipping fixture");
+    await page.locator("[data-xlc-control='discovery.close.cancel']").click();
+    assert.equal(await page.evaluate(() => Boolean(document.querySelector(".xlc-discovery"))
+        && Boolean(document.querySelector("[data-xlc-discovery-action='undo-batch']"))
+        && !document.querySelector(".xlc-discovery-close-form")), true, "cancel must keep the parent and undo action");
+    await page.evaluate(() => window.XlcHarness.closeDiscovery());
+    await page.locator("[data-xlc-control='discovery.close.confirm']").click();
+    assert.equal(await page.evaluate(() => !document.querySelector(".xlc-discovery") && !document.querySelector(".xlc-discovery-close-form")
+        && document.body.dataset.xlcDiscoveryCloseSuccesses === "1"), true, "confirmation must close the session once");
+    console.log("  smoke ✓ batch close uses a visible host form; cancel preserves undo and explicit confirmation closes once");
     // 导入策略卡（R69，原型屏 8：三选 + 推荐档 + 逐项回执提示）
     await page.evaluate(() => {
         const stage = document.getElementById("stage");

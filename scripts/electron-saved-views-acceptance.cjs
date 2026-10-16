@@ -51,7 +51,7 @@ const action = (value) => `[data-xlc-discovery-action="${value}"]`;
 async function main() {
     const options = argumentsForRun(process.argv.slice(2));
     const browser = await chromium.connectOverCDP(options.cdp);
-    const report = {task: "T-0079/R226", date: new Date().toISOString(), workspace: options.workspace, cdp: options.cdp, processId: options.processId, checks: [], errors: [], nativeDialogs: [], rendererReloads: [], boundaries: ["Electron native close confirmation is not covered. After a successful sync, reload the real renderer to end its temporary undo session; only reload after saved rules are confirmed in the actual sidecar file."]};
+    const report = {task: "T-0080/R227", date: new Date().toISOString(), workspace: options.workspace, cdp: options.cdp, processId: options.processId, checks: [], errors: [], nativeDialogs: [], rendererReloads: [], boundaries: ["Naming and post-sync close use real host Dialog forms. A fresh renderer reload begins the acceptance run; post-sync close must complete through the actual cancel/confirm controls without reload."]};
     let page;
     let outputDir;
     let hasSynced = false;
@@ -80,10 +80,8 @@ async function main() {
         page.on("pageerror", (error) => report.errors.push(String(error.message).slice(0, 1500)));
         page.on("dialog", async (dialog) => {
             const message = dialog.message();
-            const closeWarning = "本次发现仍有可撤销的收录批次。关闭会丢失撤销入口；仍要关闭吗？";
             report.nativeDialogs.push({type: dialog.type(), message});
-            if (dialog.type() === "confirm" && message === closeWarning) await dialog.accept();
-            else await dialog.dismiss();
+            await dialog.dismiss();
         });
         await page.reload({waitUntil: "domcontentloaded"});
         await page.waitForFunction(() => window.siyuan?.ws?.app?.plugins?.find((entry) => entry.name === "xiaolv-common")?.sidecarReady === true);
@@ -109,6 +107,8 @@ async function main() {
         const sourceDocId = await api("/api/filetree/createDocWithMd", {notebook: notebook.id, path: `/${sourceTitle}`, markdown: `延期模板 #${tag}#\n\n邮件跟进 #${tag}# #邮件#\n\n排除项 #${tag}2#`});
         const childDocId = await api("/api/filetree/createDocWithMd", {notebook: notebook.id, path: `/${sourceTitle}/子文档`, markdown: `子文档模板 #${tag}#`});
         const decoyDocId = await api("/api/filetree/createDocWithMd", {notebook: notebook.id, path: `/非目标${runId}`, markdown: `范围外模板 #${tag}#`});
+        const anchorDocId = await api("/api/filetree/createDocWithMd", {notebook: notebook.id, path: `/笔记本入口${runId}`, markdown: "该文档只用于打开笔记本发现，不含匹配标签。"});
+        const movedNotebook = (await api("/api/notebook/createNotebook", {name: `XLC移出锚${runId}`})).notebook;
         const sourceBlocks = await api("/api/block/getChildBlocks", {id: sourceDocId});
         assert.equal(sourceBlocks.length, 3);
         const expectedSourceIds = sourceBlocks.slice(0, 2).map((block) => block.id);
@@ -122,34 +122,57 @@ async function main() {
         }
         const sourceBefore = await snapshot(sourceDocId);
         const childBefore = await snapshot(childDocId);
-        const sourceDocuments = new Map([...expectedSourceIds.map((id) => [id, sourceDocId]), ...childBefore.map((block) => [block.id, childDocId])]);
-        report.fixture = {notebookId: notebook.id, sourceDocId, childDocId, decoyDocId, libraryDocId, tag};
+        const decoyBefore = await snapshot(decoyDocId);
+        const sourceDocuments = new Map([...expectedSourceIds.map((id) => [id, sourceDocId]), ...childBefore.map((block) => [block.id, childDocId]), ...decoyBefore.map((block) => [block.id, decoyDocId])]);
+        report.fixture = {notebookId: notebook.id, sourceDocId, childDocId, decoyDocId, anchorDocId, movedNotebookId: movedNotebook.id, libraryDocId, tag};
 
         async function openDocument(docId) {
             const opened = await page.evaluate((id) => window.siyuan.ws.app.plugins.find((entry) => entry.name === "xiaolv-common").host.openDoc(id), docId);
             assert.equal(opened, true);
             await page.waitForFunction((id) => window.siyuan.ws.app.plugins.find((entry) => entry.name === "xiaolv-common").host.currentDocId() === id, docId);
         }
-        async function closeDiscovery() {
-            if (hasSynced) {
-                // Electron's synchronous native confirm is outside CDP's dialog events.
-                // A renderer reload ends the temporary undo session and also verifies that
-                // saved rules survive a real plugin restart; it does not fabricate UI success.
-                await page.reload({waitUntil: "domcontentloaded"});
-                await page.waitForFunction(() => window.siyuan?.ws?.app?.plugins?.find((entry) => entry.name === "xiaolv-common")?.sidecarReady === true);
-                report.rendererReloads.push({reason: "end temporary undo session after sync; native close confirmation not covered", savedRuleIds: (await savedViews()).map((view) => view.id)});
-                hasSynced = false;
-                return;
-            }
+        async function closeDiscovery(exercise = false) {
             if (await page.locator(".xlc-discovery").count()) {
+                const entriesBeforeClose = hasSynced ? await referenceEntries() : null;
                 await page.locator(`.xlc-discovery ${action("close")}`).click();
+                if (hasSynced) {
+                    const confirmation = page.locator(".xlc-discovery-close-form");
+                    await confirmation.waitFor({state: "visible"});
+                    assert.equal(await confirmation.count(), 1, "Only one close confirmation may be open");
+                    if (exercise) {
+                        // Replay a second close control activation while its confirmation
+                        // is present; do not call controller methods or stub host dialogs.
+                        await page.evaluate(() => document.querySelector('.xlc-discovery [data-xlc-discovery-action="close"]').click());
+                        assert.equal(await confirmation.count(), 1, "Repeated close must reuse the pending confirmation");
+                        await page.screenshot({path: path.join(outputDir, "close-confirmation.png")});
+                        await page.locator(control("discovery.close.cancel")).click();
+                        await confirmation.waitFor({state: "detached"});
+                        assert.equal(await page.locator(".xlc-discovery").count(), 1, "Cancel must preserve the discovery window");
+                        assert.match((await viewState()).receipt, /撤销本批新增/, "Cancel must preserve the batch undo entry");
+                        assert.deepEqual(await referenceEntries(), entriesBeforeClose, "Cancel must preserve the synced references");
+                        check("post-sync close cancellation preserves discovery and references", {entries: entriesBeforeClose.map((entry) => entry.id)});
+                        await page.locator(`.xlc-discovery ${action("close")}`).click();
+                        await confirmation.waitFor({state: "visible"});
+                        await page.evaluate(() => {
+                            const confirmButton = document.querySelector('[data-xlc-control="discovery.close.confirm"]');
+                            confirmButton.click();
+                            confirmButton.click();
+                        });
+                    } else {
+                        await page.locator(control("discovery.close.confirm")).click();
+                    }
+                    await confirmation.waitFor({state: "detached"});
+                    hasSynced = false;
+                    assert.deepEqual(await referenceEntries(), entriesBeforeClose, "Confirming close must retain all synced references");
+                    if (exercise) check("post-sync repeated close/confirm produces one close and retains references", {entries: entriesBeforeClose.map((entry) => entry.id)});
+                }
                 await page.locator(".xlc-discovery").waitFor({state: "detached"});
             }
         }
         async function waitScan() {
             await page.waitForFunction(() => {
                 const root = document.querySelector(".xlc-discovery");
-                return root && root.getAttribute("aria-busy") !== "true" && root.querySelector(".xlc-discovery-row");
+                return root && root.getAttribute("aria-busy") !== "true" && root.querySelector(".xlc-discovery-row, .xlc-discovery-empty");
             });
         }
         async function viewState() {
@@ -170,6 +193,41 @@ async function main() {
                 };
             });
         }
+        async function switchDiscoveryWithPendingBatch(targetDocId) {
+            assert.equal(hasSynced, true, "Switch acceptance requires a real undoable sync batch");
+            const previous = await viewState();
+            const entriesBeforeSwitch = await referenceEntries();
+            const previousRoot = await page.locator(".xlc-discovery").elementHandle();
+            await openDocument(targetDocId);
+            const requestDocument = () => page.evaluate(() => window.siyuan.ws.app.plugins.find((entry) => entry.name === "xiaolv-common").commands.find((entry) => entry.langKey === "discoverCurrentDocument").callback());
+            const confirmation = page.locator(".xlc-discovery-close-form");
+            await requestDocument();
+            await confirmation.waitFor({state: "visible"});
+            await page.screenshot({path: path.join(outputDir, "switch-close-confirmation.png")});
+            await page.locator(control("discovery.close.cancel")).click();
+            await confirmation.waitFor({state: "detached"});
+            assert.equal(await previousRoot.evaluate((element) => element.isConnected), true, "Canceling a requested switch must retain the original discovery window");
+            assert.deepEqual(await viewState(), previous, "Canceling a requested switch must preserve its scope, candidates and undo receipt");
+            assert.deepEqual(await referenceEntries(), entriesBeforeSwitch);
+            check("pending view switch cancellation preserves the original view and undo batch", {scope: previous.scope, target: previous.target, entries: entriesBeforeSwitch.map((entry) => entry.id)});
+            await requestDocument();
+            await confirmation.waitFor({state: "visible"});
+            await page.locator(control("discovery.close.confirm")).click();
+            await confirmation.waitFor({state: "detached"});
+            await page.waitForFunction((element) => !element.isConnected, previousRoot);
+            hasSynced = false;
+            await waitScan();
+            const switched = await viewState();
+            assert.equal(switched.scope, "document");
+            assert.equal(switched.tag, "");
+            assert.equal(switched.rows.length, 1, "Confirmed switch must automatically discover the requested target document");
+            assert(switched.rows[0].title.includes("范围外模板"), "Confirmed switch must open the requested sibling document");
+            assert.deepEqual(await referenceEntries(), entriesBeforeSwitch, "A confirmed view switch must preserve the old batch's synced references");
+            check("confirmed pending view switch automatically opens its requested document", {targetDocId, state: switched, entries: entriesBeforeSwitch.map((entry) => entry.id)});
+            await page.screenshot({path: path.join(outputDir, "switch-confirmed-document.png")});
+            await previousRoot.dispose();
+            await closeDiscovery();
+        }
         async function savedViews() {
             return page.evaluate(() => window.siyuan.ws.app.plugins.find((entry) => entry.name === "xiaolv-common").state.search.savedDiscoveryViews || []);
         }
@@ -178,13 +236,13 @@ async function main() {
             for (let attempt = 0; attempt < 100; attempt++) {
                 try {
                     const state = JSON.parse(fs.readFileSync(stateFile, "utf8"));
-                    if (state.search?.savedDiscoveryViews?.some((entry) => entry.id === view.id && entry.tag === view.tag && entry.targetDocId === view.targetDocId)) return;
+                    if (state.search?.savedDiscoveryViews?.some((entry) => entry.id === view.id && entry.tag === view.tag && entry.targetDocId === view.targetDocId && entry.targetNotebookId === view.targetNotebookId)) return;
                 } catch { /* the host may be atomically replacing the sidecar */ }
                 await pause(100);
             }
             throw new Error("Saved view did not reach the real sidecar file before reload");
         }
-        async function saveThroughForm(name, testForm = false) {
+        async function saveThroughForm(name, testForm = false, target = {docId: sourceDocId, notebookId: ""}) {
             const beforeCount = (await savedViews()).length;
             await page.locator(action("save-view")).click();
             const input = page.locator(control("discovery.view.name"));
@@ -209,13 +267,14 @@ async function main() {
                 check("naming form rejects blank and cancels via Escape/button", {viewCount: beforeCount});
             }
             await input.fill(name);
-            await page.screenshot({path: path.join(outputDir, `${name.includes("树") ? "tree" : "document"}-naming.png`)});
+            await page.screenshot({path: path.join(outputDir, `${name.includes("笔记本") ? "notebook" : name.includes("树") ? "tree" : "document"}-naming.png`)});
             await input.press("Enter");
             await input.waitFor({state: "detached"});
             const view = (await savedViews()).find((entry) => entry.name === name);
             assert(view, "Naming form did not persist a view");
             assert.equal(view.tag, tag);
-            assert.equal(view.targetDocId, sourceDocId);
+            assert.equal(view.targetDocId, target.docId);
+            assert.equal(view.targetNotebookId, target.notebookId);
             await waitPersistedView(view);
             return view;
         }
@@ -291,6 +350,7 @@ async function main() {
         const firstEntries = await referenceEntries();
         assertReferenceEntries(firstEntries, expectedSourceIds);
         check("sync writes real block reference entries", {entries: firstEntries, receipt: (await viewState()).receipt});
+        await closeDiscovery(true);
         await openSaved(documentView.id);
         const secondState = await viewState();
         assert(secondState.rows.every((row) => !row.selected && row.disabled));
@@ -324,10 +384,55 @@ async function main() {
         const treeEntries = await referenceEntries();
         assertReferenceEntries(treeEntries, [...expectedSourceIds, ...childBefore.map((block) => block.id)]);
         check("tree sync adds only newly discovered child source", {count: treeEntries.length, receipt: (await viewState()).receipt});
+        await switchDiscoveryWithPendingBatch(decoyDocId);
+
+        await openDocument(anchorDocId);
+        await page.evaluate(() => window.siyuan.ws.app.plugins.find((entry) => entry.name === "xiaolv-common").commands.find((entry) => entry.langKey === "discoverCurrentNotebook").callback());
+        await waitScan();
+        await page.locator(control("discovery.filter.tag")).fill(tag);
+        assert.equal((await viewState()).rows.length, 4);
+        const notebookView = await saveThroughForm(`客服笔记本${runId}`, false, {docId: "", notebookId: notebook.id});
+        assert.equal(notebookView.scope, "notebook");
+        check("real notebook naming form saves an explicit notebook without an anchor dependency", notebookView);
+        await closeDiscovery();
+        const anchorBeforeMove = await api("/api/block/getBlockInfo", {id: anchorDocId});
+        await api("/api/filetree/moveDocs", {fromPaths: [`${notebook.id}${anchorBeforeMove.path}`], toNotebook: movedNotebook.id, toPath: "/"});
+        const anchorAfterMove = await api("/api/block/getBlockInfo", {id: anchorDocId});
+        assert.equal(anchorAfterMove.box, movedNotebook.id, "Fixture anchor must actually move to the other notebook");
+        await page.reload({waitUntil: "domcontentloaded"});
+        await page.waitForFunction(() => window.siyuan?.ws?.app?.plugins?.find((entry) => entry.name === "xiaolv-common")?.sidecarReady === true);
+        report.rendererReloads.push({reason: "verify persisted notebook rule after its original anchor moved; all post-sync sessions were closed through real Dialog controls"});
+        await openDocument(anchorDocId);
+        await openSaved(notebookView.id);
+        const notebookState = await viewState();
+        assert.equal(notebookState.scope, "notebook");
+        assert.equal(notebookState.tag, tag);
+        assert.equal(notebookState.rows.length, 4, "Moving the anchor must not retarget the saved notebook");
+        assert.equal(notebookState.rows.filter((row) => row.selected).length, 1);
+        assert.equal(notebookState.mode, "reference");
+        assert.equal(notebookState.modeLocked, true);
+        assert(notebookState.rows.some((row) => row.selected && row.title.includes("范围外模板")), "Only the remaining original-notebook source should be selected");
+        check("notebook view stays on its saved notebook after anchor move and renderer reload", {view: notebookView, anchorNotebook: anchorAfterMove.box, state: notebookState});
+        await page.screenshot({path: path.join(outputDir, "notebook-reopened.png")});
+        await syncSelected();
+        const notebookEntries = await referenceEntries();
+        const notebookSourceIds = [...expectedSourceIds, ...childBefore.map((block) => block.id), ...decoyBefore.map((block) => block.id)];
+        assertReferenceEntries(notebookEntries, notebookSourceIds);
+        check("notebook sync adds exactly the remaining original-notebook source", {entries: notebookEntries.map((entry) => ({id: entry.id, source: entry.attrs["custom-xlc-src-block"]})), receipt: (await viewState()).receipt});
+        await closeDiscovery(true);
+        await openSaved(notebookView.id);
+        const repeatedNotebookState = await viewState();
+        assert.equal(repeatedNotebookState.rows.length, 4);
+        assert(repeatedNotebookState.rows.every((row) => !row.selected && row.disabled));
+        assert.equal(repeatedNotebookState.buttonDisabled, true);
+        assert.deepEqual((await referenceEntries()).map((entry) => entry.id), notebookEntries.map((entry) => entry.id));
+        check("notebook view can reopen after confirmed close without duplicate references", repeatedNotebookState);
         assert.deepEqual(await snapshot(sourceDocId), sourceBefore);
         assert.deepEqual(await snapshot(childDocId), childBefore);
-        check("source block IDs, bodies and attributes remain unchanged", {sourceIds: sourceBefore.map((block) => block.id), childIds: childBefore.map((block) => block.id)});
+        assert.deepEqual(await snapshot(decoyDocId), decoyBefore);
+        check("source block IDs, bodies and attributes remain unchanged", {sourceIds: sourceBefore.map((block) => block.id), childIds: childBefore.map((block) => block.id), notebookSourceIds: decoyBefore.map((block) => block.id)});
         assert.equal(report.errors.length, 0, `Renderer exceptions: ${report.errors.join("; ")}`);
+        assert.equal(report.nativeDialogs.length, 0, "The saved-view workflow must use host Dialog forms, not native JavaScript dialogs");
         report.passed = true;
         report.evidenceDir = outputDir;
         await closeDiscovery();

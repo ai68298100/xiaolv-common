@@ -27,6 +27,8 @@ class StubDialog {
         root.appendChild(container);
         this.element = root;
         this.containerElement = container;
+        // Test-only entry point for a host-driven Dialog destruction callback.
+        root.__xlcHarnessDestroyDialog = () => this.destroy();
         // harness：自挂载（生产宿主负责挂载；此处使 querySelector 可见）
         document.body.appendChild(root);
     }
