@@ -153,6 +153,72 @@ test("createItem：appendBlock + setBlockAttrs，返回条目回执", async () =
     assert.equal(setAttrs.payload.attrs["custom-xlc-tags"], "a");
 });
 
+test("B-006：多块 append 以锚块 parts 清单读回完整正文并整体删除", async () => {
+    const C1 = "20240101120010-ccccccc";
+    const C2 = "20240101120011-ddddddd";
+    let createdAttrs = null;
+    const {kernel, service} = makeService({
+        getChildBlocks: () => [{id: C1, type: "p"}, {id: C2, type: "l"}],
+        batchGetBlockAttrs: () => ({
+            [C1]: createdAttrs ?? {"custom-xlc-id": "xlc-multi0000001"},
+            [C2]: {},
+        }),
+        getBlockAttrs: () => createdAttrs ?? {"custom-xlc-id": "xlc-multi0000001"},
+        appendBlock: () => [{doOperations: [{id: C1}, {id: C2}]}],
+        setBlockAttrs: ({attrs}) => { createdAttrs = attrs; },
+        getBlockKramdown: ({id}) => ({id, kramdown: id === C1 ? "首段" : "- 尾段"}),
+        checkBlocksExist: ({ids}) => Object.fromEntries(ids.map((id) => [id, true])),
+    });
+    const created = await service.createItem({itemType: "markdown", markdown: "首段\n\n- 尾段", title: "多段"});
+    assert.equal(created.ok, true);
+    assert.deepEqual(created.data.item.partBlockIds, [C1, C2]);
+    assert.equal(kernel.calls.find((call) => call.endpoint === "setBlockAttrs").payload.attrs["custom-xlc-parts"], `${C1},${C2}`);
+    const stored = await service.getStoredItemKramdown(created.data.item);
+    assert.deepEqual(stored, {ok: true, data: "首段\n\n- 尾段"});
+    const updated = await service.updateItem(created.data.item.id, {markdown: "替换正文"});
+    assert.equal(updated.ok, false);
+    assert.equal(updated.reason, "conflict");
+    const removed = await service.removeItem(created.data.item.id);
+    assert.equal(removed.ok, true);
+    assert.deepEqual(kernel.calls.filter((call) => call.endpoint === "deleteBlock").map((call) => call.payload.id), [C2, C1]);
+});
+
+test("B-006：多块属性写入失败时回滚 append 返回的全部物理块", async () => {
+    const C1 = "20240101120012-eeeeeee";
+    const C2 = "20240101120013-fffffff";
+    const {kernel, service} = makeService({
+        appendBlock: () => [{doOperations: [{id: C1}, {id: C2}]}],
+        setBlockAttrs: () => { throw new Error("attrs failed"); },
+    });
+    const result = await service.createItem({itemType: "markdown", markdown: "a\n\nb"});
+    assert.equal(result.ok, false);
+    assert.deepEqual(kernel.calls.filter((call) => call.endpoint === "deleteBlock").map((call) => call.payload.id), [C2, C1]);
+});
+
+test("B-006：append 回包含非法操作时拒绝并回滚已识别块", async () => {
+    const C1 = "20240101120014-ggggggg";
+    const {kernel, service} = makeService({
+        appendBlock: () => [{doOperations: [{id: C1}, {id: "not-a-block"}]}],
+    });
+    const result = await service.createItem({itemType: "markdown", markdown: "a\n\nb"});
+    assert.equal(result.ok, false);
+    assert.deepEqual(kernel.calls.filter((call) => call.endpoint === "deleteBlock").map((call) => call.payload.id), [C1]);
+});
+
+test("B-006：损坏的 parts 元数据拒绝正文读取，不猜测邻接块", async () => {
+    const {service} = makeService({
+        getChildBlocks: () => [{id: B1, type: "p"}],
+        batchGetBlockAttrs: () => ({[B1]: {"custom-xlc-id": "xlc-corrupt00001", "custom-xlc-parts": `${B1},bad`}}),
+        getBlockAttrs: () => ({"custom-xlc-id": "xlc-corrupt00001", "custom-xlc-parts": `${B1},bad`}),
+    });
+    const index = await service.ensureIndex();
+    const item = index.items.get("xlc-corrupt00001");
+    assert.equal(item.partsCorrupt, true);
+    const stored = await service.getStoredItemKramdown(item);
+    assert.equal(stored.ok, false);
+    assert.equal(stored.reason, "conflict");
+});
+
 test("写操作成功后按逻辑 ID 通知缓存失效，失败操作不通知", async () => {
     const changes = [];
     const existingId = "xlc-cacheentry0001";

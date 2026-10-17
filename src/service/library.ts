@@ -95,6 +95,9 @@ function sameManagedItem(actual: CommonItem, expected: CommonItem): boolean {
         && actual.targetBlockId === expected.targetBlockId
         && actual.createdAt === expected.createdAt
         && actual.updatedAt === expected.updatedAt
+        && Boolean(actual.partsCorrupt) === Boolean(expected.partsCorrupt)
+        && (actual.partBlockIds ?? [actual.blockId]).length === (expected.partBlockIds ?? [expected.blockId]).length
+        && (actual.partBlockIds ?? [actual.blockId]).every((id, index) => id === (expected.partBlockIds ?? [expected.blockId])[index])
         && actual.droppedFields.length === expected.droppedFields.length
         && actual.droppedFields.every((field, index) => field === expected.droppedFields[index]);
 }
@@ -584,6 +587,14 @@ export class LibraryService {
                     kramdown,
                 });
                 if (!item) continue;
+                if (item.partsCorrupt) {
+                    errors.push(`block ${child.id}: custom-xlc-parts is invalid`);
+                } else if (item.partBlockIds && item.partBlockIds.length > 1) {
+                    // 多块条目用锚块上的有序 ID 清单恢复完整摘要；旧条目没有清单，不能猜邻接块。
+                    const full = await this.readManagedPartKramdown(item);
+                    if (full.ok) item.summary = deriveSummary(full.data);
+                    else errors.push(`block ${child.id}: ${full.message}`);
+                }
                 // 引用入口的库块只保存 marker；稍后批量读取源块，为摘要/变量徽标建立可重建缓存。
                 const targetBlockId = resolveBlockRefTarget(item);
                 if (item.itemType === "blockref") {
@@ -705,15 +716,32 @@ export class LibraryService {
         return expand(text, 1, new Set());
     }
 
-    /** 读取条目在专用库中的物理正文（编辑、导出、撤销恢复使用）。 */
-    async getStoredItemKramdown(item: CommonItem): Promise<Receipt<string>> {
+    /** 按锚块 custom-xlc-parts 清单读取完整正文；旧条目只读取锚块，绝不猜相邻块。 */
+    private async readManagedPartKramdown(item: CommonItem): Promise<Receipt<string>> {
+        if (item.partsCorrupt) return fail("conflict", `item ${item.id} has invalid custom-xlc-parts metadata`);
+        const ids = item.partBlockIds ?? [item.blockId];
+        if (ids.length < 1 || ids.length > LIMITS.maxItemParts || ids[0] !== item.blockId
+            || new Set(ids).size !== ids.length || !ids.every(isBlockId)) {
+            return fail("conflict", `item ${item.id} has invalid physical part list`);
+        }
+        const bodies: string[] = [];
         try {
-            const data = parseKramdown(await this.kernel.request("getBlockKramdown", {id: item.blockId}));
-            if (!data) return fail("not-found", `block ${item.blockId} kramdown unavailable`);
-            return ok(data.kramdown);
+            for (const id of ids) {
+                const data = parseKramdown(await this.kernel.request("getBlockKramdown", {id}));
+                if (!data || data.id !== id || typeof data.kramdown !== "string") {
+                    return fail("not-found", `block ${id} kramdown unavailable`);
+                }
+                bodies.push(data.kramdown);
+            }
+            return ok(ids.length === 1 ? (bodies[0] ?? "") : bodies.join("\n\n"));
         } catch (err) {
             return toFailureReceipt(err);
         }
+    }
+
+    /** 读取条目在专用库中的物理正文（编辑、导出、撤销恢复使用）。 */
+    async getStoredItemKramdown(item: CommonItem): Promise<Receipt<string>> {
+        return this.readManagedPartKramdown(item);
     }
 
     /** 读取条目当前有效正文；引用入口永远跟随目标源块，不读取 marker。 */
@@ -847,18 +875,43 @@ export class LibraryService {
             return toFailureReceipt(err);
         }
         const ops = Array.isArray(insertResp) ? insertResp as Array<{doOperations?: Array<{id?: unknown}>}> : [];
-        const newBlockId = ops[0]?.doOperations?.[0]?.id;
-        if (typeof newBlockId !== "string" || !isBlockId(newBlockId)) {
+        const rawOperations = ops.flatMap((group) => Array.isArray(group?.doOperations) ? group.doOperations : []);
+        const createdBlockIds = Array.from(new Set(rawOperations
+            .map((operation) => operation?.id)
+            .filter((id): id is string => typeof id === "string" && isBlockId(id))));
+        const newBlockId = createdBlockIds[0];
+        if (!newBlockId) {
             return fail("kernel-error", "appendBlock returned no block id");
         }
+        if (rawOperations.some((operation) => typeof operation?.id !== "string" || !isBlockId(operation.id))) {
+            let rollbackFailed = false;
+            for (const id of [...createdBlockIds].reverse()) {
+                try { await this.kernel.request("deleteBlock", {id}, {maxRetries: 0}); } catch { rollbackFailed = true; }
+            }
+            return fail("kernel-error", rollbackFailed
+                ? `appendBlock returned an invalid operation and rollback failed; orphan blocks ${createdBlockIds.join(",")}`
+                : "appendBlock returned an invalid block operation");
+        }
+        if (createdBlockIds.length > LIMITS.maxItemParts) {
+            let rollbackFailed = false;
+            for (const id of [...createdBlockIds].reverse()) {
+                try { await this.kernel.request("deleteBlock", {id}, {maxRetries: 0}); } catch { rollbackFailed = true; }
+            }
+            return fail("conflict", rollbackFailed
+                ? `appendBlock created ${createdBlockIds.length} blocks; rollback failed`
+                : `appendBlock created ${createdBlockIds.length} blocks; item exceeds the supported part limit`);
+        }
+        if (createdBlockIds.length > 1) attrs[ATTR.parts] = createdBlockIds.join(",");
         try {
             await this.kernel.request("setBlockAttrs", {id: newBlockId, attrs});
         } catch (err) {
             // 属性写入失败：回滚块删除，保证"失败不落半条数据"
-            try {
-                await this.kernel.request("deleteBlock", {id: newBlockId});
-            } catch {
-                return fail("kernel-error", `attrs write failed AND rollback failed; orphan block ${newBlockId}`);
+            let rollbackFailed = false;
+            for (const id of [...createdBlockIds].reverse()) {
+                try { await this.kernel.request("deleteBlock", {id}, {maxRetries: 0}); } catch { rollbackFailed = true; }
+            }
+            if (rollbackFailed) {
+                return fail("kernel-error", `attrs write failed AND rollback failed; orphan blocks ${createdBlockIds.join(",")}`);
             }
             return toFailureReceipt(err);
         }
@@ -929,6 +982,10 @@ export class LibraryService {
         const got = await this.getItem(itemId);
         if (!got.ok) return {ok: false, reason: got.reason, message: got.message};
         const item = got.data;
+        if (item.partsCorrupt) return fail("conflict", `item ${itemId} has invalid physical part metadata`);
+        if (typeof patch.markdown === "string" && patch.markdown && (item.partBlockIds?.length ?? 1) > 1) {
+            return fail("conflict", "multi-block item body editing is not available until real host update semantics are verified");
+        }
         const attrs: Record<string, string> = {
             [ATTR.updated]: String(Date.now()),
         };
@@ -1006,8 +1063,20 @@ export class LibraryService {
     private async removeItemUnlocked(itemId: string, options: WriteOptions = {}): Promise<Receipt<{blockId: string}>> {
         const got = await this.getItem(itemId);
         if (!got.ok) return got;
+        if (got.data.partsCorrupt) return fail("conflict", `item ${itemId} has invalid physical part metadata`);
+        const partIds = got.data.partBlockIds ?? [got.data.blockId];
+        if (partIds.length > 1) {
+            try {
+                const exists = parseExistingMap(await this.kernel.request("checkBlocksExist", {ids: partIds}));
+                if (partIds.some((id) => exists[id] === false)) return fail("conflict", `item ${itemId} has missing physical parts`);
+            } catch (err) {
+                return toFailureReceipt(err);
+            }
+        }
         try {
-            await this.kernel.request("deleteBlock", {id: got.data.blockId}, {idempotencyKey: options.idempotencyKey, maxRetries: 0});
+            for (const id of [...partIds].reverse()) {
+                await this.kernel.request("deleteBlock", {id}, {idempotencyKey: options.idempotencyKey, maxRetries: 0});
+            }
         } catch (err) {
             return toFailureReceipt(err);
         }
@@ -1103,7 +1172,13 @@ export class LibraryService {
                     outcomes.push({status: "skipped", itemId: item.id, blockId: item.blockId, reason: "edited"});
                     continue;
                 }
-                await this.kernel.request("deleteBlock", {id: item.blockId});
+                const partIds = item.partBlockIds ?? [item.blockId];
+                if (item.partsCorrupt || partIds.length > LIMITS.maxItemParts || partIds[0] !== item.blockId
+                    || new Set(partIds).size !== partIds.length || !partIds.every(isBlockId)) {
+                    outcomes.push({status: "skipped", itemId: item.id, blockId: item.blockId, reason: "identity-changed"});
+                    continue;
+                }
+                for (const id of [...partIds].reverse()) await this.kernel.request("deleteBlock", {id});
                 deletedAny = true;
                 this.conditionalDeleteGrants.delete(item);
                 outcomes.push({status: "deleted", itemId: item.id, blockId: item.blockId});
@@ -1125,15 +1200,14 @@ export class LibraryService {
 
     private async readConditionalDeleteState(expected: CommonItem): Promise<{item: CommonItem; attrs: Record<string, string>; markdown: string} | null> {
         const attrs = parseAttrs(await this.kernel.request("getBlockAttrs", {id: expected.blockId}));
-        const body = parseKramdown(await this.kernel.request("getBlockKramdown", {id: expected.blockId}));
-        if (!body || body.id !== expected.blockId) return null;
         const item = normalizeCommonItem({
             blockId: expected.blockId,
             libraryDocId: expected.libraryDocId,
             attrs,
-            kramdown: body.kramdown,
         });
-        return item ? {item, attrs, markdown: body.kramdown} : null;
+        if (!item) return null;
+        const body = await this.readManagedPartKramdown(item);
+        return body.ok ? {item, attrs, markdown: body.data} : null;
     }
 
     /** 清除来源引用（用户显式操作；空串删除自定义属性，条目本体不受影响） */

@@ -19,6 +19,8 @@ export const ATTR = {
     vars: "custom-xlc-vars",
     url: "custom-xlc-url",
     target: "custom-xlc-target",
+    /** 新写多块条目的有序物理块 ID 清单；只写在锚块，旧条目无此属性不猜测相邻块。 */
+    parts: "custom-xlc-parts",
     created: "custom-xlc-created",
     updated: "custom-xlc-updated",
 } as const;
@@ -45,6 +47,8 @@ export const LIMITS = {
     maxUsage: 2000,
     maxAskFields: 16,
     maxCustomTransforms: 10,
+    /** 单条目一次 appendBlock 可管理的物理块上限；超出时整批回滚并拒绝。 */
+    maxItemParts: 64,
     maxSavedDiscoveryViews: 20,
     savedViewNameChars: 32,
     savedViewPathChars: 256,

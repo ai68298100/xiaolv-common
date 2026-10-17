@@ -185,7 +185,7 @@ fs.writeFileSync(path.join(OUT, "harness.html"), html);
             virtualized: list?.classList.contains("xlc-list--virtual") === true,
             renderedRows: list?.querySelectorAll('.xlc-row[data-xlc-index]').length ?? 0,
             activeIndex: document.querySelector('.xlc-row--active')?.getAttribute("data-xlc-index") ?? null,
-            selected: last?.getAttribute("aria-selected") === "true",
+            selected: last?.getAttribute("aria-current") === "true",
             activeDescendant: input?.getAttribute("aria-activedescendant") ?? null,
             scrolled: (list?.scrollTop ?? 0) > 0,
         };
@@ -201,7 +201,7 @@ fs.writeFileSync(path.join(OUT, "harness.html"), html);
         const first = document.querySelector('.xlc-row[data-xlc-index="0"]');
         return {
             activeIndex: document.querySelector('.xlc-row--active')?.getAttribute("data-xlc-index") ?? null,
-            selected: first?.getAttribute("aria-selected") === "true",
+            selected: first?.getAttribute("aria-current") === "true",
             activeDescendant: input?.getAttribute("aria-activedescendant") ?? null,
         };
     });
@@ -1547,7 +1547,7 @@ fs.writeFileSync(path.join(OUT, "harness.html"), html);
     const mobileSelectionOnly = await page.evaluate((before) => {
         const row = document.querySelector(".xlc-row[data-xlc-index='1']");
         const button = document.querySelector("[data-xlc-control='preview.mobile-primary']");
-        return row?.getAttribute("aria-selected") === "true"
+        return row?.getAttribute("aria-current") === "true"
             && row.classList.contains("xlc-row--active")
             && !button?.disabled
             && (window.__xlcActions ?? []).length === before;

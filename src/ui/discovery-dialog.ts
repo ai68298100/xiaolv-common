@@ -1431,8 +1431,12 @@ export class DiscoveryDialog implements DiscoveryDialogController {
             button.dataset.tag = facet.tag;
             const active = this.filter.tag === facet.tag.toLocaleLowerCase();
             button.setAttribute("aria-pressed", String(active));
-            button.setAttribute("aria-label", this.tx("discoveryTagFacetApply", facet.tag, String(facet.count)));
             button.textContent = `#${facet.tag} · ${facet.count}`;
+            // Keep the visible facet text in the accessible name.  An aria-label
+            // that only described the action hid "#tag · count" from screen
+            // readers and triggered axe's label-content-name-mismatch rule.
+            const actionLabel = this.tx("discoveryTagFacetApply", facet.tag, String(facet.count));
+            button.setAttribute("aria-label", `${button.textContent}，${actionLabel}`);
             button.addEventListener("click", () => {
                 const next = active ? "" : facet.tag;
                 this.filter.tag = next.toLocaleLowerCase();

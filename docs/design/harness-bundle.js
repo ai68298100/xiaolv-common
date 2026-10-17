@@ -3001,6 +3001,8 @@ ${exception.mark.snippet}`;
     vars: "custom-xlc-vars",
     url: "custom-xlc-url",
     target: "custom-xlc-target",
+    /** 新写多块条目的有序物理块 ID 清单；只写在锚块，旧条目无此属性不猜测相邻块。 */
+    parts: "custom-xlc-parts",
     created: "custom-xlc-created",
     updated: "custom-xlc-updated"
   };
@@ -3025,6 +3027,8 @@ ${exception.mark.snippet}`;
     maxUsage: 2e3,
     maxAskFields: 16,
     maxCustomTransforms: 10,
+    /** 单条目一次 appendBlock 可管理的物理块上限；超出时整批回滚并拒绝。 */
+    maxItemParts: 64,
     maxSavedDiscoveryViews: 20,
     savedViewNameChars: 32,
     savedViewPathChars: 256,
@@ -3156,9 +3160,20 @@ ${exception.mark.snippet}`;
       sourceBlockId: isBlockId(srcBlock) ? srcBlock : "",
       sourceType: declaredSourceType || (srcDoc || srcBlock ? "block" : "manual")
     };
+    const rawParts = attrs[ATTR.parts];
+    let partBlockIds;
+    let partsCorrupt = false;
+    if (typeof rawParts === "string" && rawParts.trim()) {
+      const parts = rawParts.split(",").map((part) => part.trim()).filter(Boolean);
+      const valid = parts.length >= 2 && parts.length <= LIMITS.maxItemParts && parts[0] === blockId && new Set(parts).size === parts.length && parts.every((part) => isBlockId(part));
+      if (valid) partBlockIds = parts;
+      else partsCorrupt = true;
+    }
     return {
       id: logicalIdRaw,
       blockId,
+      ...partBlockIds ? { partBlockIds } : {},
+      ...partsCorrupt ? { partsCorrupt: true } : {},
       libraryDocId,
       itemType,
       title,
@@ -3962,7 +3977,7 @@ ${exception.mark.snippet}`;
       list.className = "xlc-list";
       list.id = "xlc-search-results";
       list.tabIndex = 0;
-      list.setAttribute("role", "listbox");
+      list.setAttribute("role", "list");
       list.setAttribute("aria-label", this.deps.t("pluginName"));
       input.setAttribute("aria-controls", list.id);
       list.addEventListener("keydown", (e) => void this.onKeydown(e));
@@ -4562,8 +4577,8 @@ ${exception.mark.snippet}`;
       row.dataset.xlcControl = "item.row";
       row.dataset.xlcIndex = String(index);
       row.id = `xlc-result-${index}`;
-      row.setAttribute("role", "option");
-      row.setAttribute("aria-selected", index === this.activeIndex ? "true" : "false");
+      row.setAttribute("role", "listitem");
+      row.setAttribute("aria-current", index === this.activeIndex ? "true" : "false");
       row.setAttribute("aria-posinset", String(index + 1));
       row.setAttribute("aria-setsize", String(this.results.length));
       const main = document.createElement("div");
@@ -4924,8 +4939,8 @@ ${exception.mark.snippet}`;
           el.className = "xlc-row xlc-row--provider";
           el.dataset.xlcVirtualId = row.virtualId;
           el.id = `xlc-provider-${this.providerRows.indexOf(row)}`;
-          el.setAttribute("role", "option");
-          el.setAttribute("aria-selected", "false");
+          el.setAttribute("role", "listitem");
+          el.setAttribute("aria-current", "false");
           const main = document.createElement("div");
           main.className = "xlc-row-main";
           const title = document.createElement("div");
@@ -5142,7 +5157,7 @@ ${exception.mark.snippet}`;
         const resultIndex = child.dataset.xlcIndex;
         const active3 = resultIndex !== void 0 ? this.activeProvider < 0 && Number(resultIndex) === this.activeIndex : this.activeProvider >= 0 && child.id === `xlc-provider-${this.activeProvider}`;
         child.classList.toggle("xlc-row--active", active3);
-        child.setAttribute("aria-selected", active3 ? "true" : "false");
+        child.setAttribute("aria-current", active3 ? "true" : "false");
       });
       const active2 = this.activeProvider >= 0 ? rows.find((row) => row.id === `xlc-provider-${this.activeProvider}`) : rows.find((row) => row.dataset.xlcIndex === String(this.activeIndex));
       const input = (_c = this.dialog) == null ? void 0 : _c.element.querySelector(".xlc-search-input");
@@ -11022,8 +11037,9 @@ ${exception.mark.snippet}`;
         button.dataset.tag = facet.tag;
         const active2 = this.filter.tag === facet.tag.toLocaleLowerCase();
         button.setAttribute("aria-pressed", String(active2));
-        button.setAttribute("aria-label", this.tx("discoveryTagFacetApply", facet.tag, String(facet.count)));
         button.textContent = `#${facet.tag} \xB7 ${facet.count}`;
+        const actionLabel = this.tx("discoveryTagFacetApply", facet.tag, String(facet.count));
+        button.setAttribute("aria-label", `${button.textContent}\uFF0C${actionLabel}`);
         button.addEventListener("click", () => {
           var _a;
           const next = active2 ? "" : facet.tag;
@@ -12111,7 +12127,11 @@ ${details.join("\n")}` : ""}`;
     return { ok: true, data };
   }
   function sameManagedItem(actual, expected) {
-    return actual.id === expected.id && actual.blockId === expected.blockId && actual.libraryDocId === expected.libraryDocId && actual.itemType === expected.itemType && actual.title === expected.title && actual.alias === expected.alias && actual.tags.length === expected.tags.length && actual.tags.every((tag, index) => tag === expected.tags[index]) && actual.category === expected.category && (actual.itemType === "blockref" && expected.itemType === "blockref" ? true : actual.varCount === expected.varCount) && actual.source.sourceDocId === expected.source.sourceDocId && actual.source.sourceBlockId === expected.source.sourceBlockId && actual.source.sourceType === expected.source.sourceType && actual.url === expected.url && actual.targetBlockId === expected.targetBlockId && actual.createdAt === expected.createdAt && actual.updatedAt === expected.updatedAt && actual.droppedFields.length === expected.droppedFields.length && actual.droppedFields.every((field, index) => field === expected.droppedFields[index]);
+    var _a, _b, _c;
+    return actual.id === expected.id && actual.blockId === expected.blockId && actual.libraryDocId === expected.libraryDocId && actual.itemType === expected.itemType && actual.title === expected.title && actual.alias === expected.alias && actual.tags.length === expected.tags.length && actual.tags.every((tag, index) => tag === expected.tags[index]) && actual.category === expected.category && (actual.itemType === "blockref" && expected.itemType === "blockref" ? true : actual.varCount === expected.varCount) && actual.source.sourceDocId === expected.source.sourceDocId && actual.source.sourceBlockId === expected.source.sourceBlockId && actual.source.sourceType === expected.source.sourceType && actual.url === expected.url && actual.targetBlockId === expected.targetBlockId && actual.createdAt === expected.createdAt && actual.updatedAt === expected.updatedAt && Boolean(actual.partsCorrupt) === Boolean(expected.partsCorrupt) && ((_a = actual.partBlockIds) != null ? _a : [actual.blockId]).length === ((_b = expected.partBlockIds) != null ? _b : [expected.blockId]).length && ((_c = actual.partBlockIds) != null ? _c : [actual.blockId]).every((id, index) => {
+      var _a2;
+      return id === ((_a2 = expected.partBlockIds) != null ? _a2 : [expected.blockId])[index];
+    }) && actual.droppedFields.length === expected.droppedFields.length && actual.droppedFields.every((field, index) => field === expected.droppedFields[index]);
   }
   function normalizeConditionalMarkdown(markdown) {
     return normalizeKramdownIal(markdown);
@@ -12533,6 +12553,13 @@ ${details.join("\n")}` : ""}`;
             kramdown
           });
           if (!item) continue;
+          if (item.partsCorrupt) {
+            errors.push(`block ${child.id}: custom-xlc-parts is invalid`);
+          } else if (item.partBlockIds && item.partBlockIds.length > 1) {
+            const full = await this.readManagedPartKramdown(item);
+            if (full.ok) item.summary = deriveSummary(full.data);
+            else errors.push(`block ${child.id}: ${full.message}`);
+          }
           const targetBlockId = resolveBlockRefTarget(item);
           if (item.itemType === "blockref") {
             item.summary = "";
@@ -12647,15 +12674,31 @@ ${details.join("\n")}` : ""}`;
       };
       return expand(text, 1, /* @__PURE__ */ new Set());
     }
-    /** 读取条目在专用库中的物理正文（编辑、导出、撤销恢复使用）。 */
-    async getStoredItemKramdown(item) {
+    /** 按锚块 custom-xlc-parts 清单读取完整正文；旧条目只读取锚块，绝不猜相邻块。 */
+    async readManagedPartKramdown(item) {
+      var _a, _b;
+      if (item.partsCorrupt) return fail("conflict", `item ${item.id} has invalid custom-xlc-parts metadata`);
+      const ids = (_a = item.partBlockIds) != null ? _a : [item.blockId];
+      if (ids.length < 1 || ids.length > LIMITS.maxItemParts || ids[0] !== item.blockId || new Set(ids).size !== ids.length || !ids.every(isBlockId)) {
+        return fail("conflict", `item ${item.id} has invalid physical part list`);
+      }
+      const bodies = [];
       try {
-        const data = parseKramdown(await this.kernel.request("getBlockKramdown", { id: item.blockId }));
-        if (!data) return fail("not-found", `block ${item.blockId} kramdown unavailable`);
-        return ok(data.kramdown);
+        for (const id of ids) {
+          const data = parseKramdown(await this.kernel.request("getBlockKramdown", { id }));
+          if (!data || data.id !== id || typeof data.kramdown !== "string") {
+            return fail("not-found", `block ${id} kramdown unavailable`);
+          }
+          bodies.push(data.kramdown);
+        }
+        return ok(ids.length === 1 ? (_b = bodies[0]) != null ? _b : "" : bodies.join("\n\n"));
       } catch (err) {
         return toFailureReceipt(err);
       }
+    }
+    /** 读取条目在专用库中的物理正文（编辑、导出、撤销恢复使用）。 */
+    async getStoredItemKramdown(item) {
+      return this.readManagedPartKramdown(item);
     }
     /** 读取条目当前有效正文；引用入口永远跟随目标源块，不读取 marker。 */
     async getItemKramdown(item) {
@@ -12729,7 +12772,7 @@ ${details.join("\n")}` : ""}`;
       return key ? this.withWriteLock(key, action) : action();
     }
     async createItemUnlocked(input, libraryDocId, options = {}) {
-      var _a, _b, _c, _d, _e, _f, _g, _h, _i;
+      var _a, _b, _c, _d, _e, _f;
       const targetDoc = libraryDocId != null ? libraryDocId : await this.resolveWriteDoc();
       if (!targetDoc || !isBlockId(targetDoc)) return fail("invalid-input", "no library doc");
       const now = Date.now();
@@ -12769,17 +12812,48 @@ ${details.join("\n")}` : ""}`;
         return toFailureReceipt(err);
       }
       const ops = Array.isArray(insertResp) ? insertResp : [];
-      const newBlockId = (_i = (_h = (_g = ops[0]) == null ? void 0 : _g.doOperations) == null ? void 0 : _h[0]) == null ? void 0 : _i.id;
-      if (typeof newBlockId !== "string" || !isBlockId(newBlockId)) {
+      const rawOperations = ops.flatMap((group) => Array.isArray(group == null ? void 0 : group.doOperations) ? group.doOperations : []);
+      const createdBlockIds = Array.from(new Set(rawOperations.map((operation) => operation == null ? void 0 : operation.id).filter((id) => typeof id === "string" && isBlockId(id))));
+      const newBlockId = createdBlockIds[0];
+      if (!newBlockId) {
         return fail("kernel-error", "appendBlock returned no block id");
       }
+      if (rawOperations.some((operation) => typeof (operation == null ? void 0 : operation.id) !== "string" || !isBlockId(operation.id))) {
+        let rollbackFailed = false;
+        for (const id of [...createdBlockIds].reverse()) {
+          try {
+            await this.kernel.request("deleteBlock", { id }, { maxRetries: 0 });
+          } catch {
+            rollbackFailed = true;
+          }
+        }
+        return fail("kernel-error", rollbackFailed ? `appendBlock returned an invalid operation and rollback failed; orphan blocks ${createdBlockIds.join(",")}` : "appendBlock returned an invalid block operation");
+      }
+      if (createdBlockIds.length > LIMITS.maxItemParts) {
+        let rollbackFailed = false;
+        for (const id of [...createdBlockIds].reverse()) {
+          try {
+            await this.kernel.request("deleteBlock", { id }, { maxRetries: 0 });
+          } catch {
+            rollbackFailed = true;
+          }
+        }
+        return fail("conflict", rollbackFailed ? `appendBlock created ${createdBlockIds.length} blocks; rollback failed` : `appendBlock created ${createdBlockIds.length} blocks; item exceeds the supported part limit`);
+      }
+      if (createdBlockIds.length > 1) attrs[ATTR.parts] = createdBlockIds.join(",");
       try {
         await this.kernel.request("setBlockAttrs", { id: newBlockId, attrs });
       } catch (err) {
-        try {
-          await this.kernel.request("deleteBlock", { id: newBlockId });
-        } catch {
-          return fail("kernel-error", `attrs write failed AND rollback failed; orphan block ${newBlockId}`);
+        let rollbackFailed = false;
+        for (const id of [...createdBlockIds].reverse()) {
+          try {
+            await this.kernel.request("deleteBlock", { id }, { maxRetries: 0 });
+          } catch {
+            rollbackFailed = true;
+          }
+        }
+        if (rollbackFailed) {
+          return fail("kernel-error", `attrs write failed AND rollback failed; orphan blocks ${createdBlockIds.join(",")}`);
         }
         return toFailureReceipt(err);
       }
@@ -12840,10 +12914,14 @@ ${details.join("\n")}` : ""}`;
       return this.withWriteLock(key, action);
     }
     async updateItemUnlocked(itemId, patch, options = {}) {
-      var _a;
+      var _a, _b, _c;
       const got = await this.getItem(itemId);
       if (!got.ok) return { ok: false, reason: got.reason, message: got.message };
       const item = got.data;
+      if (item.partsCorrupt) return fail("conflict", `item ${itemId} has invalid physical part metadata`);
+      if (typeof patch.markdown === "string" && patch.markdown && ((_b = (_a = item.partBlockIds) == null ? void 0 : _a.length) != null ? _b : 1) > 1) {
+        return fail("conflict", "multi-block item body editing is not available until real host update semantics are verified");
+      }
       const attrs = {
         [ATTR.updated]: String(Date.now())
       };
@@ -12868,7 +12946,7 @@ ${details.join("\n")}` : ""}`;
       try {
         oldAttrs = parseAttrs(await this.kernel.request("getBlockAttrs", { id: item.blockId }));
         if (typeof patch.markdown === "string" && patch.markdown) {
-          oldMarkdown = (_a = parseKramdown(await this.kernel.request("getBlockKramdown", { id: item.blockId }))) == null ? void 0 : _a.kramdown;
+          oldMarkdown = (_c = parseKramdown(await this.kernel.request("getBlockKramdown", { id: item.blockId }))) == null ? void 0 : _c.kramdown;
         }
         await this.kernel.request("setBlockAttrs", { id: item.blockId, attrs }, { idempotencyKey: options.idempotencyKey, maxRetries: 0 });
         if (typeof patch.markdown === "string" && patch.markdown) {
@@ -12920,10 +12998,23 @@ ${details.join("\n")}` : ""}`;
       return this.withWriteLock(key, action);
     }
     async removeItemUnlocked(itemId, options = {}) {
+      var _a;
       const got = await this.getItem(itemId);
       if (!got.ok) return got;
+      if (got.data.partsCorrupt) return fail("conflict", `item ${itemId} has invalid physical part metadata`);
+      const partIds = (_a = got.data.partBlockIds) != null ? _a : [got.data.blockId];
+      if (partIds.length > 1) {
+        try {
+          const exists = parseExistingMap(await this.kernel.request("checkBlocksExist", { ids: partIds }));
+          if (partIds.some((id) => exists[id] === false)) return fail("conflict", `item ${itemId} has missing physical parts`);
+        } catch (err) {
+          return toFailureReceipt(err);
+        }
+      }
       try {
-        await this.kernel.request("deleteBlock", { id: got.data.blockId }, { idempotencyKey: options.idempotencyKey, maxRetries: 0 });
+        for (const id of [...partIds].reverse()) {
+          await this.kernel.request("deleteBlock", { id }, { idempotencyKey: options.idempotencyKey, maxRetries: 0 });
+        }
       } catch (err) {
         return toFailureReceipt(err);
       }
@@ -12941,7 +13032,7 @@ ${details.join("\n")}` : ""}`;
       return this.withWriteLock(`batch:${batchToken}`, () => this.removeItemsIfUnchangedUnlocked(batchToken, inputs));
     }
     async removeItemsIfUnchangedUnlocked(batchToken, inputs) {
-      var _a, _b, _c, _d;
+      var _a, _b, _c, _d, _e;
       if (typeof batchToken !== "string" || batchToken.length < 16 || batchToken.length > 128 || !Array.isArray(inputs) || inputs.length > LIMITS.maxItems) {
         return fail("invalid-input", "conditional delete batch exceeds the supported limit");
       }
@@ -13007,7 +13098,12 @@ ${details.join("\n")}` : ""}`;
             outcomes.push({ status: "skipped", itemId: item.id, blockId: item.blockId, reason: "edited" });
             continue;
           }
-          await this.kernel.request("deleteBlock", { id: item.blockId });
+          const partIds = (_e = item.partBlockIds) != null ? _e : [item.blockId];
+          if (item.partsCorrupt || partIds.length > LIMITS.maxItemParts || partIds[0] !== item.blockId || new Set(partIds).size !== partIds.length || !partIds.every(isBlockId)) {
+            outcomes.push({ status: "skipped", itemId: item.id, blockId: item.blockId, reason: "identity-changed" });
+            continue;
+          }
+          for (const id of [...partIds].reverse()) await this.kernel.request("deleteBlock", { id });
           deletedAny = true;
           this.conditionalDeleteGrants.delete(item);
           outcomes.push({ status: "deleted", itemId: item.id, blockId: item.blockId });
@@ -13028,15 +13124,14 @@ ${details.join("\n")}` : ""}`;
     }
     async readConditionalDeleteState(expected) {
       const attrs = parseAttrs(await this.kernel.request("getBlockAttrs", { id: expected.blockId }));
-      const body = parseKramdown(await this.kernel.request("getBlockKramdown", { id: expected.blockId }));
-      if (!body || body.id !== expected.blockId) return null;
       const item = normalizeCommonItem({
         blockId: expected.blockId,
         libraryDocId: expected.libraryDocId,
-        attrs,
-        kramdown: body.kramdown
+        attrs
       });
-      return item ? { item, attrs, markdown: body.kramdown } : null;
+      if (!item) return null;
+      const body = await this.readManagedPartKramdown(item);
+      return body.ok ? { item, attrs, markdown: body.data } : null;
     }
     /** 清除来源引用（用户显式操作；空串删除自定义属性，条目本体不受影响） */
     async clearSource(itemId) {

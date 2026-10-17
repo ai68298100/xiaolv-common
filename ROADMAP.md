@@ -4,7 +4,7 @@
 
 > 定位：**思源笔记的内容资产层**——高频内容是有元数据、有来源、可检索、可变通、可共享的真实块资产（v3，2026-10-07 调研后修订）。三大一级场景：客服/邮件模板、AI 提示词库、研发/写作常用件。
 > 精准定位与调研证据：[docs/positioning.md](docs/positioning.md)。UI 唯一视觉事实源：[docs/design/prototype.html](docs/design/prototype.html)（v4 实现镜像）+ [docs/design/design-spec.md](docs/design/design-spec.md)；组件清单：[docs/ui-component-catalog.md](docs/ui-component-catalog.md)。生产证据：docs/design/production-*.png。
-> 状态：**[v0.4.2 已在 GitHub 发布](https://github.com/ai68298100/xiaolv-common/releases/tag/v0.4.2)（2026-10-16）**。T-0059–T-0084 的搜索/快捷工作流、标签引用和保存视图、编辑器目标修复及验收工具加固均已包含。发版单元 484/484、Chrome UI smoke、交互 74/74、构建/密钥/包检查及分支与标签 CI 通过；核心隔离内核 v3.8.8-alpha.1 12/12 和发现链路按相同生产 JS/CSS 身份复用 T-0083 证据，本轮未重跑宿主。**Electron 临时 renderer 已有局部功能观测，镜像整体隔离声明已撤回**；Android、真实 AI、连续嵌入后选区、B-004 与 B-005 继续开放，后续宿主实验停止。发布说明保留这些边界，集市未获推送授权。当前状态：[docs/status-audit-2026-10-15.md](docs/status-audit-2026-10-15.md)；当期账本：[docs/dev-plan-2026-10-06.md](docs/dev-plan-2026-10-06.md)。
+> 状态：**[v0.4.2 已在 GitHub 发布](https://github.com/ai68298100/xiaolv-common/releases/tag/v0.4.2)（2026-10-16）**。T-0059–T-0084 的搜索/快捷工作流、标签引用和保存视图、编辑器目标修复及验收工具加固均已包含；T-0086–T-0090 追加了完整导出保护、常用内容调研和新写多块条目 `custom-xlc-parts` 止损。当前本地门禁单元 498/498、Chrome UI smoke、交互 74/74、构建/密钥/包检查通过；真实宿主边界仍按 B-001–B-006 分层。**Electron 临时 renderer 已有局部功能观测，镜像整体隔离声明已撤回**；Android、真实 AI、连续嵌入后选区、B-004、B-005 和 B-006 真实多块验收继续开放，后续宿主实验停止。发布说明保留这些边界，集市未获推送授权。当前状态：[docs/status-audit-2026-10-18.md](docs/status-audit-2026-10-18.md)；当期账本：[docs/dev-plan-2026-10-06.md](docs/dev-plan-2026-10-06.md)。
 
 ## R2：AI 融入与原型质感（2026-10-06，用户指令立项）
 
@@ -56,7 +56,7 @@
 ## P4 媒体和块结构
 
 - [x] 代码块（保留语言）、图片块、附件块
-- [x] 列表/引用/任务等结构（superblock 包装、插入剥壳）
+- [ ] 列表/引用/任务等结构（superblock 包装、插入剥壳）——结构类型分派存在；多块真实锚定/读回/更新尚未完成（B-006）
 - [x] 块引用（`((id 'text'))`）与嵌入（宿主原生语法，ID 严格校验）明确分派
 - [x] 资源失效处理（assets 路径检查 + 诚实失败）
 
@@ -623,3 +623,12 @@
 - [x] [v0.4.2 Release](https://github.com/ai68298100/xiaolv-common/releases/tag/v0.4.2) 已发布为 latest；下载 `package.zip` 498742 bytes / SHA256 `9bd5251cc823ffe1ed4b306431fa7477db576e5117865c523b6847e4bfb58b4a`，实际 manifest、13 项结构及生产资源核验通过。
 - 本轮不重启或附着宿主，保留 B-005 和其他现场边界；本地 484/484 单元、74/74 交互与其他发布门禁、远端 CI 和附件逐项核验见当期账本。
 - **依据**：[ADR 0055](docs/adr/0055-v042-github-release.md)。集市未获明确授权，不发起上架 PR。
+
+## T-0086–T-0090 / R233–R237（2026-10-18 审计、示例调研与多块止损）
+
+- [x] 完成源码、原型、Chrome UI、功能边界、GitHub issue/CI/release/附件和安全状态审计；证据见 [状态审计](docs/status-audit-2026-10-18.md) 与 [UI 审计目录](docs/design/audit-2026-10-18/)。
+- [x] 修复未来/不可读侧车覆盖和不完整导出虚报成功；全套导出/侧车专项与源码负向验证通过。
+- [x] 调研 Quicker、TextExpander、Raycast、Espanso、PhraseExpress 等常用语形态，形成邮箱、地址、身份资料、图片、PPT、简历、公司介绍、URL/JSON/结构示例矩阵；复杂多段示例暂不自动内置。
+- [x] 新写多块条目记录 `custom-xlc-parts`，按清单读回摘要/导出/删除并在属性失败时全量回滚；受控契约与源码负向通过，当前单元 498/498。
+- [ ] B-006 真实宿主验收、多块正文更新/导入替换和旧条目人工核对；B-005 未解除前不启动新的 Electron/思源实验。
+- [x] 修复搜索结果嵌套交互结构与客服分类徽标对比度；Chrome 搜索亮色/暗色/移动 axe 矩阵为 0 violations，交互回归 74/74。

@@ -53,6 +53,10 @@ export interface CommonItem {
     id: string;
     /** 库中锚定块的物理块 ID */
     blockId: string;
+    /** 新写多块条目的完整物理块顺序；旧条目没有该字段，不能据相邻块推断正文。 */
+    partBlockIds?: string[];
+    /** parts 属性存在但无法安全解析时，读写操作必须显式失败。 */
+    partsCorrupt?: boolean;
     /** 库文档 ID */
     libraryDocId: string;
     itemType: ItemType;
@@ -187,9 +191,23 @@ export function normalizeCommonItem(input: {
         sourceBlockId: isBlockId(srcBlock) ? srcBlock : "",
         sourceType: declaredSourceType || (srcDoc || srcBlock ? "block" : "manual"),
     };
+    const rawParts = attrs[ATTR.parts];
+    let partBlockIds: string[] | undefined;
+    let partsCorrupt = false;
+    if (typeof rawParts === "string" && rawParts.trim()) {
+        const parts = rawParts.split(",").map((part) => part.trim()).filter(Boolean);
+        const valid = parts.length >= 2 && parts.length <= LIMITS.maxItemParts
+            && parts[0] === blockId
+            && new Set(parts).size === parts.length
+            && parts.every((part) => isBlockId(part));
+        if (valid) partBlockIds = parts;
+        else partsCorrupt = true;
+    }
     return {
         id: logicalIdRaw,
         blockId,
+        ...(partBlockIds ? {partBlockIds} : {}),
+        ...(partsCorrupt ? {partsCorrupt: true} : {}),
         libraryDocId,
         itemType,
         title,

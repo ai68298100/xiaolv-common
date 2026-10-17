@@ -437,7 +437,9 @@ export class CommonSearchDialog {
         list.className = "xlc-list";
         list.id = "xlc-search-results";
         list.tabIndex = 0;
-        list.setAttribute("role", "listbox");
+        // 行内收藏/标签筛选按钮是可聚焦控件，不能嵌在 ARIA listbox option 内。
+        // 用普通 list/listitem 保留活动后代与键盘导航，同时允许这些动作保持可访问。
+        list.setAttribute("role", "list");
         list.setAttribute("aria-label", this.deps.t("pluginName"));
         input.setAttribute("aria-controls", list.id);
         list.addEventListener("keydown", (e) => void this.onKeydown(e));
@@ -1085,8 +1087,8 @@ export class CommonSearchDialog {
         row.dataset.xlcControl = "item.row";
         row.dataset.xlcIndex = String(index);
         row.id = `xlc-result-${index}`;
-        row.setAttribute("role", "option");
-        row.setAttribute("aria-selected", index === this.activeIndex ? "true" : "false");
+        row.setAttribute("role", "listitem");
+        row.setAttribute("aria-current", index === this.activeIndex ? "true" : "false");
         row.setAttribute("aria-posinset", String(index + 1));
         row.setAttribute("aria-setsize", String(this.results.length));
 
@@ -1477,8 +1479,8 @@ export class CommonSearchDialog {
                 el.className = "xlc-row xlc-row--provider";
                 el.dataset.xlcVirtualId = row.virtualId;
                 el.id = `xlc-provider-${this.providerRows.indexOf(row)}`;
-                el.setAttribute("role", "option");
-                el.setAttribute("aria-selected", "false");
+                el.setAttribute("role", "listitem");
+                el.setAttribute("aria-current", "false");
                 const main = document.createElement("div");
                 main.className = "xlc-row-main";
                 const title = document.createElement("div");
@@ -1719,7 +1721,7 @@ export class CommonSearchDialog {
                 ? this.activeProvider < 0 && Number(resultIndex) === this.activeIndex
                 : this.activeProvider >= 0 && child.id === `xlc-provider-${this.activeProvider}`;
             child.classList.toggle("xlc-row--active", active);
-            child.setAttribute("aria-selected", active ? "true" : "false");
+            child.setAttribute("aria-current", active ? "true" : "false");
         });
         const active = this.activeProvider >= 0
             ? rows.find((row) => row.id === `xlc-provider-${this.activeProvider}`)

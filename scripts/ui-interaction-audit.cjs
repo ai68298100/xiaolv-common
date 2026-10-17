@@ -1043,7 +1043,7 @@ const check = (name, ok, detail = "") => {
         return {
             sheet: Boolean(sheet),
             copyFallback: (btn?.textContent ?? "").includes("复制"),
-            selectedRow: row?.getAttribute("aria-selected") === "true" && row.classList.contains("xlc-row--active"),
+            selectedRow: row?.getAttribute("aria-current") === "true" && row.classList.contains("xlc-row--active"),
             buttonAvailable: Boolean(btn && !btn.disabled),
         };
     });
