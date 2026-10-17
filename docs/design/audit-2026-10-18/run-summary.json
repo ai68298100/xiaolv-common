@@ -1,0 +1,15 @@
+{
+  "date": "2026-10-18",
+  "browser": "Google Chrome (installed channel)",
+  "results": [
+    {
+      "name": "ui",
+      "status": 0
+    },
+    {
+      "name": "ix",
+      "status": 0
+    }
+  ],
+  "baselineRestored": true
+}

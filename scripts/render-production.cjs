@@ -847,7 +847,7 @@ fs.writeFileSync(path.join(OUT, "harness.html"), html);
     });
     const mobileGuide = await page.evaluate(() => {
         const text = document.body.textContent ?? "";
-        return text.includes("点按条目尝试插入") && text.includes("复制到剪贴板") && !text.includes("Alt+1~9 直达前九条");
+        return text.includes("点按只选择条目") && text.includes("复制到剪贴板") && !text.includes("Alt+1~9 直达前九条");
     });
     if (!mobileGuide) throw new Error("mobile usage guide contains desktop-only shortcuts");
     console.log("  smoke ✓ mobile usage guide: 2 assertions");

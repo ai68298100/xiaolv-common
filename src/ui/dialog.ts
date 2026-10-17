@@ -263,6 +263,7 @@ export class CommonSearchDialog {
             const isApple = /Mac|iPhone|iPad/i.test(navigator.platform || "");
             kbdRow = document.createElement("div");
             kbdRow.className = "xlc-kbdrow";
+            kbdRow.tabIndex = 0;
             kbdRow.setAttribute("aria-label", this.deps.t("keyboardHelp"));
             const kbdLabel = document.createElement("span");
             kbdLabel.className = "xlc-kbdrow-label";
@@ -490,8 +491,18 @@ export class CommonSearchDialog {
             warn.className = "xlc-pane-warn";
             warn.style.display = "none";
             pane.appendChild(warn);
+            const mediaHint = document.createElement("p");
+            mediaHint.className = "xlc-page-intro";
+            mediaHint.dataset.xlcControl = "preview.media-hint";
+            mediaHint.setAttribute("role", "note");
+            mediaHint.textContent = this.deps.t("mediaContentHint");
+            mediaHint.style.padding = "var(--xlc-space-2) var(--xlc-space-4)";
+            mediaHint.style.flexShrink = "0";
+            mediaHint.hidden = true;
+            pane.appendChild(mediaHint);
             const paneBody = document.createElement("div");
             paneBody.className = "xlc-pane-body xlc-pane-body--muted";
+            paneBody.tabIndex = 0;
             paneBody.textContent = this.deps.t("previewUnavailable");
             pane.appendChild(paneBody);
             pane.appendChild(this.buildPaneFoot());
@@ -598,6 +609,14 @@ export class CommonSearchDialog {
         variables.className = "xlc-form-hint xlc-guide-vars";
         variables.textContent = this.deps.t("usageGuideVariables");
         root.appendChild(variables);
+        const media = document.createElement("p");
+        media.className = "xlc-form-hint xlc-guide-vars";
+        media.textContent = this.deps.t("usageGuideMedia");
+        root.appendChild(media);
+        const multiblock = document.createElement("p");
+        multiblock.className = "xlc-form-hint xlc-guide-vars";
+        multiblock.textContent = this.deps.t("usageGuideMultiblock");
+        root.appendChild(multiblock);
         const actions = document.createElement("div");
         actions.className = "xlc-form-actions";
         const close = document.createElement("button");
@@ -1907,6 +1926,9 @@ export class CommonSearchDialog {
         const paneAi = this.dialog?.element.querySelector<HTMLElement>(".xlc-pane-ai");
         const paneUsage = this.dialog?.element.querySelector<HTMLElement>(".xlc-pane-usage");
         if (!paneBody || !paneTitle || !paneWarn || !paneAi || !paneUsage) return;
+        const mediaHint = this.dialog?.element.querySelector<HTMLElement>('[data-xlc-control="preview.media-hint"]');
+        const activeEntry = this.activeProvider < 0 ? this.results[this.activeIndex] : undefined;
+        if (mediaHint) mediaHint.hidden = activeEntry?.itemType !== "image" && activeEntry?.itemType !== "asset";
         this.syncPaneActions();
         const paintUsageBadge = (entry: SearchEntry | undefined): void => {
             const count = entry ? (this.usageCounts.get(entry.id) ?? 0) : 0;
@@ -2119,6 +2141,15 @@ export class CommonSearchDialog {
             menu.innerHTML = "";
             render();
         };
+        const appendMediaHint = (): void => {
+            if (entry.itemType !== "image" && entry.itemType !== "asset") return;
+            const hint = document.createElement("p");
+            hint.className = "xlc-pickdoc-empty";
+            hint.dataset.xlcControl = "dialog.media-hint";
+            hint.setAttribute("role", "note");
+            hint.textContent = this.deps.t("mediaContentHint");
+            menu.appendChild(hint);
+        };
 
         const buildDefault = (): void => {
             // 标题行（原型：条目名 · 动作）
@@ -2126,6 +2157,7 @@ export class CommonSearchDialog {
             lbl.className = "xlc-menu-lbl";
             lbl.textContent = (entry.title || this.deps.t("unknownType")) + " · " + this.deps.t("actionsNoun");
             menu.appendChild(lbl);
+            appendMediaHint();
             // 预览盒（原文摘要）：原型屏 2 置于动作分区之后（先见动作，预览兜底）；占位降调
             const previewBox = document.createElement("pre");
             previewBox.className = "xlc-menu-preview xlc-menu-preview--muted";
@@ -2320,6 +2352,7 @@ export class CommonSearchDialog {
             lbl.className = "xlc-menu-lbl";
             lbl.textContent = viewLabel;
             menu.appendChild(lbl);
+            appendMediaHint();
             const box = document.createElement("pre");
             box.className = "xlc-menu-preview xlc-menu-preview--muted";
             box.textContent = this.deps.t("aiWorking");

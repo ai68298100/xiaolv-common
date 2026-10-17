@@ -1229,7 +1229,7 @@
     }
     &.xlc-cat--support {
       background: rgba(34, 197, 94, 0.12);
-      color: #15803d;
+      color: var(--xlc-success);
     }
     &.xlc-cat--dev {
       background: rgba(168, 85, 247, 0.12);
@@ -1248,7 +1248,7 @@
 
 .b3-scope.dark {
   .xlc-cat--business { background: rgba(53, 117, 240, 0.22); color: #7f9ff5; }
-  .xlc-cat--support { background: rgba(34, 197, 94, 0.22); color: #4ade80; }
+  .xlc-cat--support { background: rgba(34, 197, 94, 0.22); color: var(--xlc-success); }
   .xlc-cat--dev { background: rgba(168, 85, 247, 0.22); color: #c084fc; }
   .xlc-cat--writing { background: rgba(245, 158, 11, 0.22); color: #fbbf24; }
   .xlc-cat--ai { background: rgba(99, 102, 241, 0.22); color: #818cf8; }

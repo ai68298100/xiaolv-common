@@ -410,6 +410,16 @@ export class CaptureDialog {
         contentError.setAttribute("role", "alert");
         contentError.hidden = true;
         contentWrap.appendChild(contentError);
+        const multiBlockHint = document.createElement("span");
+        multiBlockHint.className = "xlc-form-hint";
+        multiBlockHint.setAttribute("role", "note");
+        multiBlockHint.textContent = t("multiBlockPendingHint");
+        const syncMultiBlockHint = (): void => {
+            multiBlockHint.hidden = typeSelect.value !== "markdown" && typeSelect.value !== "structure";
+        };
+        typeSelect.addEventListener("change", syncMultiBlockHint);
+        syncMultiBlockHint();
+        contentWrap.appendChild(multiBlockHint);
         // 变量快捷插入条（F1 捕获侧，原型屏 3）：点选在内容光标处插入变量语法
         const varbar = buildVariableBar(t, () => contentEl as HTMLTextAreaElement);
         (contentEl.parentElement as HTMLElement).after(varbar);

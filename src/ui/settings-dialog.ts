@@ -6,7 +6,7 @@ import {CONFIG_VERSION, LibraryConfig, PluginState} from "../model/storage";
 import {LIMITS} from "../constants";
 import {validateImport, ConflictPolicy, ImportIssue, ImportReceipt, ExportedItem} from "../model/transfer";
 import {buildZip} from "../model/zip";
-import {buildMarkdownExport} from "../service/export-markdown";
+import {buildMarkdownExport, ExportIntegrityError} from "../service/export-markdown";
 import {parseMarkdownPack} from "../service/import-markdown";
 import {LibraryService} from "../service/library";
 import {AiAssistant} from "../service/ai";
@@ -219,6 +219,9 @@ export function openSettingsDialog(ctx: SettingsUiContext): void {
 async function openPackExportDialog(ctx: SettingsUiContext): Promise<void> {
     const t = ctx.t;
     const idx = await ctx.library.ensureIndex();
+    if (idx.truncated || idx.stopped || idx.errors.length > 0) {
+        throw new ExportIntegrityError("index-incomplete");
+    }
     // 性能（R76 修正 R71 回归）：打开对话框零 kramdown 预取——
     // 「含变量」徽标用写入期 varCount 属性（索引免费读取），正文在点导出时才按筛选取
     const all: CommonItem[] = Array.from(idx.items.values());
@@ -350,7 +353,7 @@ async function openPackExportDialog(ctx: SettingsUiContext): Promise<void> {
         })().catch((err: unknown) => {
             exportBtn.disabled = false;
             exportBtn.textContent = t("packExportBtn");
-            ctx.notify("error", t("kernelError", err instanceof Error ? err.message : String(err)));
+            ctx.notify("error", formatExportError(ctx, err));
         });
     });
     actions.appendChild(exportBtn);
@@ -376,9 +379,22 @@ async function collectKramdown(
     const kramdownById = new Map<string, string>();
     for (const item of items) {
         const kd = await ctx.library.getStoredItemKramdown(item);
-        if (kd.ok) kramdownById.set(item.id, kd.data);
+        if (!kd.ok) throw new ExportIntegrityError("item-unreadable", item.title || item.id, kd.message);
+        kramdownById.set(item.id, kd.data);
     }
     return kramdownById;
+}
+
+function formatExportError(ctx: Pick<SettingsUiContext, "t">, err: unknown): string {
+    if (err instanceof ExportIntegrityError) {
+        switch (err.reason) {
+            case "index-incomplete": return ctx.t("exportIncompleteIndex");
+            case "item-unreadable": return ctx.t("exportItemReadFailed", err.itemLabel, err.detail);
+            case "body-missing": return ctx.t("exportBodyMissing", err.itemLabel);
+            case "too-large": return ctx.t("exportTooLarge", err.detail);
+        }
+    }
+    return ctx.t("kernelError", err instanceof Error ? err.message : String(err));
 }
 
 /** 变量与插入（F1/F3，原型屏 5）：插入前询问 / 使用计数开关 / 清空统计 */
@@ -1524,12 +1540,12 @@ function buildDataSection(ctx: SettingsUiContext, root: HTMLElement): void {
         const message = t("exportDone", String(count));
         ctx.notify("info", message);
         return {message};
-    }, {flightLabel: t("indexing"), loading: t("indexing")});
+    }, {flightLabel: t("indexing"), loading: t("indexing"), formatError: (err) => formatExportError(ctx, err)});
     const packBtn = mkBtn(t("packBtn"), undefined, "settings.data.packExport");
     withFlight(packBtn, async () => {
         await openPackExportDialog(ctx);
         return {message: t("packExportTitle")};
-    }, {flightLabel: t("loading"), loading: t("loading")});
+    }, {flightLabel: t("loading"), loading: t("loading"), formatError: (err) => formatExportError(ctx, err)});
     const importBtn = mkBtn(t("importBtn"), () => {
         if (importBtn.disabled) return;
         const originalLabel = importBtn.textContent ?? "";

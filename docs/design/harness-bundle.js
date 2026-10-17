@@ -72,6 +72,7 @@
           root.appendChild(container);
           this.element = root;
           this.containerElement = container;
+          root.__xlcHarnessDestroyDialog = () => this.destroy();
           document.body.appendChild(root);
         }
         open() {
@@ -82,8 +83,19 @@
           };
         }
         destroy() {
-          if (this._destroy) this._destroy();
-          else if (this.element) this.element.remove();
+          if (this._destroyed) return;
+          this._destroyed = true;
+          const finish = () => {
+            if (this._destroy) this._destroy();
+            else {
+              if (this.element) this.element.remove();
+              if (typeof this.options.destroyCallback === "function") this.options.destroyCallback();
+            }
+          };
+          if (globalThis.__xlcDeferDialogDestroy === true) {
+            this.element.dataset.dialogClosing = "true";
+            setTimeout(finish, 100);
+          } else finish();
         }
       };
       module.exports = {
@@ -2974,6 +2986,24 @@ ${exception.mark.snippet}`;
 
   // src/constants.ts
   var PROTOCOL_NAME = "xiaolv-common";
+  var PROTOCOL_VERSION = 1;
+  var ATTR_PREFIX = "custom-xlc-";
+  var ATTR = {
+    id: "custom-xlc-id",
+    type: "custom-xlc-type",
+    title: "custom-xlc-title",
+    alias: "custom-xlc-alias",
+    tags: "custom-xlc-tags",
+    category: "custom-xlc-category",
+    srcDoc: "custom-xlc-src-doc",
+    srcBlock: "custom-xlc-src-block",
+    srcType: "custom-xlc-src-type",
+    vars: "custom-xlc-vars",
+    url: "custom-xlc-url",
+    target: "custom-xlc-target",
+    created: "custom-xlc-created",
+    updated: "custom-xlc-updated"
+  };
   var LIMITS = {
     title: 512,
     alias: 256,
@@ -2995,10 +3025,19 @@ ${exception.mark.snippet}`;
     maxUsage: 2e3,
     maxAskFields: 16,
     maxCustomTransforms: 10,
+    maxSavedDiscoveryViews: 20,
+    savedViewNameChars: 32,
+    savedViewPathChars: 256,
     customNameChars: 20,
     customPromptChars: 500
   };
   var EXPORT_SCHEMA_VERSION = 1;
+  var EVENTS = {
+    itemCreated: "xiaolv:common:item-created",
+    itemUpdated: "xiaolv:common:item-updated",
+    itemDeleted: "xiaolv:common:item-deleted",
+    itemInserted: "xiaolv:common:item-inserted"
+  };
 
   // src/model/item.ts
   var ITEM_TYPES = [
@@ -3039,8 +3078,120 @@ ${exception.mark.snippet}`;
     return typeof v === "string" && SOURCE_TYPES.includes(v);
   }
   var LOGICAL_ID_RE = /^xlc-[0-9a-z]{10,40}$/;
+  var BLOCK_ID_RE = /^\d{14}-[0-9a-z]{7}$/;
   function isLogicalId(v) {
     return typeof v === "string" && LOGICAL_ID_RE.test(v);
+  }
+  function isBlockId(v) {
+    return typeof v === "string" && BLOCK_ID_RE.test(v);
+  }
+  function resolveBlockRefTarget(item) {
+    if (item.itemType !== "blockref") return "";
+    if (isBlockId(item.targetBlockId)) return item.targetBlockId;
+    if (isBlockId(item.source.sourceBlockId)) return item.source.sourceBlockId;
+    return "";
+  }
+  function newLogicalId(now = Date.now(), random = Math.random) {
+    const time = now.toString(36);
+    const rand = Math.floor(random() * 18446744073709552e3).toString(36).slice(0, 10).padStart(10, "0");
+    return `xlc-${time}${rand}`.slice(0, 30);
+  }
+  function cleanString(v, max) {
+    if (typeof v !== "string") return "";
+    if (v.length <= max) return v;
+    const sliced = v.slice(0, max);
+    const last = sliced.charCodeAt(sliced.length - 1);
+    return last >= 55296 && last <= 57343 ? sliced.slice(0, -1) : sliced;
+  }
+  function cleanTagList(v) {
+    const raw = Array.isArray(v) ? v : typeof v === "string" ? v.split(/[,,、]/) : [];
+    const out = [];
+    for (const item of raw) {
+      if (typeof item !== "string") continue;
+      const tag = item.trim().slice(0, LIMITS.tag);
+      if (!tag) continue;
+      if (!out.includes(tag)) out.push(tag);
+      if (out.length >= LIMITS.tags) break;
+    }
+    return out;
+  }
+  function inferItemType(blockType, subtype, kramdown) {
+    if (blockType === "c" || blockType === "code_block" || subtype === "code") return "code";
+    if (blockType === "s" || blockType === "super") return "structure";
+    if (blockType === "h") return "markdown";
+    if (blockType === "i" || blockType === "html" || blockType === "m" || blockType === "query_embed" || blockType === "t") return "markdown";
+    if (/^!\[.*\]\(assets\//.test(kramdown.trimStart())) return "image";
+    if (/\]\(assets\/[^)]+\)/.test(kramdown)) return "asset";
+    return "text";
+  }
+  function normalizeCommonItem(input) {
+    var _a;
+    const blockId = typeof input.blockId === "string" && isBlockId(input.blockId) ? input.blockId : "";
+    const libraryDocId = typeof input.libraryDocId === "string" && isBlockId(input.libraryDocId) ? input.libraryDocId : "";
+    if (!blockId || !libraryDocId) return null;
+    const attrs = (_a = input.attrs) != null ? _a : {};
+    const droppedFields = [];
+    for (const key of Object.keys(attrs)) {
+      if (!key.startsWith(ATTR_PREFIX)) continue;
+      if (!Object.values(ATTR).includes(key)) droppedFields.push(key);
+    }
+    const logicalIdRaw = typeof attrs[ATTR.id] === "string" ? attrs[ATTR.id] : "";
+    if (!isLogicalId(logicalIdRaw)) return null;
+    const kramdown = typeof input.kramdown === "string" ? input.kramdown.slice(0, LIMITS.contentChars) : "";
+    const blockType = typeof input.blockType === "string" ? input.blockType : "";
+    const subtype = typeof input.subtype === "string" ? input.subtype : "";
+    const declaredType = isItemType(attrs[ATTR.type]) ? attrs[ATTR.type] : null;
+    const itemType = declaredType != null ? declaredType : inferItemType(blockType, subtype, kramdown);
+    const tags = cleanTagList(attrs[ATTR.tags]);
+    const title = cleanString(attrs[ATTR.title], LIMITS.title) || deriveTitle(kramdown, itemType, attrs);
+    const created = Number(attrs[ATTR.created]);
+    const updated = Number(attrs[ATTR.updated]);
+    const srcDoc = typeof attrs[ATTR.srcDoc] === "string" ? attrs[ATTR.srcDoc] : "";
+    const srcBlock = typeof attrs[ATTR.srcBlock] === "string" ? attrs[ATTR.srcBlock] : "";
+    const varCountRaw = Number(attrs[ATTR.vars]);
+    const varCount = Number.isInteger(varCountRaw) && varCountRaw > 0 ? Math.min(varCountRaw, LIMITS.maxAskFields) : 0;
+    const declaredSourceType = isSourceType(attrs[ATTR.srcType]) ? attrs[ATTR.srcType] : "";
+    const source = {
+      sourceDocId: isBlockId(srcDoc) ? srcDoc : "",
+      sourceBlockId: isBlockId(srcBlock) ? srcBlock : "",
+      sourceType: declaredSourceType || (srcDoc || srcBlock ? "block" : "manual")
+    };
+    return {
+      id: logicalIdRaw,
+      blockId,
+      libraryDocId,
+      itemType,
+      title,
+      alias: cleanString(attrs[ATTR.alias], LIMITS.alias),
+      tags,
+      category: cleanString(attrs[ATTR.category], LIMITS.category),
+      summary: deriveSummary(kramdown),
+      varCount,
+      source,
+      url: cleanString(attrs[ATTR.url], 2048),
+      targetBlockId: isBlockId(attrs[ATTR.target]) ? attrs[ATTR.target] : "",
+      createdAt: Number.isFinite(created) && created > 0 ? created : 0,
+      updatedAt: Number.isFinite(updated) && updated > 0 ? updated : 0,
+      droppedFields
+    };
+  }
+  function deriveTitle(kramdown, itemType, attrs) {
+    var _a;
+    const alias = cleanString(attrs[ATTR.alias], LIMITS.alias);
+    if (alias) return alias;
+    const text = kramdownToPlainText(kramdown);
+    const firstLine = (_a = text.split("\n").map((l) => l.trim()).find((l) => l.length > 0)) != null ? _a : "";
+    if (firstLine) return firstLine.slice(0, LIMITS.title);
+    if (itemType === "url") return cleanString(attrs[ATTR.url], LIMITS.title) || "URL";
+    if (itemType === "code") return "Code";
+    return itemType;
+  }
+  function kramdownToPlainText(kramdown) {
+    return kramdown.replace(/^```.*$/gm, "").replace(/\{\{.*?\}\}/g, "").replace(/!\[([^\]]*)\]\(([^)\s]+)[^)]*\)/g, "$1 $2").replace(/\[([^\]]*)\]\(([^)\s]+)[^)]*\)/g, "$1 $2").replace(/^#{1,6}\s+/gm, "").replace(/\*\*([^*]+)\*\*/g, "$1").replace(/\*([^*]+)\*/g, "$1").replace(/`([^`]+)`/g, "$1").replace(/\{\:(\s[^}]*)?\}/g, "").replace(/^%%[\s\S]*?%%$/gm, "").trim();
+  }
+  function deriveSummary(kramdown) {
+    const text = kramdownToPlainText(kramdown).replace(/\s+/g, " ").trim();
+    return text.slice(0, LIMITS.summary);
   }
   function getCategoryColorVariant(category) {
     var _a;
@@ -3096,7 +3247,31 @@ ${exception.mark.snippet}`;
     }
     return fields;
   }
+  function countAskFields(text) {
+    return listAskFields(text).length;
+  }
+  function cleanFillValue(v) {
+    return (v != null ? v : "").trim().slice(0, LIMITS.askValueChars);
+  }
+  function expandAsks(text, fills) {
+    if (!text) return text;
+    return text.replace(ASK_PATTERN, (_match, rawName, rawOptions) => {
+      var _a;
+      const field = parseAskField(rawName, rawOptions);
+      if (!field) return _match;
+      const filled = Object.prototype.hasOwnProperty.call(fills, field.name) ? cleanFillValue((_a = fills[field.name]) != null ? _a : "") : "";
+      if (filled) return filled;
+      return `__${field.name}__`;
+    });
+  }
+  function applyAskDefaults(text) {
+    return expandAsks(text, {});
+  }
   var CURSOR_TOKEN = "{{xlc:cursor}}";
+  var SNIPPET_PATTERN = /\{\{xlc:snippet:([^}]+)\}\}/g;
+  function stripCursorToken(text) {
+    return text.split(CURSOR_TOKEN).join("");
+  }
   function hasCursorToken(text) {
     return text.includes(CURSOR_TOKEN);
   }
@@ -3335,6 +3510,9 @@ ${exception.mark.snippet}`;
     };
   }
   var active = createNoopPinyinAdapter();
+  function getPinyinAdapter() {
+    return active;
+  }
 
   // src/model/pinyin-tiny.ts
   var POLYPHONE_PHRASES = {
@@ -3628,6 +3806,7 @@ ${exception.mark.snippet}`;
         const isApple = /Mac|iPhone|iPad/i.test(navigator.platform || "");
         kbdRow = document.createElement("div");
         kbdRow.className = "xlc-kbdrow";
+        kbdRow.tabIndex = 0;
         kbdRow.setAttribute("aria-label", this.deps.t("keyboardHelp"));
         const kbdLabel = document.createElement("span");
         kbdLabel.className = "xlc-kbdrow-label";
@@ -3833,8 +4012,18 @@ ${exception.mark.snippet}`;
         warn.className = "xlc-pane-warn";
         warn.style.display = "none";
         pane.appendChild(warn);
+        const mediaHint = document.createElement("p");
+        mediaHint.className = "xlc-page-intro";
+        mediaHint.dataset.xlcControl = "preview.media-hint";
+        mediaHint.setAttribute("role", "note");
+        mediaHint.textContent = this.deps.t("mediaContentHint");
+        mediaHint.style.padding = "var(--xlc-space-2) var(--xlc-space-4)";
+        mediaHint.style.flexShrink = "0";
+        mediaHint.hidden = true;
+        pane.appendChild(mediaHint);
         const paneBody = document.createElement("div");
         paneBody.className = "xlc-pane-body xlc-pane-body--muted";
+        paneBody.tabIndex = 0;
         paneBody.textContent = this.deps.t("previewUnavailable");
         pane.appendChild(paneBody);
         pane.appendChild(this.buildPaneFoot());
@@ -3935,6 +4124,14 @@ ${exception.mark.snippet}`;
       variables.className = "xlc-form-hint xlc-guide-vars";
       variables.textContent = this.deps.t("usageGuideVariables");
       root.appendChild(variables);
+      const media = document.createElement("p");
+      media.className = "xlc-form-hint xlc-guide-vars";
+      media.textContent = this.deps.t("usageGuideMedia");
+      root.appendChild(media);
+      const multiblock = document.createElement("p");
+      multiblock.className = "xlc-form-hint xlc-guide-vars";
+      multiblock.textContent = this.deps.t("usageGuideMultiblock");
+      root.appendChild(multiblock);
       const actions = document.createElement("div");
       actions.className = "xlc-form-actions";
       const close = document.createElement("button");
@@ -4791,7 +4988,7 @@ ${exception.mark.snippet}`;
       if (insertBtn) {
         const copyFallback = this.activeProvider >= 0 ? !this.insertTarget && (this.deps.isMobile() || !((_n = (_m = (_j = (_i = this.deps).hasInsertTarget) == null ? void 0 : _j.call(_i)) != null ? _m : (_l = (_k = this.deps).hasActiveEditor) == null ? void 0 : _l.call(_k)) != null ? _n : true)) : this.mobilePrimaryIsCopy() || !this.insertTarget && !((_t = (_s = (_p = (_o = this.deps).hasInsertTarget) == null ? void 0 : _p.call(_o)) != null ? _s : (_r = (_q = this.deps).hasActiveEditor) == null ? void 0 : _r.call(_q)) != null ? _t : true);
         insertBtn.textContent = copyFallback ? this.deps.t("copy") : this.deps.t("insert");
-        const hint = this.deps.isMobile() && !this.insertTarget ? this.deps.t("insertMobileActionHint") : !this.insertTarget && !((_z = (_y = (_v = (_u = this.deps).hasInsertTarget) == null ? void 0 : _v.call(_u)) != null ? _y : (_x = (_w = this.deps).hasActiveEditor) == null ? void 0 : _x.call(_w)) != null ? _z : true) ? this.deps.t(((_C = (_B = (_A = this.deps).hasActiveEditor) == null ? void 0 : _B.call(_A)) != null ? _C : true) ? "insertTargetUnavailableCopied" : "insertNoEditor") : "";
+        const hint = this.deps.isMobile() && !this.insertTarget ? this.deps.t("insertMobileActionHint") : !this.insertTarget && !((_z = (_y = (_v = (_u = this.deps).hasInsertTarget) == null ? void 0 : _v.call(_u)) != null ? _y : (_x = (_w = this.deps).hasActiveEditor) == null ? void 0 : _x.call(_w)) != null ? _z : true) ? this.deps.t(((_C = (_B = (_A = this.deps).hasActiveEditor) == null ? void 0 : _B.call(_A)) != null ? _C : true) ? "insertTargetUnavailableBanner" : "insertNoEditorBanner") : "";
         insertBtn.title = hint;
         if (hint) insertBtn.setAttribute("aria-label", hint);
         else insertBtn.removeAttribute("aria-label");
@@ -5137,13 +5334,16 @@ ${exception.mark.snippet}`;
       meta.style.display = "flex";
     }
     updatePreview(forceId) {
-      var _a, _b, _c, _d, _e, _f, _g;
+      var _a, _b, _c, _d, _e, _f, _g, _h;
       const paneBody = (_a = this.dialog) == null ? void 0 : _a.element.querySelector(".xlc-pane-body");
       const paneTitle = (_b = this.dialog) == null ? void 0 : _b.element.querySelector(".xlc-pane-title");
       const paneWarn = (_c = this.dialog) == null ? void 0 : _c.element.querySelector(".xlc-pane-warn");
       const paneAi = (_d = this.dialog) == null ? void 0 : _d.element.querySelector(".xlc-pane-ai");
       const paneUsage = (_e = this.dialog) == null ? void 0 : _e.element.querySelector(".xlc-pane-usage");
       if (!paneBody || !paneTitle || !paneWarn || !paneAi || !paneUsage) return;
+      const mediaHint = (_f = this.dialog) == null ? void 0 : _f.element.querySelector('[data-xlc-control="preview.media-hint"]');
+      const activeEntry = this.activeProvider < 0 ? this.results[this.activeIndex] : void 0;
+      if (mediaHint) mediaHint.hidden = (activeEntry == null ? void 0 : activeEntry.itemType) !== "image" && (activeEntry == null ? void 0 : activeEntry.itemType) !== "asset";
       this.syncPaneActions();
       const paintUsageBadge = (entry2) => {
         var _a2;
@@ -5172,7 +5372,7 @@ ${exception.mark.snippet}`;
         this.activeProvider = -1;
       }
       const entry = this.results[this.activeIndex];
-      const id = (_f = forceId != null ? forceId : entry == null ? void 0 : entry.id) != null ? _f : null;
+      const id = (_g = forceId != null ? forceId : entry == null ? void 0 : entry.id) != null ? _g : null;
       this.paintPaneMeta(entry);
       if (!id) {
         ++this.previewSeq;
@@ -5191,7 +5391,7 @@ ${exception.mark.snippet}`;
       if (!id || id === this.lastPreviewId) return;
       const seq = ++this.previewSeq;
       this.lastPreviewId = id;
-      if (paneTitle) paneTitle.textContent = (_g = entry == null ? void 0 : entry.title) != null ? _g : "";
+      if (paneTitle) paneTitle.textContent = (_h = entry == null ? void 0 : entry.title) != null ? _h : "";
       if (paneAi) paneAi.style.display = this.aiResults ? "" : "none";
       paintUsageBadge(entry);
       if (paneWarn) {
@@ -5333,12 +5533,22 @@ ${exception.mark.snippet}`;
         menu.innerHTML = "";
         render();
       };
+      const appendMediaHint = () => {
+        if (entry.itemType !== "image" && entry.itemType !== "asset") return;
+        const hint = document.createElement("p");
+        hint.className = "xlc-pickdoc-empty";
+        hint.dataset.xlcControl = "dialog.media-hint";
+        hint.setAttribute("role", "note");
+        hint.textContent = this.deps.t("mediaContentHint");
+        menu.appendChild(hint);
+      };
       const buildDefault = () => {
         var _a2;
         const lbl = document.createElement("div");
         lbl.className = "xlc-menu-lbl";
         lbl.textContent = (entry.title || this.deps.t("unknownType")) + " \xB7 " + this.deps.t("actionsNoun");
         menu.appendChild(lbl);
+        appendMediaHint();
         const previewBox = document.createElement("pre");
         previewBox.className = "xlc-menu-preview xlc-menu-preview--muted";
         previewBox.textContent = this.deps.t("previewUnavailable");
@@ -5414,8 +5624,8 @@ ${exception.mark.snippet}`;
         if (useCount > 0 && this.deps.resetItemUsage) {
           addSilent("\u21BA", this.deps.t("resetItemUsage", String(useCount)), async () => {
             var _a3, _b2;
-            const ok = (_b2 = (_a3 = this.deps).resetItemUsage) == null ? void 0 : _b2.call(_a3, entry.id);
-            if (ok) {
+            const ok2 = (_b2 = (_a3 = this.deps).resetItemUsage) == null ? void 0 : _b2.call(_a3, entry.id);
+            if (ok2) {
               this.usageCounts.delete(entry.id);
               void this.refreshPreservingPosition();
             }
@@ -5514,6 +5724,7 @@ ${exception.mark.snippet}`;
         lbl.className = "xlc-menu-lbl";
         lbl.textContent = viewLabel;
         menu.appendChild(lbl);
+        appendMediaHint();
         const box = document.createElement("pre");
         box.className = "xlc-menu-preview xlc-menu-preview--muted";
         box.textContent = this.deps.t("aiWorking");
@@ -6140,11 +6351,174 @@ ${exception.mark.snippet}`;
     if (!path) return null;
     return isValidAssetPath(path) ? path : null;
   }
+  function extractCodeFence(kramdown) {
+    var _a, _b;
+    const m = kramdown.match(/^```([\w+#.-]*)\s*\n([\s\S]*?)\n?```\s*$/);
+    if (!m) return null;
+    return { language: (_a = m[1]) != null ? _a : "", code: (_b = m[2]) != null ? _b : "" };
+  }
+  function refAnchorText(item) {
+    const base = item.alias || item.title || "ref";
+    return base.replace(/[[\]()']/g, "").slice(0, 96) || "ref";
+  }
+  function asInlineText(text) {
+    return text.slice(0, LIMITS.contentChars);
+  }
+  function buildBlockRef(blockId, anchor) {
+    if (!BLOCK_ID_RE.test(blockId)) throw new Error("invalid block id");
+    return `((${blockId} '${anchor.replace(/\\/g, "\\\\").replace(/'/g, "\\'")}'))`;
+  }
+  function buildEmbedBlock(blockId) {
+    if (!BLOCK_ID_RE.test(blockId)) throw new Error("invalid block id");
+    return `{{select * from blocks where id='${blockId}'}}`;
+  }
+  function planAction(item, mode, ctx) {
+    const base = {
+      mode,
+      clipboardKind: "text",
+      downgraded: false,
+      pendingVerification: [],
+      warnings: []
+    };
+    if (ctx.content.sourceMissing && mode !== "insert-ref" && mode !== "insert-embed" && mode !== "copy-content") {
+      if (mode === "open") {
+        return { ...base, open: void 0, downgraded: true, downgradeReason: "source-missing", warnings: ["source-missing"] };
+      }
+    }
+    if (ctx.content.assetMissing) {
+      base.pendingVerification.push("asset-missing");
+    }
+    switch (item.itemType) {
+      case "text": {
+        const text = asInlineText(ctx.content.kramdown);
+        if (mode === "copy" || mode === "copy-content") return { ...base, clipboardText: text, clipboardKind: "text" };
+        return { ...base, markdown: text };
+      }
+      case "markdown":
+      case "structure": {
+        const md = ctx.content.kramdown.slice(0, LIMITS.contentChars);
+        if (mode === "copy" || mode === "copy-content") return { ...base, clipboardText: md, clipboardKind: "markdown" };
+        return { ...base, markdown: md };
+      }
+      case "url": {
+        const url = item.url || extractFirstUrl(ctx.content.kramdown);
+        if (!url || !isSafeHttpUrl(url)) {
+          return { ...base, downgraded: true, downgradeReason: "type-unsupported", warnings: ["url-empty"] };
+        }
+        if (mode === "open") return { ...base, open: { kind: "url", url } };
+        if (mode === "copy" || mode === "copy-content") return { ...base, clipboardText: url, clipboardKind: "url" };
+        const title = item.title && item.title !== url ? item.title : url;
+        return { ...base, markdown: `[${title.replace(/[[\]]/g, "")}](${url})` };
+      }
+      case "code": {
+        const fence = extractCodeFence(ctx.content.kramdown);
+        const code = fence ? fence.code : ctx.content.kramdown;
+        const language = fence ? fence.language : "";
+        if (mode === "copy" || mode === "copy-content") return { ...base, clipboardText: code, clipboardKind: "code" };
+        return { ...base, markdown: "```" + language + "\n" + code.slice(0, LIMITS.contentChars) + "\n```" };
+      }
+      case "image":
+      case "asset": {
+        const assetPath = extractAssetPath(ctx.content.kramdown);
+        if (!assetPath) {
+          return { ...base, downgraded: true, downgradeReason: "asset-missing", warnings: ["asset-path-unresolvable"] };
+        }
+        if (ctx.content.assetMissing) {
+          if (mode === "copy" || mode === "copy-content") {
+            return {
+              ...base,
+              clipboardText: `[${item.title}](${assetPath})`,
+              clipboardKind: "markdown-link",
+              pendingVerification: ["asset-missing"]
+            };
+          }
+          return { ...base, downgraded: true, downgradeReason: "asset-missing", warnings: ["asset-missing"] };
+        }
+        if (mode === "open") {
+          return { ...base, open: { kind: "asset", assetPath } };
+        }
+        if (mode === "copy" || mode === "copy-content") {
+          return {
+            ...base,
+            clipboardText: `[${item.title}](${assetPath})`,
+            clipboardKind: "markdown-link",
+            pendingVerification: item.itemType === "image" ? ["bitmap-clipboard-unverified"] : []
+          };
+        }
+        return {
+          ...base,
+          markdown: item.itemType === "image" ? `![](${assetPath})` : `[${item.title}](${assetPath})`,
+          pendingVerification: item.itemType === "image" ? ["bitmap-clipboard-unverified"] : []
+        };
+      }
+      case "blockref": {
+        const target = resolveBlockRefTarget(item);
+        if (!BLOCK_ID_RE.test(target)) {
+          return { ...base, downgraded: true, downgradeReason: "source-missing", warnings: ["target-block-invalid"] };
+        }
+        if (mode === "copy" || mode === "copy-content") {
+          return { ...base, clipboardText: ctx.content.kramdown, clipboardKind: "markdown", mode: "copy-content" };
+        }
+        if (mode === "insert-ref") {
+          return { ...base, markdown: buildBlockRef(target, refAnchorText(item)) };
+        }
+        if (mode === "insert-embed") {
+          return { ...base, markdown: buildEmbedBlock(target) };
+        }
+        if (mode === "insert-content") {
+          return { ...base, markdown: ctx.content.kramdown.slice(0, LIMITS.contentChars) };
+        }
+        return { ...base, markdown: buildBlockRef(target, refAnchorText(item)) };
+      }
+      default: {
+        return { ...base, downgraded: true, downgradeReason: "type-unsupported", warnings: ["unknown-type"] };
+      }
+    }
+  }
+  function extractFirstUrl(text) {
+    const m = text.match(/https?:\/\/[^\s)）\]]+/);
+    return m ? m[0].slice(0, 2048) : "";
+  }
+  function planOpenSource(item, resolved) {
+    if (item.itemType === "url") {
+      const url = item.url || extractFirstUrl(resolved.kramdown);
+      return url && isSafeHttpUrl(url) ? { target: { kind: "url", url } } : { failure: "source-missing" };
+    }
+    if (item.itemType === "image" || item.itemType === "asset") {
+      const assetPath = extractAssetPath(resolved.kramdown);
+      if (!assetPath || resolved.assetMissing) return { failure: "asset-missing" };
+      return { target: { kind: "asset", assetPath } };
+    }
+    const sourceBlockId = item.itemType === "blockref" ? resolveBlockRefTarget(item) : item.source.sourceBlockId;
+    if (sourceBlockId) {
+      if (resolved.sourceMissing) return { failure: "source-missing" };
+      return { target: { kind: "block", docId: item.source.sourceDocId, blockId: sourceBlockId } };
+    }
+    if (item.source.sourceDocId) {
+      if (resolved.sourceMissing) return { failure: "source-missing" };
+      return { target: { kind: "doc", docId: item.source.sourceDocId } };
+    }
+    return { target: { kind: "doc", docId: item.libraryDocId } };
+  }
 
   // src/service/export-markdown.ts
+  var ExportIntegrityError = class extends Error {
+    constructor(reason, itemLabel = "", detail = "") {
+      super(`export-${reason}${itemLabel ? `: ${itemLabel}` : ""}${detail ? `: ${detail}` : ""}`);
+      this.reason = reason;
+      this.itemLabel = itemLabel;
+      this.detail = detail;
+      this.name = "ExportIntegrityError";
+    }
+  };
   async function buildMarkdownExport(items, kramdownById, fetchAssetBytes, pack) {
     var _a, _b;
     const oneLine = (value) => value.replace(/[\r\n]+/g, " ").trim();
+    for (const item of items) {
+      if (!kramdownById.has(item.id)) {
+        throw new ExportIntegrityError("body-missing", item.title || item.id);
+      }
+    }
     const entries = [];
     const skippedAssets = [];
     const assetEntries = /* @__PURE__ */ new Map();
@@ -6165,7 +6539,6 @@ ${exception.mark.snippet}`;
       `> \u5BFC\u51FA\u81EA\u601D\u6E90\u63D2\u4EF6\u300C\u5C0F\u9A74\u5E38\u7528\uFF08\u5185\u6D4B\u7248\uFF09\u300D\uFF0C\u5171 ${items.length} \u6761\u3002\u8D44\u6E90\u4F4D\u4E8E assets/\uFF0C\u6761\u76EE\u5185\u94FE\u63A5\u4E3A\u76F8\u5BF9\u8DEF\u5F84\u3002`,
       ""
     ];
-    let totalLen = mdParts.reduce((n, p) => n + p.length, 0);
     if (pack && pack.name.trim()) {
       const manifest = [
         `<!-- xlc-pack`,
@@ -6176,6 +6549,7 @@ ${exception.mark.snippet}`;
       ].filter(Boolean).join("\n");
       mdParts.unshift(manifest, "");
     }
+    let totalLen = mdParts.reduce((length, part) => length + part.length, 0) + mdParts.length - 1;
     for (const item of items) {
       const kramdown = (_b = kramdownById.get(item.id)) != null ? _b : "";
       const meta = [
@@ -6192,7 +6566,12 @@ ${exception.mark.snippet}`;
         item.targetBlockId ? `target: ${oneLine(item.targetBlockId)}` : "",
         `-->`
       ].filter(Boolean).join("\n");
-      mdParts.push(`## ${oneLine(item.title || item.id)}`, "", meta, "", kramdown, "");
+      const itemParts = [`## ${oneLine(item.title || item.id)}`, "", meta, "", kramdown, ""];
+      totalLen += itemParts.reduce((length, part) => length + part.length, 0) + itemParts.length;
+      if (totalLen > LIMITS.contentChars) {
+        throw new ExportIntegrityError("too-large", "", String(LIMITS.contentChars));
+      }
+      mdParts.push(...itemParts);
       if (item.itemType === "image" || item.itemType === "asset") {
         const assetPath = extractAssetPath(kramdown);
         if (assetPath && !assetEntries.has(assetPath)) {
@@ -6207,13 +6586,9 @@ ${exception.mark.snippet}`;
           }
         }
       }
-      totalLen += 6 + (item.title || item.id).length + meta.length + kramdown.length;
-      if (totalLen > LIMITS.contentChars) {
-        mdParts.push("", "> \uFF08\u5185\u5BB9\u8D85\u957F\uFF0C\u5BFC\u51FA\u5728\u6B64\u622A\u65AD\uFF09");
-        break;
-      }
     }
-    entries.push({ name: "items.md", data: new TextEncoder().encode(mdParts.join("\n")) });
+    const markdown = mdParts.join("\n");
+    entries.push({ name: "items.md", data: new TextEncoder().encode(markdown) });
     entries.push(...assetEntries.values());
     return { entries, itemCount: items.length, assetCount, skippedAssets, varNames };
   }
@@ -6357,7 +6732,7 @@ ${exception.mark.snippet}`;
     "<!-- xlc-pack",
     `name: ${PROMPT_PACK_NAME}`,
     "items: 20",
-    "vars: \u5BA2\u6237\u540D\u79F0,\u8865\u507F\u6BD4\u4F8B,\u5DE5\u5355\u53F7,\u8DDF\u8FDB\u65E5\u671F,\u5BA2\u6237\u6635\u79F0,\u76EE\u6807\u8BFB\u8005,\u7F16\u7A0B\u8BED\u8A00,\u672C\u5468\u4E3B\u9898,\u4F1A\u8BAE\u4E3B\u9898,\u8868\u540D,\u59D3\u540D,\u804C\u4F4D,\u516C\u53F8\u540D\u79F0,\u90AE\u7BB1,\u624B\u673A\u53F7,\u6536\u4EF6\u4EBA,\u4E3B\u9898,\u7701\u5E02\u533A,\u8BE6\u7EC6\u5730\u5740,\u90AE\u7F16,\u5907\u6CE8,\u53D1\u7968\u7C7B\u578B,\u4F01\u4E1A\u540D\u79F0,\u7EB3\u7A0E\u4EBA\u8BC6\u522B\u53F7,\u5F00\u6237\u94F6\u884C,\u94F6\u884C\u8D26\u53F7,\u9000\u6362\u7C7B\u578B,\u8BA2\u5355\u7F16\u53F7,\u5BC4\u56DE\u5730\u5740,\u50AC\u529E\u4E8B\u9879,\u539F\u5B9A\u622A\u6B62,\u54A8\u8BE2\u95EE\u9898",
+    "vars: \u5BA2\u6237\u540D\u79F0,\u8865\u507F\u6BD4\u4F8B,\u5DE5\u5355\u53F7,\u8DDF\u8FDB\u65E5\u671F,\u5BA2\u6237\u6635\u79F0,\u76EE\u6807\u8BFB\u8005,\u7F16\u7A0B\u8BED\u8A00,\u672C\u5468\u4E3B\u9898,\u4F1A\u8BAE\u4E3B\u9898,\u59D3\u540D,\u804C\u4F4D,\u516C\u53F8\u540D\u79F0,\u90AE\u7BB1,\u624B\u673A\u53F7,\u6536\u4EF6\u4EBA,\u4E3B\u9898,\u7701\u5E02\u533A,\u8BE6\u7EC6\u5730\u5740,\u90AE\u7F16,\u5907\u6CE8,\u53D1\u7968\u7C7B\u578B,\u4F01\u4E1A\u540D\u79F0,\u7EB3\u7A0E\u4EBA\u8BC6\u522B\u53F7,\u5F00\u6237\u94F6\u884C,\u94F6\u884C\u8D26\u53F7,\u9000\u6362\u7C7B\u578B,\u8BA2\u5355\u7F16\u53F7,\u5BC4\u56DE\u5730\u5740,\u50AC\u529E\u4E8B\u9879,\u539F\u5B9A\u622A\u6B62,\u54A8\u8BE2\u95EE\u9898",
     "-->",
     "# \u63D0\u793A\u8BCD\u573A\u666F\u5305",
     "",
@@ -6382,6 +6757,7 @@ ${exception.mark.snippet}`;
     "**\u6A21\u677F\u89C4\u5219\u4E0E\u6CE8\u91CA\u89C4\u8303**",
     "- `\uFF5B\uFF5Bxlc:ask:\u5B57\u6BB5\uFF5D\uFF5D` = \u63D2\u5165\u65F6\u586B\u5199\uFF1B`\uFF5B\uFF5Bxlc:ask:\u5B57\u6BB5|\u9009\u9879A,\u9009\u9879B\uFF5D\uFF5D` = \u4E0B\u62C9\u9009\u62E9\uFF08\u672C\u8BF4\u660E\u7528\u5168\u89D2\u62EC\u53F7\u5C55\u793A\u8BED\u6CD5\uFF0C\u5B9E\u9645\u6A21\u677F\u8BF7\u6539\u4E3A\u534A\u89D2\uFF09\u3002\u586B\u5199\u5185\u5BB9\u53EA\u7528\u4E8E\u672C\u6B21\u63D2\u5165\uFF0C\u4E0D\u4F1A\u56DE\u5199\u6A21\u677F\u3002",
     "- `\uFF5B\uFF5Bxlc:date\uFF5D\uFF5D`\u3001`\uFF5B\uFF5Bxlc:clipboard\uFF5D\uFF5D` \u7B49\u52A8\u6001\u5360\u4F4D\u7B26\u53EA\u5728\u63D2\u5165/\u590D\u5236\u65F6\u5C55\u5F00\uFF0C\u6A21\u677F\u539F\u6587\u59CB\u7EC8\u4FDD\u7559\u3002",
+    "- **\u4EE3\u7801\u7C7B\u578B**\u59CB\u7EC8\u6309\u539F\u6587\u5B57\u9762\u63D2\u5165/\u590D\u5236\uFF0C\u4E0D\u5C55\u5F00\u53D8\u91CF\uFF1BSQL \u793A\u4F8B\u4E2D\u7684 `example_posts` \u9700\u624B\u52A8\u6539\u4E3A\u81EA\u5DF1\u7684\u8868\u540D\u3002",
     "- **\u6CE8\u91CA\u4E0E\u8BF4\u660E**\uFF1A\u6761\u76EE\u522B\u540D\uFF08alias\uFF09\u4E0E\u5206\u7C7B\u5373\u4E3A\u573A\u666F\u6CE8\u91CA\uFF1B\u6A21\u677F\u6B63\u6587\u5185\u53EF\u7528\u5F15\u7528\u5757 `> \u{1F4A1} \u63D0\u793A\uFF1A...` \u8BB0\u5F55\u6CE8\u610F\u4E8B\u9879\uFF0C\u4E5F\u53EF\u4EE5\u7528 Markdown \u6CE8\u91CA\u8BED\u6CD5 `<!-- \u6CE8\u91CA -->` \u9690\u85CF\u5185\u90E8\u8BF4\u660E\u3002",
     "- **\u952E\u76D8\u9AD8\u6548\u8C03\u7528**\uFF1A`Alt + 1-9` \u5FEB\u901F\u63D2\u5165\u524D 9 \u9879\uFF0C`Alt + Shift + 1-9` \u5FEB\u901F\u590D\u5236\u524D 9 \u9879\uFF1B\u641C\u7D22\u6846\u6309 `Tab` \u952E\u76F4\u8FBE\u53F3\u4FA7\u64CD\u4F5C\u533A\uFF1B\u914D\u5408\u300C\u5E38\u7528\u300D\u6392\u5E8F\u5B9E\u73B0\u9AD8\u9891\u6761\u76EE\u79D2\u53D1\u3002",
     "- \u63A8\u8350\u5206\u7C7B\uFF1A\u5546\u52A1\u3001\u5BA2\u670D\u3001\u90AE\u7BB1\u3001\u5730\u5740\u3001\u8054\u7CFB\u65B9\u5F0F\u3001\u63D0\u793A\u8BCD\u3001\u5199\u4F5C\u3001\u5F00\u53D1\uFF1B\u5206\u7C7B\u540D\u79F0\u53EF\u4EE5\u6309\u81EA\u5DF1\u7684\u5DE5\u4F5C\u6D41\u4FEE\u6539\u3002",
@@ -6599,7 +6975,7 @@ ${exception.mark.snippet}`;
     "source-type: external",
     "-->",
     "```sql",
-    "SELECT * FROM {{xlc:ask:\u8868\u540D}}",
+    "SELECT * FROM example_posts",
     "WHERE status = 'published'",
     "ORDER BY updated_at DESC",
     "LIMIT 20 OFFSET 40;",
@@ -6831,6 +7207,7 @@ ${exception.mark.snippet}`;
     buildAiSection(ctx, root);
     buildInsertSection(ctx, root);
     buildSearchSection(ctx, root);
+    buildSavedViewsSection(ctx, root, () => dialog.destroy());
     buildProviderSection(ctx, root);
     buildDataSection(ctx, root);
     body.appendChild(root);
@@ -6839,6 +7216,9 @@ ${exception.mark.snippet}`;
     var _a;
     const t = ctx.t;
     const idx = await ctx.library.ensureIndex();
+    if (idx.truncated || idx.stopped || idx.errors.length > 0) {
+      throw new ExportIntegrityError("index-incomplete");
+    }
     const all = Array.from(idx.items.values());
     const categories = Array.from(new Set(all.map((i) => i.category).filter(Boolean))).sort((a, b) => a.localeCompare(b, "zh-Hans-CN"));
     const dialog = new import_siyuan3.Dialog({
@@ -6954,7 +7334,7 @@ ${exception.mark.snippet}`;
       })().catch((err) => {
         exportBtn.disabled = false;
         exportBtn.textContent = t("packExportBtn");
-        ctx.notify("error", t("kernelError", err instanceof Error ? err.message : String(err)));
+        ctx.notify("error", formatExportError(ctx, err));
       });
     });
     actions.appendChild(exportBtn);
@@ -6976,9 +7356,25 @@ ${exception.mark.snippet}`;
     const kramdownById = /* @__PURE__ */ new Map();
     for (const item of items) {
       const kd = await ctx.library.getStoredItemKramdown(item);
-      if (kd.ok) kramdownById.set(item.id, kd.data);
+      if (!kd.ok) throw new ExportIntegrityError("item-unreadable", item.title || item.id, kd.message);
+      kramdownById.set(item.id, kd.data);
     }
     return kramdownById;
+  }
+  function formatExportError(ctx, err) {
+    if (err instanceof ExportIntegrityError) {
+      switch (err.reason) {
+        case "index-incomplete":
+          return ctx.t("exportIncompleteIndex");
+        case "item-unreadable":
+          return ctx.t("exportItemReadFailed", err.itemLabel, err.detail);
+        case "body-missing":
+          return ctx.t("exportBodyMissing", err.itemLabel);
+        case "too-large":
+          return ctx.t("exportTooLarge", err.detail);
+      }
+    }
+    return ctx.t("kernelError", err instanceof Error ? err.message : String(err));
   }
   function buildInsertSection(ctx, root) {
     const t = ctx.t;
@@ -7843,6 +8239,107 @@ ${exception.mark.snippet}`;
     searchSec.appendChild(phRow);
     root.appendChild(searchSec);
   }
+  function buildSavedViewsSection(ctx, root, beforeOpen) {
+    const t = ctx.t;
+    const sec = document.createElement("div");
+    sec.className = "xlc-form-field xlc-card xlc-saved-views";
+    sec.dataset.xlcControl = "settings.saved-views";
+    const label = document.createElement("span");
+    label.className = "xlc-form-label";
+    label.textContent = t("savedViewsSection");
+    sec.appendChild(label);
+    const list = document.createElement("div");
+    list.className = "xlc-saved-view-list";
+    list.setAttribute("role", "list");
+    list.setAttribute("aria-label", t("savedViewsSection"));
+    sec.appendChild(list);
+    const readViews = () => {
+      var _a, _b;
+      const fromContext = (_a = ctx.getSavedDiscoveryViews) == null ? void 0 : _a.call(ctx);
+      return (_b = fromContext != null ? fromContext : ctx.state.search.savedDiscoveryViews) != null ? _b : [];
+    };
+    const scopeLabel = (scope) => {
+      switch (scope) {
+        case "document":
+          return t("discoveryScopeDocument");
+        case "notebook":
+          return t("discoveryScopeNotebook");
+        case "tree":
+          return t("discoveryScopeTree");
+        case "selected-notebook":
+          return t("discoveryScopeSelectedNotebook");
+        case "all-notebooks":
+          return t("discoveryScopeAllNotebooks");
+      }
+    };
+    const render = () => {
+      list.replaceChildren();
+      const views = readViews();
+      if (views.length === 0) {
+        const empty = document.createElement("span");
+        empty.className = "xlc-form-hint xlc-saved-view-empty";
+        empty.textContent = t("savedViewsEmpty");
+        list.appendChild(empty);
+        return;
+      }
+      for (const view of views) {
+        const row = document.createElement("div");
+        row.className = "xlc-setting-row xlc-saved-view-row";
+        row.dataset.xlcSavedViewId = view.id;
+        row.setAttribute("role", "listitem");
+        const text = document.createElement("span");
+        text.className = "xlc-setting-text";
+        const name = document.createElement("strong");
+        name.className = "xlc-saved-view-name";
+        name.textContent = view.name;
+        text.appendChild(name);
+        const meta = document.createElement("span");
+        meta.className = "xlc-setting-sub xlc-saved-view-meta";
+        const pieces = [`#${view.tag}`, scopeLabel(view.scope)];
+        if (view.pathLabel) pieces.push(view.pathLabel);
+        meta.textContent = pieces.join(" \xB7 ");
+        text.appendChild(meta);
+        row.appendChild(text);
+        const actions = document.createElement("span");
+        actions.className = "xlc-setting-actions";
+        const open = document.createElement("button");
+        open.type = "button";
+        open.className = "b3-button xlc-btn-ghost";
+        open.dataset.xlcControl = "settings.saved-view.open";
+        open.textContent = t("savedViewsOpen");
+        open.disabled = !ctx.openSavedDiscoveryView;
+        open.addEventListener("click", () => {
+          if (!ctx.openSavedDiscoveryView) return;
+          beforeOpen == null ? void 0 : beforeOpen();
+          ctx.openSavedDiscoveryView(view);
+        });
+        actions.appendChild(open);
+        const remove = document.createElement("button");
+        remove.type = "button";
+        remove.className = "b3-button xlc-btn-ghost";
+        remove.dataset.xlcControl = "settings.saved-view.delete";
+        remove.textContent = t("savedViewsDelete");
+        remove.addEventListener("click", () => {
+          (0, import_siyuan3.confirm)("\u26A0\uFE0F " + t("savedViewsDelete"), t("savedViewsDeleteConfirm", view.name), () => {
+            var _a;
+            if (ctx.deleteSavedDiscoveryView) {
+              ctx.deleteSavedDiscoveryView(view.id);
+            } else {
+              ctx.state.search.savedDiscoveryViews = ((_a = ctx.state.search.savedDiscoveryViews) != null ? _a : []).filter((entry) => entry.id !== view.id);
+              ctx.persistSoon();
+            }
+            ctx.notify("info", `${t("savedViewsDelete")}: ${view.name}`);
+            render();
+          });
+        });
+        actions.appendChild(remove);
+        row.appendChild(actions);
+        list.appendChild(row);
+      }
+    };
+    render();
+    root.appendChild(sec);
+  }
   function buildDataSection(ctx, root) {
     const t = ctx.t;
     const dataSec = document.createElement("div");
@@ -7974,12 +8471,12 @@ ${exception.mark.snippet}`;
       const message = t("exportDone", String(count));
       ctx.notify("info", message);
       return { message };
-    }, { flightLabel: t("indexing"), loading: t("indexing") });
+    }, { flightLabel: t("indexing"), loading: t("indexing"), formatError: (err) => formatExportError(ctx, err) });
     const packBtn = mkBtn(t("packBtn"), void 0, "settings.data.packExport");
     withFlight(packBtn, async () => {
       await openPackExportDialog(ctx);
       return { message: t("packExportTitle") };
-    }, { flightLabel: t("loading"), loading: t("loading") });
+    }, { flightLabel: t("loading"), loading: t("loading"), formatError: (err) => formatExportError(ctx, err) });
     const importBtn = mkBtn(t("importBtn"), () => {
       var _a;
       if (importBtn.disabled) return;
@@ -8789,6 +9286,16 @@ ${exception.mark.snippet}`;
       contentError.setAttribute("role", "alert");
       contentError.hidden = true;
       contentWrap.appendChild(contentError);
+      const multiBlockHint = document.createElement("span");
+      multiBlockHint.className = "xlc-form-hint";
+      multiBlockHint.setAttribute("role", "note");
+      multiBlockHint.textContent = t("multiBlockPendingHint");
+      const syncMultiBlockHint = () => {
+        multiBlockHint.hidden = typeSelect.value !== "markdown" && typeSelect.value !== "structure";
+      };
+      typeSelect.addEventListener("change", syncMultiBlockHint);
+      syncMultiBlockHint();
+      contentWrap.appendChild(multiBlockHint);
       const varbar = buildVariableBar(t, () => contentEl);
       contentEl.parentElement.after(varbar);
       const titleEl = field(t("title"), (_d = overrides == null ? void 0 : overrides.title) != null ? _d : "", false, "xlc-form-title");
@@ -9173,6 +9680,31 @@ ${exception.mark.snippet}`;
 
   // src/ui/discovery-dialog.ts
   var import_siyuan5 = __toESM(require_stub_dom());
+
+  // src/model/discovery-facets.ts
+  function matchesDiscoveryTag(tags, query) {
+    const wanted = (query != null ? query : "").trim().toLocaleLowerCase();
+    if (!wanted) return true;
+    return (tags != null ? tags : []).some((tag) => typeof tag === "string" && tag.trim().toLocaleLowerCase() === wanted);
+  }
+  function buildDiscoveryTagFacets(candidates, limit = 12) {
+    var _a, _b;
+    const counts = /* @__PURE__ */ new Map();
+    for (const candidate of candidates) {
+      const seen = /* @__PURE__ */ new Set();
+      for (const raw of (_a = candidate.tags) != null ? _a : []) {
+        if (typeof raw !== "string") continue;
+        const tag = raw.trim();
+        if (!tag || seen.has(tag)) continue;
+        seen.add(tag);
+        counts.set(tag, ((_b = counts.get(tag)) != null ? _b : 0) + 1);
+      }
+    }
+    const safeLimit = Number.isFinite(limit) ? Math.max(0, Math.floor(limit)) : 12;
+    return Array.from(counts, ([tag, count]) => ({ tag, count })).sort((a, b) => b.count - a.count || a.tag.localeCompare(b.tag, "zh-Hans")).slice(0, safeLimit);
+  }
+
+  // src/ui/discovery-dialog.ts
   var FALLBACKS = {
     discoveryTitle: "\u4ECE\u5F53\u524D\u6587\u6863\u53D1\u73B0",
     discoveryTitleNotebook: "\u4ECE\u5F53\u524D\u7B14\u8BB0\u672C\u53D1\u73B0",
@@ -9223,6 +9755,13 @@ ${exception.mark.snippet}`;
     discoveryUseDefaultCategory: "\u6062\u590D\u9ED8\u8BA4",
     discoveryRescanKeepsUndo: "\u8BF7\u5148\u64A4\u9500\u6216\u5173\u95ED\u672C\u6279\u6B21\uFF0C\u518D\u91CD\u65B0\u626B\u63CF\u3002",
     discoveryCloseKeepsUndo: "\u672C\u6B21\u53D1\u73B0\u4ECD\u6709\u53EF\u64A4\u9500\u7684\u6536\u5F55\u6279\u6B21\u3002\u5173\u95ED\u4F1A\u4E22\u5931\u64A4\u9500\u5165\u53E3\uFF1B\u4ECD\u8981\u5173\u95ED\u5417\uFF1F",
+    discoveryCloseTitle: "\u5173\u95ED\u53D1\u73B0\u7A97\u53E3",
+    discoveryCloseKeepsItems: "\u5DF2\u52A0\u5165\u7684\u5E38\u7528\u5185\u5BB9\u4F1A\u4FDD\u7559\uFF1B\u5173\u95ED\u4E0D\u4F1A\u64A4\u9500\u65B0\u589E\u5185\u5BB9\u3002",
+    discoveryCloseCancel: "\u8FD4\u56DE\u5E76\u4FDD\u7559\u64A4\u9500",
+    discoveryCloseConfirm: "\u4ECD\u7136\u5173\u95ED",
+    discoveryTitleSavedNotebook: "\u4ECE\u5DF2\u4FDD\u5B58\u7B14\u8BB0\u672C\u53D1\u73B0",
+    discoveryScopeSavedNotebook: "\u5DF2\u4FDD\u5B58\u7B14\u8BB0\u672C",
+    discoveryScopeHintSavedNotebook: "\u626B\u63CF\u89C6\u56FE\u4FDD\u5B58\u65F6\u7684\u7B14\u8BB0\u672C\uFF1B\u5165\u53E3\u6587\u6863\u79FB\u52A8\u4E0D\u4F1A\u66F4\u6362\u626B\u63CF\u76EE\u6807\uFF0C\u6E90\u6587\u6863\u4E0D\u4F1A\u88AB\u4FEE\u6539\u3002",
     discoveryScopeHintDocument: "\u53EA\u8BFB\u53D6\u5F53\u524D\u6587\u6863\u7684\u9876\u5C42\u5757\uFF1B\u6536\u5F55\u524D\u53EF\u9884\u89C8\uFF0C\u539F\u6587\u4E0D\u4F1A\u88AB\u4FEE\u6539\u3002",
     discoveryScopeHintNotebook: "\u626B\u63CF\u5F53\u524D\u6587\u6863\u6240\u5C5E\u7B14\u8BB0\u672C\u7684\u9876\u5C42\u5757\uFF1B\u5019\u9009\u4F1A\u663E\u793A\u5404\u81EA\u6765\u6E90\uFF0C\u6536\u5F55\u65B9\u5F0F\u53EF\u9009\u5F15\u7528\u6216\u72EC\u7ACB\u526F\u672C\u3002",
     discoveryNotebookUnavailable: "\u5F53\u524D\u7248\u672C\u6682\u4E0D\u652F\u6301\u7B14\u8BB0\u672C\u8303\u56F4\u53D1\u73B0",
@@ -9287,6 +9826,7 @@ ${exception.mark.snippet}`;
     discoveryAddingBatch: "\u6B63\u5728\u6536\u5F55\u9009\u4E2D\u9879\uFF1A%s / %s",
     discoveryAdd: "\u52A0\u5165\u5E38\u7528\u5E93",
     discoveryAddSelected: "\u52A0\u5165\u9009\u4E2D\u9879",
+    discoverySyncView: "\u540C\u6B65\u5230\u5E38\u7528\u5E93",
     discoverySelectFiltered: "\u9009\u4E2D\u5F53\u524D\u7B5B\u9009\uFF08%s\uFF09",
     discoveryClearFilteredSelection: "\u6E05\u9664\u5F53\u524D\u7B5B\u9009\u9009\u62E9",
     discoveryForceSameContent: "\u6279\u91CF\u5141\u8BB8\u6536\u5F55\u5185\u5BB9\u76F8\u540C\u7684\u5019\u9009",
@@ -9336,6 +9876,8 @@ ${exception.mark.snippet}`;
       this.deps = deps;
       this.options = options;
       this.dialog = null;
+      this.saveViewDialog = null;
+      this.closeConfirmationDialog = null;
       this.root = null;
       this.list = null;
       this.preview = null;
@@ -9360,6 +9902,8 @@ ${exception.mark.snippet}`;
       this.filterType = null;
       this.filterText = null;
       this.filterTag = null;
+      this.tagFacets = null;
+      this.saveViewButton = null;
       this.selectFilteredButton = null;
       this.addMode = null;
       this.forceSameContent = null;
@@ -9385,14 +9929,17 @@ ${exception.mark.snippet}`;
         text: "",
         tag: ""
       };
-      this.scope = options.scope === "tree" && deps.service.discoverTree && deps.searchDocs ? "tree" : options.scope === "notebook" && deps.service.discoverCurrentNotebook ? "notebook" : "document";
+      this.scope = options.scope === "tree" && deps.service.discoverTree && deps.searchDocs ? "tree" : options.scope === "notebook" && (options.initialNotebookId !== void 0 || deps.service.discoverCurrentNotebook) ? "notebook" : "document";
       if (this.scope === "tree" && options.initialTreeRootId) {
         this.targetDocId = options.initialTreeRootId;
         this.initialTreeRootId = options.initialTreeRootId;
       }
+      if (typeof options.initialTag === "string") {
+        this.filter.tag = options.initialTag.trim().slice(0, 64).toLocaleLowerCase();
+      }
     }
     titleKey() {
-      return this.scope === "notebook" ? "discoveryTitleNotebook" : this.scope === "tree" ? "discoveryTitleTree" : this.scope === "document" ? "discoveryTitle" : "discoveryTitleGeneral";
+      return this.scope === "notebook" ? this.options.initialNotebookId !== void 0 ? "discoveryTitleSavedNotebook" : "discoveryTitleNotebook" : this.scope === "tree" ? "discoveryTitleTree" : this.scope === "document" ? "discoveryTitle" : "discoveryTitleGeneral";
     }
     tx(key, ...args) {
       var _a;
@@ -9411,18 +9958,22 @@ ${exception.mark.snippet}`;
         height: "min(840px, 92vh)",
         disableClose: true,
         destroyCallback: () => {
-          var _a2, _b2, _c, _d, _e;
+          var _a2, _b2, _c, _d, _e, _f, _g;
           if (this.closed) return;
           this.closed = true;
-          const closed = this.deps.service.closeSession((_a2 = this.sessionId) != null ? _a2 : void 0);
+          (_a2 = this.saveViewDialog) == null ? void 0 : _a2.destroy();
+          this.saveViewDialog = null;
+          (_b2 = this.closeConfirmationDialog) == null ? void 0 : _b2.destroy();
+          this.closeConfirmationDialog = null;
+          const closed = this.deps.service.closeSession((_c = this.sessionId) != null ? _c : void 0);
           if (!closed.ok) {
-            (_c = (_b2 = this.deps).notify) == null ? void 0 : _c.call(_b2, "error", closed.reason === "conflict" ? this.tx("discoveryClosePendingWrites") : this.failureMessage(closed));
+            (_e = (_d = this.deps).notify) == null ? void 0 : _e.call(_d, "error", closed.reason === "conflict" ? this.tx("discoveryClosePendingWrites") : this.failureMessage(closed));
           }
           this.session = null;
           this.sessionId = null;
           this.dialog = null;
           this.root = null;
-          (_e = (_d = this.deps).notify) == null ? void 0 : _e.call(_d, "info", this.tx("discoveryClose"));
+          (_g = (_f = this.deps).notify) == null ? void 0 : _g.call(_f, "info", this.tx("discoveryClose"));
         }
       });
       this.dialog = dialog;
@@ -9437,20 +9988,44 @@ ${exception.mark.snippet}`;
       this.renderShell();
       void this.scan();
     }
-    close(force = false) {
-      var _a, _b, _c;
+    close(force = false, onClosed) {
+      if (!this.dialog) {
+        onClosed == null ? void 0 : onClosed();
+        return true;
+      }
+      if (!force && this.closeConfirmationDialog) return false;
+      if (!force && this.undoableBatchIds.size && !this.actionBusy) {
+        this.openCloseConfirmation(onClosed);
+        return false;
+      }
+      const closed = this.finishClose(force);
+      if (closed) onClosed == null ? void 0 : onClosed();
+      return closed;
+    }
+    finishClose(force = false, onRejected) {
+      var _a, _b, _c, _d, _e;
       if (!this.dialog) return true;
       if (!force) {
-        if (this.undoableBatchIds.size && !window.confirm(this.tx("discoveryCloseKeepsUndo"))) return false;
+        if (this.actionBusy) {
+          const message = this.tx("discoveryClosePendingWrites");
+          this.setReceipt(message, true, Array.from(this.undoableBatchIds));
+          onRejected == null ? void 0 : onRejected(message);
+          return false;
+        }
         const closed = this.deps.service.closeSession((_a = this.sessionId) != null ? _a : void 0);
         if (!closed.ok) {
           const message = closed.reason === "conflict" ? this.tx("discoveryClosePendingWrites") : this.failureMessage(closed);
-          this.setReceipt(message, true);
+          this.setReceipt(message, true, Array.from(this.undoableBatchIds));
           (_c = (_b = this.deps).notify) == null ? void 0 : _c.call(_b, "error", message);
+          onRejected == null ? void 0 : onRejected(message);
           return false;
         }
       }
       this.closed = true;
+      (_d = this.saveViewDialog) == null ? void 0 : _d.destroy();
+      this.saveViewDialog = null;
+      (_e = this.closeConfirmationDialog) == null ? void 0 : _e.destroy();
+      this.closeConfirmationDialog = null;
       this.scanSeq++;
       this.previewSeq++;
       this.session = null;
@@ -9460,7 +10035,80 @@ ${exception.mark.snippet}`;
       dialog.destroy();
       return true;
     }
+    openCloseConfirmation(onClosed) {
+      var _a;
+      if (this.closeConfirmationDialog || this.closed) return;
+      const dialog = new import_siyuan5.Dialog({
+        title: this.tx("discoveryCloseTitle"),
+        content: "",
+        width: "min(440px, 92vw)",
+        disableClose: true,
+        destroyCallback: () => {
+          var _a2;
+          if (this.closeConfirmationDialog === dialog) this.closeConfirmationDialog = null;
+          if (!this.closed) (_a2 = this.closeButton) == null ? void 0 : _a2.focus();
+        }
+      });
+      this.closeConfirmationDialog = dialog;
+      (_a = dialog.element.querySelector(".b3-dialog__container")) == null ? void 0 : _a.classList.add("xlc-form-host");
+      const body = getDialogBody(dialog.element);
+      if (!body) {
+        dialog.destroy();
+        this.setReceipt(this.tx("discoveryCloseKeepsUndo"), true, Array.from(this.undoableBatchIds));
+        return;
+      }
+      const form = document.createElement("form");
+      form.className = "xlc-form xlc-discovery-close-form";
+      const warning = document.createElement("p");
+      warning.className = "xlc-form-hint";
+      warning.textContent = `${this.tx("discoveryCloseKeepsUndo")} ${this.tx("discoveryCloseKeepsItems")}`;
+      const error = document.createElement("div");
+      error.className = "xlc-form-error";
+      error.setAttribute("role", "alert");
+      const actions = document.createElement("div");
+      actions.className = "xlc-form-actions";
+      let settled = false;
+      const cancelClose = () => {
+        settled = true;
+        dialog.destroy();
+      };
+      const cancel = document.createElement("button");
+      cancel.type = "button";
+      cancel.className = "b3-button b3-button--cancel";
+      cancel.dataset.xlcControl = "discovery.close.cancel";
+      cancel.textContent = this.tx("discoveryCloseCancel");
+      cancel.addEventListener("click", cancelClose);
+      const confirm3 = document.createElement("button");
+      confirm3.type = "submit";
+      confirm3.className = "b3-button b3-button--text";
+      confirm3.dataset.xlcControl = "discovery.close.confirm";
+      confirm3.textContent = this.tx("discoveryCloseConfirm");
+      actions.append(cancel, confirm3);
+      form.append(warning, error, actions);
+      body.appendChild(form);
+      form.addEventListener("keydown", (event) => {
+        if (event.key === "Escape" && !event.isComposing && event.keyCode !== 229) {
+          event.preventDefault();
+          cancelClose();
+        }
+        if (event.key === "Enter" && (event.isComposing || event.keyCode === 229)) event.preventDefault();
+        event.stopPropagation();
+      });
+      form.addEventListener("submit", (event) => {
+        event.preventDefault();
+        if (settled || this.closed || this.closeConfirmationDialog !== dialog) return;
+        if (!this.finishClose(false, (message) => {
+          error.textContent = message;
+        })) return;
+        settled = true;
+        onClosed == null ? void 0 : onClosed();
+      });
+      requestAnimationFrame(() => {
+        if (!settled && !this.closed && this.closeConfirmationDialog === dialog) cancel.focus();
+      });
+    }
     renderShell() {
+      var _a, _b, _c;
       const root = this.root;
       if (!root) return;
       const head = document.createElement("div");
@@ -9486,8 +10134,8 @@ ${exception.mark.snippet}`;
       this.scopeSelect.appendChild(documentOption);
       const notebookOption = document.createElement("option");
       notebookOption.value = "notebook";
-      notebookOption.textContent = this.tx("discoveryScopeNotebook");
-      notebookOption.disabled = !this.deps.service.discoverCurrentNotebook;
+      notebookOption.textContent = this.tx(this.options.initialNotebookId !== void 0 ? "discoveryScopeSavedNotebook" : "discoveryScopeNotebook");
+      notebookOption.disabled = this.options.initialNotebookId !== void 0 ? !this.deps.service.discoverNotebook : !this.deps.service.discoverCurrentNotebook;
       if (notebookOption.disabled) notebookOption.title = this.tx("discoveryNotebookUnavailable");
       this.scopeSelect.appendChild(notebookOption);
       for (const [value, key, enabled] of [
@@ -9504,10 +10152,10 @@ ${exception.mark.snippet}`;
       }
       this.scopeSelect.value = this.scope;
       this.scopeSelect.addEventListener("change", () => {
-        var _a, _b, _c;
-        const nextScope = (_a = this.scopeSelect) == null ? void 0 : _a.value;
+        var _a2, _b2, _c2;
+        const nextScope = (_a2 = this.scopeSelect) == null ? void 0 : _a2.value;
         if (nextScope === this.scope) return;
-        if (this.actionBusy || ((_b = this.root) == null ? void 0 : _b.getAttribute("aria-busy")) === "true") {
+        if (this.actionBusy || ((_b2 = this.root) == null ? void 0 : _b2.getAttribute("aria-busy")) === "true") {
           this.scopeSelect.value = this.scope;
           return;
         }
@@ -9537,7 +10185,7 @@ ${exception.mark.snippet}`;
         this.scanState = "idle";
         this.scope = nextScope;
         title.textContent = this.tx(this.titleKey());
-        (_c = this.list) == null ? void 0 : _c.setAttribute("aria-label", this.tx(this.titleKey()));
+        (_c2 = this.list) == null ? void 0 : _c2.setAttribute("aria-label", this.tx(this.titleKey()));
         if (this.scopeHint) this.scopeHint.textContent = this.scopeHintText();
         this.targetDocId = "";
         this.targetNotebookId = "";
@@ -9612,8 +10260,8 @@ ${exception.mark.snippet}`;
         this.filterStatus.appendChild(option);
       }
       this.filterStatus.addEventListener("change", () => {
-        var _a;
-        this.filter.status = (_a = this.filterStatus) == null ? void 0 : _a.value;
+        var _a2;
+        this.filter.status = (_a2 = this.filterStatus) == null ? void 0 : _a2.value;
         this.page = 0;
         this.renderList();
       });
@@ -9633,8 +10281,8 @@ ${exception.mark.snippet}`;
         this.filterType.appendChild(option);
       }
       this.filterType.addEventListener("change", () => {
-        var _a;
-        this.filter.type = (_a = this.filterType) == null ? void 0 : _a.value;
+        var _a2;
+        this.filter.type = (_a2 = this.filterType) == null ? void 0 : _a2.value;
         this.page = 0;
         this.renderList();
       });
@@ -9645,8 +10293,8 @@ ${exception.mark.snippet}`;
       this.filterText.placeholder = this.tx("discoverySearchPlaceholder");
       this.filterText.setAttribute("aria-label", this.tx("discoverySearchPlaceholder"));
       this.filterText.addEventListener("input", () => {
-        var _a, _b;
-        this.filter.text = (_b = (_a = this.filterText) == null ? void 0 : _a.value.trim().toLocaleLowerCase()) != null ? _b : "";
+        var _a2, _b2;
+        this.filter.text = (_b2 = (_a2 = this.filterText) == null ? void 0 : _a2.value.trim().toLocaleLowerCase()) != null ? _b2 : "";
         this.page = 0;
         this.renderList();
       });
@@ -9657,12 +10305,27 @@ ${exception.mark.snippet}`;
       this.filterTag.placeholder = this.tx("discoveryTagFilterPlaceholder");
       this.filterTag.setAttribute("aria-label", this.tx("discoveryTagFilterPlaceholder"));
       this.filterTag.addEventListener("input", () => {
-        var _a, _b;
-        this.filter.tag = (_b = (_a = this.filterTag) == null ? void 0 : _a.value.trim().toLocaleLowerCase()) != null ? _b : "";
+        var _a2, _b2;
+        this.filter.tag = (_b2 = (_a2 = this.filterTag) == null ? void 0 : _a2.value.trim().toLocaleLowerCase()) != null ? _b2 : "";
         this.page = 0;
         this.renderList();
       });
+      if (this.filter.tag) this.filterTag.value = (_b = (_a = this.options.initialTag) == null ? void 0 : _a.trim().slice(0, 64)) != null ? _b : "";
       filters.appendChild(this.filterTag);
+      this.tagFacets = document.createElement("div");
+      this.tagFacets.className = "xlc-discovery-tag-facets";
+      this.tagFacets.setAttribute("role", "group");
+      this.tagFacets.setAttribute("aria-label", this.tx("discoveryTagFacets"));
+      filters.appendChild(this.tagFacets);
+      if (this.deps.onSaveView) {
+        this.saveViewButton = document.createElement("button");
+        this.saveViewButton.type = "button";
+        this.saveViewButton.className = "b3-button xlc-btn-ghost";
+        this.saveViewButton.dataset.xlcDiscoveryAction = "save-view";
+        this.saveViewButton.textContent = this.tx("discoverySaveView");
+        this.saveViewButton.addEventListener("click", () => this.saveCurrentView());
+        filters.appendChild(this.saveViewButton);
+      }
       this.selectFilteredButton = document.createElement("button");
       this.selectFilteredButton.type = "button";
       this.selectFilteredButton.className = "b3-button xlc-btn-ghost";
@@ -9686,6 +10349,10 @@ ${exception.mark.snippet}`;
       copy.value = "copy";
       copy.textContent = this.tx("discoveryAddModeCopy");
       this.addMode.append(reference, copy);
+      if (this.options.referenceOnly) {
+        this.addMode.value = "reference";
+        this.addMode.disabled = true;
+      }
       modeRow.appendChild(this.addMode);
       const modeHint = document.createElement("span");
       modeHint.className = "xlc-form-hint";
@@ -9701,16 +10368,16 @@ ${exception.mark.snippet}`;
       this.defaultCategoryInput = document.createElement("input");
       this.defaultCategoryInput.type = "text";
       this.defaultCategoryInput.className = "b3-text-field";
-      this.defaultCategoryInput.value = this.tx("discoveryUnsortedCategory");
+      this.defaultCategoryInput.value = ((_c = this.options.defaultCategory) == null ? void 0 : _c.trim().slice(0, 64)) || this.tx("discoveryUnsortedCategory");
       this.defaultCategoryInput.maxLength = 64;
       this.defaultCategoryInput.id = "xlc-discovery-default-category";
       this.defaultCategoryInput.dataset.xlcDiscoveryAction = "default-category";
       this.defaultCategoryInput.setAttribute("aria-label", this.tx("discoveryDefaultCategory"));
       this.defaultCategoryInput.addEventListener("input", () => {
-        var _a, _b;
+        var _a2, _b2;
         const key = this.activeKey;
         if (key && !this.categoryOverrides.has(key) && this.candidateCategoryInput) {
-          this.candidateCategoryInput.value = (_b = (_a = this.defaultCategoryInput) == null ? void 0 : _a.value) != null ? _b : "";
+          this.candidateCategoryInput.value = (_b2 = (_a2 = this.defaultCategoryInput) == null ? void 0 : _a2.value) != null ? _b2 : "";
         }
       });
       categorySettings.appendChild(defaultCategoryLabel);
@@ -9747,9 +10414,9 @@ ${exception.mark.snippet}`;
       this.candidateCategoryInput.dataset.xlcDiscoveryAction = "candidate-category";
       this.candidateCategoryInput.setAttribute("aria-label", this.tx("discoveryCandidateCategory"));
       this.candidateCategoryInput.addEventListener("input", () => {
-        var _a, _b;
+        var _a2, _b2;
         if (!this.activeKey) return;
-        this.categoryOverrides.set(this.activeKey, (_b = (_a = this.candidateCategoryInput) == null ? void 0 : _a.value) != null ? _b : "");
+        this.categoryOverrides.set(this.activeKey, (_b2 = (_a2 = this.candidateCategoryInput) == null ? void 0 : _a2.value) != null ? _b2 : "");
         this.updateCategoryResetState();
       });
       candidateCategoryRow.appendChild(candidateCategoryLabel);
@@ -9792,7 +10459,7 @@ ${exception.mark.snippet}`;
       this.addSelectedButton = document.createElement("button");
       this.addSelectedButton.type = "button";
       this.addSelectedButton.className = "b3-button xlc-btn-primary";
-      this.addSelectedButton.textContent = this.tx("discoveryAddSelected");
+      this.addSelectedButton.textContent = this.options.referenceOnly ? this.tx("discoverySyncView") : this.tx("discoveryAddSelected");
       this.addSelectedButton.dataset.xlcDiscoveryAction = "add-selected";
       this.addSelectedButton.addEventListener("click", () => void this.addSelected());
       footer.appendChild(this.addSelectedButton);
@@ -9842,7 +10509,9 @@ ${exception.mark.snippet}`;
       if (this.filterType) this.filterType.disabled = scanning || this.actionBusy;
       if (this.filterText) this.filterText.disabled = scanning || this.actionBusy;
       if (this.filterTag) this.filterTag.disabled = scanning || this.actionBusy;
-      if (this.addMode) this.addMode.disabled = scanning || this.actionBusy;
+      if (this.saveViewButton) this.saveViewButton.disabled = scanning || this.actionBusy || !this.filter.tag || this.scope !== "document" && this.scope !== "notebook" && this.scope !== "tree";
+      if (this.tagFacets) this.tagFacets.setAttribute("aria-busy", String(scanning || this.actionBusy));
+      if (this.addMode) this.addMode.disabled = this.options.referenceOnly === true || scanning || this.actionBusy;
       if (this.scopeSelect) {
         this.scopeSelect.disabled = scanning || this.actionBusy || locked;
         this.scopeSelect.title = locked ? this.tx("discoveryScopeLockedForUndo") : "";
@@ -9853,7 +10522,7 @@ ${exception.mark.snippet}`;
       if (this.forceSameContent) this.forceSameContent.disabled = scanning || this.actionBusy || !this.sessionId;
     }
     scopeHintText() {
-      const hint = this.scope === "document" ? this.tx("discoveryScopeHintDocument") : this.scope === "notebook" ? this.tx("discoveryScopeHintNotebook") : this.scope === "tree" ? this.tx("discoveryScopeTreeHint") : this.scope === "selected-notebook" ? this.tx("discoveryScopeSelectedNotebookHint") : this.tx("discoveryAllWarning", "20", "200", "8", "2,000", "500", "100,000", "2,000,000", "60");
+      const hint = this.scope === "document" ? this.tx("discoveryScopeHintDocument") : this.scope === "notebook" ? this.tx(this.options.initialNotebookId !== void 0 ? "discoveryScopeHintSavedNotebook" : "discoveryScopeHintNotebook") : this.scope === "tree" ? this.tx("discoveryScopeTreeHint") : this.scope === "selected-notebook" ? this.tx("discoveryScopeSelectedNotebookHint") : this.tx("discoveryAllWarning", "20", "200", "8", "2,000", "500", "100,000", "2,000,000", "60");
       return this.undoableBatchIds.size ? `${hint} ${this.tx("discoveryScopeLockedForUndo")}` : hint;
     }
     renderScopeTarget() {
@@ -10077,8 +10746,12 @@ ${exception.mark.snippet}`;
             this.setStatus(this.tx("discoveryNotebookProgress", String(progress2.scannedDocs), total, String(progress2.scannedBlocks)));
           }
         };
-        if (this.scope === "notebook" && this.deps.service.discoverCurrentNotebook) {
-          result = await this.deps.service.discoverCurrentNotebook(this.options.docId, progress);
+        if (this.scope === "notebook") {
+          if (this.options.initialNotebookId !== void 0) {
+            result = !isBlockId(this.options.initialNotebookId) ? { ok: false, reason: "invalid-input", message: "saved notebook id is invalid" } : !this.deps.service.discoverNotebook ? { ok: false, reason: "kernel-error", message: this.tx("discoveryNotebookUnavailable") } : await this.deps.service.discoverNotebook(this.options.initialNotebookId, progress);
+          } else {
+            result = this.deps.service.discoverCurrentNotebook ? await this.deps.service.discoverCurrentNotebook(this.options.docId, progress) : { ok: false, reason: "kernel-error", message: this.tx("discoveryNotebookUnavailable") };
+          }
         } else if (this.scope === "tree" && this.deps.service.discoverTree) {
           result = await this.deps.service.discoverTree(this.targetDocId, progress);
         } else if (this.scope === "selected-notebook" && this.deps.service.discoverNotebook) {
@@ -10146,6 +10819,10 @@ ${exception.mark.snippet}`;
       }).join("\u3001")}` : "";
       this.setStatus(`${this.tx("discoveryScanned", String(result.data.scannedBlocks), String(result.data.candidates.length))}${docsSuffix}${notebooksSuffix} \xB7 ${this.tx("discoverySkipped", String(result.data.skippedEmpty))}${skippedLong}${suffix}${reasons}${stoppedSuffix}${errorSuffix}`);
       if (result.data.errors.length) this.setReceipt(result.data.errors.map((error) => `${error.sourcePath || this.tx("discoveryScope")}\uFF1A${this.errorMessage(error.message)}`).join("\n"), true);
+      if (this.options.autoSelectFiltered) {
+        const eligible = Array.from(this.candidates.values()).filter((candidate) => candidate.status === "candidate" && this.matches(candidate));
+        for (const candidate of eligible) this.selected.add(candidate.key);
+      }
       this.renderList();
     }
     missingScopeTarget() {
@@ -10169,7 +10846,7 @@ ${exception.mark.snippet}`;
     matches(candidate) {
       if (this.filter.status !== "all" && candidate.status !== this.filter.status) return false;
       if (this.filter.type !== "all" && candidate.itemType !== this.filter.type) return false;
-      if (this.filter.tag && !candidate.tags.some((tag) => tag.toLocaleLowerCase().includes(this.filter.tag))) return false;
+      if (!matchesDiscoveryTag(candidate.tags, this.filter.tag)) return false;
       if (!this.filter.text) return true;
       const haystack = `${candidate.title} ${candidate.summary} ${candidate.sourcePath}`.toLocaleLowerCase();
       return haystack.includes(this.filter.text);
@@ -10193,6 +10870,7 @@ ${exception.mark.snippet}`;
       var _a;
       const list = this.list;
       if (!list) return;
+      this.renderTagFacets();
       list.textContent = "";
       const visible = Array.from(this.candidates.values()).filter((candidate) => this.matches(candidate));
       const pages = Math.max(1, Math.ceil(visible.length / this.pageSize));
@@ -10322,6 +11000,170 @@ ${exception.mark.snippet}`;
       }
       this.updateSelectionState();
     }
+    renderTagFacets() {
+      const host = this.tagFacets;
+      if (!host) return;
+      host.textContent = "";
+      const facets = buildDiscoveryTagFacets(Array.from(this.candidates.values()));
+      if (!facets.length) {
+        host.style.display = "none";
+        return;
+      }
+      host.style.display = "flex";
+      const label = document.createElement("span");
+      label.className = "xlc-discovery-tag-facets-label";
+      label.textContent = this.tx("discoveryTagFacets");
+      host.appendChild(label);
+      for (const facet of facets) {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "b3-button xlc-tag-facet";
+        button.dataset.xlcControl = "discovery.tag-facet";
+        button.dataset.tag = facet.tag;
+        const active2 = this.filter.tag === facet.tag.toLocaleLowerCase();
+        button.setAttribute("aria-pressed", String(active2));
+        button.setAttribute("aria-label", this.tx("discoveryTagFacetApply", facet.tag, String(facet.count)));
+        button.textContent = `#${facet.tag} \xB7 ${facet.count}`;
+        button.addEventListener("click", () => {
+          var _a;
+          const next = active2 ? "" : facet.tag;
+          this.filter.tag = next.toLocaleLowerCase();
+          if (this.filterTag) this.filterTag.value = next;
+          this.page = 0;
+          this.renderList();
+          (_a = this.filterTag) == null ? void 0 : _a.focus();
+        });
+        host.appendChild(button);
+      }
+    }
+    saveCurrentView() {
+      var _a, _b, _c, _d, _e, _f, _g, _h, _i;
+      const tag = (_b = (_a = this.filterTag) == null ? void 0 : _a.value.trim()) != null ? _b : "";
+      if (!tag || !this.deps.onSaveView || this.saveViewDialog || this.closeConfirmationDialog || this.closed || this.actionBusy || this.scanState === "scanning") return;
+      if (this.scope !== "document" && this.scope !== "notebook" && this.scope !== "tree") {
+        this.setReceipt(this.tx("discoverySaveViewInvalid"), true);
+        return;
+      }
+      const targetDocId = this.scope === "notebook" ? "" : this.scope === "tree" ? this.targetDocId : this.options.docId;
+      const targetNotebookId = this.scope === "notebook" ? (_d = (_c = this.session) == null ? void 0 : _c.sourceNotebookId) != null ? _d : "" : "";
+      if (this.scope === "notebook" ? !isBlockId(targetNotebookId) || ((_e = this.session) == null ? void 0 : _e.scope) !== "notebook" : !isBlockId(targetDocId)) {
+        this.setReceipt(this.tx("discoverySaveViewInvalid"), true);
+        return;
+      }
+      const rule = {
+        tag: tag.slice(0, LIMITS.tag),
+        scope: this.scope,
+        targetDocId,
+        targetNotebookId,
+        pathLabel: ((_f = this.options.sourcePath) != null ? _f : "").slice(0, LIMITS.savedViewPathChars),
+        defaultCategory: ((_h = (_g = this.defaultCategoryInput) == null ? void 0 : _g.value) != null ? _h : "").trim().slice(0, LIMITS.category)
+      };
+      const dialog = new import_siyuan5.Dialog({
+        title: this.tx("discoverySaveView"),
+        content: "",
+        width: "min(440px, 92vw)",
+        disableClose: true,
+        destroyCallback: () => {
+          var _a2;
+          this.saveViewDialog = null;
+          if (!this.closed) (_a2 = this.saveViewButton) == null ? void 0 : _a2.focus();
+        }
+      });
+      this.saveViewDialog = dialog;
+      (_i = dialog.element.querySelector(".b3-dialog__container")) == null ? void 0 : _i.classList.add("xlc-form-host");
+      const body = getDialogBody(dialog.element);
+      if (!body) {
+        dialog.destroy();
+        this.setReceipt(this.tx("discoverySaveViewInvalid"), true);
+        return;
+      }
+      const form = document.createElement("form");
+      form.className = "xlc-form xlc-save-view-form";
+      form.noValidate = true;
+      const label = document.createElement("label");
+      label.className = "xlc-form-field";
+      const caption = document.createElement("span");
+      caption.className = "xlc-form-label";
+      caption.textContent = this.tx("discoverySaveViewPrompt");
+      const input = document.createElement("input");
+      input.className = "b3-text-field";
+      input.dataset.xlcControl = "discovery.view.name";
+      input.maxLength = LIMITS.savedViewNameChars;
+      input.value = tag.slice(0, LIMITS.savedViewNameChars);
+      input.required = true;
+      const error = document.createElement("div");
+      error.id = `xlc-save-view-error-${Date.now().toString(36)}`;
+      error.className = "xlc-form-error xlc-save-view-error";
+      error.setAttribute("role", "alert");
+      input.setAttribute("aria-describedby", error.id);
+      label.append(caption, input);
+      const actions = document.createElement("div");
+      actions.className = "xlc-form-actions";
+      let settled = false;
+      const cancelNaming = () => {
+        settled = true;
+        dialog.destroy();
+      };
+      const cancel = document.createElement("button");
+      cancel.type = "button";
+      cancel.className = "b3-button b3-button--cancel";
+      cancel.dataset.xlcControl = "discovery.view.cancel";
+      cancel.textContent = this.tx("cancel");
+      cancel.addEventListener("click", cancelNaming);
+      const save = document.createElement("button");
+      save.type = "submit";
+      save.className = "b3-button b3-button--text";
+      save.dataset.xlcControl = "discovery.view.save";
+      save.textContent = this.tx("save");
+      actions.append(cancel, save);
+      form.append(label, error, actions);
+      body.appendChild(form);
+      let composing = false;
+      input.addEventListener("compositionstart", () => {
+        composing = true;
+      });
+      input.addEventListener("compositionend", () => {
+        composing = false;
+      });
+      form.addEventListener("keydown", (event) => {
+        if (event.key === "Enter" && (event.isComposing || composing || event.keyCode === 229)) event.preventDefault();
+        if (event.key === "Escape" && !event.isComposing && !composing) {
+          event.preventDefault();
+          cancelNaming();
+        }
+        event.stopPropagation();
+      });
+      input.addEventListener("input", () => {
+        error.textContent = "";
+        input.removeAttribute("aria-invalid");
+      });
+      form.addEventListener("submit", (event) => {
+        var _a2, _b2;
+        event.preventDefault();
+        if (settled || composing || this.closed || this.saveViewDialog !== dialog) return;
+        const name = input.value.trim().slice(0, LIMITS.savedViewNameChars);
+        if (!name) {
+          error.textContent = this.tx("discoverySaveViewInvalid");
+          input.setAttribute("aria-invalid", "true");
+          input.focus();
+          return;
+        }
+        settled = true;
+        if (((_b2 = (_a2 = this.deps).onSaveView) == null ? void 0 : _b2.call(_a2, { name, ...rule })) === false) {
+          settled = false;
+          error.textContent = this.tx("discoverySaveViewInvalid");
+          input.focus();
+          return;
+        }
+        this.setReceipt(this.tx("discoverySaveViewDone", name));
+        dialog.destroy();
+      });
+      requestAnimationFrame(() => {
+        if (settled || this.closed || this.saveViewDialog !== dialog) return;
+        input.focus();
+        input.select();
+      });
+    }
     changePage(delta, direction) {
       var _a, _b;
       this.page += delta;
@@ -10352,6 +11194,7 @@ ${exception.mark.snippet}`;
       }
       if (this.defaultCategoryInput) this.defaultCategoryInput.disabled = this.actionBusy;
       if (this.candidateCategoryInput) this.candidateCategoryInput.disabled = this.actionBusy || !this.activeKey || !this.sessionId;
+      if (this.saveViewButton) this.saveViewButton.disabled = this.scanState === "scanning" || this.actionBusy || !this.filter.tag || this.scope !== "document" && this.scope !== "notebook" && this.scope !== "tree";
       this.updateCategoryResetState();
       (_a = this.receipt) == null ? void 0 : _a.querySelectorAll("button").forEach((button) => {
         button.disabled = this.actionBusy;
@@ -10712,6 +11555,1536 @@ ${details.join("\n")}` : ""}`;
     return dialog;
   }
 
+  // src/service/commands.ts
+  var import_siyuan6 = __toESM(require_stub_dom());
+
+  // src/model/placeholders.ts
+  var PLACEHOLDER_PATTERN = /\{\{xlc:(date|time|datetime|weekday|title|path|doc|random)(?:\|([^}]+))?\}\}/g;
+  var WEEKDAYS_ZH = ["\u5468\u65E5", "\u5468\u4E00", "\u5468\u4E8C", "\u5468\u4E09", "\u5468\u56DB", "\u5468\u4E94", "\u5468\u516D"];
+  var RELATIVE_ARG = /^([+-])(\d{1,4})([dwmy])$/;
+  var NEXT_WEEKDAY_ARG = /^next_(monday|tuesday|wednesday|thursday|friday|saturday|sunday)$/;
+  var WEEKDAY_INDEX = {
+    sunday: 0,
+    monday: 1,
+    tuesday: 2,
+    wednesday: 3,
+    thursday: 4,
+    friday: 5,
+    saturday: 6
+  };
+  function pad(n) {
+    return String(n).padStart(2, "0");
+  }
+  function renderDate(now) {
+    return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+  }
+  function addMonthsClamped(base, months) {
+    const y = base.getFullYear();
+    const m = base.getMonth() + months;
+    const lastDay = new Date(y, m + 1, 0).getDate();
+    return new Date(y, m, Math.min(base.getDate(), lastDay));
+  }
+  function resolveDateArg(now, rawArg) {
+    const arg = rawArg.trim().toLowerCase();
+    const rel = RELATIVE_ARG.exec(arg);
+    if (rel) {
+      const sign = rel[1] === "+" ? 1 : -1;
+      const n = Number(rel[2]);
+      let next;
+      if (rel[3] === "d" || rel[3] === "w") {
+        next = new Date(now);
+        next.setDate(next.getDate() + sign * n * (rel[3] === "w" ? 7 : 1));
+      } else {
+        next = addMonthsClamped(now, sign * n * (rel[3] === "y" ? 12 : 1));
+      }
+      return renderDate(next);
+    }
+    const wd = NEXT_WEEKDAY_ARG.exec(arg);
+    const dayName = wd == null ? void 0 : wd[1];
+    const target = dayName ? WEEKDAY_INDEX[dayName] : void 0;
+    if (target !== void 0) {
+      const ahead = (target - now.getDay() + 7) % 7 || 7;
+      const next = new Date(now);
+      next.setDate(next.getDate() + ahead);
+      return renderDate(next);
+    }
+    return null;
+  }
+  function pickRandomOption(rawArg) {
+    var _a;
+    const options = rawArg.split(",").map((s) => s.trim()).filter(Boolean).slice(0, 16);
+    if (options.length === 0) return null;
+    return (_a = options[Math.floor(Math.random() * options.length)]) != null ? _a : null;
+  }
+  function renderPlaceholder(kind, now, doc) {
+    var _a, _b, _c;
+    switch (kind) {
+      case "date":
+        return renderDate(now);
+      case "time":
+        return `${pad(now.getHours())}:${pad(now.getMinutes())}`;
+      case "datetime":
+        return `${renderDate(now)} ${renderPlaceholder("time", now)}`;
+      case "weekday":
+        return (_a = WEEKDAYS_ZH[now.getDay()]) != null ? _a : "";
+      case "title":
+      case "doc":
+        return (_b = doc == null ? void 0 : doc.title) != null ? _b : "";
+      case "path":
+        return (_c = doc == null ? void 0 : doc.path) != null ? _c : "";
+      case "random":
+        return "";
+    }
+  }
+  function resolvePlaceholder(kind, arg, now, doc) {
+    if (kind === "random") return arg ? pickRandomOption(arg) : null;
+    if (kind === "date" && arg) return resolveDateArg(now, arg);
+    if (arg) return null;
+    return renderPlaceholder(kind, now, doc);
+  }
+  function applyPlaceholders(text, now, enabled, doc) {
+    if (!enabled || !text) return text;
+    return text.replace(PLACEHOLDER_PATTERN, (match, kind, arg) => {
+      var _a;
+      return (_a = resolvePlaceholder(kind, arg, now, doc)) != null ? _a : match;
+    });
+  }
+  function listPlaceholders(text) {
+    const kinds = [];
+    for (const match of text.matchAll(PLACEHOLDER_PATTERN)) {
+      const kind = match[1];
+      if (!kinds.includes(kind)) kinds.push(kind);
+    }
+    return kinds;
+  }
+
+  // src/service/commands.ts
+  var ActionExecutor = class {
+    constructor(library, host, notify, onItemUsed, placeholders) {
+      this.library = library;
+      this.host = host;
+      this.onItemUsed = onItemUsed;
+      this.placeholders = placeholders;
+      void notify;
+    }
+    /** provider payload 渲染（xiaolv-common/v1 语义定案）：与库条目一致，插入前应用动态占位符。
+     *  提供方如需字面花括号，请使用非 xlc 命名空间。 */
+    async renderProviderOutput(text) {
+      return this.applyOutput(text);
+    }
+    /** 对输出载荷应用动态占位符（插入 markdown 与剪贴板文本；存储内容不受影响）。
+     *  仅当文本含 title/path/doc 占位符时才取当前文档（避免多余内核往返）。
+     *  {{xlc:clipboard}} 异步替换（读取失败=空串，语义同无文档）。
+     *  code 条目跳过替换：代码中的 {{xlc:…}} 是字面文本（例如演示模板的代码），绝不能被改写。 */
+    /** 公开渲染入口：定向插入（insertToDoc）与 provider payload 共用（R50/R51 语义统一）。
+     *  fills：变量填充卡收集的 ask 值（R67）；插入语义，含片段展开（R72）、光标移除与未填充兜底。 */
+    async renderForInsert(text, item, fills) {
+      var _a;
+      let payload = text;
+      if ((item == null ? void 0 : item.itemType) !== "code") {
+        payload = await this.library.expandSnippetRefs(payload);
+        if (fills) {
+          payload = expandAsks(payload, fills);
+        }
+        payload = applyAskDefaults(stripCursorToken(payload));
+      }
+      return (_a = await this.applyOutput(payload, item)) != null ? _a : payload;
+    }
+    async applyOutput(text, item) {
+      var _a;
+      if (text === void 0) return void 0;
+      if ((item == null ? void 0 : item.itemType) === "code") return text;
+      if (!this.placeholders) return text;
+      try {
+        if (!this.placeholders.enabled()) return text;
+        const needsDoc = listPlaceholders(text).some((k) => k === "title" || k === "path" || k === "doc");
+        const doc = needsDoc ? await this.placeholders.currentDoc() : null;
+        let output = applyPlaceholders(text, this.placeholders.now(), true, doc);
+        if (output.includes("{{xlc:clipboard}}") && this.placeholders.clipboard) {
+          let clipboardText = "";
+          try {
+            clipboardText = (_a = await this.placeholders.clipboard()) != null ? _a : "";
+          } catch {
+            clipboardText = "";
+          }
+          output = output.replaceAll("{{xlc:clipboard}}", clipboardText.slice(0, 4e3));
+        }
+        return output;
+      } catch {
+        return text;
+      }
+    }
+    async resolveContent(item) {
+      const health = await this.library.checkSourceHealth(item);
+      const h = health.ok ? health.data : { blockMissing: false, docMissing: false, assetMissing: false };
+      const sourceMissing = item.itemType === "blockref" ? h.blockMissing : h.blockMissing || h.docMissing;
+      if (item.itemType === "blockref" && sourceMissing) {
+        return { kramdown: "", sourceMissing: true, assetMissing: false };
+      }
+      const kramdown = await this.library.getItemKramdown(item);
+      if (!kramdown.ok) return null;
+      return {
+        kramdown: kramdown.data,
+        // libraryDocId 是条目所在库文档，不能用它掩盖 sourceDocId 的失效。
+        // 来源文档/块任一失效都必须传入计划层，openSource 才能返回 source-missing。
+        sourceMissing,
+        assetMissing: h.assetMissing
+      };
+    }
+    emitEvent(eventName, item, extra) {
+      try {
+        window.dispatchEvent(new CustomEvent(eventName, {
+          detail: { protocolVersion: PROTOCOL_VERSION, itemId: item.id, itemType: item.itemType, ...extra }
+        }));
+      } catch {
+      }
+    }
+    /** 现场解析条目内容；先展开片段引用（F5，code 条目不处理），再应用变量填充卡的 ask 值。 */
+    /** 使用记录统一出口（F3）：侧车失败不影响动作回执 */
+    noteUsed(item) {
+      var _a;
+      try {
+        (_a = this.onItemUsed) == null ? void 0 : _a.call(this, item);
+      } catch {
+      }
+    }
+    async resolveWithFills(item, fills) {
+      const content = await this.resolveContent(item);
+      if (!content) return null;
+      if (item.itemType !== "code") {
+        let kramdown = await this.library.expandSnippetRefs(content.kramdown);
+        if (fills) {
+          kramdown = expandAsks(kramdown, fills);
+        }
+        content.kramdown = kramdown;
+      }
+      return content;
+    }
+    /** Capture before a caller starts lookup/queue work and release after its entire action. */
+    async withInsertTargetScope(mode, action) {
+      if (!mode.startsWith("insert") || typeof this.host.captureInsertTarget !== "function") return action(void 0);
+      const editorTarget = this.host.captureInsertTarget();
+      try {
+        return await action(editorTarget);
+      } finally {
+        if (editorTarget !== void 0) this.host.releaseInsertTarget(editorTarget);
+      }
+    }
+    run(item, mode, opts) {
+      if ((opts == null ? void 0 : opts.editorTarget) !== void 0) return this.runAtTarget(item, mode, opts.fills, opts.editorTarget);
+      return this.withInsertTargetScope(mode, (target) => this.runAtTarget(item, mode, opts == null ? void 0 : opts.fills, target));
+    }
+    async runAtTarget(item, mode, fills, editorTarget) {
+      const content = await this.resolveWithFills(item, fills);
+      if (!content) {
+        return { ok: false, mode, message: "kernel-error:content", downgraded: false, pendingVerification: [] };
+      }
+      if (item.itemType === "blockref" && content.sourceMissing && (mode === "copy" || mode === "copy-content" || mode === "insert-content")) {
+        return { ok: false, mode, message: "source-missing", downgraded: true, pendingVerification: [] };
+      }
+      const ctx = {
+        surface: this.host.isMobile() ? "mobile" : "desktop",
+        hasActiveEditor: editorTarget !== void 0 ? this.host.canInsertAtTarget(editorTarget) : this.host.hasActiveEditor(),
+        content
+      };
+      const plan = planAction(item, mode, ctx);
+      if (plan.downgraded && plan.downgradeReason === "source-missing") {
+        return { ok: false, mode: plan.mode, message: "source-missing", downgraded: true, pendingVerification: plan.pendingVerification };
+      }
+      if ((plan.mode === "copy" || plan.mode === "copy-content") && !plan.clipboardText) {
+        return { ok: false, mode: plan.mode, message: "empty-plan", downgraded: plan.downgraded, pendingVerification: plan.pendingVerification };
+      }
+      return this.execute(item, plan, editorTarget);
+    }
+    async execute(item, plan, editorTarget) {
+      var _a, _b, _c;
+      const insertRender = (text) => {
+        if (text === void 0) return Promise.resolve(void 0);
+        if (item.itemType === "code") return Promise.resolve(text);
+        return this.applyOutput(applyAskDefaults(stripCursorToken(text)), item);
+      };
+      if ((plan.mode === "insert" || plan.mode === "insert-content" || plan.mode === "insert-ref" || plan.mode === "insert-embed") && this.host.isMobile()) {
+        const text = (_a = await insertRender(plan.markdown)) != null ? _a : "";
+        const copied = text ? await this.host.writeClipboard(text) : false;
+        if (copied) {
+          this.noteUsed(item);
+        }
+        return {
+          ok: copied,
+          mode: plan.mode,
+          message: copied ? "insert-downgraded-copied" : "copy-failed",
+          downgraded: true,
+          pendingVerification: ["mobile-insert-unverified", ...plan.pendingVerification]
+        };
+      }
+      if (plan.mode === "insert" || plan.mode === "insert-content" || plan.mode === "insert-ref" || plan.mode === "insert-embed") {
+        const md = (_b = await insertRender(plan.markdown)) != null ? _b : "";
+        if (!md) {
+          return { ok: false, mode: plan.mode, message: "empty-plan", downgraded: plan.downgraded, pendingVerification: plan.pendingVerification };
+        }
+        const targetAvailable = editorTarget !== void 0 ? this.host.canInsertAtTarget(editorTarget) : this.host.hasActiveEditor();
+        if (!targetAvailable) {
+          const copied = await this.host.writeClipboard(md);
+          if (copied) {
+            this.noteUsed(item);
+          }
+          return {
+            ok: copied,
+            mode: plan.mode,
+            message: copied ? (editorTarget == null ? void 0 : editorTarget.editor) ? "target-unavailable-copied" : "no-editor-copied" : "no-editor-copy-failed",
+            downgraded: true,
+            pendingVerification: plan.pendingVerification
+          };
+        }
+        const inserted = this.host.insertMarkdown(md, editorTarget);
+        if (inserted) {
+          this.emitEvent(EVENTS.itemInserted, item, { insertMode: plan.mode });
+          this.noteUsed(item);
+        }
+        return {
+          ok: inserted,
+          mode: plan.mode,
+          message: inserted ? "inserted" : "insert-failed",
+          downgraded: false,
+          pendingVerification: plan.pendingVerification
+        };
+      }
+      if (plan.mode === "copy" || plan.mode === "copy-content") {
+        const text = (_c = await this.applyOutput(plan.clipboardText, item)) != null ? _c : "";
+        const copied = await this.host.writeClipboard(text);
+        if (copied) {
+          this.noteUsed(item);
+        }
+        return {
+          ok: copied,
+          mode: plan.mode,
+          message: copied ? "copied" : "copy-failed",
+          downgraded: plan.downgraded,
+          pendingVerification: plan.pendingVerification
+        };
+      }
+      if (plan.mode === "open" && plan.open) {
+        return this.openTarget(plan.open, item);
+      }
+      return { ok: false, mode: plan.mode, message: "unsupported", downgraded: false, pendingVerification: plan.pendingVerification };
+    }
+    async openTarget(target, _item) {
+      var _a;
+      let opened = false;
+      if (target.kind === "url" && target.url) opened = this.host.openExternal(target.url);
+      else if (target.kind === "asset" && target.assetPath) opened = this.host.openAsset(target.assetPath);
+      else if (target.kind === "block" && target.blockId) opened = this.host.openDoc((_a = target.docId) != null ? _a : "", target.blockId);
+      else if (target.kind === "doc" && target.docId) opened = this.host.openDoc(target.docId);
+      return {
+        ok: opened,
+        mode: "open-source",
+        message: opened ? "source-opened" : "open-failed",
+        downgraded: false,
+        pendingVerification: [],
+        ...opened ? { opened: target.kind } : {}
+      };
+    }
+    async openSource(item) {
+      var _a;
+      const content = await this.resolveContent(item);
+      if (!content) {
+        return { ok: false, mode: "open-source", message: "kernel-error:content", downgraded: false, pendingVerification: [] };
+      }
+      const planned = planOpenSource(item, content);
+      if (planned.failure || !planned.target) {
+        return {
+          ok: false,
+          mode: "open-source",
+          message: (_a = planned.failure) != null ? _a : "not-found",
+          downgraded: true,
+          pendingVerification: []
+        };
+      }
+      return this.openTarget(planned.target, item);
+    }
+  };
+
+  // src/kernel/client.ts
+  function parseChildBlocks(data) {
+    if (!Array.isArray(data)) return [];
+    return data.filter((raw) => {
+      return !!raw && typeof raw.id === "string" && typeof raw.type === "string";
+    });
+  }
+  function parseKramdown(data) {
+    if (!data || typeof data.id !== "string") return null;
+    const kramdown = data.kramdown;
+    return { id: data.id, kramdown: typeof kramdown === "string" ? kramdown : "" };
+  }
+  function parseBatchKramdowns(data) {
+    if (!data || typeof data !== "object" || Array.isArray(data)) return {};
+    const out = {};
+    for (const [blockId, value] of Object.entries(data)) {
+      if (/^\d{14}-[0-9a-z]{7}$/.test(blockId) && typeof value === "string") out[blockId] = value;
+    }
+    return out;
+  }
+  function parseAttrs(data) {
+    if (!data || typeof data !== "object") return {};
+    const out = {};
+    for (const [k, v] of Object.entries(data)) {
+      if (typeof v === "string") out[k] = v;
+    }
+    return out;
+  }
+  function parseBatchAttrs(data) {
+    if (!data || typeof data !== "object") return {};
+    const out = {};
+    for (const [blockId, attrs] of Object.entries(data)) {
+      out[blockId] = parseAttrs(attrs);
+    }
+    return out;
+  }
+  function parseExistingMap(data) {
+    if (!data || typeof data !== "object") return {};
+    const out = {};
+    for (const [id, v] of Object.entries(data)) {
+      out[id] = v === true;
+    }
+    return out;
+  }
+  function parseDocId(data) {
+    return typeof data === "string" && data.length > 0 ? data : null;
+  }
+  function parseString(data) {
+    return typeof data === "string" ? data : "";
+  }
+  function parseDocSearch(data) {
+    var _a;
+    if (!Array.isArray(data)) return [];
+    const out = [];
+    for (const raw of data) {
+      if (!raw || typeof raw !== "object") continue;
+      const obj = raw;
+      const path = typeof obj.path === "string" ? obj.path : "";
+      const m = path.match(/(\d{14}-[0-9a-z]{7})\.sy$/);
+      if (!m) continue;
+      out.push({
+        id: (_a = m[1]) != null ? _a : "",
+        hPath: typeof obj.hPath === "string" ? obj.hPath : "",
+        box: typeof obj.box === "string" ? obj.box : "",
+        name: typeof obj.name === "string" ? obj.name : ""
+      });
+      if (out.length >= 30) break;
+    }
+    return out;
+  }
+
+  // src/model/kramdown.ts
+  var ATTRIBUTE_PATTERN = /(^|\s)([\w:-]+)=(?:"[^"]*"|'[^']*'|[^\s}]+)(?=\s|$)/g;
+  var IAL_TOKEN_PATTERN = /(`+)|(\{:[^{}]*\})/g;
+  function normalizeIalToken(ial) {
+    const attributes = ial.slice(2, -1);
+    const safeAttributes = attributes.replace(
+      ATTRIBUTE_PATTERN,
+      (attribute, _space, name) => name === "id" || name === "updated" || name.startsWith("custom-xlc-") ? " " : attribute
+    ).trim();
+    return safeAttributes ? `{: ${safeAttributes}}` : "";
+  }
+  function findCodeLines(lines) {
+    var _a, _b;
+    const codeLines = [];
+    let fence = null;
+    for (const line of lines) {
+      if (fence) {
+        codeLines.push(true);
+        const closing = (_a = line.match(/^\s*(`+|~+)\s*$/)) == null ? void 0 : _a[1];
+        if (closing && closing.charAt(0) === fence.marker && closing.length >= fence.length) fence = null;
+        continue;
+      }
+      if (!line.trim()) {
+        codeLines.push(false);
+        continue;
+      }
+      if (/^(?: {4,}|\t)/.test(line)) {
+        codeLines.push(true);
+        continue;
+      }
+      const opening = (_b = line.match(/^\s*(`{3,}|~{3,})/)) == null ? void 0 : _b[1];
+      if (opening) {
+        fence = { marker: opening.charAt(0), length: opening.length };
+        codeLines.push(true);
+        continue;
+      }
+      codeLines.push(false);
+    }
+    return codeLines;
+  }
+  function findInlineCodeTicks(lines, codeLines) {
+    var _a, _b;
+    const pairedByLine = lines.map(() => /* @__PURE__ */ new Set());
+    let segment = [];
+    const pairSegment = () => {
+      var _a2, _b2;
+      const nextByLength = /* @__PURE__ */ new Map();
+      const nextSameLength = /* @__PURE__ */ new Map();
+      for (let index = segment.length - 1; index >= 0; index--) {
+        const tick = segment[index];
+        if (!tick) continue;
+        const next = nextByLength.get(tick.length);
+        if (next !== void 0) nextSameLength.set(index, next);
+        nextByLength.set(tick.length, index);
+      }
+      for (let index = 0; index < segment.length; index++) {
+        const tick = segment[index];
+        if (!tick) continue;
+        const closeIndex = nextSameLength.get(index);
+        if (closeIndex === void 0) continue;
+        (_a2 = pairedByLine[tick.line]) == null ? void 0 : _a2.add(tick.offset);
+        const close = segment[closeIndex];
+        if (close) (_b2 = pairedByLine[close.line]) == null ? void 0 : _b2.add(close.offset);
+        index = closeIndex;
+      }
+      segment = [];
+    };
+    for (let lineIndex = 0; lineIndex < lines.length; lineIndex++) {
+      const line = (_a = lines[lineIndex]) != null ? _a : "";
+      if (codeLines[lineIndex]) {
+        pairSegment();
+        continue;
+      }
+      IAL_TOKEN_PATTERN.lastIndex = 0;
+      for (const match of line.matchAll(IAL_TOKEN_PATTERN)) {
+        if (!match[1]) continue;
+        segment.push({ line: lineIndex, offset: (_b = match.index) != null ? _b : 0, length: match[0].length });
+      }
+    }
+    pairSegment();
+    return pairedByLine;
+  }
+  function normalizeLineIals(line, activeInlineCodeTicks, pairedInlineCodeTicks) {
+    var _a;
+    let cursor = 0;
+    let inlineCodeTicks = activeInlineCodeTicks;
+    let output = "";
+    IAL_TOKEN_PATTERN.lastIndex = 0;
+    for (const match of line.matchAll(IAL_TOKEN_PATTERN)) {
+      const token = match[0];
+      const start = (_a = match.index) != null ? _a : 0;
+      output += line.slice(cursor, start);
+      cursor = start + token.length;
+      if (match[1]) {
+        if (pairedInlineCodeTicks.has(start)) {
+          if (!inlineCodeTicks) inlineCodeTicks = token.length;
+          else if (inlineCodeTicks === token.length) inlineCodeTicks = 0;
+        }
+        output += token;
+      } else if (inlineCodeTicks) {
+        output += token;
+      } else {
+        output += normalizeIalToken(token);
+      }
+    }
+    return { line: output + line.slice(cursor), activeInlineCodeTicks: inlineCodeTicks };
+  }
+  function normalizeKramdownIal(markdown) {
+    var _a, _b;
+    const lines = markdown.replace(/\r\n?/g, "\n").split("\n");
+    const codeLines = findCodeLines(lines);
+    const pairedInlineCodeTicks = findInlineCodeTicks(lines, codeLines);
+    const output = [];
+    let inlineCodeTicks = 0;
+    for (let index = 0; index < lines.length; index++) {
+      const line = (_a = lines[index]) != null ? _a : "";
+      if (codeLines[index]) {
+        inlineCodeTicks = 0;
+        output.push(line);
+        continue;
+      }
+      const normalized = normalizeLineIals(line, inlineCodeTicks, (_b = pairedInlineCodeTicks[index]) != null ? _b : /* @__PURE__ */ new Set());
+      output.push(normalized.line);
+      inlineCodeTicks = normalized.activeInlineCodeTicks;
+    }
+    return output.join("\n").trim();
+  }
+
+  // src/service/library.ts
+  function fail(reason, message) {
+    return { ok: false, reason, message };
+  }
+  function ok(data) {
+    return { ok: true, data };
+  }
+  function sameManagedItem(actual, expected) {
+    return actual.id === expected.id && actual.blockId === expected.blockId && actual.libraryDocId === expected.libraryDocId && actual.itemType === expected.itemType && actual.title === expected.title && actual.alias === expected.alias && actual.tags.length === expected.tags.length && actual.tags.every((tag, index) => tag === expected.tags[index]) && actual.category === expected.category && (actual.itemType === "blockref" && expected.itemType === "blockref" ? true : actual.varCount === expected.varCount) && actual.source.sourceDocId === expected.source.sourceDocId && actual.source.sourceBlockId === expected.source.sourceBlockId && actual.source.sourceType === expected.source.sourceType && actual.url === expected.url && actual.targetBlockId === expected.targetBlockId && actual.createdAt === expected.createdAt && actual.updatedAt === expected.updatedAt && actual.droppedFields.length === expected.droppedFields.length && actual.droppedFields.every((field, index) => field === expected.droppedFields[index]);
+  }
+  function normalizeConditionalMarkdown(markdown) {
+    return normalizeKramdownIal(markdown);
+  }
+  function sameCustomAttrs(actual, expected) {
+    const actualKeys = Object.keys(actual).filter((key) => key.startsWith(ATTR_PREFIX)).sort();
+    const expectedKeys = Object.keys(expected).filter((key) => key.startsWith(ATTR_PREFIX)).sort();
+    return actualKeys.length === expectedKeys.length && actualKeys.every((key, index) => key === expectedKeys[index] && actual[key] === expected[key]);
+  }
+  function toFailureReceipt(err) {
+    const name = err == null ? void 0 : err.name;
+    if (name === "KernelTimeoutError") return fail("timeout", err.message);
+    return fail("kernel-error", err.message);
+  }
+  function toSearchEntry(item) {
+    return {
+      id: item.id,
+      blockId: item.blockId,
+      libraryDocId: item.libraryDocId,
+      itemType: item.itemType,
+      title: item.title,
+      alias: item.alias,
+      tags: item.tags,
+      category: item.category,
+      summary: item.summary,
+      createdAt: item.createdAt,
+      updatedAt: item.updatedAt,
+      sourceDocId: item.source.sourceDocId,
+      sourceBlockId: item.source.sourceBlockId,
+      varCount: item.varCount
+    };
+  }
+  var LibraryService = class {
+    constructor(kernel, options = {}) {
+      this.kernel = kernel;
+      this.config = null;
+      this.index = null;
+      /**
+       * 写操作按条目/逻辑 ID 串行化。UI 已经锁按钮，但协议调用方、重复快捷键和
+       * 两个弹窗仍可能同时写同一块；队列保证失败不会让后一个请求覆盖回滚状态。
+       */
+      this.writeLocks = /* @__PURE__ */ new Map();
+      /** IDs created during this service lifetime; survives cache invalidation until a config switch. */
+      this.createdLogicalIds = /* @__PURE__ */ new Set();
+      /** 已完成的幂等写回执；短期保留可防止网络重试/双击在锁释放后再次落块。 */
+      this.idempotencyReceipts = /* @__PURE__ */ new Map();
+      this.updateReceipts = /* @__PURE__ */ new Map();
+      this.removeReceipts = /* @__PURE__ */ new Map();
+      /** 成功的文档追加回执；仅调用方提供幂等键时启用。 */
+      this.appendReceipts = /* @__PURE__ */ new Map();
+      /** 首次设置创建文档的幂等回执，避免确认弹窗/宿主重试产生多个库文档。 */
+      this.libraryDocReceipts = /* @__PURE__ */ new Map();
+      this.conditionalDeleteGrants = /* @__PURE__ */ new WeakMap();
+      /** 索引（可丢弃缓存）。为空或超过 maxAgeMs 时重建（SWR：陈旧索引透明刷新）。 */
+      /** 索引（可丢弃缓存）。为空或超过 maxAgeMs 时重建（SWR）。
+       *  并发去重：重建进行中时共用同一 Promise（双开弹窗/预热竞争只建一次）。 */
+      this.buildingPromise = null;
+      /** 索引代数：任一失效（index=null）自增；重建完成时代数已变则丢弃陈旧结果（R139） */
+      this.indexGen = 0;
+      /** doc/tree 直接使用容器根；notebook 模式选择笔记本根下第一个文档作为写入父块。 */
+      /** 写入文档解析缓存（按索引代数失效）：批量导入时不再每条一次 listDocsByPath 往返（R140） */
+      this.writeDocCache = null;
+      this.options = options;
+    }
+    notifyItemsChanged(itemIds) {
+      if (itemIds.length === 0 || !this.options.onItemsChanged) return;
+      try {
+        this.options.onItemsChanged([...new Set(itemIds)]);
+      } catch {
+      }
+    }
+    rememberReceipt(cache, key, receipt) {
+      cache.set(key, receipt);
+      while (cache.size > 256) {
+        const oldest = cache.keys().next().value;
+        if (!oldest) break;
+        cache.delete(oldest);
+      }
+    }
+    withWriteLock(key, action) {
+      var _a;
+      const previous = (_a = this.writeLocks.get(key)) != null ? _a : Promise.resolve();
+      const current = previous.then(action);
+      const tail = current.then(() => void 0, () => void 0);
+      this.writeLocks.set(key, tail);
+      return current.finally(() => {
+        if (this.writeLocks.get(key) === tail) this.writeLocks.delete(key);
+      });
+    }
+    getConfig() {
+      return this.config ? { ...this.config } : null;
+    }
+    setConfig(config) {
+      this.config = { ...config };
+      this.createdLogicalIds.clear();
+      this.idempotencyReceipts.clear();
+      this.updateReceipts.clear();
+      this.removeReceipts.clear();
+      this.appendReceipts.clear();
+      this.libraryDocReceipts.clear();
+      this.invalidateIndex();
+    }
+    /** 使索引缓存失效（公开供宿主 onDataChanged 使用：外部同步/数据变更后下次打开重建，R148） */
+    invalidateIndex() {
+      this.indexGen++;
+      this.index = null;
+    }
+    async ensureIndex(maxAgeMs) {
+      const gen = this.indexGen;
+      if (this.index) {
+        const fresh = typeof maxAgeMs !== "number" || Date.now() - this.index.builtAt <= maxAgeMs;
+        if (fresh) return this.index;
+      }
+      if (!this.buildingPromise) {
+        this.buildingPromise = this.buildIndex().finally(() => {
+          this.buildingPromise = null;
+        });
+      }
+      const result = await this.buildingPromise;
+      if (gen === this.indexGen) {
+        this.index = result;
+        return result;
+      }
+      return this.ensureIndex(maxAgeMs);
+    }
+    /** 当前缓存索引（可能为 null；调用方据此展示 loading 态） */
+    getIndex() {
+      return this.index;
+    }
+    async reindex(options = {}) {
+      const gen = this.indexGen;
+      const result = await this.buildIndex(LIMITS.maxItems, options);
+      if (result.stopped) {
+        this.index = null;
+        return result;
+      }
+      if (gen === this.indexGen) {
+        this.index = result;
+        return result;
+      }
+      return this.ensureIndex();
+    }
+    // ---- 库发现与首次设置 ----
+    async listNotebooks() {
+      try {
+        const data = await this.kernel.request("lsNotebooks", {});
+        const raw = Array.isArray(data) ? data : Array.isArray(data == null ? void 0 : data.notebooks) ? data.notebooks : [];
+        const list = raw.filter((n) => typeof (n == null ? void 0 : n.id) === "string" && typeof (n == null ? void 0 : n.name) === "string" && n.closed !== true && !n.name.startsWith("&nbsp;")).map((n) => ({ id: n.id, name: n.name }));
+        return ok(list);
+      } catch (err) {
+        return toFailureReceipt(err);
+      }
+    }
+    /** 创建库文档（首次引导；UI 层负责先向用户确认）。返回新文档 ID。 */
+    async createLibraryDoc(notebookId, title, options = {}) {
+      if (!notebookId || !title.trim()) return fail("invalid-input", "notebook/title required");
+      const normalizedTitle = title.trim();
+      const idempotencyKey = typeof options.idempotencyKey === "string" && options.idempotencyKey.length >= 8 && options.idempotencyKey.length <= 128 ? options.idempotencyKey : "";
+      const receiptKey = idempotencyKey ? `${notebookId}:${idempotencyKey}` : "";
+      const key = `library-doc:${notebookId}:${normalizedTitle}`;
+      const action = async () => {
+        if (receiptKey) {
+          const previous = this.libraryDocReceipts.get(receiptKey);
+          if (previous) return previous;
+        }
+        try {
+          const docId = parseDocId(await this.kernel.request("createDocWithMd", {
+            notebook: notebookId,
+            path: "/" + normalizedTitle.replace(/\//g, "-"),
+            markdown: `# ${normalizedTitle}
+
+`
+          }, { idempotencyKey: idempotencyKey || void 0, maxRetries: 0 }));
+          if (!docId) return fail("kernel-error", "createDocWithMd returned no id");
+          const receipt = ok({ docId });
+          if (receiptKey) this.libraryDocReceipts.set(receiptKey, receipt);
+          return receipt;
+        } catch (err) {
+          return toFailureReceipt(err);
+        }
+      };
+      return this.withWriteLock(key, action);
+    }
+    /** 列出笔记本根下的一级文档，供首跑校验真实可写落点。 */
+    async listNotebookDocs(notebookId) {
+      if (!notebookId) return fail("invalid-input", "notebook required");
+      try {
+        const data = await this.kernel.request("listDocsByPath", { notebook: notebookId, path: "/" });
+        const files = Array.isArray(data == null ? void 0 : data.files) ? data.files : [];
+        const docs = files.filter((f) => !!f && typeof f.id === "string" && isBlockId(f.id)).map((f) => ({ id: f.id, name: typeof f.name === "string" ? f.name : f.id }));
+        return ok(docs);
+      } catch (err) {
+        return toFailureReceipt(err);
+      }
+    }
+    /** 按关键词搜文档（文档选择器用；ID 从 .sy path 解析，解析失败条目丢弃） */
+    async searchDocs(keyword) {
+      const k = keyword.trim().slice(0, 96);
+      if (!k) return ok([]);
+      try {
+        return ok(parseDocSearch(await this.kernel.request("searchDocs", { k }, {
+          latest: true,
+          raceKey: "library.searchDocs"
+        })));
+      } catch (err) {
+        return toFailureReceipt(err);
+      }
+    }
+    /** 当前文档完整路径（{{xlc:path}} 占位符用） */
+    async getDocPath(docId) {
+      if (!isBlockId(docId)) return "";
+      try {
+        return parseString(await this.kernel.request("getFullHPathByID", { id: docId }));
+      } catch {
+        return "";
+      }
+    }
+    /** 追加内容到指定文档（「插入到指定文档」用；官方 appendBlock）。
+     * 默认允许用户有意重复插入；调用方可传稳定幂等键保护网络重试/双击。
+     * 同一文档的写入串行，避免宿主并发追加时顺序和失败反馈不确定。
+     */
+    async appendToDoc(markdown, docId, options = {}) {
+      if (!markdown.trim()) return false;
+      if (!isBlockId(docId)) return false;
+      const idempotencyKey = typeof options.idempotencyKey === "string" && options.idempotencyKey.length >= 8 && options.idempotencyKey.length <= 128 ? options.idempotencyKey : "";
+      const receiptKey = idempotencyKey ? `${docId}:${idempotencyKey}` : "";
+      if (receiptKey && this.appendReceipts.has(receiptKey)) return true;
+      const action = async () => {
+        if (receiptKey && this.appendReceipts.has(receiptKey)) return true;
+        try {
+          await this.kernel.request("appendBlock", {
+            data: markdown.slice(0, LIMITS.contentChars),
+            dataType: "markdown",
+            parentID: docId
+          }, { idempotencyKey: idempotencyKey || void 0, maxRetries: 0 });
+          if (idempotencyKey) {
+            this.appendReceipts.set(receiptKey, true);
+            while (this.appendReceipts.size > 256) {
+              const oldest = this.appendReceipts.keys().next().value;
+              if (!oldest) break;
+              this.appendReceipts.delete(oldest);
+            }
+          }
+          return true;
+        } catch {
+          return false;
+        }
+      };
+      return this.withWriteLock(`append:${docId}`, action);
+    }
+    /** 整文档导出为 Markdown（「捕获当前文档」用） */
+    async exportDocContent(docId) {
+      if (!isBlockId(docId)) return fail("invalid-input", "docId invalid");
+      try {
+        const data = await this.kernel.request("exportMdContent", { id: docId });
+        const content = typeof (data == null ? void 0 : data.content) === "string" ? data.content : "";
+        if (!content) return fail("not-found", "doc content unavailable");
+        return ok({ hPath: typeof (data == null ? void 0 : data.hPath) === "string" ? data.hPath : "", content: content.slice(0, LIMITS.contentChars) });
+      } catch (err) {
+        return toFailureReceipt(err);
+      }
+    }
+    // ---- 索引构建 ----
+    async resolveDocIds(options = {}) {
+      var _a, _b, _c, _d, _e, _f;
+      const config = this.config;
+      if (!config) return { docIds: [], errors: ["no-library"], stopped: false };
+      if (config.mode === "notebook") {
+        const docIds2 = [];
+        const errors2 = [];
+        for (const notebookId of config.notebookIds.slice(0, 16)) {
+          if ((_a = options.shouldStop) == null ? void 0 : _a.call(options)) return { docIds: docIds2, errors: errors2, stopped: true };
+          try {
+            const data = await this.kernel.request("listDocsByPath", { notebook: notebookId, path: "/" });
+            const files = Array.isArray(data == null ? void 0 : data.files) ? data.files : [];
+            for (const f of files) {
+              const id = f.id;
+              if (typeof id === "string" && isBlockId(id)) docIds2.push(id);
+            }
+          } catch (err) {
+            errors2.push(`notebook ${notebookId}: ${err.message}`);
+          }
+        }
+        return { docIds: docIds2, errors: errors2, stopped: ((_b = options.shouldStop) == null ? void 0 : _b.call(options)) === true };
+      }
+      if (config.mode === "doc") {
+        return { docIds: Array.from(new Set(config.containerDocIds)).slice(0, LIMITS.maxDocs), errors: [], stopped: ((_c = options.shouldStop) == null ? void 0 : _c.call(options)) === true };
+      }
+      const docIds = [];
+      const errors = [];
+      const treeCap = LIMITS.maxDocs;
+      const queue = [];
+      for (const root of config.containerDocIds.slice(0, treeCap)) {
+        if ((_d = options.shouldStop) == null ? void 0 : _d.call(options)) return { docIds: Array.from(new Set(docIds)), errors, stopped: true };
+        docIds.push(root);
+        try {
+          const info = await this.kernel.request("getBlockInfo", { id: root });
+          const box = typeof (info == null ? void 0 : info.box) === "string" ? info.box : "";
+          const path = typeof (info == null ? void 0 : info.path) === "string" ? info.path : "";
+          if (box && path) queue.push({ box, path });
+        } catch (err) {
+          errors.push(`tree ${root}: ${err.message}`);
+        }
+      }
+      const TREE_MAX_DEPTH = 3;
+      let depth = 0;
+      while (queue.length > 0 && depth < TREE_MAX_DEPTH && docIds.length < treeCap) {
+        const level = queue.splice(0, queue.length);
+        for (const node of level) {
+          if ((_e = options.shouldStop) == null ? void 0 : _e.call(options)) return { docIds: Array.from(new Set(docIds)), errors, stopped: true };
+          if (docIds.length >= treeCap) break;
+          try {
+            const data = await this.kernel.request("listDocsByPath", { notebook: node.box, path: node.path });
+            const files = Array.isArray(data == null ? void 0 : data.files) ? data.files : [];
+            for (const f of files) {
+              if (docIds.length >= treeCap) {
+                errors.push("tree truncated: document count reached cap");
+                break;
+              }
+              const id = f.id;
+              const childPath = f.path;
+              if (typeof id === "string" && isBlockId(id)) {
+                docIds.push(id);
+                if (typeof childPath === "string" && childPath) queue.push({ box: node.box, path: childPath });
+              }
+            }
+          } catch (err) {
+            errors.push(`tree ${node.path}: ${err.message}`);
+          }
+        }
+        depth++;
+      }
+      return { docIds: Array.from(new Set(docIds)), errors, stopped: ((_f = options.shouldStop) == null ? void 0 : _f.call(options)) === true };
+    }
+    async buildIndex(maxItems = LIMITS.maxItems, options = {}) {
+      var _a, _b, _c, _d;
+      const resolved = await this.resolveDocIds(options);
+      const { docIds, errors } = resolved;
+      const items = /* @__PURE__ */ new Map();
+      const entries = [];
+      const searchEntryById = /* @__PURE__ */ new Map();
+      const referenceItems = [];
+      let stopped = resolved.stopped;
+      let truncated = stopped;
+      let docsScanned = 0;
+      const perDoc = docIds.map(() => []);
+      let cursor = 0;
+      const workerCount = Math.min(4, Math.max(1, docIds.length));
+      const worker = async () => {
+        var _a2, _b2;
+        while (cursor < docIds.length) {
+          if ((_a2 = options.shouldStop) == null ? void 0 : _a2.call(options)) {
+            stopped = true;
+            truncated = true;
+            return;
+          }
+          const index = cursor++;
+          const docId = docIds[index];
+          docsScanned++;
+          let children;
+          try {
+            children = parseChildBlocks(await this.kernel.request("getChildBlocks", { id: docId }));
+          } catch (err) {
+            errors.push(`doc ${docId}: ${err.message}`);
+            continue;
+          }
+          if ((_b2 = options.shouldStop) == null ? void 0 : _b2.call(options)) {
+            stopped = true;
+            truncated = true;
+            return;
+          }
+          if (children.length === 0) continue;
+          let attrsByBlock = {};
+          try {
+            attrsByBlock = parseBatchAttrs(await this.kernel.request("batchGetBlockAttrs", {
+              ids: children.map((c) => c.id)
+            }));
+          } catch (err) {
+            errors.push(`attrs ${docId}: ${err.message}`);
+            continue;
+          }
+          perDoc[index] = children.map((child) => {
+            var _a3;
+            return { child, attrs: (_a3 = attrsByBlock[child.id]) != null ? _a3 : {} };
+          });
+        }
+      };
+      if (!stopped) await Promise.all(Array.from({ length: workerCount }, () => worker()));
+      outer: for (let d = 0; d < perDoc.length && !stopped; d++) {
+        for (const { child, attrs } of (_a = perDoc[d]) != null ? _a : []) {
+          if ((_b = options.shouldStop) == null ? void 0 : _b.call(options)) {
+            stopped = true;
+            truncated = true;
+            break outer;
+          }
+          if (items.size >= maxItems) {
+            truncated = true;
+            break outer;
+          }
+          if (!attrs[ATTR.id]) continue;
+          let kramdown = "";
+          try {
+            const body = parseKramdown(await this.kernel.request("getBlockKramdown", { id: child.id }));
+            kramdown = (_c = body == null ? void 0 : body.kramdown) != null ? _c : "";
+          } catch (err) {
+            errors.push(`block ${child.id}: ${err.message}`);
+          }
+          if ((_d = options.shouldStop) == null ? void 0 : _d.call(options)) {
+            stopped = true;
+            truncated = true;
+            break outer;
+          }
+          const item = normalizeCommonItem({
+            blockId: child.id,
+            libraryDocId: docIds[d],
+            attrs,
+            blockType: child.type,
+            subtype: child.subtype,
+            kramdown
+          });
+          if (!item) continue;
+          const targetBlockId = resolveBlockRefTarget(item);
+          if (item.itemType === "blockref") {
+            item.summary = "";
+            item.varCount = 0;
+            if (targetBlockId && targetBlockId !== child.id) referenceItems.push(item);
+          }
+          const searchEntry = toSearchEntry(item);
+          const adapter = getPinyinAdapter();
+          if (adapter.capabilities.initials) {
+            const anno = adapter.annotate({ title: item.title, alias: item.alias });
+            if (anno) {
+              searchEntry.py = anno.py;
+              searchEntry.pyi = anno.pyi;
+            }
+          }
+          items.set(item.id, item);
+          entries.push(searchEntry);
+          searchEntryById.set(item.id, searchEntry);
+        }
+      }
+      const referenceTargetIds = Array.from(new Set(referenceItems.map(resolveBlockRefTarget).filter(Boolean)));
+      if (referenceTargetIds.length) {
+        try {
+          const raw = await this.kernel.request("getBlockKramdowns", { ids: referenceTargetIds, mode: "md" });
+          const bodies = parseBatchKramdowns(raw);
+          let missing = 0;
+          for (const item of referenceItems) {
+            const body = bodies[resolveBlockRefTarget(item)];
+            if (typeof body !== "string") {
+              missing++;
+              continue;
+            }
+            item.summary = deriveSummary(body);
+            item.varCount = countAskFields(body);
+            const entry = searchEntryById.get(item.id);
+            if (entry) {
+              entry.summary = item.summary;
+              entry.varCount = item.varCount;
+            }
+          }
+          if (missing) errors.push(`blockref targets unavailable: ${missing}`);
+        } catch (err) {
+          errors.push(`blockref targets: ${err.message}`);
+        }
+      }
+      return { entries, items, truncated, ...stopped ? { stopped: true } : {}, docsScanned, errors, builtAt: Date.now() };
+    }
+    // ---- 单条目读取 ----
+    async getItem(itemId) {
+      const idx = await this.ensureIndex();
+      const known = idx.items.get(itemId);
+      if (!known) return fail("not-found", `item ${itemId} not in index`);
+      const refreshed = await this.loadItemByBlockId(known.blockId, known.libraryDocId);
+      if (!refreshed) return fail("not-found", `block ${known.blockId} no longer carries item attrs`);
+      return ok(refreshed);
+    }
+    async getItemByBlockId(blockId, libraryDocId) {
+      return this.loadItemByBlockId(blockId, libraryDocId);
+    }
+    async loadItemByBlockId(blockId, libraryDocId) {
+      let attrs;
+      try {
+        attrs = parseAttrs(await this.kernel.request("getBlockAttrs", { id: blockId }));
+      } catch {
+        return null;
+      }
+      return normalizeCommonItem({ blockId, libraryDocId, attrs });
+    }
+    /** 现场取条目内容（kramdown）。禁止用索引摘要充当正文。 */
+    /** F5 片段嵌套：展开 {{xlc:snippet:标题}} 引用（插入语义；ask 变量保留给填充卡）。
+     *  深度 ≤3；按条目标题精确匹配（重名取索引首个）；已见条目不重复展开（防环，兄弟引用允许）；
+     *  标题缺失 / 成环 / 超深 → 替换为 __片段：标题__（可见可改，不静默丢）。 */
+    /** F5 片段嵌套：展开 {{xlc:snippet:标题}} 引用（插入语义；ask 变量保留给填充卡）。
+     *  maxDepth = 引用层数上限（默认 3）；按条目标题精确匹配（重名取索引首个）；
+     *  已见条目不重复展开（防环，兄弟引用允许）；标题缺失 / 成环 / 超出层数 →
+     *  替换为 __片段：标题__（可见可改，不静默丢）。 */
+    async expandSnippetRefs(text, opts) {
+      var _a;
+      const maxDepth = (_a = opts == null ? void 0 : opts.maxDepth) != null ? _a : 3;
+      if (!text || !text.includes("{{xlc:snippet:")) return text;
+      const idx = await this.ensureIndex();
+      const byTitle = /* @__PURE__ */ new Map();
+      for (const item of idx.items.values()) {
+        if (item.title && !byTitle.has(item.title)) byTitle.set(item.title, item);
+      }
+      const expand = async (input, level, seen) => {
+        var _a2;
+        if (!input || !input.includes("{{xlc:snippet:")) return input;
+        let out = input;
+        for (const match of input.matchAll(SNIPPET_PATTERN)) {
+          const token = match[0];
+          const title = ((_a2 = match[1]) != null ? _a2 : "").trim().slice(0, LIMITS.title);
+          const marker = `__\u7247\u6BB5\uFF1A${title || "?"}__`;
+          let replacement = marker;
+          if (level <= maxDepth) {
+            const target = title ? byTitle.get(title) : void 0;
+            if (target && !seen.has(target.id)) {
+              seen.add(target.id);
+              try {
+                const kd = await this.getItemKramdown(target);
+                if (kd.ok) {
+                  replacement = await expand(kd.data, level + 1, seen);
+                }
+              } finally {
+                seen.delete(target.id);
+              }
+            }
+          }
+          out = out.split(token).join(replacement);
+        }
+        return out;
+      };
+      return expand(text, 1, /* @__PURE__ */ new Set());
+    }
+    /** 读取条目在专用库中的物理正文（编辑、导出、撤销恢复使用）。 */
+    async getStoredItemKramdown(item) {
+      try {
+        const data = parseKramdown(await this.kernel.request("getBlockKramdown", { id: item.blockId }));
+        if (!data) return fail("not-found", `block ${item.blockId} kramdown unavailable`);
+        return ok(data.kramdown);
+      } catch (err) {
+        return toFailureReceipt(err);
+      }
+    }
+    /** 读取条目当前有效正文；引用入口永远跟随目标源块，不读取 marker。 */
+    async getItemKramdown(item) {
+      if (item.itemType !== "blockref") return this.getStoredItemKramdown(item);
+      const target = resolveBlockRefTarget(item);
+      if (!target) return fail("invalid-input", "blockref target is missing or invalid");
+      try {
+        const data = parseKramdown(await this.kernel.request("getBlockKramdown", { id: target }));
+        if (!data) return fail("not-found", `target block ${target} kramdown unavailable`);
+        return ok(normalizeKramdownIal(data.kramdown));
+      } catch (err) {
+        return toFailureReceipt(err);
+      }
+    }
+    // ---- 失效检测 ----
+    /** 来源块 / 来源文档 / 资源三态检测。检查失败时如实返回 unknown=false 侧并附错误。 */
+    async checkSourceHealth(item) {
+      var _a, _b;
+      const health = { blockMissing: false, docMissing: false, assetMissing: false };
+      try {
+        const docCandidate = item.source.sourceDocId || "";
+        const blockCandidate = item.itemType === "blockref" ? resolveBlockRefTarget(item) : item.source.sourceBlockId || "";
+        const ids = [docCandidate, blockCandidate].filter((id) => isBlockId(id));
+        if (ids.length > 0) {
+          const existMap = parseExistingMap(await this.kernel.request("checkBlocksExist", { ids }));
+          if (docCandidate && existMap[docCandidate] === false) health.docMissing = true;
+          if (blockCandidate && existMap[blockCandidate] === false) health.blockMissing = true;
+        }
+        if (item.itemType === "image" || item.itemType === "asset") {
+          const kramdown = await this.getItemKramdown(item);
+          if (kramdown.ok) {
+            const path = (_b = (_a = kramdown.data.match(/\]\((assets\/[^)\s]+)[^)]*\)/)) == null ? void 0 : _a[1]) != null ? _b : "";
+            if (!path) {
+              health.assetMissing = true;
+            } else if (this.options.probeAsset) {
+              try {
+                health.assetMissing = !await this.options.probeAsset(path);
+              } catch {
+                health.assetMissing = true;
+              }
+            } else {
+              health.assetMissing = false;
+            }
+          }
+        }
+        return ok(health);
+      } catch (err) {
+        return toFailureReceipt(err);
+      }
+    }
+    // ---- CRUD ----
+    async createItem(input, libraryDocId, options = {}) {
+      const logicalKey = typeof input.logicalId === "string" && isLogicalId(input.logicalId) ? `item:${input.logicalId}` : "";
+      const idempotencyKey = typeof options.idempotencyKey === "string" && options.idempotencyKey.length >= 8 && options.idempotencyKey.length <= 128 ? options.idempotencyKey : "";
+      if (idempotencyKey) {
+        const previous = this.idempotencyReceipts.get(idempotencyKey);
+        if (previous) return previous;
+      }
+      const key = idempotencyKey ? `idempotency:${idempotencyKey}` : logicalKey;
+      const action = async () => {
+        if (idempotencyKey) {
+          const completed = this.idempotencyReceipts.get(idempotencyKey);
+          if (completed) return completed;
+        }
+        const receipt = await this.createItemUnlocked(input, libraryDocId, options);
+        if (idempotencyKey && receipt.ok) {
+          this.rememberReceipt(this.idempotencyReceipts, idempotencyKey, receipt);
+        }
+        return receipt;
+      };
+      return key ? this.withWriteLock(key, action) : action();
+    }
+    async createItemUnlocked(input, libraryDocId, options = {}) {
+      var _a, _b, _c, _d, _e, _f, _g, _h, _i;
+      const targetDoc = libraryDocId != null ? libraryDocId : await this.resolveWriteDoc();
+      if (!targetDoc || !isBlockId(targetDoc)) return fail("invalid-input", "no library doc");
+      const now = Date.now();
+      let logicalId = (_a = input.logicalId) != null ? _a : newLogicalId(now);
+      if (!/^xlc-[0-9a-z]{10,40}$/.test(logicalId)) logicalId = newLogicalId(now);
+      if (this.createdLogicalIds.has(logicalId) || ((_b = this.index) == null ? void 0 : _b.items.has(logicalId))) {
+        return fail("conflict", `logical id already exists: ${logicalId}`);
+      }
+      const attrs = {
+        [ATTR.id]: logicalId,
+        [ATTR.type]: input.itemType,
+        [ATTR.created]: String(now),
+        [ATTR.updated]: String(now)
+      };
+      if (input.title) attrs[ATTR.title] = input.title.slice(0, LIMITS.title);
+      if (input.alias) attrs[ATTR.alias] = input.alias.slice(0, LIMITS.alias);
+      if ((_c = input.tags) == null ? void 0 : _c.length) attrs[ATTR.tags] = input.tags.slice(0, LIMITS.tags).join(",");
+      if (input.category) attrs[ATTR.category] = input.category.slice(0, LIMITS.category);
+      if (input.url) {
+        if (!isSafeHttpUrl(input.url)) return fail("invalid-input", "url must use http or https");
+        attrs[ATTR.url] = input.url.trim().slice(0, 2048);
+      }
+      if (input.targetBlockId && isBlockId(input.targetBlockId)) attrs[ATTR.target] = input.targetBlockId;
+      if (((_d = input.source) == null ? void 0 : _d.sourceDocId) && isBlockId(input.source.sourceDocId)) attrs[ATTR.srcDoc] = input.source.sourceDocId;
+      if (((_e = input.source) == null ? void 0 : _e.sourceBlockId) && isBlockId(input.source.sourceBlockId)) attrs[ATTR.srcBlock] = input.source.sourceBlockId;
+      if (((_f = input.source) == null ? void 0 : _f.sourceType) && isSourceType(input.source.sourceType)) attrs[ATTR.srcType] = input.source.sourceType;
+      const varCount = input.itemType === "code" ? 0 : countAskFields(input.markdown);
+      if (varCount > 0) attrs[ATTR.vars] = String(Math.min(varCount, LIMITS.maxAskFields));
+      let insertResp;
+      try {
+        insertResp = await this.kernel.request("appendBlock", {
+          data: input.markdown.slice(0, LIMITS.contentChars),
+          dataType: "markdown",
+          parentID: targetDoc
+        }, { idempotencyKey: options.idempotencyKey, maxRetries: 0 });
+      } catch (err) {
+        return toFailureReceipt(err);
+      }
+      const ops = Array.isArray(insertResp) ? insertResp : [];
+      const newBlockId = (_i = (_h = (_g = ops[0]) == null ? void 0 : _g.doOperations) == null ? void 0 : _h[0]) == null ? void 0 : _i.id;
+      if (typeof newBlockId !== "string" || !isBlockId(newBlockId)) {
+        return fail("kernel-error", "appendBlock returned no block id");
+      }
+      try {
+        await this.kernel.request("setBlockAttrs", { id: newBlockId, attrs });
+      } catch (err) {
+        try {
+          await this.kernel.request("deleteBlock", { id: newBlockId });
+        } catch {
+          return fail("kernel-error", `attrs write failed AND rollback failed; orphan block ${newBlockId}`);
+        }
+        return toFailureReceipt(err);
+      }
+      const item = normalizeCommonItem({
+        blockId: newBlockId,
+        libraryDocId: targetDoc,
+        attrs,
+        blockType: input.itemType === "code" ? "c" : input.itemType === "structure" ? "super" : "p"
+      });
+      if (!item) return fail("kernel-error", "created item failed normalization");
+      this.createdLogicalIds.add(logicalId);
+      if (typeof options.batchToken === "string" && options.batchToken.length >= 16 && options.batchToken.length <= 128) {
+        this.conditionalDeleteGrants.set(item, {
+          batchToken: options.batchToken,
+          item: { ...item, tags: [...item.tags], source: { ...item.source }, droppedFields: [...item.droppedFields] },
+          attrs: { ...attrs },
+          markdown: input.markdown.slice(0, LIMITS.contentChars)
+        });
+      }
+      this.invalidateIndex();
+      this.notifyItemsChanged([item.id]);
+      return ok({ item });
+    }
+    async resolveWriteDoc() {
+      const config = this.config;
+      if (!config) return void 0;
+      if (config.mode !== "notebook") return config.containerDocIds[0];
+      if (this.writeDocCache && this.writeDocCache.gen === this.indexGen) return this.writeDocCache.docId;
+      let resolved;
+      for (const notebookId of config.notebookIds.slice(0, 16)) {
+        try {
+          const data = await this.kernel.request("listDocsByPath", { notebook: notebookId, path: "/" });
+          const files = Array.isArray(data == null ? void 0 : data.files) ? data.files : [];
+          const first = files.find((f) => typeof (f == null ? void 0 : f.id) === "string" && isBlockId(f.id));
+          if (first && typeof first.id === "string") {
+            resolved = first.id;
+            break;
+          }
+        } catch {
+        }
+      }
+      this.writeDocCache = { gen: this.indexGen, docId: resolved };
+      return resolved;
+    }
+    async updateItem(itemId, patch, options = {}) {
+      const idempotencyKey = options.idempotencyKey && options.idempotencyKey.length >= 8 && options.idempotencyKey.length <= 128 ? options.idempotencyKey : "";
+      const receiptKey = idempotencyKey ? `${itemId}:${idempotencyKey}` : "";
+      const key = receiptKey ? `idempotency:${receiptKey}` : `item:${itemId}`;
+      const action = async () => {
+        if (receiptKey) {
+          const previous = this.updateReceipts.get(receiptKey);
+          if (previous) return previous;
+        }
+        const receipt = await this.updateItemUnlocked(itemId, patch, options);
+        if (receiptKey && receipt.ok) this.rememberReceipt(this.updateReceipts, receiptKey, receipt);
+        return receipt;
+      };
+      return this.withWriteLock(key, action);
+    }
+    async updateItemUnlocked(itemId, patch, options = {}) {
+      var _a;
+      const got = await this.getItem(itemId);
+      if (!got.ok) return { ok: false, reason: got.reason, message: got.message };
+      const item = got.data;
+      const attrs = {
+        [ATTR.updated]: String(Date.now())
+      };
+      if (patch.title !== void 0) attrs[ATTR.title] = patch.title.slice(0, LIMITS.title);
+      if (patch.alias !== void 0) attrs[ATTR.alias] = patch.alias.slice(0, LIMITS.alias);
+      if (patch.tags !== void 0) attrs[ATTR.tags] = patch.tags.slice(0, LIMITS.tags).join(",");
+      if (patch.category !== void 0) attrs[ATTR.category] = patch.category.slice(0, LIMITS.category);
+      if (patch.url !== void 0) {
+        if (patch.url && !isSafeHttpUrl(patch.url)) return fail("invalid-input", "url must use http or https");
+        attrs[ATTR.url] = patch.url.trim().slice(0, 2048);
+      }
+      if (patch.targetBlockId !== void 0) {
+        if (patch.targetBlockId && !isBlockId(patch.targetBlockId)) return fail("invalid-input", "targetBlockId invalid");
+        attrs[ATTR.target] = patch.targetBlockId;
+      }
+      if (typeof patch.markdown === "string" && patch.markdown) {
+        const varCount = item.itemType === "code" ? 0 : countAskFields(patch.markdown);
+        attrs[ATTR.vars] = varCount > 0 ? String(Math.min(varCount, LIMITS.maxAskFields)) : "";
+      }
+      let oldAttrs = null;
+      let oldMarkdown;
+      try {
+        oldAttrs = parseAttrs(await this.kernel.request("getBlockAttrs", { id: item.blockId }));
+        if (typeof patch.markdown === "string" && patch.markdown) {
+          oldMarkdown = (_a = parseKramdown(await this.kernel.request("getBlockKramdown", { id: item.blockId }))) == null ? void 0 : _a.kramdown;
+        }
+        await this.kernel.request("setBlockAttrs", { id: item.blockId, attrs }, { idempotencyKey: options.idempotencyKey, maxRetries: 0 });
+        if (typeof patch.markdown === "string" && patch.markdown) {
+          await this.kernel.request("updateBlock", {
+            data: patch.markdown.slice(0, LIMITS.contentChars),
+            dataType: "markdown",
+            id: item.blockId
+          }, { idempotencyKey: options.idempotencyKey ? `${options.idempotencyKey}:body` : void 0, maxRetries: 0 });
+        }
+      } catch (err) {
+        let rollbackFailed = false;
+        if (oldAttrs) {
+          try {
+            await this.kernel.request("setBlockAttrs", { id: item.blockId, attrs: oldAttrs }, { maxRetries: 0 });
+          } catch {
+            rollbackFailed = true;
+          }
+        }
+        if (oldMarkdown !== void 0) {
+          try {
+            await this.kernel.request("updateBlock", { data: oldMarkdown, dataType: "markdown", id: item.blockId }, { maxRetries: 0 });
+          } catch {
+            rollbackFailed = true;
+          }
+        }
+        if (rollbackFailed) {
+          return fail("kernel-error", `${(err == null ? void 0 : err.message) || String(err)}; rollback failed and item state may be partially updated`);
+        }
+        return toFailureReceipt(err);
+      }
+      this.invalidateIndex();
+      this.notifyItemsChanged([itemId]);
+      const refreshed = await this.getItem(itemId);
+      return refreshed.ok ? ok({ item: refreshed.data }) : { ok: false, reason: refreshed.reason, message: refreshed.message };
+    }
+    async removeItem(itemId, options = {}) {
+      const idempotencyKey = options.idempotencyKey && options.idempotencyKey.length >= 8 && options.idempotencyKey.length <= 128 ? options.idempotencyKey : "";
+      const receiptKey = idempotencyKey ? `${itemId}:${idempotencyKey}` : "";
+      const key = receiptKey ? `idempotency:${receiptKey}` : `item:${itemId}`;
+      const action = async () => {
+        if (receiptKey) {
+          const previous = this.removeReceipts.get(receiptKey);
+          if (previous) return previous;
+        }
+        const receipt = await this.removeItemUnlocked(itemId, options);
+        if (receiptKey && receipt.ok) this.rememberReceipt(this.removeReceipts, receiptKey, receipt);
+        return receipt;
+      };
+      return this.withWriteLock(key, action);
+    }
+    async removeItemUnlocked(itemId, options = {}) {
+      const got = await this.getItem(itemId);
+      if (!got.ok) return got;
+      try {
+        await this.kernel.request("deleteBlock", { id: got.data.blockId }, { idempotencyKey: options.idempotencyKey, maxRetries: 0 });
+      } catch (err) {
+        return toFailureReceipt(err);
+      }
+      this.createdLogicalIds.delete(got.data.id);
+      this.invalidateIndex();
+      this.notifyItemsChanged([got.data.id]);
+      return ok({ blockId: got.data.blockId });
+    }
+    /**
+     * Undo only blocks that still match the exact item snapshot created by discovery.
+     * The fresh index proves the block remains inside the configured library; live attributes
+     * and body are read twice immediately before deletion to avoid removing later edits.
+     */
+    async removeItemsIfUnchanged(batchToken, inputs) {
+      return this.withWriteLock(`batch:${batchToken}`, () => this.removeItemsIfUnchangedUnlocked(batchToken, inputs));
+    }
+    async removeItemsIfUnchangedUnlocked(batchToken, inputs) {
+      var _a, _b, _c, _d;
+      if (typeof batchToken !== "string" || batchToken.length < 16 || batchToken.length > 128 || !Array.isArray(inputs) || inputs.length > LIMITS.maxItems) {
+        return fail("invalid-input", "conditional delete batch exceeds the supported limit");
+      }
+      const unique = /* @__PURE__ */ new Set();
+      for (const input of inputs) {
+        if (!input || !input.item || !isLogicalId(input.item.id) || !isBlockId(input.item.blockId) || !isBlockId(input.item.libraryDocId) || typeof input.markdown !== "string") {
+          return fail("invalid-input", "conditional delete batch contains an invalid item");
+        }
+        const grant = this.conditionalDeleteGrants.get(input.item);
+        if (!grant || grant.batchToken !== batchToken || !sameManagedItem(input.item, grant.item) || normalizeConditionalMarkdown(input.markdown) !== normalizeConditionalMarkdown(grant.markdown)) {
+          return fail("invalid-input", "conditional delete item was not created in this batch");
+        }
+        if (unique.has(input.item.id) || unique.has(input.item.blockId)) {
+          return fail("invalid-input", "conditional delete batch contains duplicate item identities");
+        }
+        unique.add(input.item.id);
+        unique.add(input.item.blockId);
+      }
+      if (inputs.length === 0) return ok([]);
+      let index;
+      try {
+        index = await this.reindex();
+      } catch (err) {
+        return toFailureReceipt(err);
+      }
+      if (index.truncated || index.errors.length > 0) {
+        return ok(inputs.map(({ item }) => ({
+          status: "skipped",
+          itemId: item.id,
+          blockId: item.blockId,
+          reason: "library-unverified"
+        })));
+      }
+      const outcomes = [];
+      let deletedAny = false;
+      for (const input of inputs) {
+        const { item, markdown } = input;
+        const indexed = index.items.get(item.id);
+        if (!indexed) {
+          outcomes.push({ status: "skipped", itemId: item.id, blockId: item.blockId, reason: "not-found" });
+          continue;
+        }
+        if (indexed.blockId !== item.blockId || indexed.libraryDocId !== item.libraryDocId) {
+          outcomes.push({ status: "skipped", itemId: item.id, blockId: item.blockId, reason: "identity-changed" });
+          continue;
+        }
+        try {
+          const first = await this.readConditionalDeleteState(item);
+          if (!first) {
+            outcomes.push({ status: "skipped", itemId: item.id, blockId: item.blockId, reason: "identity-changed" });
+            continue;
+          }
+          if (!sameManagedItem(first.item, item) || !sameCustomAttrs(first.attrs, (_b = (_a = this.conditionalDeleteGrants.get(item)) == null ? void 0 : _a.attrs) != null ? _b : {}) || normalizeConditionalMarkdown(first.markdown) !== normalizeConditionalMarkdown(markdown)) {
+            outcomes.push({ status: "skipped", itemId: item.id, blockId: item.blockId, reason: "edited" });
+            continue;
+          }
+          const second = await this.readConditionalDeleteState(item);
+          if (!second) {
+            outcomes.push({ status: "skipped", itemId: item.id, blockId: item.blockId, reason: "identity-changed" });
+            continue;
+          }
+          if (!sameManagedItem(second.item, item) || !sameCustomAttrs(second.attrs, (_d = (_c = this.conditionalDeleteGrants.get(item)) == null ? void 0 : _c.attrs) != null ? _d : {}) || normalizeConditionalMarkdown(second.markdown) !== normalizeConditionalMarkdown(markdown)) {
+            outcomes.push({ status: "skipped", itemId: item.id, blockId: item.blockId, reason: "edited" });
+            continue;
+          }
+          await this.kernel.request("deleteBlock", { id: item.blockId });
+          deletedAny = true;
+          this.conditionalDeleteGrants.delete(item);
+          outcomes.push({ status: "deleted", itemId: item.id, blockId: item.blockId });
+        } catch (err) {
+          outcomes.push({
+            status: "failed",
+            itemId: item.id,
+            blockId: item.blockId,
+            message: (err == null ? void 0 : err.message) || String(err)
+          });
+        }
+      }
+      if (deletedAny) {
+        this.invalidateIndex();
+        this.notifyItemsChanged(outcomes.filter((outcome) => outcome.status === "deleted").map((outcome) => outcome.itemId));
+      }
+      return ok(outcomes);
+    }
+    async readConditionalDeleteState(expected) {
+      const attrs = parseAttrs(await this.kernel.request("getBlockAttrs", { id: expected.blockId }));
+      const body = parseKramdown(await this.kernel.request("getBlockKramdown", { id: expected.blockId }));
+      if (!body || body.id !== expected.blockId) return null;
+      const item = normalizeCommonItem({
+        blockId: expected.blockId,
+        libraryDocId: expected.libraryDocId,
+        attrs,
+        kramdown: body.kramdown
+      });
+      return item ? { item, attrs, markdown: body.kramdown } : null;
+    }
+    /** 清除来源引用（用户显式操作；空串删除自定义属性，条目本体不受影响） */
+    async clearSource(itemId) {
+      return this.withWriteLock(`item:${itemId}`, () => this.clearSourceUnlocked(itemId));
+    }
+    async clearSourceUnlocked(itemId) {
+      const got = await this.getItem(itemId);
+      if (!got.ok) return { ok: false, reason: got.reason, message: got.message };
+      try {
+        await this.kernel.request("setBlockAttrs", {
+          id: got.data.blockId,
+          attrs: { [ATTR.srcDoc]: "", [ATTR.srcBlock]: "" }
+        });
+      } catch (err) {
+        return toFailureReceipt(err);
+      }
+      this.invalidateIndex();
+      this.notifyItemsChanged([itemId]);
+      const refreshed = await this.getItem(itemId);
+      return refreshed.ok ? ok({ item: refreshed.data }) : { ok: false, reason: refreshed.reason, message: refreshed.message };
+    }
+    /** 恢复来源：把指定文档/块设为条目新来源（用户显式操作，非自动改写）。
+     *  未提供 sourceBlockId 时显式清空旧块引用（防止残留指向旧位置的失效 src-block）。 */
+    async relinkSource(itemId, source) {
+      return this.withWriteLock(`item:${itemId}`, () => this.relinkSourceUnlocked(itemId, source));
+    }
+    async relinkSourceUnlocked(itemId, source) {
+      if (!isBlockId(source.sourceDocId)) return fail("invalid-input", "sourceDocId invalid");
+      const got = await this.getItem(itemId);
+      if (!got.ok) return { ok: false, reason: got.reason, message: got.message };
+      const attrs = {
+        [ATTR.srcDoc]: source.sourceDocId,
+        // 显式置空：思源空串删属性语义；避免旧 src-block 残留指向错误位置
+        [ATTR.srcBlock]: source.sourceBlockId && isBlockId(source.sourceBlockId) ? source.sourceBlockId : "",
+        [ATTR.updated]: String(Date.now())
+      };
+      try {
+        await this.kernel.request("setBlockAttrs", { id: got.data.blockId, attrs });
+      } catch (err) {
+        return toFailureReceipt(err);
+      }
+      this.invalidateIndex();
+      this.notifyItemsChanged([itemId]);
+      const refreshed = await this.getItem(itemId);
+      return refreshed.ok ? ok({ item: refreshed.data }) : { ok: false, reason: refreshed.reason, message: refreshed.message };
+    }
+  };
+
   // scripts/harness/entry.ts
   var ENTRIES = [
     { id: "xlc-demo0000001", blockId: "20240101120000-aaaaaaa", libraryDocId: "20240101120001-hijklmn", itemType: "markdown", title: "\u9879\u76EE\u5EF6\u671F\u9053\u6B49\u4E0E\u8865\u507F\u65B9\u6848", alias: "\u5EF6\u671F\u9053\u6B49", tags: ["\u5BA2\u6237\u6C9F\u901A", "\u6A21\u677F"], category: "\u5BA2\u670D", summary: "\u5C0A\u656C\u7684\u738B\u603B\uFF1A\u5173\u4E8E\u672C\u671F\u4EA4\u4ED8\u5EF6\u671F\u2026\u2026", createdAt: 1, updatedAt: Date.now() - 3 * 864e5, sourceDocId: "20240101120001-hijklmn", sourceBlockId: "20240101120002-bbbbbbb", varCount: 2 },
@@ -10747,6 +13120,7 @@ ${details.join("\n")}` : ""}`;
   var captureAiDraftCalls = [];
   var deferredTidyResponse = null;
   var lastSearchDialog = null;
+  var savedDiscoveryViews = [];
   var T = (key, ...args) => {
     var _a;
     const map = {
@@ -10763,8 +13137,8 @@ ${details.join("\n")}` : ""}`;
       discoveryScopeTree: "\u6307\u5B9A\u6587\u6863\u6811",
       discoveryScopeSelectedNotebook: "\u6307\u5B9A\u7B14\u8BB0\u672C",
       discoveryScopeAllNotebooks: "\u5168\u90E8\u7B14\u8BB0\u672C\uFF08\u9AD8\u7EA7\uFF09",
-      discoveryScopeTreeHint: "\u626B\u63CF\u6240\u9009\u6839\u6587\u6863\u53CA\u5176\u4E0B\u7EA7\u6587\u6863\u9876\u5C42\u5757\uFF1B\u52A0\u5165\u5185\u5BB9\u53EA\u590D\u5236\u5230\u4E13\u7528\u5E93\u3002",
-      discoveryScopeSelectedNotebookHint: "\u626B\u63CF\u6240\u9009\u7B14\u8BB0\u672C\u7684\u6587\u6863\u9876\u5C42\u5757\uFF1B\u52A0\u5165\u5185\u5BB9\u53EA\u590D\u5236\u5230\u4E13\u7528\u5E93\u3002",
+      discoveryScopeTreeHint: "\u626B\u63CF\u6240\u9009\u6839\u6587\u6863\u53CA\u5176\u4E0B\u7EA7\u6587\u6863\u9876\u5C42\u5757\uFF1B\u786E\u8BA4\u540E\u52A0\u5165\u5E38\u7528\u5E93\uFF1B\u6E90\u6587\u6863\u4E0D\u53D8\uFF0C\u52A0\u5165\u65B9\u5F0F\u89C1\u4E0B\u65B9\u3002",
+      discoveryScopeSelectedNotebookHint: "\u626B\u63CF\u6240\u9009\u7B14\u8BB0\u672C\u7684\u6587\u6863\u9876\u5C42\u5757\uFF1B\u786E\u8BA4\u540E\u52A0\u5165\u5E38\u7528\u5E93\uFF1B\u6E90\u6587\u6863\u4E0D\u53D8\uFF0C\u52A0\u5165\u65B9\u5F0F\u89C1\u4E0B\u65B9\u3002",
       discoverySelectTree: "\u8F93\u5165\u5173\u952E\u8BCD\u67E5\u627E\u6587\u6863\u6811\u6839\u6587\u6863",
       discoverySelectNotebook: "\u9009\u62E9\u8981\u626B\u63CF\u7684\u7B14\u8BB0\u672C",
       discoverySearch: "\u641C\u7D22",
@@ -10841,7 +13215,23 @@ ${details.join("\n")}` : ""}`;
       discoveryPreviewLoading: "\u6B63\u5728\u8BFB\u53D6\u5019\u9009\u6B63\u6587\u2026",
       discoveryAdd: "\u52A0\u5165\u5E38\u7528\u5E93",
       discoveryAddSelected: "\u52A0\u5165\u9009\u4E2D\u9879",
+      discoverySyncView: "\u540C\u6B65\u5230\u5E38\u7528\u5E93",
+      discoveryAddMode: "\u52A0\u5165\u65B9\u5F0F",
+      discoveryAddModeReference: "\u5EFA\u7ACB\u5F15\u7528\u5165\u53E3\uFF08\u6E90\u5757\u4E0D\u52A8\uFF09",
+      discoveryAddModeCopy: "\u590D\u5236\u5230\u5E38\u7528\u5E93\uFF08\u72EC\u7ACB\u526F\u672C\uFF09",
+      discoveryAddModeHint: "\u5F15\u7528\u5165\u53E3\u53EA\u4FDD\u5B58\u6765\u6E90\u5757 ID \u548C\u5143\u6570\u636E\uFF0C\u8C03\u7528\u65F6\u8BFB\u53D6\u6E90\u5757\u6700\u65B0\u6B63\u6587\u3002",
       discoveryDefaultCategory: "\u9ED8\u8BA4\u5206\u7C7B",
+      discoveryTagFacets: "\u5019\u9009\u6807\u7B7E",
+      discoveryTagFacetApply: "\u6309\u6807\u7B7E\u300C%s\u300D\u7B5B\u9009\uFF0C\u5171 %s \u6761",
+      discoverySaveView: "\u4FDD\u5B58\u89C6\u56FE",
+      discoverySaveViewPrompt: "\u4E3A\u5F53\u524D\u6807\u7B7E\u89C6\u56FE\u547D\u540D\uFF1A",
+      discoverySaveViewInvalid: "\u89C6\u56FE\u540D\u79F0\u6216\u626B\u63CF\u76EE\u6807\u65E0\u6548\uFF0C\u672A\u4FDD\u5B58\u3002",
+      discoverySaveViewDone: "\u5DF2\u4FDD\u5B58\u89C6\u56FE\u300C%s\u300D",
+      savedViewsSection: "\u5E38\u7528\u89C6\u56FE",
+      savedViewsEmpty: "\u8FD8\u6CA1\u6709\u4FDD\u5B58\u7684\u89C6\u56FE\u3002\u53EF\u5728\u53D1\u73B0\u9762\u677F\u8F93\u5165\u6807\u7B7E\u540E\u4FDD\u5B58\u3002",
+      savedViewsOpen: "\u6253\u5F00",
+      savedViewsDelete: "\u5220\u9664",
+      savedViewsDeleteConfirm: "\u5220\u9664\u89C6\u56FE\u300C%s\u300D\uFF1F\u53EA\u4F1A\u5220\u9664\u5FEB\u6377\u914D\u7F6E\uFF0C\u4E0D\u4F1A\u5220\u9664\u6E90\u5757\u6216\u5DF2\u6709\u5F15\u7528\u3002",
       discoveryUnsortedCategory: "\u5F85\u6574\u7406",
       discoveryDefaultCategoryHint: "\u65B0\u6536\u5F55\u9879\u9ED8\u8BA4\u4F7F\u7528\u6B64\u5206\u7C7B\uFF1B\u9884\u89C8\u4E2D\u53EF\u5355\u72EC\u4FEE\u6539\u5F53\u524D\u6761\u76EE\u3002",
       discoveryCandidateCategory: "\u672C\u6761\u5206\u7C7B",
@@ -10900,14 +13290,14 @@ ${details.join("\n")}` : ""}`;
       empty: "\u6CA1\u6709\u627E\u5230\u5339\u914D\u5185\u5BB9",
       usageHint: "\u2191 \u2193 \u9009\u62E9 \xB7 Enter \u63D2\u5165 \xB7 Ctrl/\u2318 + Enter \u590D\u5236 \xB7 Alt + 1-9 \u5FEB\u901F\u63D2\u5165 \xB7 Esc \u5173\u95ED",
       ordinalShortcutHint: "Alt+%s \u63D2\u5165 \xB7 Alt+Shift+%s \u590D\u5236",
-      usageHintMobile: "\u70B9\u6309\u6761\u76EE\u5C1D\u8BD5\u63D2\u5165\uFF1B\u82E5\u5BBF\u4E3B\u4E0D\u652F\u6301\u4F1A\u590D\u5236\u5230\u526A\u8D34\u677F \xB7 \u957F\u6309\u67E5\u770B\u64CD\u4F5C",
+      usageHintMobile: "\u70B9\u6309\u9009\u62E9\u6761\u76EE\uFF0C\u518D\u70B9\u5E95\u90E8\u4E3B\u6309\u94AE\u4F7F\u7528 \xB7 \u957F\u6309\u67E5\u770B\u64CD\u4F5C",
       usageGuideBtn: "\u4F7F\u7528\u5E2E\u52A9",
       usageGuideTitle: "\u5C0F\u9A74\u5E38\u7528\u600E\u4E48\u7528",
       usageGuideIntro: "\u628A\u5E38\u7528\u5185\u5BB9\u4FDD\u5B58\u5728\u601D\u6E90\u6587\u6863\u4E2D\uFF0C\u4E4B\u540E\u641C\u7D22\u3001\u9884\u89C8\uFF0C\u518D\u63D2\u5165\u6216\u590D\u5236\u3002",
       usageGuideAdd: "\u65B0\u589E\uFF1A\u70B9\u300C\uFF0B \u65B0\u5EFA\u6761\u76EE\u300D\uFF0C\u6216\u4ECE\u9009\u533A\u3001\u5F53\u524D\u5757\u3001\u526A\u8D34\u677F\u548C\u53F3\u952E\u83DC\u5355\u4FDD\u5B58\u3002",
       usageGuideSearch: "\u67E5\u627E\uFF1A\u641C\u7D22\u6807\u9898\u3001\u522B\u540D\u3001\u6458\u8981\u3001\u6807\u7B7E\u548C\u5206\u7C7B\uFF1B\u4E5F\u53EF\u4EE5\u7528\u62FC\u97F3\u3001\u6536\u85CF\u3001\u6700\u8FD1\u4F7F\u7528\u548C\u5E38\u7528\u6392\u5E8F\u3002",
       usageGuideInsert: "\u4F7F\u7528\uFF1AEnter \u63D2\u5165\uFF0CCtrl/\u2318 + Enter \u590D\u5236\uFF1BAlt/\u2325 + 1-9 \u76F4\u8FBE\u63D2\u5165\uFF0CAlt/\u2325 + Shift + 1-9 \u76F4\u8FBE\u590D\u5236\uFF1BTab \u53EF\u5728\u641C\u7D22\u6846\u4E0E\u64CD\u4F5C\u533A\u6D41\u8F6C\uFF1B\u957F\u6309\u6761\u76EE\u53EF\u6253\u5F00\u66F4\u591A\u64CD\u4F5C\u3002",
-      usageGuideInsertMobile: "\u4F7F\u7528\uFF1A\u70B9\u6309\u6761\u76EE\u5C1D\u8BD5\u63D2\u5165\uFF1B\u82E5\u601D\u6E90\u5BA2\u6237\u7AEF\u4E0D\u652F\u6301\uFF0C\u4F1A\u590D\u5236\u5230\u526A\u8D34\u677F\u3002\u79FB\u52A8\u7AEF\u63D2\u5165\u5C1A\u672A\u5728\u771F\u5B9E\u5BA2\u6237\u7AEF\u9A8C\u8BC1\uFF1B\u957F\u6309\u6761\u76EE\u53EF\u6253\u5F00\u66F4\u591A\u64CD\u4F5C\u3002",
+      usageGuideInsertMobile: "\u4F7F\u7528\uFF1A\u70B9\u6309\u53EA\u9009\u62E9\u6761\u76EE\uFF0C\u518D\u70B9\u5E95\u90E8\u4E3B\u6309\u94AE\u4F7F\u7528\uFF1B\u6CA1\u6709\u6307\u5B9A\u76EE\u6807\u65F6\u590D\u5236\u5230\u526A\u8D34\u677F\u3002\u79FB\u52A8\u7AEF\u76F4\u63A5\u63D2\u5165\u5C1A\u672A\u5728\u771F\u5B9E\u5BA2\u6237\u7AEF\u9A8C\u8BC1\uFF1B\u957F\u6309\u6761\u76EE\u53EF\u6253\u5F00\u66F4\u591A\u64CD\u4F5C\u3002",
       emptyFiltered: "\u5F53\u524D\u7B5B\u9009\u4E0B\u6CA1\u6709\u5339\u914D\u6761\u76EE",
       clearFilters: "\u6E05\u9664\u7B5B\u9009",
       usageGuideOrganize: "\u6574\u7406\uFF1A\u7ED9\u6761\u76EE\u8865\u4E0A\u6E05\u695A\u7684\u6807\u9898\u3001\u6807\u7B7E\u548C\u5206\u7C7B\uFF1B\u8BBE\u7F6E \u2192 \u6570\u636E\u4E0E\u6A21\u677F\u53EF\u5BFC\u5165\u5F00\u7968\u3001\u9000\u6362\u3001\u90AE\u7BB1\u3001\u5730\u5740\u548C\u8054\u7CFB\u65B9\u5F0F\u7B49\u793A\u4F8B\u3002",
@@ -10923,9 +13313,13 @@ ${details.join("\n")}` : ""}`;
       insertEmbed: "\u63D2\u5165\u5D4C\u5165",
       insertCopy: "\u590D\u5236\u5185\u5BB9",
       sourceMissing: "\u6765\u6E90\u5931\u6548",
-      sourceGone: "\u539F\u5185\u5BB9\u5757\u5DF2\u79FB\u52A8\u6216\u5220\u9664\u3002\u70B9\u51FB\u300C\u6253\u5F00\u6765\u6E90\u300D\u53EF\u91CD\u65B0\u6307\u5B9A\u4F4D\u7F6E\u3002",
+      sourceGone: "\u539F\u5185\u5BB9\u5757\u5DF2\u79FB\u52A8\u6216\u5220\u9664\u3002\u53EF\u7F16\u8F91\u6B64\u6761\u76EE\u5E76\u91CD\u65B0\u6307\u5B9A\u6765\u6E90\u3002",
       previewUnavailable: "\u6682\u65E0\u9884\u89C8",
       previewNoResult: "\u9009\u62E9\u5DE6\u4FA7\u6761\u76EE\u540E\uFF0C\u8FD9\u91CC\u4F1A\u663E\u793A\u9884\u89C8",
+      mediaContentHint: "\u56FE\u7247\u548C\u9644\u4EF6\u663E\u793A Markdown \u539F\u6587\uFF1B\u590D\u5236\u5F97\u5230\u94FE\u63A5\u6587\u672C\u3002\u67E5\u770B\u539F\u6587\u4EF6\u8BF7\u7528\u300C\u6253\u5F00\u6765\u6E90\u300D\u3002\u4E0D\u652F\u6301\u590D\u5236\u56FE\u7247\u4F4D\u56FE\u6216\u6587\u4EF6\u672C\u4F53\u3002",
+      usageGuideMedia: "\u56FE\u7247\u548C\u9644\u4EF6\uFF1A\u5148\u5C06\u8D44\u6E90\u6DFB\u52A0\u5230\u601D\u6E90\uFF0C\u518D\u4ECE\u56FE\u7247\u6216\u9644\u4EF6\u7684\u53F3\u952E\u83DC\u5355\u4FDD\u5B58\u3002\u9884\u89C8\u663E\u793A Markdown \u539F\u6587\uFF0C\u590D\u5236\u5F97\u5230\u94FE\u63A5\u6587\u672C\uFF1B\u67E5\u770B\u539F\u6587\u4EF6\u8BF7\u7528\u300C\u6253\u5F00\u6765\u6E90\u300D\u3002\u4E0D\u652F\u6301\u590D\u5236\u56FE\u7247\u4F4D\u56FE\u6216\u6587\u4EF6\u672C\u4F53\u3002",
+      usageGuideMultiblock: "\u5C1A\u672A\u4FEE\u590D\uFF1A\u591A\u6BB5 Markdown \u6216\u6DF7\u5408\u5757\u7ED3\u6784\u53EF\u80FD\u88AB\u601D\u6E90\u62C6\u6210\u591A\u4E2A\u5757\uFF0C\u63D2\u4EF6\u76EE\u524D\u53EA\u767B\u8BB0\u9996\u5757\uFF0C\u5BFC\u81F4\u540E\u7EED\u9884\u89C8\u3001\u590D\u5236\u3001\u7F16\u8F91\u6216\u5BFC\u51FA\u4E0D\u5B8C\u6574\u3002\u6682\u52FF\u628A\u5B8C\u6574\u7B80\u5386\u3001\u516C\u53F8\u4ECB\u7ECD\u7B49\u591A\u6BB5\u6B63\u6587\u4F5C\u4E3A\u5355\u4E2A\u6761\u76EE\u4FDD\u5B58\uFF1B\u65E2\u6709\u5185\u5BB9\u8BF7\u5230\u5E93\u6587\u6863\u6838\u5BF9\u5168\u6587\u3002",
+      multiBlockPendingHint: "\u591A\u6BB5\u6B63\u6587\u5B8C\u6574\u6027\u5C1A\u672A\u4FEE\u590D\uFF1AMarkdown \u6216\u6DF7\u5408\u7ED3\u6784\u53EF\u80FD\u53EA\u767B\u8BB0\u9996\u5757\uFF0C\u540E\u7EED\u8C03\u7528\u4E0D\u5B8C\u6574\u3002\u6682\u52FF\u4FDD\u5B58\u591A\u6BB5\u5185\u5BB9\uFF1B\u5DF2\u6709\u6761\u76EE\u8BF7\u5230\u5E93\u6587\u6863\u6838\u5BF9\u5168\u6587\u3002",
       aiFound: "AI \u8BED\u4E49\u641C\u7D22",
       aiWorking: "AI \u5904\u7406\u4E2D\u2026",
       aiOriginalPreserved: "\u539F\u6587\u672A\u88AB\u4FEE\u6539",
@@ -11183,6 +13577,75 @@ ${details.join("\n")}` : ""}`;
     let activeFilters = { ...(_b = overrides.filters) != null ? _b : { type: "", tag: "", category: "" } };
     const favorites = /* @__PURE__ */ new Set(["xlc-demo0000001"]);
     const recents = /* @__PURE__ */ new Set(["xlc-demo0000001", "xlc-demo0000002"]);
+    const realItem = {
+      id: "xlc-demo0000001",
+      blockId: "20240101120000-aaaaaaa",
+      libraryDocId: "20240101120001-hijklmn",
+      itemType: "markdown",
+      title: "\u9879\u76EE\u5EF6\u671F\u9053\u6B49\u4E0E\u8865\u507F\u65B9\u6848",
+      alias: "\u5EF6\u671F\u9053\u6B49",
+      tags: ["\u5BA2\u6237\u6C9F\u901A", "\u6A21\u677F"],
+      category: "\u5BA2\u670D",
+      summary: "\u5C0A\u656C\u7684\u738B\u603B\uFF1A\u5173\u4E8E\u672C\u671F\u4EA4\u4ED8\u5EF6\u671F\u2026\u2026",
+      varCount: 0,
+      source: { sourceDocId: "20240101120001-hijklmn", sourceBlockId: "20240101120002-bbbbbbb", sourceType: "manual" },
+      url: "",
+      targetBlockId: "",
+      createdAt: 1,
+      updatedAt: 1,
+      droppedFields: []
+    };
+    let realExecutor = null;
+    let realTarget = null;
+    if (overrides.realExecutor) {
+      const library = new LibraryService({ request: async (endpoint) => {
+        if (endpoint === "getBlockKramdown") return { id: realItem.blockId, kramdown: "\u771F\u5B9E\u6267\u884C\u5668\u6B63\u6587" };
+        if (endpoint === "checkBlocksExist") return { "20240101120001-hijklmn": true, "20240101120002-bbbbbbb": true };
+        if (endpoint === "getBlockAttrs") return {};
+        return null;
+      } });
+      const patched = library;
+      patched.ensureIndex = async () => ({ entries: [ENTRIES[0]], items: /* @__PURE__ */ new Map([[realItem.id, realItem]]), truncated: false, docsScanned: 1, errors: [], builtAt: 1 });
+      patched.getItemKramdown = async () => ({ ok: true, data: "\u771F\u5B9E\u6267\u884C\u5668\u6B63\u6587" });
+      patched.checkSourceHealth = async () => ({ ok: true, data: { blockMissing: false, docMissing: false, assetMissing: false } });
+      patched.expandSnippetRefs = async (text) => text;
+      realTarget = { editor: overrides.activeEditor === false ? null : {}, handle: {}, docId: realItem.source.sourceDocId };
+      const host = {
+        isMobile: () => false,
+        hasActiveEditor: () => {
+          var _a2;
+          document.body.dataset.xlcRealHasEditorCalls = String(Number((_a2 = document.body.dataset.xlcRealHasEditorCalls) != null ? _a2 : 0) + 1);
+          return overrides.activeEditor !== false;
+        },
+        insertMarkdown: (text) => {
+          var _a2;
+          document.body.dataset.xlcRealInsertCalls = String(Number((_a2 = document.body.dataset.xlcRealInsertCalls) != null ? _a2 : 0) + 1);
+          document.body.dataset.xlcRealInsertedText = text;
+          return true;
+        },
+        captureInsertTarget: () => realTarget,
+        canInsertAtTarget: () => overrides.insertTargetAvailable !== false && overrides.activeEditor !== false,
+        releaseInsertTarget: () => {
+        },
+        writeClipboard: async (text) => {
+          document.body.dataset.xlcRealClipboardText = text;
+          return overrides.realClipboardAvailable !== false;
+        },
+        openDoc: () => true,
+        openAsset: () => true,
+        openExternal: () => true,
+        currentDocId: () => realItem.source.sourceDocId
+      };
+      document.body.dataset.xlcRealHostHasEditor = String(overrides.activeEditor !== false);
+      realExecutor = new ActionExecutor(library, host, () => {
+      });
+    }
+    const runRealAction = async (_itemId, mode) => {
+      const receipt = await realExecutor.run(realItem, mode, { editorTarget: realTarget });
+      document.body.dataset.xlcRealRequestedMode = mode;
+      document.body.dataset.xlcRealReceipt = JSON.stringify({ ok: receipt.ok, message: receipt.message, downgraded: receipt.downgraded });
+      return { ok: receipt.ok, message: receipt.message };
+    };
     return {
       t: (key, ...args) => key === "newItemAction" && overrides.newItemAction ? overrides.newItemAction : T(key, ...args),
       search: async (query) => {
@@ -11222,6 +13685,7 @@ ${details.join("\n")}` : ""}`;
       },
       runAction: async (itemId, mode) => {
         var _a2;
+        if (realExecutor) return runRealAction(itemId, mode);
         const w = window;
         const observedMode = overrides.mobile && !overrides.insertTarget ? "copy" : mode;
         ((_a2 = w.__xlcActions) != null ? _a2 : w.__xlcActions = []).push({ id: itemId, mode: observedMode });
@@ -11302,7 +13766,10 @@ ${details.join("\n")}` : ""}`;
       },
       insertTarget: null,
       openSetup: () => window.XlcHarness.openSettings(),
-      promptVariables: () => true,
+      promptVariables: () => {
+        var _a2;
+        return (_a2 = overrides.promptVariables) != null ? _a2 : true;
+      },
       getUsage: () => ({
         "xlc-demo0000001": { count: 32, lastAt: 400 },
         "xlc-demo0000002": { count: 18, lastAt: 300 },
@@ -11373,6 +13840,16 @@ ${details.join("\n")}` : ""}`;
       lastSearchDialog == null ? void 0 : lastSearchDialog.showKernelAccessIssue(kind, T(key));
     },
     openSettings(mode = "doc") {
+      savedDiscoveryViews = [{
+        id: "xlc-view-settings01",
+        name: "\u5BA2\u670D\u8BDD\u672F",
+        tag: "\u5BA2\u670D",
+        scope: "document",
+        targetDocId: "20240101120001-hijklmn",
+        targetNotebookId: "",
+        pathLabel: "/\u9879\u76EE\u7B14\u8BB0",
+        defaultCategory: "\u5BA2\u670D"
+      }];
       const ctx = {
         t: T,
         state: {
@@ -11427,6 +13904,13 @@ ${details.join("\n")}` : ""}`;
         fetchAssetBytes: async () => null,
         aiErrorText: (err) => String(err),
         applyPinyinAdapter: () => {
+        },
+        getSavedDiscoveryViews: () => savedDiscoveryViews,
+        openSavedDiscoveryView: (view) => {
+          document.body.dataset.xlcSavedViewOpened = view.id;
+        },
+        deleteSavedDiscoveryView: (id) => {
+          savedDiscoveryViews = savedDiscoveryViews.filter((view) => view.id !== id);
         }
       };
       openSettingsDialog(ctx);
@@ -11567,6 +14051,7 @@ ${details.join("\n")}` : ""}`;
         { key: "candidate-1", sourceDocId: "20240101120001-hijklmn", sourceBlockId: "20240101120002-bbbbbbb", sourcePath: "/\u9879\u76EE\u7B14\u8BB0", itemType: "markdown", title: "\u5BA2\u6237\u5EF6\u671F\u56DE\u590D", summary: "\u5173\u4E8E\u4EA4\u4ED8\u5EF6\u671F\u7684\u8BF4\u660E", tags: ["\u5BA2\u670D", "\u5EF6\u671F"], status: "candidate" },
         { key: "candidate-2", sourceDocId: "20240101120001-hijklmn", sourceBlockId: "20240101120003-ccccccc", sourcePath: "/\u9879\u76EE\u7B14\u8BB0", itemType: "text", title: "\u6536\u4EF6\u5730\u5740", summary: "\u90AE\u5BC4\u5730\u5740\u6A21\u677F", tags: ["\u5BA2\u670D", "\u5730\u5740"], status: "same-content", match: { itemId: "xlc-existing0001", title: "\u5DF2\u6709\u6536\u4EF6\u5730\u5740" } }
       ];
+      if (options == null ? void 0 : options.longTag) sampleCandidates[0].tags.push(options.longTag);
       const candidates = (options == null ? void 0 : options.candidateCount) ? Array.from({ length: options.candidateCount }, (_, index) => ({
         key: `page-candidate-${String(index + 1).padStart(4, "0")}`,
         sourceDocId: "20240101120001-hijklmn",
@@ -11578,11 +14063,12 @@ ${details.join("\n")}` : ""}`;
         tags: [],
         status: "candidate"
       })) : sampleCandidates;
-      const makeView = (scope, stopped = false) => ({ id: sessionId, scope, sourceDocId: "20240101120001-hijklmn", sourcePath: "/\u9879\u76EE\u7B14\u8BB0", candidates: candidates.map((candidate) => ({ ...candidate })), scannedBlocks: 4, scannedDocs: 1, scannedNotebooks: scope === "all-notebooks" ? 2 : 1, skippedEmpty: 1, skippedLong: 0, truncated: stopped, stopped, truncationReasons: stopped ? ["cancelled"] : [], errors: [] });
+      const makeView = (scope, stopped = false) => ({ id: sessionId, scope, sourceDocId: "20240101120001-hijklmn", sourceNotebookId: (options == null ? void 0 : options.unknownSourceNotebook) ? void 0 : "20240101120000-notebk1", sourcePath: "/\u9879\u76EE\u7B14\u8BB0", candidates: candidates.map((candidate) => ({ ...candidate })), scannedBlocks: 4, scannedDocs: 1, scannedNotebooks: scope === "all-notebooks" ? 2 : 1, skippedEmpty: 1, skippedLong: 0, truncated: stopped, stopped, truncationReasons: stopped ? ["cancelled"] : [], errors: [] });
       const service = {
         discoverCurrentDocument: async () => ({ ok: true, data: makeView("document") }),
         discoverCurrentNotebook: async (_docId, options2) => {
           var _a, _b;
+          document.body.dataset.xlcDiscoveryScopeUsed = "current-notebook";
           stopRequested = false;
           (_a = options2 == null ? void 0 : options2.onProgress) == null ? void 0 : _a.call(options2, { phase: "enumerating", scannedDocs: 0, scannedBlocks: 0, discoveredDocs: 3 });
           (_b = options2 == null ? void 0 : options2.onProgress) == null ? void 0 : _b.call(options2, { phase: "scanning", scannedDocs: 1, scannedBlocks: 4, discoveredDocs: 3, totalDocs: 3 });
@@ -11597,7 +14083,7 @@ ${details.join("\n")}` : ""}`;
         discoverNotebook: async (notebookId) => {
           document.body.dataset.xlcDiscoveryScopeUsed = "selected-notebook";
           document.body.dataset.xlcDiscoveryTargetNotebook = notebookId;
-          return { ok: true, data: makeView("notebook") };
+          return { ok: true, data: { ...makeView("notebook"), sourceNotebookId: notebookId } };
         },
         discoverAllNotebooks: async (options2) => {
           document.body.dataset.xlcDiscoveryScopeUsed = (options2 == null ? void 0 : options2.confirmed) ? "all-confirmed" : "all-unconfirmed";
@@ -11635,10 +14121,13 @@ ${details.join("\n")}` : ""}`;
           } };
         },
         closeSession: () => {
-          document.body.dataset.xlcDiscoverySessionClosed = "true";
+          var _a, _b;
+          document.body.dataset.xlcDiscoveryCloseAttempts = String(Number((_a = document.body.dataset.xlcDiscoveryCloseAttempts) != null ? _a : 0) + 1);
           if (document.body.dataset.xlcDiscoveryCloseConflict === "true") {
             return { ok: false, reason: "conflict", message: "write pending" };
           }
+          document.body.dataset.xlcDiscoverySessionClosed = "true";
+          document.body.dataset.xlcDiscoveryCloseSuccesses = String(Number((_b = document.body.dataset.xlcDiscoveryCloseSuccesses) != null ? _b : 0) + 1);
           return { ok: true, data: { closed: true, activeWrites: 0 } };
         },
         requestScanStop: () => {
@@ -11646,6 +14135,7 @@ ${details.join("\n")}` : ""}`;
           return true;
         }
       };
+      document.body.dataset.xlcDiscoverySaveViewRejected = String((options == null ? void 0 : options.saveViewRejected) === true);
       discoveryController = openDiscoveryDialog({
         t: T,
         service,
@@ -11656,26 +14146,58 @@ ${details.join("\n")}` : ""}`;
           notebookRequests++;
           if ((options == null ? void 0 : options.notebookLoadErrorOnce) && notebookRequests === 1) throw new Error("offline");
           if (options == null ? void 0 : options.emptyNotebookList) return [];
-          return [{ id: "20240101", name: "\u7B14\u8BB0\u672C\u4E00" }, { id: "20240102", name: "\u7B14\u8BB0\u672C\u4E8C" }];
+          return [{ id: "20240101120000-notebk1", name: "\u7B14\u8BB0\u672C\u4E00" }, { id: "20240102120000-notebk2", name: "\u7B14\u8BB0\u672C\u4E8C" }];
         },
         searchDocs: async (keyword) => {
           treeSearchRequests++;
           document.body.dataset.xlcDiscoveryTreeSearchRequests = String(treeSearchRequests);
           if (keyword === "\u65E7\u9879\u76EE") await new Promise((resolve) => setTimeout(resolve, 100));
-          if (keyword === "\u9879\u76EE") return [{ id: "20240101120001-hijklmn", hPath: "/\u9879\u76EE\u7B14\u8BB0", box: "20240101", name: "\u9879\u76EE\u7B14\u8BB0" }];
-          if (keyword === "\u65B0\u9879\u76EE") return [{ id: "20240102120001-qrstuvw", hPath: "/\u65B0\u9879\u76EE", box: "20240102", name: "\u65B0\u9879\u76EE" }];
+          if (keyword === "\u9879\u76EE") return [{ id: "20240101120001-hijklmn", hPath: "/\u9879\u76EE\u7B14\u8BB0", box: "20240101120000-notebk1", name: "\u9879\u76EE\u7B14\u8BB0" }];
+          if (keyword === "\u65B0\u9879\u76EE") return [{ id: "20240102120001-qrstuvw", hPath: "/\u65B0\u9879\u76EE", box: "20240102120000-notebk2", name: "\u65B0\u9879\u76EE" }];
           return [];
+        },
+        savedViews: savedDiscoveryViews,
+        onSaveView: (view) => {
+          var _a;
+          document.body.dataset.xlcDiscoverySaveViewCalls = String(Number((_a = document.body.dataset.xlcDiscoverySaveViewCalls) != null ? _a : 0) + 1);
+          if (document.body.dataset.xlcDiscoverySaveViewRejected === "true") return false;
+          const saved = { id: "xlc-view-harness01", ...view };
+          savedDiscoveryViews = [saved, ...savedDiscoveryViews.filter((entry) => entry.id !== saved.id)];
+          document.body.dataset.xlcDiscoverySavedView = JSON.stringify(saved);
         }
       }, {
         docId: "20240101120001-hijklmn",
         sourcePath: "/\u9879\u76EE\u7B14\u8BB0",
-        scope: (options == null ? void 0 : options.initialTreeRoot) ? "tree" : void 0,
+        scope: (options == null ? void 0 : options.initialNotebookId) ? "notebook" : (options == null ? void 0 : options.initialTreeRoot) ? "tree" : void 0,
         initialTreeRootId: (options == null ? void 0 : options.initialTreeRoot) ? "20240101120001-hijklmn" : void 0,
-        title: (options == null ? void 0 : options.initialTreeRoot) ? "\u4ECE\u6B64\u6587\u6863\u53D1\u73B0\u5E38\u7528\u8BED" : void 0
+        initialNotebookId: options == null ? void 0 : options.initialNotebookId,
+        title: (options == null ? void 0 : options.initialTreeRoot) ? "\u4ECE\u6B64\u6587\u6863\u53D1\u73B0\u5E38\u7528\u8BED" : void 0,
+        initialTag: options == null ? void 0 : options.initialTag,
+        autoSelectFiltered: options == null ? void 0 : options.autoSelectFiltered,
+        referenceOnly: options == null ? void 0 : options.referenceOnly,
+        defaultCategory: options == null ? void 0 : options.defaultCategory
       });
     },
-    closeDiscovery() {
-      if ((discoveryController == null ? void 0 : discoveryController.close()) !== false) discoveryController = null;
+    closeDiscovery(force = false) {
+      var _a;
+      const closed = (_a = discoveryController == null ? void 0 : discoveryController.close(force)) != null ? _a : true;
+      if (closed) discoveryController = null;
+      return closed;
+    },
+    requestCloseDiscovery(callbackKey, force = false) {
+      const onClosed = () => {
+        var _a, _b;
+        const calls = JSON.parse((_a = document.body.dataset.xlcDiscoveryCloseCallbacks) != null ? _a : "{}");
+        calls[callbackKey] = ((_b = calls[callbackKey]) != null ? _b : 0) + 1;
+        document.body.dataset.xlcDiscoveryCloseCallbacks = JSON.stringify(calls);
+      };
+      if (!discoveryController) {
+        onClosed();
+        return true;
+      }
+      const closed = discoveryController.close(force, onClosed);
+      if (closed) discoveryController = null;
+      return closed;
     },
     completeDeferredTidy() {
       deferredTidyResponse == null ? void 0 : deferredTidyResponse({ ok: true, title: "\u8FDF\u5230\u7684\u65E7\u5EFA\u8BAE", alias: "\u65E7\u522B\u540D", tags: ["\u65E7\u6807\u7B7E"], category: "\u65E7\u5206\u7C7B" });

@@ -10,6 +10,17 @@ import {CommonItem} from "../model/item";
 import {LIMITS} from "../constants";
 import {listAskFields} from "../model/variables";
 
+export class ExportIntegrityError extends Error {
+    constructor(
+        public readonly reason: "index-incomplete" | "item-unreadable" | "body-missing" | "too-large",
+        public readonly itemLabel = "",
+        public readonly detail = "",
+    ) {
+        super(`export-${reason}${itemLabel ? `: ${itemLabel}` : ""}${detail ? `: ${detail}` : ""}`);
+        this.name = "ExportIntegrityError";
+    }
+}
+
 export interface MarkdownExportResult {
     entries: ZipEntry[];
     /** 条目内联元数据头（HHTML 注释形式，导回时可读） */
@@ -27,6 +38,11 @@ export async function buildMarkdownExport(
     pack?: {name: string},
 ): Promise<MarkdownExportResult> {
     const oneLine = (value: string): string => value.replace(/[\r\n]+/g, " ").trim();
+    for (const item of items) {
+        if (!kramdownById.has(item.id)) {
+            throw new ExportIntegrityError("body-missing", item.title || item.id);
+        }
+    }
     const entries: ZipEntry[] = [];
     const skippedAssets: string[] = [];
     const assetEntries = new Map<string, ZipEntry>();
@@ -48,8 +64,6 @@ export async function buildMarkdownExport(
         `> 导出自思源插件「小驴常用（内测版）」，共 ${items.length} 条。资源位于 assets/，条目内链接为相对路径。`,
         "",
     ];
-    // 超长判定用累计长度：循环内不再 join 全量字符串（O(n²) → O(n)，R144）
-    let totalLen = mdParts.reduce((n, p) => n + p.length, 0);
     if (pack && pack.name.trim()) {
         const manifest = [
             `<!-- xlc-pack`,
@@ -60,6 +74,8 @@ export async function buildMarkdownExport(
         ].filter(Boolean).join("\n");
         mdParts.unshift(manifest, "");
     }
+    // Count actual separators and metadata, and stop before allocating an oversized body or fetching its assets.
+    let totalLen = mdParts.reduce((length, part) => length + part.length, 0) + mdParts.length - 1;
     for (const item of items) {
         const kramdown = kramdownById.get(item.id) ?? "";
         const meta = [
@@ -76,7 +92,12 @@ export async function buildMarkdownExport(
             item.targetBlockId ? `target: ${oneLine(item.targetBlockId)}` : "",
             `-->`,
         ].filter(Boolean).join("\n");
-        mdParts.push(`## ${oneLine(item.title || item.id)}`, "", meta, "", kramdown, "");
+        const itemParts = [`## ${oneLine(item.title || item.id)}`, "", meta, "", kramdown, ""];
+        totalLen += itemParts.reduce((length, part) => length + part.length, 0) + itemParts.length;
+        if (totalLen > LIMITS.contentChars) {
+            throw new ExportIntegrityError("too-large", "", String(LIMITS.contentChars));
+        }
+        mdParts.push(...itemParts);
         // 资源条目：取字节 → assets/<basename>
         if (item.itemType === "image" || item.itemType === "asset") {
             const assetPath = extractAssetPath(kramdown);
@@ -93,14 +114,9 @@ export async function buildMarkdownExport(
                 }
             }
         }
-        // 超长截断用累计长度判定（原实现在循环内 join 全量字符串：O(n²)，R144）
-        totalLen += 6 + (item.title || item.id).length + meta.length + kramdown.length;
-        if (totalLen > LIMITS.contentChars) {
-            mdParts.push("", "> （内容超长，导出在此截断）");
-            break;
-        }
     }
-    entries.push({name: "items.md", data: new TextEncoder().encode(mdParts.join("\n"))});
+    const markdown = mdParts.join("\n");
+    entries.push({name: "items.md", data: new TextEncoder().encode(markdown)});
     entries.push(...assetEntries.values());
     return {entries, itemCount: items.length, assetCount, skippedAssets, varNames};
 }

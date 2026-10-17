@@ -1,0 +1,513 @@
+{
+  "browser": "155.0.8059.80",
+  "reports": [
+    {
+      "name": "search",
+      "theme": "light",
+      "geometry": {
+        "viewport": {
+          "w": 1280,
+          "h": 900
+        },
+        "body": {
+          "sw": 1280,
+          "sh": 0
+        },
+        "roots": [
+          {
+            "class": "xlc-dialog",
+            "w": 896,
+            "h": 706,
+            "sw": 896,
+            "sh": 706,
+            "overflow": "visible"
+          }
+        ]
+      },
+      "violations": [
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "description": "Ensure the contrast between foreground and background colors meets WCAG 2 AA minimum contrast ratio thresholds",
+          "nodes": [
+            {
+              "target": [
+                ".xlc-cat--support"
+              ],
+              "summary": "Fix any of the following:\n  Element has insufficient color contrast of 3.93 (foreground color: #15803d, background color: #d6e7e8, font size: 8.3pt (11px), font weight: normal). Expected contrast ratio of 4.5:1",
+              "html": "<span class=\"xlc-badge xlc-badge--cat xlc-cat--support\" title=\"分类：客服\" aria-label=\"分类：客服\">客服</span>"
+            }
+          ]
+        },
+        {
+          "id": "nested-interactive",
+          "impact": "serious",
+          "description": "Ensure interactive controls are not nested as they are not always announced by screen readers or can cause focus problems for assistive technologies",
+          "nodes": [
+            {
+              "target": [
+                "#xlc-result-0"
+              ],
+              "summary": "Fix any of the following:\n  Element has focusable descendants. Move them outside of the element, or remove them.",
+              "html": "<div class=\"xlc-row xlc-row--active xlc-row--fav\" data-xlc-control=\"item.row\" data-xlc-index=\"0\" id=\"xlc-result-0\" role=\"option\" aria-selected=\"true\" aria-posinset=\"1\" aria-setsize=\"3\">"
+            },
+            {
+              "target": [
+                "#xlc-result-1"
+              ],
+              "summary": "Fix any of the following:\n  Element has focusable descendants. Move them outside of the element, or remove them.",
+              "html": "<div class=\"xlc-row\" data-xlc-control=\"item.row\" data-xlc-index=\"1\" id=\"xlc-result-1\" role=\"option\" aria-selected=\"false\" aria-posinset=\"2\" aria-setsize=\"3\">"
+            },
+            {
+              "target": [
+                "#xlc-result-2"
+              ],
+              "summary": "Fix any of the following:\n  Element has focusable descendants. Move them outside of the element, or remove them.",
+              "html": "<div class=\"xlc-row\" data-xlc-control=\"item.row\" data-xlc-index=\"2\" id=\"xlc-result-2\" role=\"option\" aria-selected=\"false\" aria-posinset=\"3\" aria-setsize=\"3\">"
+            }
+          ]
+        },
+        {
+          "id": "scrollable-region-focusable",
+          "impact": "serious",
+          "description": "Ensure elements that have scrollable content are accessible by keyboard in Safari",
+          "nodes": [
+            {
+              "target": [
+                ".xlc-kbdrow"
+              ],
+              "summary": "Fix any of the following:\n  Element should have focusable content\n  Element should be focusable",
+              "html": "<div class=\"xlc-kbdrow\" aria-label=\"键盘快捷操作\">"
+            },
+            {
+              "target": [
+                ".xlc-pane-body"
+              ],
+              "summary": "Fix any of the following:\n  Element should have focusable content\n  Element should be focusable",
+              "html": "<div class=\"xlc-pane-body\">尊敬的 {{xlc:ask:客户名称}}：\n\n关于本期「会员系统」交付延期，我们深表歉意。经复盘，主要原因为第三方支付联调超期。目前联调已完成 92%，预计推迟 2 个工作日上线。\n\n为弥补影响，我们提供以下补偿：\n1. 本期服务费减免 {{xlc:ask:补偿比例|5%,10%}}；\n2. 上线后 48 小时专属值守；\n3. 下期迭代优先排入贵方需求。\n\n再次感谢理解与支持，有任何问题随时联系我。{{xlc:cursor}}</div>"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "search-dark",
+      "theme": "dark",
+      "geometry": {
+        "viewport": {
+          "w": 1280,
+          "h": 900
+        },
+        "body": {
+          "sw": 1280,
+          "sh": 0
+        },
+        "roots": [
+          {
+            "class": "xlc-dialog",
+            "w": 896,
+            "h": 706,
+            "sw": 896,
+            "sh": 706,
+            "overflow": "visible"
+          }
+        ]
+      },
+      "violations": [
+        {
+          "id": "nested-interactive",
+          "impact": "serious",
+          "description": "Ensure interactive controls are not nested as they are not always announced by screen readers or can cause focus problems for assistive technologies",
+          "nodes": [
+            {
+              "target": [
+                "#xlc-result-0"
+              ],
+              "summary": "Fix any of the following:\n  Element has focusable descendants. Move them outside of the element, or remove them.",
+              "html": "<div class=\"xlc-row xlc-row--active xlc-row--fav\" data-xlc-control=\"item.row\" data-xlc-index=\"0\" id=\"xlc-result-0\" role=\"option\" aria-selected=\"true\" aria-posinset=\"1\" aria-setsize=\"3\">"
+            },
+            {
+              "target": [
+                "#xlc-result-1"
+              ],
+              "summary": "Fix any of the following:\n  Element has focusable descendants. Move them outside of the element, or remove them.",
+              "html": "<div class=\"xlc-row\" data-xlc-control=\"item.row\" data-xlc-index=\"1\" id=\"xlc-result-1\" role=\"option\" aria-selected=\"false\" aria-posinset=\"2\" aria-setsize=\"3\">"
+            },
+            {
+              "target": [
+                "#xlc-result-2"
+              ],
+              "summary": "Fix any of the following:\n  Element has focusable descendants. Move them outside of the element, or remove them.",
+              "html": "<div class=\"xlc-row\" data-xlc-control=\"item.row\" data-xlc-index=\"2\" id=\"xlc-result-2\" role=\"option\" aria-selected=\"false\" aria-posinset=\"3\" aria-setsize=\"3\">"
+            }
+          ]
+        },
+        {
+          "id": "scrollable-region-focusable",
+          "impact": "serious",
+          "description": "Ensure elements that have scrollable content are accessible by keyboard in Safari",
+          "nodes": [
+            {
+              "target": [
+                ".xlc-kbdrow"
+              ],
+              "summary": "Fix any of the following:\n  Element should have focusable content\n  Element should be focusable",
+              "html": "<div class=\"xlc-kbdrow\" aria-label=\"键盘快捷操作\">"
+            },
+            {
+              "target": [
+                ".xlc-pane-body"
+              ],
+              "summary": "Fix any of the following:\n  Element should have focusable content\n  Element should be focusable",
+              "html": "<div class=\"xlc-pane-body\">尊敬的 {{xlc:ask:客户名称}}：\n\n关于本期「会员系统」交付延期，我们深表歉意。经复盘，主要原因为第三方支付联调超期。目前联调已完成 92%，预计推迟 2 个工作日上线。\n\n为弥补影响，我们提供以下补偿：\n1. 本期服务费减免 {{xlc:ask:补偿比例|5%,10%}}；\n2. 上线后 48 小时专属值守；\n3. 下期迭代优先排入贵方需求。\n\n再次感谢理解与支持，有任何问题随时联系我。{{xlc:cursor}}</div>"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "mobile",
+      "theme": "light",
+      "geometry": {
+        "viewport": {
+          "w": 981,
+          "h": 2123
+        },
+        "body": {
+          "sw": 980,
+          "sh": 0
+        },
+        "roots": [
+          {
+            "class": "xlc-dialog xlc-dialog--mobile",
+            "w": 916,
+            "h": 611,
+            "sw": 916,
+            "sh": 611,
+            "overflow": "visible"
+          }
+        ]
+      },
+      "violations": [
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "description": "Ensure the contrast between foreground and background colors meets WCAG 2 AA minimum contrast ratio thresholds",
+          "nodes": [
+            {
+              "target": [
+                ".xlc-cat--support"
+              ],
+              "summary": "Fix any of the following:\n  Element has insufficient color contrast of 3.93 (foreground color: #15803d, background color: #d6e7e8, font size: 8.3pt (11px), font weight: normal). Expected contrast ratio of 4.5:1",
+              "html": "<span class=\"xlc-badge xlc-badge--cat xlc-cat--support\" title=\"分类：客服\" aria-label=\"分类：客服\">客服</span>"
+            }
+          ]
+        },
+        {
+          "id": "nested-interactive",
+          "impact": "serious",
+          "description": "Ensure interactive controls are not nested as they are not always announced by screen readers or can cause focus problems for assistive technologies",
+          "nodes": [
+            {
+              "target": [
+                "#xlc-result-0"
+              ],
+              "summary": "Fix any of the following:\n  Element has focusable descendants. Move them outside of the element, or remove them.",
+              "html": "<div class=\"xlc-row xlc-row--active xlc-row--fav\" data-xlc-control=\"item.row\" data-xlc-index=\"0\" id=\"xlc-result-0\" role=\"option\" aria-selected=\"true\" aria-posinset=\"1\" aria-setsize=\"3\">"
+            },
+            {
+              "target": [
+                "#xlc-result-1"
+              ],
+              "summary": "Fix any of the following:\n  Element has focusable descendants. Move them outside of the element, or remove them.",
+              "html": "<div class=\"xlc-row\" data-xlc-control=\"item.row\" data-xlc-index=\"1\" id=\"xlc-result-1\" role=\"option\" aria-selected=\"false\" aria-posinset=\"2\" aria-setsize=\"3\">"
+            },
+            {
+              "target": [
+                "#xlc-result-2"
+              ],
+              "summary": "Fix any of the following:\n  Element has focusable descendants. Move them outside of the element, or remove them.",
+              "html": "<div class=\"xlc-row\" data-xlc-control=\"item.row\" data-xlc-index=\"2\" id=\"xlc-result-2\" role=\"option\" aria-selected=\"false\" aria-posinset=\"3\" aria-setsize=\"3\">"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "landscape",
+      "theme": "light",
+      "geometry": {
+        "viewport": {
+          "w": 980,
+          "h": 453
+        },
+        "body": {
+          "sw": 980,
+          "sh": 0
+        },
+        "roots": [
+          {
+            "class": "xlc-dialog xlc-dialog--mobile",
+            "w": 948,
+            "h": 611,
+            "sw": 948,
+            "sh": 611,
+            "overflow": "visible"
+          }
+        ]
+      },
+      "violations": [
+        {
+          "id": "color-contrast",
+          "impact": "serious",
+          "description": "Ensure the contrast between foreground and background colors meets WCAG 2 AA minimum contrast ratio thresholds",
+          "nodes": [
+            {
+              "target": [
+                ".xlc-cat--support"
+              ],
+              "summary": "Fix any of the following:\n  Element has insufficient color contrast of 3.93 (foreground color: #15803d, background color: #d6e7e8, font size: 8.3pt (11px), font weight: normal). Expected contrast ratio of 4.5:1",
+              "html": "<span class=\"xlc-badge xlc-badge--cat xlc-cat--support\" title=\"分类：客服\" aria-label=\"分类：客服\">客服</span>"
+            }
+          ]
+        },
+        {
+          "id": "nested-interactive",
+          "impact": "serious",
+          "description": "Ensure interactive controls are not nested as they are not always announced by screen readers or can cause focus problems for assistive technologies",
+          "nodes": [
+            {
+              "target": [
+                "#xlc-result-0"
+              ],
+              "summary": "Fix any of the following:\n  Element has focusable descendants. Move them outside of the element, or remove them.",
+              "html": "<div class=\"xlc-row xlc-row--active xlc-row--fav\" data-xlc-control=\"item.row\" data-xlc-index=\"0\" id=\"xlc-result-0\" role=\"option\" aria-selected=\"true\" aria-posinset=\"1\" aria-setsize=\"3\">"
+            },
+            {
+              "target": [
+                "#xlc-result-1"
+              ],
+              "summary": "Fix any of the following:\n  Element has focusable descendants. Move them outside of the element, or remove them.",
+              "html": "<div class=\"xlc-row\" data-xlc-control=\"item.row\" data-xlc-index=\"1\" id=\"xlc-result-1\" role=\"option\" aria-selected=\"false\" aria-posinset=\"2\" aria-setsize=\"3\">"
+            },
+            {
+              "target": [
+                "#xlc-result-2"
+              ],
+              "summary": "Fix any of the following:\n  Element has focusable descendants. Move them outside of the element, or remove them.",
+              "html": "<div class=\"xlc-row\" data-xlc-control=\"item.row\" data-xlc-index=\"2\" id=\"xlc-result-2\" role=\"option\" aria-selected=\"false\" aria-posinset=\"3\" aria-setsize=\"3\">"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "capture",
+      "theme": "light",
+      "geometry": {
+        "viewport": {
+          "w": 981,
+          "h": 2123
+        },
+        "body": {
+          "sw": 980,
+          "sh": 0
+        },
+        "roots": [
+          {
+            "class": "xlc-form xlc-capture",
+            "w": 580,
+            "h": 873,
+            "sw": 580,
+            "sh": 873,
+            "overflow": "visible"
+          }
+        ]
+      },
+      "violations": []
+    },
+    {
+      "name": "settings",
+      "theme": "light",
+      "geometry": {
+        "viewport": {
+          "w": 1280,
+          "h": 900
+        },
+        "body": {
+          "sw": 1280,
+          "sh": 0
+        },
+        "roots": [
+          {
+            "class": "xlc-form xlc-settings",
+            "w": 680,
+            "h": 1616,
+            "sw": 680,
+            "sh": 1616,
+            "overflow": "visible"
+          }
+        ]
+      },
+      "violations": []
+    },
+    {
+      "name": "setup",
+      "theme": "light",
+      "geometry": {
+        "viewport": {
+          "w": 981,
+          "h": 2123
+        },
+        "body": {
+          "sw": 980,
+          "sh": 0
+        },
+        "roots": [
+          {
+            "class": "xlc-form xlc-setup",
+            "w": 640,
+            "h": 716,
+            "sw": 640,
+            "sh": 716,
+            "overflow": "visible"
+          }
+        ]
+      },
+      "violations": []
+    },
+    {
+      "name": "discovery",
+      "theme": "light",
+      "geometry": {
+        "viewport": {
+          "w": 981,
+          "h": 2123
+        },
+        "body": {
+          "sw": 980,
+          "sh": 0
+        },
+        "roots": [
+          {
+            "class": "xlc-form xlc-discovery",
+            "w": 881.1875,
+            "h": 800,
+            "sw": 881,
+            "sh": 800,
+            "overflow": "clip"
+          }
+        ]
+      },
+      "violations": [
+        {
+          "id": "aria-allowed-attr",
+          "impact": "critical",
+          "description": "Ensure an element's role supports its ARIA attributes",
+          "nodes": [
+            {
+              "target": [
+                "button[data-tag=\"客服\"]"
+              ],
+              "summary": "Fix all of the following:\n  ARIA attribute is not allowed: aria-pressed=\"false\"",
+              "html": "<button type=\"button\" class=\"b3-button xlc-tag-facet\" data-xlc-control=\"discovery.tag-facet\" data-tag=\"客服\" role=\"listitem\" aria-pressed=\"false\" aria-label=\"按标签「客服」筛选，共 2 条\">#客服 · 2</button>"
+            },
+            {
+              "target": [
+                "button[data-tag=\"地址\"]"
+              ],
+              "summary": "Fix all of the following:\n  ARIA attribute is not allowed: aria-pressed=\"false\"",
+              "html": "<button type=\"button\" class=\"b3-button xlc-tag-facet\" data-xlc-control=\"discovery.tag-facet\" data-tag=\"地址\" role=\"listitem\" aria-pressed=\"false\" aria-label=\"按标签「地址」筛选，共 1 条\">#地址 · 1</button>"
+            },
+            {
+              "target": [
+                "button[data-tag=\"延期\"]"
+              ],
+              "summary": "Fix all of the following:\n  ARIA attribute is not allowed: aria-pressed=\"false\"",
+              "html": "<button type=\"button\" class=\"b3-button xlc-tag-facet\" data-xlc-control=\"discovery.tag-facet\" data-tag=\"延期\" role=\"listitem\" aria-pressed=\"false\" aria-label=\"按标签「延期」筛选，共 1 条\">#延期 · 1</button>"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "discovery-landscape",
+      "theme": "light",
+      "geometry": {
+        "viewport": {
+          "w": 980,
+          "h": 453
+        },
+        "body": {
+          "sw": 980,
+          "sh": 0
+        },
+        "roots": [
+          {
+            "class": "xlc-form xlc-discovery",
+            "w": 881.1875,
+            "h": 375.828125,
+            "sw": 881,
+            "sh": 1078,
+            "overflow": "auto"
+          }
+        ]
+      },
+      "violations": [
+        {
+          "id": "aria-allowed-attr",
+          "impact": "critical",
+          "description": "Ensure an element's role supports its ARIA attributes",
+          "nodes": [
+            {
+              "target": [
+                "button[data-tag=\"客服\"]"
+              ],
+              "summary": "Fix all of the following:\n  ARIA attribute is not allowed: aria-pressed=\"false\"",
+              "html": "<button type=\"button\" class=\"b3-button xlc-tag-facet\" data-xlc-control=\"discovery.tag-facet\" data-tag=\"客服\" role=\"listitem\" aria-pressed=\"false\" aria-label=\"按标签「客服」筛选，共 2 条\">#客服 · 2</button>"
+            },
+            {
+              "target": [
+                "button[data-tag=\"地址\"]"
+              ],
+              "summary": "Fix all of the following:\n  ARIA attribute is not allowed: aria-pressed=\"false\"",
+              "html": "<button type=\"button\" class=\"b3-button xlc-tag-facet\" data-xlc-control=\"discovery.tag-facet\" data-tag=\"地址\" role=\"listitem\" aria-pressed=\"false\" aria-label=\"按标签「地址」筛选，共 1 条\">#地址 · 1</button>"
+            },
+            {
+              "target": [
+                "button[data-tag=\"延期\"]"
+              ],
+              "summary": "Fix all of the following:\n  ARIA attribute is not allowed: aria-pressed=\"false\"",
+              "html": "<button type=\"button\" class=\"b3-button xlc-tag-facet\" data-xlc-control=\"discovery.tag-facet\" data-tag=\"延期\" role=\"listitem\" aria-pressed=\"false\" aria-label=\"按标签「延期」筛选，共 1 条\">#延期 · 1</button>"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "import",
+      "theme": "light",
+      "geometry": {
+        "viewport": {
+          "w": 981,
+          "h": 2123
+        },
+        "body": {
+          "sw": 980,
+          "sh": 0
+        },
+        "roots": [
+          {
+            "class": "xlc-form",
+            "w": 500,
+            "h": 412.390625,
+            "sw": 500,
+            "sh": 412,
+            "overflow": "visible"
+          }
+        ]
+      },
+      "violations": []
+    }
+  ]
+}

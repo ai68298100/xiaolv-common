@@ -676,7 +676,7 @@ export class DiscoveryDialog implements DiscoveryDialogController {
         filters.appendChild(this.filterTag);
         this.tagFacets = document.createElement("div");
         this.tagFacets.className = "xlc-discovery-tag-facets";
-        this.tagFacets.setAttribute("role", "list");
+        this.tagFacets.setAttribute("role", "group");
         this.tagFacets.setAttribute("aria-label", this.tx("discoveryTagFacets"));
         filters.appendChild(this.tagFacets);
         if (this.deps.onSaveView) {
@@ -1429,7 +1429,6 @@ export class DiscoveryDialog implements DiscoveryDialogController {
             button.className = "b3-button xlc-tag-facet";
             button.dataset.xlcControl = "discovery.tag-facet";
             button.dataset.tag = facet.tag;
-            button.setAttribute("role", "listitem");
             const active = this.filter.tag === facet.tag.toLocaleLowerCase();
             button.setAttribute("aria-pressed", String(active));
             button.setAttribute("aria-label", this.tx("discoveryTagFacetApply", facet.tag, String(facet.count)));

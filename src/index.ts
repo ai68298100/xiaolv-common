@@ -27,6 +27,7 @@ import {createTinyPinyinAdapter} from "./model/pinyin-tiny";
 import {buildProviderRows} from "./model/provider-section";
 import {CapabilityDescriptor, ProviderDescriptor} from "./model/protocol";
 import {LibraryService} from "./service/library";
+import {ExportIntegrityError} from "./service/export-markdown";
 import {ActionExecutor, HostBridge} from "./service/commands";
 import {AiAssistant, AiUnavailableError, SearchMetaEntry, type AiEndpointName} from "./service/ai";
 import {ProviderRegistry} from "./service/providers";
@@ -84,6 +85,8 @@ export default class XiaolvCommonPlugin extends Plugin {
     private searchDialog: CommonSearchDialog | null = null;
     private saveTimer: ReturnType<typeof setTimeout> | null = null;
     private sidecarReady = false;
+    /** Future or unreadable sidecar data must survive this older runtime unchanged. */
+    private sidecarStateWritable = false;
     /** 右键菜单处理器引用（onunload 解绑） */
     private menuHandler: ((event: {detail: {menu: {addItem: (item: {icon: string; label: string; click: () => void}) => void}}}) => void) | null = null;
     private blockRefMenuHandler: ((event: {detail: {menu: {addItem: (item: {icon: string; label: string; click: () => void}) => void}; element?: Element}}) => void) | null = null;
@@ -101,6 +104,7 @@ export default class XiaolvCommonPlugin extends Plugin {
 
     async onload(): Promise<void> {
         this.unloading = false;
+        this.sidecarStateWritable = false;
         setPluginChunkPath(this.name);
         try {
             this.addIcons(ICONS);
@@ -139,6 +143,7 @@ export default class XiaolvCommonPlugin extends Plugin {
             Object.assign(this.state, normalizeState(null));
         } else {
             Object.assign(this.state, migrated.state);
+            this.sidecarStateWritable = stateRead.ok;
         }
         if (this.config) this.library.setConfig(this.config);
         this.registry.restore(this.state.providers);
@@ -702,6 +707,10 @@ export default class XiaolvCommonPlugin extends Plugin {
 
     /** 侧车写入必须消费 Promise；失败时给出可见回执，避免 unhandled rejection。 */
     private persistSidecar(key: string, value: unknown, notifyFailure = true): void {
+        if (key === STORAGE_KEYS.state && !this.sidecarStateWritable) {
+            if (notifyFailure) this.notify("error", this.i18nFn()("sidecarReadOnly"));
+            return;
+        }
         void this.saveData(key, value).catch((err) => {
             if (notifyFailure) {
                 const detail = err instanceof Error ? err.message : String(err);
@@ -1751,14 +1760,16 @@ export default class XiaolvCommonPlugin extends Plugin {
 
     async exportBundle(): Promise<string> {
         const idx = await this.library.ensureIndex();
+        if (idx.truncated || idx.stopped || idx.errors.length > 0) {
+            throw new ExportIntegrityError("index-incomplete");
+        }
         const items: CommonItem[] = [];
         const kramdownById = new Map<string, string>();
         for (const item of idx.items.values()) {
             const kd = await this.library.getStoredItemKramdown(item);
-            if (kd.ok) {
-                items.push(item);
-                kramdownById.set(item.id, kd.data);
-            }
+            if (!kd.ok) throw new ExportIntegrityError("item-unreadable", item.title || item.id, kd.message);
+            items.push(item);
+            kramdownById.set(item.id, kd.data);
         }
         return JSON.stringify(buildBundle(items, kramdownById, Date.now()), null, 2);
     }
