@@ -20,6 +20,7 @@ function makeItem(itemType = "text") {
 function makeExecutor(host, usedLog) {
     const lib = new LibraryService({
         request(endpoint) {
+            if (endpoint === "getChildBlocks") return Promise.resolve([{id: "20240101120000-abcdefg", type: "p"}]);
             if (endpoint === "getBlockKramdown") return Promise.resolve({id: BLOCK, kramdown: "正文内容"});
             if (endpoint === "checkBlocksExist") return Promise.resolve({[DOC]: true, [BLOCK]: true});
             return Promise.resolve(null);

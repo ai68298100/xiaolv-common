@@ -9,21 +9,22 @@ const { LibraryService } = require("./.build/entry.cjs").library;
 const DOC = "20240101120001-hijklmn";
 const BLOCK = "20240101120000-abcdefg";
 
-test("超长内容：创建前裁剪到 contentChars 上限", async () => {
+test("超长内容：创建前拒绝，不截断正文或代码围栏", async () => {
     const captured = [];
     const kernel = {
         request(endpoint, payload = {}) {
             if (endpoint === "appendBlock") {
                 captured.push(payload.data);
-                return Promise.resolve([{doOperations: [{id: BLOCK}]}]);
+                return Promise.resolve([{doOperations: [{id: BLOCK, action: "insert", parentID: payload.parentID}]}]);
             }
             return Promise.resolve(null);
         },
     };
     const service = new LibraryService(kernel);
     service.setConfig({mode: "doc", notebookIds: [], containerDocIds: [DOC], createdDocIds: [], configuredAt: 1});
-    await service.createItem({itemType: "text", markdown: "长".repeat(200_000)});
-    assert.ok(captured[0].length <= 100_000, `captured ${captured[0].length}`);
+    const result = await service.createItem({itemType: "text", markdown: "长".repeat(200_000)});
+    assert.equal(result.ok, false);
+    assert.equal(captured.length, 0);
 });
 
 test("空 markdown / 空 ID 输入被拒绝", async () => {
@@ -31,8 +32,7 @@ test("空 markdown / 空 ID 输入被拒绝", async () => {
     const service = new LibraryService(kernel);
     service.setConfig({mode: "doc", notebookIds: [], containerDocIds: [DOC], createdDocIds: [], configuredAt: 1});
     const empty = await service.createItem({itemType: "text", markdown: ""});
-    // 空 markdown 仍然会走 appendBlock（宿主会建空块）——但逻辑 ID 仍写入。此处验证不抛异常且返回回执。
-    assert.ok(typeof empty.ok === "boolean");
+    assert.equal(empty.ok, false);
     const noDoc = new LibraryService({request: () => Promise.resolve(null)});
     const result = await noDoc.createItem({itemType: "text", markdown: "x"});
     assert.equal(result.ok, false);
@@ -85,7 +85,7 @@ test("坏逻辑 ID 在 createItem 中被替换为新生成 ID（导入路径防�
     const captured = [];
     const kernel = {
         request(endpoint, payload = {}) {
-            if (endpoint === "appendBlock") return Promise.resolve([{doOperations: [{id: BLOCK}]}]);
+            if (endpoint === "appendBlock") return Promise.resolve([{doOperations: [{id: BLOCK, action: "insert", parentID: payload.parentID}]}]);
             if (endpoint === "setBlockAttrs") captured.push(payload.attrs);
             return Promise.resolve(null);
         },

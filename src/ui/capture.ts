@@ -5,6 +5,8 @@ import {getDialogBody} from "./dialog-dom";
 import {ItemType, isSafeHttpUrl} from "../model/item";
 import {NewItemInput} from "../service/library";
 import {buildVariableBar} from "./variable-form";
+import {bodyWriteRestriction} from "../model/kramdown";
+import {LIMITS} from "../constants";
 
 /** 块引用目标校验（官方 data-id 属性值） */
 export function isBlockRefTarget(blockId: string): boolean {
@@ -88,10 +90,10 @@ export class CaptureDialog {
         }
     }
 
-    private notifyIfTruncated(text: string): string {
-        if (text.length <= 100_000) return text;
-        this.deps.notify("info", this.deps.t("captureTruncated", "100000"));
-        return text.slice(0, 100_000);
+    private checkCaptureSize(text: string): boolean {
+        if (text.length <= LIMITS.contentChars) return true;
+        this.deps.notify("error", this.deps.t("aiContentTooLong", String(LIMITS.contentChars)));
+        return false;
     }
 
     /** 保存当前选中内容（命令面板/正文右键入口） */
@@ -109,7 +111,8 @@ export class CaptureDialog {
             this.deps.notify("error", this.deps.t("captureSelectionEmpty"));
             return;
         }
-        const content = this.notifyIfTruncated(text);
+        const content = text;
+        if (!this.checkCaptureSize(content)) return;
         this.openForm(content, inferTypeFromText(content), sel.blockId, {
             docId: this.deps.currentDocId() ?? undefined,
             sourceType: "selection",
@@ -129,7 +132,8 @@ export class CaptureDialog {
                     });
                     return;
                 }
-                const content = this.notifyIfTruncated(text);
+                const content = text;
+                if (!this.checkCaptureSize(content)) return;
                 this.openForm(content, inferTypeFromText(content), null, {
                     sourceType: "clipboard",
                 });
@@ -164,7 +168,12 @@ export class CaptureDialog {
             this.deps.notify("error", this.deps.t(readFailed ? "clipboardReadFailed" : "clipboardEmpty"));
             return;
         }
-        const content = this.notifyIfTruncated(text);
+        const content = text;
+        if (!this.checkCaptureSize(content)) return;
+        if (bodyWriteRestriction(content)) {
+            this.deps.notify("error", this.deps.t("multiBlockPendingHint"));
+            return;
+        }
         let dup: {id: string; title: string} | null;
         try {
             dup = await this.deps.findDuplicate(content);
@@ -214,7 +223,8 @@ export class CaptureDialog {
             this.newManual(options?.title);
             return;
         }
-        const safeText = this.notifyIfTruncated(text);
+        if (!this.checkCaptureSize(text)) return;
+        const safeText = text;
         const inferredType = inferTypeFromText(safeText);
         const derived = inferredType === "url"
             ? safeText
@@ -234,7 +244,7 @@ export class CaptureDialog {
             this.deps.notify("error", this.deps.t("invalidItem"));
             return;
         }
-        this.openForm("", "blockref", null, {
+        this.openForm(`((${blockId}))`, "blockref", null, {
             title: (refText || blockId).slice(0, 120),
             targetBlockId: blockId,
             docId: this.deps.currentDocId() ?? undefined,
@@ -284,7 +294,8 @@ export class CaptureDialog {
                 this.deps.notify("error", this.deps.t("captureBlockFailed"));
                 return;
             }
-            const content = this.notifyIfTruncated(kramdown);
+            const content = kramdown;
+            if (!this.checkCaptureSize(content)) return;
             this.openForm(content, inferTypeFromText(content), blockId, {
                 docId: sourceDocId,
                 sourceType: "block",
@@ -311,7 +322,8 @@ export class CaptureDialog {
                 return;
             }
             const title = doc.hPath.split("/").filter(Boolean).pop() ?? doc.hPath;
-            const content = this.notifyIfTruncated(doc.content);
+            const content = doc.content;
+            if (!this.checkCaptureSize(content)) return;
             this.openForm(content, "markdown", null, {title, docId, sourceType: "doc-fragment"});
         });
     }
@@ -412,13 +424,9 @@ export class CaptureDialog {
         contentWrap.appendChild(contentError);
         const multiBlockHint = document.createElement("span");
         multiBlockHint.className = "xlc-form-hint";
+        multiBlockHint.dataset.xlcControl = "capture.body-restriction";
         multiBlockHint.setAttribute("role", "note");
         multiBlockHint.textContent = t("multiBlockPendingHint");
-        const syncMultiBlockHint = (): void => {
-            multiBlockHint.hidden = typeSelect.value !== "markdown" && typeSelect.value !== "structure";
-        };
-        typeSelect.addEventListener("change", syncMultiBlockHint);
-        syncMultiBlockHint();
         contentWrap.appendChild(multiBlockHint);
         // 变量快捷插入条（F1 捕获侧，原型屏 3）：点选在内容光标处插入变量语法
         const varbar = buildVariableBar(t, () => contentEl as HTMLTextAreaElement);
@@ -719,7 +727,7 @@ export class CaptureDialog {
         saveBtn.addEventListener("click", () => {
             if (closed || saving) return;
             const contentValue = (contentEl as HTMLTextAreaElement).value;
-            // blockref 条目锚定目标块，允许无正文保存（右键引用捕获的正文本就为空，R138）
+            // A reference with a known target is stored as a real, single-line reference marker.
             if (!contentValue.trim() && !(typeSelect.value === "blockref" && overrides?.targetBlockId)) {
                 flagContentError(t("captureContentRequired"));
                 this.deps.notify("error", t("captureContentRequired"));
@@ -731,7 +739,8 @@ export class CaptureDialog {
                 this.deps.notify("error", t("blockrefNeedsTarget"));
                 return;
             }
-            let markdown = contentValue;
+            let markdown = type === "blockref" && !contentValue.trim() && overrides?.targetBlockId
+                ? `((${overrides.targetBlockId}))` : contentValue;
             if (type === "code" && !/^```/.test(contentValue.trim())) {
                 markdown = "```\n" + contentValue + "\n```";
             } else if (type === "url") {
@@ -741,6 +750,13 @@ export class CaptureDialog {
                     this.deps.notify("error", t("captureUrlInvalid"));
                     return;
                 }
+            }
+            if (bodyWriteRestriction(markdown)) {
+                const message = markdown.length > LIMITS.contentChars
+                    ? t("aiContentTooLong", String(LIMITS.contentChars)) : t("multiBlockPendingHint");
+                flagContentError(message);
+                this.deps.notify("error", message);
+                return;
             }
             // 查重同样是保存流程的一部分：先锁住动作，避免内核查询期间连点落入重复条目。
             saving = true;

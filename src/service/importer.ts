@@ -4,6 +4,7 @@
 import {ExportedItem, ImportReceipt, ImportReceiptLine, ConflictKind, classifyConflict, ParsedImport} from "../model/transfer";
 import {LibraryService, NewItemInput} from "./library";
 import {isItemType} from "../model/item";
+import {bodyWriteRestriction} from "../model/kramdown";
 
 function isKnownType(v: string): v is NewItemInput["itemType"] {
     return isItemType(v);
@@ -52,6 +53,7 @@ export async function applyImportedItem(library: LibraryService, incoming: Expor
 
 /** 覆盖导入：更新既有块；类型变化时删旧建新（保持逻辑 ID）。 */
 export async function applyOverwriteImport(library: LibraryService, incoming: ExportedItem, logicalId: string): Promise<boolean> {
+    if (bodyWriteRestriction(incoming.kramdown)) return false;
     const got = await library.getItem(logicalId);
     if (!got.ok) return false;
     const existing = got.data;
@@ -62,6 +64,8 @@ export async function applyOverwriteImport(library: LibraryService, incoming: Ex
         const backupKd = await library.getStoredItemKramdown(existing);
         if (!backupKd.ok) return false;
         const backup = backupKd.data;
+        // Never delete an old item when the temporary write boundary would prevent its recovery.
+        if (bodyWriteRestriction(backup)) return false;
         const removed = await library.removeItem(logicalId);
         if (!removed.ok) return false;
         const created = await library.createItem({
@@ -131,6 +135,12 @@ async function importBundleUnlocked(library: LibraryService, parsed: ParsedImpor
             if (decision.kind === "skip") {
                 receipt.skipped++;
                 receipt.lines.push({id: incoming.id, title: incoming.title, action: "skip", ok: true});
+                continue;
+            }
+            const restriction = bodyWriteRestriction(incoming.kramdown);
+            if (restriction) {
+                receipt.failed++;
+                receipt.lines.push({id: incoming.id, title: incoming.title, action: decision.kind, ok: false, error: restriction});
                 continue;
             }
             let targetId = decision.kind === "rename" && decision.newId ? decision.newId : incoming.id;

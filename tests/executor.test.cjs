@@ -21,6 +21,8 @@ function makeKernel() {
     return {
         request(endpoint, payload = {}) {
             switch (endpoint) {
+                case "getChildBlocks":
+                    return Promise.resolve([{id: BLOCK, type: "p"}]);
                 case "getBlockKramdown":
                     return Promise.resolve({id: payload.id, kramdown: "正文内容"});
                 case "checkBlocksExist":
@@ -234,6 +236,7 @@ test("执行器在异步读取正文前冻结目标，并释放自己持有的�
     const kernel = {
         request(endpoint, payload = {}) {
             events.push(`kernel:${endpoint}`);
+            if (endpoint === "getChildBlocks") return Promise.resolve([{id: "20240101120000-abcdefg", type: "p"}]);
             if (endpoint === "getBlockKramdown") return Promise.resolve({id: payload.id, kramdown: "正文内容"});
             if (endpoint === "checkBlocksExist") return Promise.resolve({[DOC]: true, [BLOCK]: true});
             return Promise.resolve(null);
@@ -288,6 +291,7 @@ test("插入失败（宿主拒绝）回执 ok=false", async () => {
 test("openSource：来源块失效 → source-missing 诚实失败", async () => {
     const library = new LibraryService({
         request(endpoint) {
+            if (endpoint === "getChildBlocks") return Promise.resolve([{id: "20240101120000-abcdefg", type: "p"}]);
             if (endpoint === "getBlockKramdown") return Promise.resolve({id: BLOCK, kramdown: "x"});
             if (endpoint === "checkBlocksExist") return Promise.resolve({[DOC]: true, [BLOCK]: false});
             return Promise.resolve(null);
@@ -325,6 +329,7 @@ test("openSource：外链宿主拒绝时保持失败回执（不伪造打开成�
 test("openSource：来源文档失效即失败，即使条目仍在库文档中", async () => {
     const library = new LibraryService({
         request(endpoint) {
+            if (endpoint === "getChildBlocks") return Promise.resolve([{id: "20240101120000-abcdefg", type: "p"}]);
             if (endpoint === "getBlockKramdown") return Promise.resolve({id: BLOCK, kramdown: "x"});
             if (endpoint === "checkBlocksExist") return Promise.resolve({[DOC]: false});
             return Promise.resolve(null);

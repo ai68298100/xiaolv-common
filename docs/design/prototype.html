@@ -959,7 +959,7 @@ button { font-family: var(--font); cursor: pointer; }
         <button class="btn ai">✦ AI 标签体检</button>
         <button class="btn">导出 JSON</button><button class="btn">导出模板包</button><button class="btn">导入 JSON / Markdown 包</button>
       </div>
-      <div class="set-row"><span class="grow">导入内置分类模板<div class="sub">20 条使用说明、地址、邮箱、联系方式、商务、客服、AI 提示词和研发写作模板；显式导入到当前库文档</div></span><button class="btn">导入</button></div>
+      <div class="set-row"><span class="grow">导入内置分类模板<div class="sub">原包 20 条模板；当前仅单行与完整代码围栏可导入，多行模板会拒绝并列出原因（B-006）</div></span><button class="btn">导入</button></div>
     </div>
   </div>
 </div>
@@ -992,7 +992,7 @@ button { font-family: var(--font); cursor: pointer; }
         <span class="hint">当前内容库：文档库 · 1</span>
         <button class="btn">重建索引</button>
       </div>
-      <div class="set-row"><span class="grow">导入内置分类模板<div class="sub">20 条使用说明、地址、邮箱、联系方式、商务、客服、AI 提示词和研发写作模板；导入前可选择重复处理方式</div></span><button class="btn">导入</button></div>
+      <div class="set-row"><span class="grow">导入内置分类模板<div class="sub">原包 20 条模板；当前仅单行与完整代码围栏可导入，完整简历、公司介绍和结构模板暂不可用</div></span><button class="btn">导入</button></div>
     </div>
   </div>
 </div>
@@ -1230,7 +1230,7 @@ button { font-family: var(--font); cursor: pointer; }
     <article class="edge-card"><strong>来源失效 / 内核请求失败</strong><p>来源块失效时保留条目并显示告警；鉴权失败与权限不足分别保留搜索上下文、清空过期结果并提供重试。UI 与隔离内核已验证，Electron 真实宿主仍待现场确认。</p></article>
     <article class="edge-card"><strong>删除 / 覆盖 / 退出</strong><p>先确认后执行；可恢复动作提供撤销回执，不可恢复动作明确说明影响范围。</p></article>
     <article class="edge-card"><strong>图片 / 附件 · 链接文本</strong><p>图片和附件在桌面预览、双端动作菜单与使用帮助显示能力说明：预览是 Markdown 原文，复制得到链接文本；查看原文件请用「打开来源」。不支持复制图片位图或文件本体。先将资源添加到思源，再从图片或附件的右键菜单保存。</p></article>
-    <article class="edge-card"><strong>多块内容 · 待修复 B-006</strong><p>捕获表单在 Markdown / 结构类型下，以及使用帮助中显示风险提示：多段 Markdown 可能被拆为多个兄弟块，当前条目可能只保留首块；复制、编辑和导出完整性尚未保证。此项未修复，正式内容先用单块示例。</p></article>
+    <article class="edge-card"><strong>多块内容 · 待修复 B-006</strong><p>捕获表单所有类型与使用帮助显示限制：新建、正文更新和导入仅接受单行或一个完整代码围栏，多行正文/结构在写入前拒绝；已有 parts 经同文档归属检查读取，正文更新及自动删除暂停。原型不代表宿主多块已验收。</p></article>
   </div>
   <h3 style="margin:16px 0 8px;font-size:13px">断点形态</h3>
   <div class="responsive-frames">

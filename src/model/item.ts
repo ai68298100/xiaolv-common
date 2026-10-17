@@ -53,7 +53,7 @@ export interface CommonItem {
     id: string;
     /** 库中锚定块的物理块 ID */
     blockId: string;
-    /** 新写多块条目的完整物理块顺序；旧条目没有该字段，不能据相邻块推断正文。 */
+    /** 实验期物理块清单，需重新验证同文档归属；不证明正文完整，也不授权删除。 */
     partBlockIds?: string[];
     /** parts 属性存在但无法安全解析时，读写操作必须显式失败。 */
     partsCorrupt?: boolean;

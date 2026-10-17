@@ -54,11 +54,44 @@ test("快速捕获：新内容 → 类型推断入库（URL 识别）+ 保存回
     assert.ok(!calls.notified.some((n) => n.message.includes("已保存")), "表单侧不得重复报已保存"); // R138 回执上收到包装层
 });
 
-test("快速捕获：多行文本使用第一个非空行作为标题", async () => {
+test("快速捕获：受限多行正文明确拒绝，不提交部分内容", async () => {
     const {dialog, calls} = makeCapture({readClipboardText: async () => "\n  第一行标题  \n正文"});
     await dialog.quickCaptureFromClipboard();
-    assert.equal(calls.created?.title, "第一行标题");
-    assert.equal(calls.created?.markdown, "第一行标题  \n正文");
+    assert.equal(calls.created, null);
+    assert.ok(calls.notified.some((notice) => notice.kind === "error" && notice.message === "multiBlockPendingHint"));
+});
+
+test("捕获入口：超长内容不截断、不打开草稿、不调用创建", async () => {
+    const giant = "A".repeat(100001);
+    const {dialog, calls} = makeCapture({
+        getSelectionText: () => ({text: giant, blockId: "20240101000000-abcdefg"}),
+        currentDocId: () => "20240101000001-hijklmn",
+        readClipboardText: async () => giant,
+        getBlockKramdown: async () => giant,
+        exportDocContent: async () => ({hPath: "/巨型文档", content: giant}),
+    });
+    const forms = [];
+    dialog.openForm = (...args) => forms.push(args);
+    await dialog.saveSelection();
+    await dialog.captureFromClipboard();
+    await dialog.quickCaptureFromClipboard();
+    await dialog.captureCurrentBlock();
+    await dialog.captureCurrentDoc();
+    dialog.newWithContent(giant);
+    assert.equal(forms.length, 0);
+    assert.equal(calls.created, null);
+    assert.equal(calls.notified.filter((notice) => notice.kind === "error" && notice.message === "aiContentTooLong").length, 6);
+});
+
+test("块引用捕获：草稿包含真实目标引用语法，不以空正文提交", () => {
+    const {dialog} = makeCapture();
+    let form;
+    dialog.openForm = (...args) => { form = args; };
+    const target = "20240101000000-abcdefg";
+    dialog.captureBlockRef(target, "需求模板");
+    assert.equal(form[0], `((${target}))`);
+    assert.equal(form[1], "blockref");
+    assert.equal(form[3].targetBlockId, target);
 });
 
 test("快速捕获：同文已存在 → 诚实提示不重复写入（不弹确认打断）", async () => {

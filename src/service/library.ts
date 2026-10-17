@@ -28,7 +28,7 @@ import {
 } from "../model/item";
 import {LibraryConfig} from "../model/storage";
 import {SearchEntry} from "../model/search";
-import {normalizeKramdownIal} from "../model/kramdown";
+import {bodyWriteRestriction, normalizeKramdownIal} from "../model/kramdown";
 import {getPinyinAdapter} from "../model/pinyin";
 import {countAskFields, SNIPPET_PATTERN} from "../model/variables";
 
@@ -726,6 +726,20 @@ export class LibraryService {
         }
         const bodies: string[] = [];
         try {
+            const children = parseChildBlocks(await this.kernel.request("getChildBlocks", {id: item.libraryDocId}));
+            const start = children.findIndex((child) => child.id === item.blockId);
+            if (start < 0 || !ids.every((id, index) => children[start + index]?.id === id)) {
+                return fail("conflict", "physical parts are not consecutive top-level blocks in the item library document");
+            }
+            if (ids.length > 1) {
+                // Attribute IDs are user-editable; never use them as authority to read other documents.
+                const attrs = parseBatchAttrs(await this.kernel.request("batchGetBlockAttrs", {ids}));
+                if (attrs[item.blockId]?.[ATTR.id] !== item.id
+                    || attrs[item.blockId]?.[ATTR.parts] !== ids.join(",")
+                    || ids.slice(1).some((id) => !attrs[id] || attrs[id]![ATTR.id] || attrs[id]![ATTR.parts])) {
+                    return fail("conflict", "physical part ownership is unverified or overlaps another managed item");
+                }
+            }
             for (const id of ids) {
                 const data = parseKramdown(await this.kernel.request("getBlockKramdown", {id}));
                 if (!data || data.id !== id || typeof data.kramdown !== "string") {
@@ -831,6 +845,8 @@ export class LibraryService {
     }
 
     private async createItemUnlocked(input: NewItemInput, libraryDocId?: string, options: WriteOptions = {}): Promise<Receipt<{item: CommonItem}>> {
+        const restriction = bodyWriteRestriction(input.markdown);
+        if (restriction) return fail("conflict", restriction);
         const targetDoc = libraryDocId ?? await this.resolveWriteDoc();
         if (!targetDoc || !isBlockId(targetDoc)) return fail("invalid-input", "no library doc");
         const now = Date.now();
@@ -874,34 +890,25 @@ export class LibraryService {
         } catch (err) {
             return toFailureReceipt(err);
         }
-        const ops = Array.isArray(insertResp) ? insertResp as Array<{doOperations?: Array<{id?: unknown}>}> : [];
+        const ops = Array.isArray(insertResp) ? insertResp as Array<{doOperations?: Array<{id?: unknown; action?: unknown; parentID?: unknown}>}> : [];
         const rawOperations = ops.flatMap((group) => Array.isArray(group?.doOperations) ? group.doOperations : []);
-        const createdBlockIds = Array.from(new Set(rawOperations
+        // setAttrs and other transaction operations are not created blocks. Upstream may
+        // return only the first inserted block, so this response is never a complete parts manifest.
+        const inserts = rawOperations.filter((operation) => operation?.action === "insert");
+        if (!inserts.length || inserts.some((operation) => !isBlockId(operation.id) || operation.parentID !== targetDoc)
+            || rawOperations.some((operation) => operation?.action !== "insert" && operation?.action !== "setAttrs")) {
+            return fail("conflict", `appendBlock outcome is unverified; inspect library document ${targetDoc} before retrying; no automatic deletion was attempted`);
+        }
+        const createdBlockIds = Array.from(new Set(inserts
             .map((operation) => operation?.id)
             .filter((id): id is string => typeof id === "string" && isBlockId(id))));
         const newBlockId = createdBlockIds[0];
         if (!newBlockId) {
             return fail("kernel-error", "appendBlock returned no block id");
         }
-        if (rawOperations.some((operation) => typeof operation?.id !== "string" || !isBlockId(operation.id))) {
-            let rollbackFailed = false;
-            for (const id of [...createdBlockIds].reverse()) {
-                try { await this.kernel.request("deleteBlock", {id}, {maxRetries: 0}); } catch { rollbackFailed = true; }
-            }
-            return fail("kernel-error", rollbackFailed
-                ? `appendBlock returned an invalid operation and rollback failed; orphan blocks ${createdBlockIds.join(",")}`
-                : "appendBlock returned an invalid block operation");
+        if (createdBlockIds.length !== 1) {
+            return fail("conflict", `appendBlock returned multiple insert operations for restricted input; inspect library document ${targetDoc} before retrying; no automatic deletion was attempted`);
         }
-        if (createdBlockIds.length > LIMITS.maxItemParts) {
-            let rollbackFailed = false;
-            for (const id of [...createdBlockIds].reverse()) {
-                try { await this.kernel.request("deleteBlock", {id}, {maxRetries: 0}); } catch { rollbackFailed = true; }
-            }
-            return fail("conflict", rollbackFailed
-                ? `appendBlock created ${createdBlockIds.length} blocks; rollback failed`
-                : `appendBlock created ${createdBlockIds.length} blocks; item exceeds the supported part limit`);
-        }
-        if (createdBlockIds.length > 1) attrs[ATTR.parts] = createdBlockIds.join(",");
         try {
             await this.kernel.request("setBlockAttrs", {id: newBlockId, attrs});
         } catch (err) {
@@ -978,6 +985,10 @@ export class LibraryService {
     }
 
     private async updateItemUnlocked(itemId: string, patch: Partial<Pick<NewItemInput, "title" | "alias" | "tags" | "category" | "markdown" | "url" | "targetBlockId">>, options: WriteOptions = {}): Promise<Receipt<{item: CommonItem}>> {
+        if (typeof patch.markdown === "string") {
+            const restriction = bodyWriteRestriction(patch.markdown);
+            if (restriction) return fail("conflict", restriction);
+        }
         // 注：不含 itemType——类型变化需删旧建新（见 applyOverwriteImport），原地改类型会语义错位
         const got = await this.getItem(itemId);
         if (!got.ok) return {ok: false, reason: got.reason, message: got.message};
@@ -1009,9 +1020,14 @@ export class LibraryService {
         let oldAttrs: Record<string, string> | null = null;
         let oldMarkdown: string | undefined;
         try {
+            const children = parseChildBlocks(await this.kernel.request("getChildBlocks", {id: item.libraryDocId}));
+            if (!children.some((child) => child.id === item.blockId)) return fail("conflict", "item has moved out of its indexed library document");
             oldAttrs = parseAttrs(await this.kernel.request("getBlockAttrs", {id: item.blockId}));
             if (typeof patch.markdown === "string" && patch.markdown) {
                 oldMarkdown = parseKramdown(await this.kernel.request("getBlockKramdown", {id: item.blockId}))?.kramdown;
+                if (oldMarkdown === undefined || bodyWriteRestriction(oldMarkdown)) {
+                    return fail("conflict", "existing body cannot be safely restored under the current write restriction; inspect the library document before editing");
+                }
             }
             await this.kernel.request("setBlockAttrs", {id: item.blockId, attrs}, {idempotencyKey: options.idempotencyKey, maxRetries: 0});
             if (typeof patch.markdown === "string" && patch.markdown) {
@@ -1066,14 +1082,11 @@ export class LibraryService {
         if (got.data.partsCorrupt) return fail("conflict", `item ${itemId} has invalid physical part metadata`);
         const partIds = got.data.partBlockIds ?? [got.data.blockId];
         if (partIds.length > 1) {
-            try {
-                const exists = parseExistingMap(await this.kernel.request("checkBlocksExist", {ids: partIds}));
-                if (partIds.some((id) => exists[id] === false)) return fail("conflict", `item ${itemId} has missing physical parts`);
-            } catch (err) {
-                return toFailureReceipt(err);
-            }
+            return fail("conflict", "multi-block item deletion is unavailable until physical ownership is verified; open the library document to inspect it");
         }
         try {
+            const children = parseChildBlocks(await this.kernel.request("getChildBlocks", {id: got.data.libraryDocId}));
+            if (!children.some((child) => child.id === got.data.blockId)) return fail("conflict", "item has moved out of its indexed library document");
             for (const id of [...partIds].reverse()) {
                 await this.kernel.request("deleteBlock", {id}, {idempotencyKey: options.idempotencyKey, maxRetries: 0});
             }
@@ -1173,7 +1186,7 @@ export class LibraryService {
                     continue;
                 }
                 const partIds = item.partBlockIds ?? [item.blockId];
-                if (item.partsCorrupt || partIds.length > LIMITS.maxItemParts || partIds[0] !== item.blockId
+                if (item.partsCorrupt || partIds.length !== 1 || partIds[0] !== item.blockId
                     || new Set(partIds).size !== partIds.length || !partIds.every(isBlockId)) {
                     outcomes.push({status: "skipped", itemId: item.id, blockId: item.blockId, reason: "identity-changed"});
                     continue;

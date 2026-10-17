@@ -119,6 +119,7 @@ test("updateItem：markdown 变更走 updateBlock（内容编辑链路）", asyn
             if (endpoint === "getChildBlocks") return Promise.resolve([{id: B1, type: "p"}]);
             if (endpoint === "batchGetBlockAttrs") return Promise.resolve({[B1]: {"custom-xlc-id": "xlc-edititem01"}});
             if (endpoint === "getBlockAttrs") return Promise.resolve({"custom-xlc-id": "xlc-edititem01"});
+            if (endpoint === "getBlockKramdown") return Promise.resolve({id: B1, kramdown: "原正文"});
             return Promise.resolve(null);
         },
     };

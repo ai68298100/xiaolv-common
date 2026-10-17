@@ -11,6 +11,7 @@ import {ActionExecutor} from "../../src/service/commands";
 import {LibraryService} from "../../src/service/library";
 import type {TransformKind} from "../../src/service/ai";
 import type {SavedDiscoveryView} from "../../src/model/storage";
+import zhI18n from "../../src/i18n/zh-CN.json";
 
 const ENTRIES: SearchEntry[] = [
     {id: "xlc-demo0000001", blockId: "20240101120000-aaaaaaa", libraryDocId: "20240101120001-hijklmn", itemType: "markdown", title: "项目延期道歉与补偿方案", alias: "延期道歉", tags: ["客户沟通", "模板"], category: "客服", summary: "尊敬的王总：关于本期交付延期……", createdAt: 1, updatedAt: Date.now() - 3 * 86_400_000, sourceDocId: "20240101120001-hijklmn", sourceBlockId: "20240101120002-bbbbbbb", varCount: 2},
@@ -140,8 +141,8 @@ const T = (key: string, ...args: string[]): string => {
         sourceMissing: "来源失效", sourceGone: "原内容块已移动或删除。可编辑此条目并重新指定来源。", previewUnavailable: "暂无预览", previewNoResult: "选择左侧条目后，这里会显示预览",
         mediaContentHint: "图片和附件显示 Markdown 原文；复制得到链接文本。查看原文件请用「打开来源」。不支持复制图片位图或文件本体。",
         usageGuideMedia: "图片和附件：先将资源添加到思源，再从图片或附件的右键菜单保存。预览显示 Markdown 原文，复制得到链接文本；查看原文件请用「打开来源」。不支持复制图片位图或文件本体。",
-        usageGuideMultiblock: "尚未修复：多段 Markdown 或混合块结构可能被思源拆成多个块，插件目前只登记首块，导致后续预览、复制、编辑或导出不完整。暂勿把完整简历、公司介绍等多段正文作为单个条目保存；既有内容请到库文档核对全文。",
-        multiBlockPendingHint: "多段正文完整性尚未修复：Markdown 或混合结构可能只登记首块，后续调用不完整。暂勿保存多段内容；已有条目请到库文档核对全文。",
+        usageGuideMultiblock: zhI18n.usageGuideMultiblock,
+        multiBlockPendingHint: zhI18n.multiBlockPendingHint,
         aiFound: "AI 语义搜索", aiWorking: "AI 处理中…", aiOriginalPreserved: "原文未被修改",
         aiTransport: "AI 调用失败，请检查模型配置或连接后重试。",
         insertNoEditor: "当前没有活动编辑器，已复制到剪贴板，可手动粘贴", insertFailed: "插入失败", insertToDocFailed: "目标文档插入失败",
@@ -204,7 +205,7 @@ const T = (key: string, ...args: string[]): string => {
         customTransformCap: "最多 10 个自定义变换", customTransformNewName: "我的变换",
         customTransformHint: "与内置变换并列出现在条目动作菜单 ✦ 区；读取正文遵循「允许 AI 读取完整正文」开关",
         quickCapture: "快速捕获剪贴板为条目", quickCaptureDuplicate: "已存在同文条目「%s」，未重复保存",
-        promptPackBtn: "导入内置分类模板", promptPackHint: "内置模板会以分类属性保存在当前库文档中",
+        promptPackBtn: "导入内置分类模板", promptPackHint: zhI18n.promptPackHint,
         dataSection: "数据与模板（导出 / 导入）", librarySection: "当前内容库", libraryNone: "未配置",
         reindexBtn: "重建索引", clearRecents: "清空最近使用", clearRecentsEmpty: "暂无最近使用", clearRecentsConfirm: "清空最近使用记录？",
         exportBtn: "导出全部条目 (JSON)", importBtn: "导入 JSON", exportMdBtn: "导出 Markdown 包（含资源）",

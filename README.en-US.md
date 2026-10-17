@@ -1,5 +1,7 @@
 # LvCommon (Beta)
 
+> **Unreleased local fix (R238):** Body creation, updates, and import currently accept only a single line or one complete code fence because multi-block integrity is unresolved. Other multi-line text and structures are rejected before writing; automatic deletion of existing multi-part items is unavailable. Only 3 of the original 20 templates meet this restriction; 17 are rejected. Full resumes, company introductions, and structured examples are unavailable. These protections are not in the published GitHub v0.4.2.
+
 [![CI](https://github.com/ai68298100/xiaolv-common/actions/workflows/ci.yml/badge.svg)](https://github.com/ai68298100/xiaolv-common/actions/workflows/ci.yml)
 [![Version](https://img.shields.io/github/v/tag/ai68298100/xiaolv-common?label=version&sort=semver)](https://github.com/ai68298100/xiaolv-common/releases)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)

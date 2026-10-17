@@ -119,6 +119,7 @@ function makeItem(itemType) {
 function makeKernel(kramdown) {
     return {
         request(endpoint, payload = {}) {
+            if (endpoint === "getChildBlocks") return Promise.resolve([{id: "20240101120000-abcdefg", type: "p"}]);
             if (endpoint === "getBlockKramdown") return Promise.resolve({id: payload.id, kramdown});
             if (endpoint === "checkBlocksExist") return Promise.resolve({[DOC]: true, [BLOCK]: true});
             return Promise.resolve(null);

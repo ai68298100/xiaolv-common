@@ -3,7 +3,7 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 const path = require("node:path");
 const fs = require("node:fs");
-const {inferTypeFromText} = require("./.build/entry.cjs").capture;
+const {CaptureDialog} = require("./.build/entry.cjs").capture;
 
 test("i18n 资源包含 dropToAdd 且中英文一致", () => {
     const zh = JSON.parse(fs.readFileSync(path.join(__dirname, "../src/i18n/zh-CN.json"), "utf8"));
@@ -17,13 +17,11 @@ test("i18n 资源包含 dropToAdd 且中英文一致", () => {
 
 test("拖拽/粘贴内容类型推断与标题衍生契约", () => {
     function deriveMeta(rawText) {
-        const text = (rawText ?? "").trim();
-        const safeText = text.slice(0, 100_000);
-        const inferredType = inferTypeFromText(safeText);
-        const derivedTitle = inferredType === "url"
-            ? safeText
-            : (safeText.split("\n")[0] || "").slice(0, 60).trim();
-        return {type: inferredType, title: derivedTitle, length: safeText.length};
+        let form;
+        const dialog = new CaptureDialog({t: (key) => key, currentDocId: () => null, notify: () => {}});
+        dialog.openForm = (...args) => { form = args; };
+        dialog.newWithContent(rawText);
+        return form ? {type: form[1], title: form[3].title, length: form[0].length} : null;
     }
 
     // 1. URL 链接
@@ -50,10 +48,10 @@ test("拖拽/粘贴内容类型推断与标题衍生契约", () => {
     assert.strictEqual(multilineMeta.type, "markdown");
     assert.strictEqual(multilineMeta.title, "首行常用语说明");
 
-    // 6. 超长文本截断安全保护
+    // 6. 超长内容明确拒绝，不能把截断后的正文当完整条目。
     const giant = "A".repeat(150_000);
     const giantMeta = deriveMeta(giant);
-    assert.strictEqual(giantMeta.length, 100_000);
+    assert.strictEqual(giantMeta, null);
 });
 
 test("面板快捷粘贴拦截判定：仅在非文本编辑控件上激活，保护搜索框输入", () => {

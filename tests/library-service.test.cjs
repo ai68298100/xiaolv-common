@@ -17,7 +17,7 @@ function makeKernel(overrides = {}) {
             "custom-xlc-title": `条目 ${id}`,
         }])),
         getBlockAttrs: () => ({"custom-xlc-id": `xlc-${B1.slice(-10)}`}),
-        appendBlock: () => [{doOperations: [{id: "20240101120003-ccccccc"}]}],
+        appendBlock: ({parentID}) => [{doOperations: [{id: "20240101120003-ccccccc", action: "insert", parentID}]}],
         setBlockAttrs: () => null,
         updateBlock: () => null,
         deleteBlock: () => null,
@@ -108,8 +108,7 @@ test("引用有效正文跟随 targetBlockId，编辑与导出仍可取库内原
     const stored = await service.getStoredItemKramdown(item);
     assert.equal(resolved.data, "源块刚更新的正文");
     assert.match(stored.data, new RegExp(source));
-    assert.equal(kernel.calls.at(-2).payload.id, source);
-    assert.equal(kernel.calls.at(-1).payload.id, B1);
+    assert.deepEqual(kernel.calls.filter((call) => call.endpoint === "getBlockKramdown").map((call) => call.payload.id), [source, B1]);
 });
 
 test("引用插入正文会剥离源块物理 IAL，但库内 marker 保持原样", async () => {
@@ -153,10 +152,10 @@ test("createItem：appendBlock + setBlockAttrs，返回条目回执", async () =
     assert.equal(setAttrs.payload.attrs["custom-xlc-tags"], "a");
 });
 
-test("B-006：多块 append 以锚块 parts 清单读回完整正文并整体删除", async () => {
+test("B-006：已有 parts 经文档归属核验后读回，正文更新和删除均暂停", async () => {
     const C1 = "20240101120010-ccccccc";
     const C2 = "20240101120011-ddddddd";
-    let createdAttrs = null;
+    const createdAttrs = {"custom-xlc-id": "xlc-multi0000001", "custom-xlc-parts": `${C1},${C2}`};
     const {kernel, service} = makeService({
         getChildBlocks: () => [{id: C1, type: "p"}, {id: C2, type: "l"}],
         batchGetBlockAttrs: () => ({
@@ -164,45 +163,43 @@ test("B-006：多块 append 以锚块 parts 清单读回完整正文并整体删
             [C2]: {},
         }),
         getBlockAttrs: () => createdAttrs ?? {"custom-xlc-id": "xlc-multi0000001"},
-        appendBlock: () => [{doOperations: [{id: C1}, {id: C2}]}],
-        setBlockAttrs: ({attrs}) => { createdAttrs = attrs; },
         getBlockKramdown: ({id}) => ({id, kramdown: id === C1 ? "首段" : "- 尾段"}),
         checkBlocksExist: ({ids}) => Object.fromEntries(ids.map((id) => [id, true])),
     });
-    const created = await service.createItem({itemType: "markdown", markdown: "首段\n\n- 尾段", title: "多段"});
-    assert.equal(created.ok, true);
-    assert.deepEqual(created.data.item.partBlockIds, [C1, C2]);
-    assert.equal(kernel.calls.find((call) => call.endpoint === "setBlockAttrs").payload.attrs["custom-xlc-parts"], `${C1},${C2}`);
-    const stored = await service.getStoredItemKramdown(created.data.item);
+    const item = (await service.ensureIndex()).items.get("xlc-multi0000001");
+    assert.deepEqual(item.partBlockIds, [C1, C2]);
+    const stored = await service.getStoredItemKramdown(item);
     assert.deepEqual(stored, {ok: true, data: "首段\n\n- 尾段"});
-    const updated = await service.updateItem(created.data.item.id, {markdown: "替换正文"});
+    const updated = await service.updateItem(item.id, {markdown: "替换正文"});
     assert.equal(updated.ok, false);
     assert.equal(updated.reason, "conflict");
-    const removed = await service.removeItem(created.data.item.id);
-    assert.equal(removed.ok, true);
-    assert.deepEqual(kernel.calls.filter((call) => call.endpoint === "deleteBlock").map((call) => call.payload.id), [C2, C1]);
+    const removed = await service.removeItem(item.id);
+    assert.equal(removed.ok, false);
+    assert.equal(removed.reason, "conflict");
+    assert.equal(kernel.calls.some((call) => call.endpoint === "deleteBlock"), false);
 });
 
-test("B-006：多块属性写入失败时回滚 append 返回的全部物理块", async () => {
+test("B-006：意外返回多个 insert 时报告待核对，不登记或盲删", async () => {
     const C1 = "20240101120012-eeeeeee";
     const C2 = "20240101120013-fffffff";
     const {kernel, service} = makeService({
-        appendBlock: () => [{doOperations: [{id: C1}, {id: C2}]}],
+        appendBlock: ({parentID}) => [{doOperations: [{id: C1, action: "insert", parentID}, {id: C2, action: "insert", parentID}]}],
         setBlockAttrs: () => { throw new Error("attrs failed"); },
     });
-    const result = await service.createItem({itemType: "markdown", markdown: "a\n\nb"});
+    const result = await service.createItem({itemType: "text", markdown: "a"});
     assert.equal(result.ok, false);
-    assert.deepEqual(kernel.calls.filter((call) => call.endpoint === "deleteBlock").map((call) => call.payload.id), [C2, C1]);
+    assert.match(result.message, /inspect library document/);
+    assert.equal(kernel.calls.some((call) => ["setBlockAttrs", "deleteBlock"].includes(call.endpoint)), false);
 });
 
-test("B-006：append 回包含非法操作时拒绝并回滚已识别块", async () => {
+test("B-006：append 回包含非法操作时拒绝且不自动删除响应 ID", async () => {
     const C1 = "20240101120014-ggggggg";
     const {kernel, service} = makeService({
-        appendBlock: () => [{doOperations: [{id: C1}, {id: "not-a-block"}]}],
+        appendBlock: ({parentID}) => [{doOperations: [{id: C1, action: "insert", parentID}, {id: "not-a-block", action: "insert", parentID}]}],
     });
-    const result = await service.createItem({itemType: "markdown", markdown: "a\n\nb"});
+    const result = await service.createItem({itemType: "text", markdown: "a"});
     assert.equal(result.ok, false);
-    assert.deepEqual(kernel.calls.filter((call) => call.endpoint === "deleteBlock").map((call) => call.payload.id), [C1]);
+    assert.equal(kernel.calls.some((call) => call.endpoint === "deleteBlock"), false);
 });
 
 test("B-006：损坏的 parts 元数据拒绝正文读取，不猜测邻接块", async () => {
@@ -261,7 +258,7 @@ test("createItem：同一 logicalId 并发写入串行化，重试不产生第�
         appendBlock: async () => {
             appends++;
             await new Promise((resolve) => setTimeout(resolve, 20));
-            return [{doOperations: [{id: "20240101120003-ccccccc"}]}];
+            return [{doOperations: [{id: "20240101120003-ccccccc", action: "insert", parentID: DOC}]}];
         },
     });
     const input = {itemType: "text", markdown: "幂等正文", logicalId: "xlc-idempotent0001"};
@@ -278,7 +275,7 @@ test("createItem：显式幂等 key 在并发与顺序重试中复用成功回�
         appendBlock: async () => {
             appends++;
             await new Promise((resolve) => setTimeout(resolve, 10));
-            return [{doOperations: [{id: "20240101120003-ccccccc"}]}];
+            return [{doOperations: [{id: "20240101120003-ccccccc", action: "insert", parentID: DOC}]}];
         },
     });
     const input = {itemType: "text", markdown: "重复提交"};
@@ -444,7 +441,7 @@ test("removeItemsIfUnchanged 仅删除仍匹配的批次副本，并现场复核
                 if (overrides.onBodyRead) overrides.onBodyRead({bodyReads, attrs: liveAttrs, setBody: (value) => { liveBody = value; }});
                 return {id, kramdown: liveBody};
             },
-            appendBlock: () => [{doOperations: [{id: itemBlock}]}],
+            appendBlock: ({parentID}) => [{doOperations: [{id: itemBlock, action: "insert", parentID}]}],
             setBlockAttrs: ({attrs}) => { liveAttrs = {...attrs}; },
             deleteBlock: () => null,
             ...overrides.kernel,

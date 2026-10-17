@@ -9,6 +9,32 @@ const ROOT = path.resolve(__dirname, "..");
 const OUT = path.join(ROOT, "docs", "design");
 const STUB = path.join(__dirname, "harness", "stub-dom.cjs");
 const enI18n = require(path.join(ROOT, "src", "i18n", "en.json"));
+const zhI18n = require(path.join(ROOT, "src", "i18n", "zh-CN.json"));
+
+async function checkCaptureBoundary(page) {
+    await page.evaluate(() => window.XlcHarness.openCapture(false));
+    const hint = page.locator("[data-xlc-control='capture.body-restriction']");
+    for (const type of ["text", "markdown", "url", "code", "image", "asset", "blockref", "structure"]) {
+        await page.locator("[data-xlc-control='capture.type']").selectOption(type);
+        assert.equal(await hint.isVisible(), true, `body restriction must remain visible for ${type}`);
+        assert.equal(await hint.textContent(), zhI18n.multiBlockPendingHint, "harness must use the production locale");
+    }
+    await page.locator("[data-xlc-control='capture.type']").selectOption("markdown");
+    await page.locator("[data-xlc-control='capture.content']").fill("首段\n\n尾段");
+    await page.locator("[data-xlc-control='capture.save']").click();
+    const rejected = await page.evaluate((message) => {
+        const content = document.querySelector("[data-xlc-control='capture.content']");
+        const error = document.getElementById("xlc-capture-content-error");
+        return content?.getAttribute("aria-invalid") === "true"
+            && content.value === "首段\n\n尾段"
+            && document.activeElement === content
+            && error?.hidden === false && error.textContent === message
+            && JSON.parse(document.body.dataset.xlcCaptureCreatedItems ?? "[]").length === 0;
+    }, zhI18n.multiBlockPendingHint);
+    assert.equal(rejected, true, "unsupported body must remain in the form with a localized error and no create call");
+    await page.locator("[data-xlc-control='capture.cancel']").click();
+    console.log("  smoke ✓ capture boundary: production locale, all 8 types, inline rejection and zero create calls");
+}
 
 let chromium;
 try {
@@ -78,6 +104,11 @@ fs.writeFileSync(path.join(OUT, "harness.html"), html);
     const page = await browser.newPage({viewport: {width: 1280, height: 720}, deviceScaleFactor: 2});
     await page.goto("file:///" + path.join(OUT, "harness.html").replace(/\\/g, "/"));
     await page.waitForFunction(() => Boolean(window.XlcHarness));
+    await checkCaptureBoundary(page);
+    if (process.env.XLC_CAPTURE_BOUNDARY_ONLY === "1") {
+        await browser.close();
+        return;
+    }
 
     const shoot = async (name, opts, assertions) => {
         await page.evaluate((o) => {
@@ -947,7 +978,7 @@ fs.writeFileSync(path.join(OUT, "harness.html"), html);
     if (!correctedErrorCleared) throw new Error("capture field correction did not clear its error state");
 
     await page.locator("[data-xlc-control='capture.type']").selectOption("markdown");
-    await page.locator("[data-xlc-control='capture.content']").fill("可复用正文\n第二行");
+    await page.locator("[data-xlc-control='capture.content']").fill("可复用正文");
     await page.locator("[data-xlc-control='capture.title']").fill("验收标题");
     await page.locator("[data-xlc-control='capture.alias']").fill("验收别名");
     await page.locator("[data-xlc-control='capture.tags']").fill("模板, 客户");
@@ -961,7 +992,7 @@ fs.writeFileSync(path.join(OUT, "harness.html"), html);
         const created = JSON.parse(document.body.dataset.xlcCaptureCreatedItems ?? "[]");
         const item = created[0];
         return item?.itemType === "markdown"
-            && item?.markdown === "可复用正文\n第二行"
+            && item?.markdown === "可复用正文"
             && item?.title === "验收标题"
             && item?.alias === "验收别名"
             && item?.tags?.join("|") === "模板|客户"

@@ -16,6 +16,8 @@ function makeKernel() {
             switch (endpoint) {
                 case "getChildBlocks":
                     return Promise.resolve([{id: B_OLD, type: "p"}]);
+                case "getBlockKramdown":
+                    return Promise.resolve({id: payload.id, kramdown: "原正文"});
                 case "batchGetBlockAttrs": {
                     const overwritten = calls.some((c) => c.endpoint === "updateBlock");
                     const out = {};
@@ -94,7 +96,7 @@ test("导入冲突：同批两个新 ID 均按一次快照判定为 new", async 
                 sequence++;
                 const blockId = `202401011200${String(sequence).padStart(2, "0")}-newbbbb`;
                 blocks.set(blockId, {});
-                return Promise.resolve([{doOperations: [{id: blockId}]}]);
+                return Promise.resolve([{doOperations: [{id: blockId, action: "insert", parentID: payload.parentID}]}]);
             }
             if (endpoint === "setBlockAttrs") {
                 blocks.set(payload.id, {...(blocks.get(payload.id) ?? {}), ...payload.attrs});

@@ -52,6 +52,7 @@ function makeItem(overrides = {}) {
 function makeKernel() {
     return {
         request(endpoint, payload = {}) {
+            if (endpoint === "getChildBlocks") return Promise.resolve([{id: "20240101120000-abcdefg", type: "p"}]);
             if (endpoint === "getBlockKramdown") return Promise.resolve({id: payload.id, kramdown: "日报 {{xlc:date}}"});
             if (endpoint === "checkBlocksExist") return Promise.resolve({[payload.ids?.[0] ?? "x"]: true});
             return Promise.resolve(null);

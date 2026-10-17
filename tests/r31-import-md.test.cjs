@@ -159,12 +159,14 @@ test("R61：md 包 overwrite 同类型更新走 updateBlock（不删旧建新）
                 }
                 case "getBlockAttrs":
                     return Promise.resolve(blocks[payload.id] ?? {"custom-xlc-id": "xlc-md0000000001", "custom-xlc-title": "原标题"});
+                case "getBlockKramdown":
+                    return Promise.resolve({id: payload.id, kramdown: "原正文"});
                 case "appendBlock": {
                     const n = calls.filter((c) => c.endpoint === "appendBlock").length;
                     const newId = "202401011200" + String(n).padStart(2, "0") + "-newb" + String(n).padStart(3, "0");
                     blocks[newId] = {"custom-xlc-id": "xlc-new" + String(n).padStart(8, "0")};
                     liveBlocks.push(newId);
-                    return Promise.resolve([{doOperations: [{id: newId}]}]);
+                    return Promise.resolve([{doOperations: [{id: newId, action: "insert", parentID: payload.parentID}]}]);
                 }
                 case "deleteBlock":
                     liveBlocks = liveBlocks.filter((id) => id !== payload.id);
@@ -255,7 +257,7 @@ test("R32：importMarkdownBundle 全字段保真（tags/category/source 不再�
         request(endpoint, payload = {}) {
             calls.push({endpoint, payload});
             if (endpoint === "getChildBlocks") return Promise.resolve([]);
-            if (endpoint === "appendBlock") return Promise.resolve([{doOperations: [{id: B1}]}]);
+            if (endpoint === "appendBlock") return Promise.resolve([{doOperations: [{id: B1, action: "insert", parentID: payload.parentID}]}]);
             return Promise.resolve(null);
         },
     };

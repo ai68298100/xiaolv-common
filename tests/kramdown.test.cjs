@@ -6,11 +6,11 @@ const Module = require("node:module");
 const esbuild = require("esbuild");
 
 const modulePath = path.join(__dirname, "../src/model/kramdown.ts");
-const compiled = esbuild.transformSync(fs.readFileSync(modulePath, "utf8"), {loader: "ts", format: "cjs", target: "node18"});
+const compiled = esbuild.buildSync({entryPoints: [modulePath], bundle: true, write: false, platform: "node", format: "cjs", target: "node18"});
 const loadedModule = new Module(modulePath, module);
 loadedModule.filename = modulePath;
 loadedModule.paths = Module._nodeModulePaths(path.dirname(modulePath));
-loadedModule._compile(compiled.code, modulePath);
+loadedModule._compile(compiled.outputFiles[0].text, modulePath);
 const {normalizeKramdownIal} = loadedModule.exports;
 
 test("四空格缩进代码中的 IAL 样文本保持字面", () => {

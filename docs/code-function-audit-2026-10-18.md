@@ -1,5 +1,7 @@
 # 代码与功能审计记录（2026-10-18）
 
+> R238 更正：R237 对全部 operation ID 的清单与回滚假设不成立。当前实现以 [ADR 0058](adr/0058-restrict-unverified-multiblock-writes.md) 为准；历史受控夹具不能证明宿主多块完整性。
+
 ## 已核对的主链
 
 - `src/index.ts`：宿主生命周期、命令/菜单注册、侧车加载、服务装配和导入导出入口。
@@ -19,11 +21,13 @@
 
 ## 已确认缺陷
 
-### B-006：历史多块正文只登记首块（已做离线止损）
+### B-006：历史多块正文只登记首块（现采用写前受限保护）
 
 历史复现中，`LibraryService.createItemUnlocked` 将 Markdown 交给 `appendBlock`，只使用首个 `doOperations` 的 ID 写条目属性；`getStoredItemKramdown` 也只读该 ID。历史真实内核记录表明多段 Markdown 会拆成兄弟块，本轮使用打包后的真实服务离线复现，确认创建、索引、预览、复制、JSON/Markdown 导出和删除都可能只覆盖首块，尾块无条目属性而留在库文档。详见 [multiblock-integrity-2026-10-18.md](multiblock-integrity-2026-10-18.md)。
 
-T-0090 已加入保守止损：新写条目把同一次 `appendBlock` 的全部合法物理块 ID 写到锚块 `custom-xlc-parts`，读取/索引摘要/导出/条件撤销/删除按清单处理，属性失败全量回滚；旧条目仍不猜测相邻块归属。多块正文更新暂返回 conflict，清单顺序、同库归属及真实宿主回读尚未验证。没有在 B-005 开放时启动宿主。复杂多段模板、简历、公司介绍和结构清单仍标为待现场验收。
+T-0091 替换了不安全假设：写前拒绝未经验证的多行正文；append 仅采目标文档 insert，setAttrs 不作为新块，异常响应不盲删。已有 parts 经同文档/顺序/属性检查读取，正文更新和自动删除暂停；单锚块也检查是否移出原文档。导入覆盖在删旧前检查新正文和备份均可写。未启动宿主，复杂模板继续受限。
+
+T-0092 补齐入口一致性：六个捕获入口超限后明确拒绝，停止截断后写入；表单写前检查与服务共用规则，行内错误保留输入和焦点；块引用草稿保存真实目标引用语法。更新正文时先验证旧正文可读取且符合恢复限制，避免失败恢复再次丢失内容。截图夹具的3个限制文案改为直接引用生产语言文件，新增8类型可见和拒绝零创建的浏览器检查；7类源码负向均检出并恢复。
 
 ## UI/无障碍待办
 
@@ -31,4 +35,4 @@ T-0090 已加入保守止损：新写条目把同一次 `appendBlock` 的全部�
 
 ## 最终门禁
 
-`pnpm run check`、`pnpm test` 498/498、`pnpm run build`、`pnpm run check:package` 13 项、`pnpm run scan`、Chrome `pnpm run test:ui`、`pnpm run test:ix` 74/74 和 `git diff --check` 均通过。最新搜索 UI 已改用 `list/listitem` + `aria-current`，客服浅色徽标改为高对比色；Chrome axe 的搜索亮色/暗色/移动矩阵为 0 violations。真实 Electron/Android/AI 现场证据仍按 B-001–B-006 分层，B-006 继续开放。
+`pnpm run check`、`pnpm test` 509/509、`pnpm run build`、`pnpm run check:package` 13 项、`pnpm run scan`、Chrome `pnpm run test:ui`、`pnpm run test:ix` 74/74 和 `git diff --check` 均通过。最新搜索 UI 已改用 `list/listitem` + `aria-current`，客服浅色徽标改为高对比色；Chrome axe 的搜索亮色/暗色/移动矩阵为 0 violations。真实 Electron/Android/AI 现场证据仍按 B-001–B-006 分层，B-006 继续开放。

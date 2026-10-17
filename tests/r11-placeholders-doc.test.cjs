@@ -46,6 +46,7 @@ test("执行器异步接线：title/path 占位符经 currentDoc() 解析后插�
     const inserted = [];
     const kernel = {
         request(endpoint, payload = {}) {
+            if (endpoint === "getChildBlocks") return Promise.resolve([{id: "20240101120000-abcdefg", type: "p"}]);
             if (endpoint === "getBlockKramdown") return Promise.resolve({id: payload.id, kramdown: "{{xlc:title}} 的模板"});
             if (endpoint === "getFullHPathByID") return Promise.resolve("/小驴/常用内容库");
             if (endpoint === "checkBlocksExist") return Promise.resolve({});
