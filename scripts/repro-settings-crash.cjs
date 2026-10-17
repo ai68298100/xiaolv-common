@@ -64,7 +64,7 @@ try {
             const input = await page.$(".xlc-doclist, .b3-text-field");
         },
         "data-button": async () => {
-            const labels = ["重建索引", "导出全部条目", "模板包", "清空最近使用", "导入提示词场景包"];
+            const labels = ["重建索引", "导出全部条目", "模板包", "清空最近使用", "导入常用内容示例"];
             const label = labels[rand(labels.length)];
             const btn = await page.evaluateHandle((l) => Array.from(document.querySelectorAll("button")).find((b) => (b.textContent || "").includes(l)), label);
             const el = btn.asElement();

@@ -1,10 +1,19 @@
-// R74：F8 快速捕获剪贴板（无表单一步入库 / 同文去重诚实提示）+ F7 提示词场景包内容完整性。
+// R74：F8 快速捕获剪贴板（无表单一步入库 / 同文去重诚实提示）+ F7 常用内容示例包完整性。
 const test = require("node:test");
 const assert = require("node:assert");
-const {capture, importMarkdown, variables} = require("./.build/entry.cjs");
+const {capture, importMarkdown, variables, actions} = require("./.build/entry.cjs");
 const {CaptureDialog} = capture;
 const {parseMarkdownPack} = importMarkdown;
 const {PROMPT_PACK_MD, PROMPT_PACK_NAME} = require("./.build/entry.cjs").promptPack;
+const {bodyWriteRestriction} = require("./.build/entry.cjs").kramdown;
+
+function actionContext(kramdown) {
+    return {
+        surface: "desktop",
+        hasActiveEditor: true,
+        content: {kramdown, sourceMissing: false, assetMissing: false},
+    };
+}
 
 function makeCapture(overrides = {}) {
     const calls = {created: null, notified: []};
@@ -221,15 +230,19 @@ test("选区、当前块和整篇文档均冻结触发时来源文档", async ()
     ]);
 });
 
-// ---- 提示词场景包 ----
+// ---- 常用内容示例包 ----
 
-test("场景包：20 个条目全部可解析（ID/类型合法），清单与包名正确", () => {
+test("常用内容示例：25 个条目全部可解析（ID/类型合法），清单与包名正确", () => {
     const parsed = parseMarkdownPack(PROMPT_PACK_MD);
-    assert.strictEqual(parsed.items.length, 20);
+    assert.strictEqual(parsed.items.length, 25);
+    assert.match(PROMPT_PACK_MD, /items: 25/);
     assert.ok(parsed.items.every((i) => /^xlc-[0-9a-z]{10,40}$/.test(i.id)));
     assert.strictEqual(parsed.pack?.name, PROMPT_PACK_NAME);
     assert.ok((parsed.pack?.vars.length ?? 0) >= 10);
     assert.strictEqual(parsed.issues.length, 0);
+    const ids = new Set(parsed.items.map((item) => item.id));
+    for (let n = 1; n <= 20; n++) assert.ok(ids.has(`xlc-pack${String(n).padStart(8, "0")}`), `原有 ID ${n} 不应变化`);
+    for (let n = 21; n <= 25; n++) assert.ok(ids.has(`xlc-pack${String(n).padStart(8, "0")}`), `新增 ID ${n} 缺失`);
 });
 
 test("场景包：覆盖商务、客服、提示词、写作、开发场景且演示变量系统（ask 与 cursor）", () => {
@@ -258,4 +271,74 @@ test("场景包：包含可直接改写的使用说明、地址、开票与退�
     assert.ok(parsed.items.some((item) => item.category === "商务" && /xlc:ask:纳税人识别号/.test(item.kramdown)));
     assert.ok(parsed.items.some((item) => item.category === "客服" && /xlc:ask:退换类型/.test(item.kramdown)));
     assert.ok(parsed.items.some((item) => item.category === "联系方式"));
+});
+
+test("常用内容示例：新增邮箱、地址、无效身份占位、网址和 JSON 均符合当前写入边界", () => {
+    const parsed = parseMarkdownPack(PROMPT_PACK_MD);
+    const added = parsed.items.filter((item) => Number(item.id.slice(-2)) >= 21);
+    assert.strictEqual(added.length, 5);
+    assert.strictEqual(parsed.items.filter((item) => bodyWriteRestriction(item.kramdown) === undefined).length, 8, "当前包应有 8 条可直接写入示例");
+    for (const item of added) {
+        assert.strictEqual(bodyWriteRestriction(item.kramdown), undefined, `${item.title} 应可直接导入`);
+    }
+    const byId = new Map(added.map((item) => [item.id, item]));
+    assert.equal(byId.get("xlc-pack00000021")?.itemType, "text");
+    assert.match(byId.get("xlc-pack00000021")?.kramdown ?? "", /邮箱/);
+    assert.equal(byId.get("xlc-pack00000022")?.category, "地址");
+    assert.match(byId.get("xlc-pack00000023")?.kramdown ?? "", /无效占位/);
+    assert.match(byId.get("xlc-pack00000023")?.kramdown ?? "", /000000000000000000/);
+    assert.equal(byId.get("xlc-pack00000024")?.itemType, "url");
+    assert.equal(byId.get("xlc-pack00000024")?.url, "https://example.com/docs");
+    assert.equal(byId.get("xlc-pack00000025")?.itemType, "code");
+    assert.match(byId.get("xlc-pack00000025")?.kramdown ?? "", /^```json[\s\S]*\n```$/);
+});
+
+test("常用内容示例：导入回执按写入限制统计，重复导入按 skip 且不重写", async () => {
+    const parsed = parseMarkdownPack(PROMPT_PACK_MD);
+    const stored = new Map();
+    let createCalls = 0;
+    const library = {
+        ensureIndex: async () => ({items: new Map(stored), entries: []}),
+        createItem: async (input) => {
+            createCalls++;
+            stored.set(input.logicalId, {id: input.logicalId});
+            return {ok: true, itemId: input.logicalId};
+        },
+        reindex: async () => ({items: new Map(stored), entries: []}),
+    };
+    const first = await importMarkdown.importMarkdownBundle(library, parsed.items, "skip");
+    assert.deepEqual(
+        {total: first.total, created: first.created, skipped: first.skipped, overwritten: first.overwritten, renamed: first.renamed, failed: first.failed},
+        {total: 25, created: 8, skipped: 0, overwritten: 0, renamed: 0, failed: 17},
+    );
+    assert.equal(createCalls, 8, "仅 8 条安全正文应进入 createItem");
+    const second = await importMarkdown.importMarkdownBundle(library, parsed.items, "skip");
+    assert.deepEqual(
+        {total: second.total, created: second.created, skipped: second.skipped, overwritten: second.overwritten, renamed: second.renamed, failed: second.failed},
+        {total: 25, created: 0, skipped: 8, overwritten: 0, renamed: 0, failed: 17},
+    );
+    assert.equal(createCalls, 8, "skip 重复项不应再次写入");
+    assert.equal(second.lines.filter((line) => line.action === "skip" && line.ok).length, 8);
+    assert.equal(second.lines.filter((line) => line.action === "new" && !line.ok).length, 17);
+});
+
+test("常用内容示例：预览正文与复制/插入载荷保持类型语义", () => {
+    const parsed = parseMarkdownPack(PROMPT_PACK_MD);
+    const byId = new Map(parsed.items.map((item) => [item.id, item]));
+    const email = byId.get("xlc-pack00000021");
+    assert.equal(email?.title, "邮箱地址（单行示例）");
+    assert.deepEqual(email?.tags, ["邮箱", "单行示例"]);
+    assert.equal(email?.kramdown, "邮箱：{{xlc:ask:邮箱}}");
+    assert.equal(actions.planAction(email, "copy", actionContext(email.kramdown)).clipboardText, email.kramdown);
+    assert.equal(actions.planAction(email, "insert", actionContext(email.kramdown)).markdown, email.kramdown);
+
+    const url = byId.get("xlc-pack00000024");
+    assert.equal(actions.planAction(url, "copy", actionContext(url.kramdown)).clipboardText, "https://example.com/docs");
+    assert.equal(actions.planAction(url, "insert", actionContext(url.kramdown)).markdown, "[常用网址（单行示例）](https://example.com/docs)");
+
+    const code = byId.get("xlc-pack00000025");
+    const copy = actions.planAction(code, "copy", actionContext(code.kramdown));
+    assert.equal(copy.clipboardKind, "code");
+    assert.equal(copy.clipboardText, '{\n  "name": "example",\n  "enabled": true,\n  "tags": ["common", "template"]\n}');
+    assert.equal(actions.planAction(code, "insert", actionContext(code.kramdown)).markdown, code.kramdown);
 });

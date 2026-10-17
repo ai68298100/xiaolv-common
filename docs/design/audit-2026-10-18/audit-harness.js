@@ -3001,6 +3001,8 @@ ${exception.mark.snippet}`;
     vars: "custom-xlc-vars",
     url: "custom-xlc-url",
     target: "custom-xlc-target",
+    /** 实验期有序物理块清单；只用于经归属检查的读取，不证明完整性或授权删除。 */
+    parts: "custom-xlc-parts",
     created: "custom-xlc-created",
     updated: "custom-xlc-updated"
   };
@@ -3025,6 +3027,8 @@ ${exception.mark.snippet}`;
     maxUsage: 2e3,
     maxAskFields: 16,
     maxCustomTransforms: 10,
+    /** 读取实验期 parts 清单的上限；不据此推断 appendBlock 返回了全部物理块。 */
+    maxItemParts: 64,
     maxSavedDiscoveryViews: 20,
     savedViewNameChars: 32,
     savedViewPathChars: 256,
@@ -3156,9 +3160,20 @@ ${exception.mark.snippet}`;
       sourceBlockId: isBlockId(srcBlock) ? srcBlock : "",
       sourceType: declaredSourceType || (srcDoc || srcBlock ? "block" : "manual")
     };
+    const rawParts = attrs[ATTR.parts];
+    let partBlockIds;
+    let partsCorrupt = false;
+    if (typeof rawParts === "string" && rawParts.trim()) {
+      const parts = rawParts.split(",").map((part) => part.trim()).filter(Boolean);
+      const valid = parts.length >= 2 && parts.length <= LIMITS.maxItemParts && parts[0] === blockId && new Set(parts).size === parts.length && parts.every((part) => isBlockId(part));
+      if (valid) partBlockIds = parts;
+      else partsCorrupt = true;
+    }
     return {
       id: logicalIdRaw,
       blockId,
+      ...partBlockIds ? { partBlockIds } : {},
+      ...partsCorrupt ? { partsCorrupt: true } : {},
       libraryDocId,
       itemType,
       title,
@@ -3806,6 +3821,7 @@ ${exception.mark.snippet}`;
         const isApple = /Mac|iPhone|iPad/i.test(navigator.platform || "");
         kbdRow = document.createElement("div");
         kbdRow.className = "xlc-kbdrow";
+        kbdRow.tabIndex = 0;
         kbdRow.setAttribute("aria-label", this.deps.t("keyboardHelp"));
         const kbdLabel = document.createElement("span");
         kbdLabel.className = "xlc-kbdrow-label";
@@ -3961,7 +3977,7 @@ ${exception.mark.snippet}`;
       list.className = "xlc-list";
       list.id = "xlc-search-results";
       list.tabIndex = 0;
-      list.setAttribute("role", "listbox");
+      list.setAttribute("role", "list");
       list.setAttribute("aria-label", this.deps.t("pluginName"));
       input.setAttribute("aria-controls", list.id);
       list.addEventListener("keydown", (e) => void this.onKeydown(e));
@@ -4022,6 +4038,7 @@ ${exception.mark.snippet}`;
         pane.appendChild(mediaHint);
         const paneBody = document.createElement("div");
         paneBody.className = "xlc-pane-body xlc-pane-body--muted";
+        paneBody.tabIndex = 0;
         paneBody.textContent = this.deps.t("previewUnavailable");
         pane.appendChild(paneBody);
         pane.appendChild(this.buildPaneFoot());
@@ -4126,6 +4143,10 @@ ${exception.mark.snippet}`;
       media.className = "xlc-form-hint xlc-guide-vars";
       media.textContent = this.deps.t("usageGuideMedia");
       root.appendChild(media);
+      const multiblock = document.createElement("p");
+      multiblock.className = "xlc-form-hint xlc-guide-vars";
+      multiblock.textContent = this.deps.t("usageGuideMultiblock");
+      root.appendChild(multiblock);
       const actions = document.createElement("div");
       actions.className = "xlc-form-actions";
       const close = document.createElement("button");
@@ -4556,8 +4577,8 @@ ${exception.mark.snippet}`;
       row.dataset.xlcControl = "item.row";
       row.dataset.xlcIndex = String(index);
       row.id = `xlc-result-${index}`;
-      row.setAttribute("role", "option");
-      row.setAttribute("aria-selected", index === this.activeIndex ? "true" : "false");
+      row.setAttribute("role", "listitem");
+      row.setAttribute("aria-current", index === this.activeIndex ? "true" : "false");
       row.setAttribute("aria-posinset", String(index + 1));
       row.setAttribute("aria-setsize", String(this.results.length));
       const main = document.createElement("div");
@@ -4918,8 +4939,8 @@ ${exception.mark.snippet}`;
           el.className = "xlc-row xlc-row--provider";
           el.dataset.xlcVirtualId = row.virtualId;
           el.id = `xlc-provider-${this.providerRows.indexOf(row)}`;
-          el.setAttribute("role", "option");
-          el.setAttribute("aria-selected", "false");
+          el.setAttribute("role", "listitem");
+          el.setAttribute("aria-current", "false");
           const main = document.createElement("div");
           main.className = "xlc-row-main";
           const title = document.createElement("div");
@@ -5136,7 +5157,7 @@ ${exception.mark.snippet}`;
         const resultIndex = child.dataset.xlcIndex;
         const active3 = resultIndex !== void 0 ? this.activeProvider < 0 && Number(resultIndex) === this.activeIndex : this.activeProvider >= 0 && child.id === `xlc-provider-${this.activeProvider}`;
         child.classList.toggle("xlc-row--active", active3);
-        child.setAttribute("aria-selected", active3 ? "true" : "false");
+        child.setAttribute("aria-current", active3 ? "true" : "false");
       });
       const active2 = this.activeProvider >= 0 ? rows.find((row) => row.id === `xlc-provider-${this.activeProvider}`) : rows.find((row) => row.dataset.xlcIndex === String(this.activeIndex));
       const input = (_c = this.dialog) == null ? void 0 : _c.element.querySelector(".xlc-search-input");
@@ -6543,6 +6564,7 @@ ${exception.mark.snippet}`;
       ].filter(Boolean).join("\n");
       mdParts.unshift(manifest, "");
     }
+    let totalLen = mdParts.reduce((length, part) => length + part.length, 0) + mdParts.length - 1;
     for (const item of items) {
       const kramdown = (_b = kramdownById.get(item.id)) != null ? _b : "";
       const meta = [
@@ -6559,7 +6581,12 @@ ${exception.mark.snippet}`;
         item.targetBlockId ? `target: ${oneLine(item.targetBlockId)}` : "",
         `-->`
       ].filter(Boolean).join("\n");
-      mdParts.push(`## ${oneLine(item.title || item.id)}`, "", meta, "", kramdown, "");
+      const itemParts = [`## ${oneLine(item.title || item.id)}`, "", meta, "", kramdown, ""];
+      totalLen += itemParts.reduce((length, part) => length + part.length, 0) + itemParts.length;
+      if (totalLen > LIMITS.contentChars) {
+        throw new ExportIntegrityError("too-large", "", String(LIMITS.contentChars));
+      }
+      mdParts.push(...itemParts);
       if (item.itemType === "image" || item.itemType === "asset") {
         const assetPath = extractAssetPath(kramdown);
         if (assetPath && !assetEntries.has(assetPath)) {
@@ -6576,12 +6603,155 @@ ${exception.mark.snippet}`;
       }
     }
     const markdown = mdParts.join("\n");
-    if (markdown.length > LIMITS.contentChars) {
-      throw new ExportIntegrityError("too-large", "", String(LIMITS.contentChars));
-    }
     entries.push({ name: "items.md", data: new TextEncoder().encode(markdown) });
     entries.push(...assetEntries.values());
     return { entries, itemCount: items.length, assetCount, skippedAssets, varNames };
+  }
+
+  // src/model/kramdown.ts
+  function bodyWriteRestriction(markdown) {
+    var _a;
+    if (!markdown.trim()) return "body is empty";
+    if (markdown.length > LIMITS.contentChars) return "body exceeds the supported size; nothing was written";
+    if (/[\u2028\u2029]/.test(markdown)) return "multi-line body writing is unavailable pending B-006 host verification";
+    const lines = markdown.replace(/\r\n?/g, "\n").split("\n");
+    while (lines.length > 1 && lines[0] === "") lines.shift();
+    while (lines.length > 1 && lines[lines.length - 1] === "") lines.pop();
+    const opening = (_a = lines[0]) == null ? void 0 : _a.match(/^(`{3,}|~{3,})([a-zA-Z0-9_+.-]*)[ \t]*$/);
+    if (opening && lines.length >= 2) {
+      const fence = opening[1];
+      const close = new RegExp(`^ {0,3}${fence[0]}{${fence.length},}[ \\t]*$`);
+      const closingIndex = lines.findIndex((line, index) => index > 0 && close.test(line));
+      if (closingIndex === lines.length - 1) return void 0;
+    }
+    if (lines.length === 1 && !/\{:|\{\{\{|^ {0,3}(`{3,}|~{3,})/.test(lines[0])) return void 0;
+    return "multi-line or structured body writing is unavailable pending B-006 host verification; use a single line or a complete code fence";
+  }
+  var ATTRIBUTE_PATTERN = /(^|\s)([\w:-]+)=(?:"[^"]*"|'[^']*'|[^\s}]+)(?=\s|$)/g;
+  var IAL_TOKEN_PATTERN = /(`+)|(\{:[^{}]*\})/g;
+  function normalizeIalToken(ial) {
+    const attributes = ial.slice(2, -1);
+    const safeAttributes = attributes.replace(
+      ATTRIBUTE_PATTERN,
+      (attribute, _space, name) => name === "id" || name === "updated" || name.startsWith("custom-xlc-") ? " " : attribute
+    ).trim();
+    return safeAttributes ? `{: ${safeAttributes}}` : "";
+  }
+  function findCodeLines(lines) {
+    var _a, _b;
+    const codeLines = [];
+    let fence = null;
+    for (const line of lines) {
+      if (fence) {
+        codeLines.push(true);
+        const closing = (_a = line.match(/^\s*(`+|~+)\s*$/)) == null ? void 0 : _a[1];
+        if (closing && closing.charAt(0) === fence.marker && closing.length >= fence.length) fence = null;
+        continue;
+      }
+      if (!line.trim()) {
+        codeLines.push(false);
+        continue;
+      }
+      if (/^(?: {4,}|\t)/.test(line)) {
+        codeLines.push(true);
+        continue;
+      }
+      const opening = (_b = line.match(/^\s*(`{3,}|~{3,})/)) == null ? void 0 : _b[1];
+      if (opening) {
+        fence = { marker: opening.charAt(0), length: opening.length };
+        codeLines.push(true);
+        continue;
+      }
+      codeLines.push(false);
+    }
+    return codeLines;
+  }
+  function findInlineCodeTicks(lines, codeLines) {
+    var _a, _b;
+    const pairedByLine = lines.map(() => /* @__PURE__ */ new Set());
+    let segment = [];
+    const pairSegment = () => {
+      var _a2, _b2;
+      const nextByLength = /* @__PURE__ */ new Map();
+      const nextSameLength = /* @__PURE__ */ new Map();
+      for (let index = segment.length - 1; index >= 0; index--) {
+        const tick = segment[index];
+        if (!tick) continue;
+        const next = nextByLength.get(tick.length);
+        if (next !== void 0) nextSameLength.set(index, next);
+        nextByLength.set(tick.length, index);
+      }
+      for (let index = 0; index < segment.length; index++) {
+        const tick = segment[index];
+        if (!tick) continue;
+        const closeIndex = nextSameLength.get(index);
+        if (closeIndex === void 0) continue;
+        (_a2 = pairedByLine[tick.line]) == null ? void 0 : _a2.add(tick.offset);
+        const close = segment[closeIndex];
+        if (close) (_b2 = pairedByLine[close.line]) == null ? void 0 : _b2.add(close.offset);
+        index = closeIndex;
+      }
+      segment = [];
+    };
+    for (let lineIndex = 0; lineIndex < lines.length; lineIndex++) {
+      const line = (_a = lines[lineIndex]) != null ? _a : "";
+      if (codeLines[lineIndex]) {
+        pairSegment();
+        continue;
+      }
+      IAL_TOKEN_PATTERN.lastIndex = 0;
+      for (const match of line.matchAll(IAL_TOKEN_PATTERN)) {
+        if (!match[1]) continue;
+        segment.push({ line: lineIndex, offset: (_b = match.index) != null ? _b : 0, length: match[0].length });
+      }
+    }
+    pairSegment();
+    return pairedByLine;
+  }
+  function normalizeLineIals(line, activeInlineCodeTicks, pairedInlineCodeTicks) {
+    var _a;
+    let cursor = 0;
+    let inlineCodeTicks = activeInlineCodeTicks;
+    let output = "";
+    IAL_TOKEN_PATTERN.lastIndex = 0;
+    for (const match of line.matchAll(IAL_TOKEN_PATTERN)) {
+      const token = match[0];
+      const start = (_a = match.index) != null ? _a : 0;
+      output += line.slice(cursor, start);
+      cursor = start + token.length;
+      if (match[1]) {
+        if (pairedInlineCodeTicks.has(start)) {
+          if (!inlineCodeTicks) inlineCodeTicks = token.length;
+          else if (inlineCodeTicks === token.length) inlineCodeTicks = 0;
+        }
+        output += token;
+      } else if (inlineCodeTicks) {
+        output += token;
+      } else {
+        output += normalizeIalToken(token);
+      }
+    }
+    return { line: output + line.slice(cursor), activeInlineCodeTicks: inlineCodeTicks };
+  }
+  function normalizeKramdownIal(markdown) {
+    var _a, _b;
+    const lines = markdown.replace(/\r\n?/g, "\n").split("\n");
+    const codeLines = findCodeLines(lines);
+    const pairedInlineCodeTicks = findInlineCodeTicks(lines, codeLines);
+    const output = [];
+    let inlineCodeTicks = 0;
+    for (let index = 0; index < lines.length; index++) {
+      const line = (_a = lines[index]) != null ? _a : "";
+      if (codeLines[index]) {
+        inlineCodeTicks = 0;
+        output.push(line);
+        continue;
+      }
+      const normalized = normalizeLineIals(line, inlineCodeTicks, (_b = pairedInlineCodeTicks[index]) != null ? _b : /* @__PURE__ */ new Set());
+      output.push(normalized.line);
+      inlineCodeTicks = normalized.activeInlineCodeTicks;
+    }
+    return output.join("\n").trim();
   }
 
   // src/service/import-markdown.ts
@@ -6718,16 +6888,16 @@ ${exception.mark.snippet}`;
   }
 
   // src/service/prompt-pack.ts
-  var PROMPT_PACK_NAME = "\u63D0\u793A\u8BCD\u573A\u666F\u5305";
+  var PROMPT_PACK_NAME = "\u5E38\u7528\u5185\u5BB9\u793A\u4F8B";
   var PROMPT_PACK_MD = [
     "<!-- xlc-pack",
     `name: ${PROMPT_PACK_NAME}`,
-    "items: 20",
+    "items: 25",
     "vars: \u5BA2\u6237\u540D\u79F0,\u8865\u507F\u6BD4\u4F8B,\u5DE5\u5355\u53F7,\u8DDF\u8FDB\u65E5\u671F,\u5BA2\u6237\u6635\u79F0,\u76EE\u6807\u8BFB\u8005,\u7F16\u7A0B\u8BED\u8A00,\u672C\u5468\u4E3B\u9898,\u4F1A\u8BAE\u4E3B\u9898,\u59D3\u540D,\u804C\u4F4D,\u516C\u53F8\u540D\u79F0,\u90AE\u7BB1,\u624B\u673A\u53F7,\u6536\u4EF6\u4EBA,\u4E3B\u9898,\u7701\u5E02\u533A,\u8BE6\u7EC6\u5730\u5740,\u90AE\u7F16,\u5907\u6CE8,\u53D1\u7968\u7C7B\u578B,\u4F01\u4E1A\u540D\u79F0,\u7EB3\u7A0E\u4EBA\u8BC6\u522B\u53F7,\u5F00\u6237\u94F6\u884C,\u94F6\u884C\u8D26\u53F7,\u9000\u6362\u7C7B\u578B,\u8BA2\u5355\u7F16\u53F7,\u5BC4\u56DE\u5730\u5740,\u50AC\u529E\u4E8B\u9879,\u539F\u5B9A\u622A\u6B62,\u54A8\u8BE2\u95EE\u9898",
     "-->",
-    "# \u63D0\u793A\u8BCD\u573A\u666F\u5305",
+    "# \u5E38\u7528\u5185\u5BB9\u793A\u4F8B",
     "",
-    "> \u5C0F\u9A74\u5E38\u7528\uFF08\u5185\u6D4B\u7248\uFF09\u5185\u7F6E\u6A21\u677F\u96C6\uFF1A\u4F7F\u7528\u8BF4\u660E / \u5730\u5740 / \u90AE\u7BB1 / \u8054\u7CFB\u65B9\u5F0F / \u5BA2\u670D\u56DE\u590D / AI \u63D0\u793A\u8BCD / \u7814\u53D1\u5199\u4F5C / \u5546\u52A1\u8D44\u6599\u3002\u5BFC\u5165\u540E\u5373\u4E3A\u771F\u5B9E\u601D\u6E90\u5757\uFF0C\u53EF\u81EA\u7531\u4FEE\u6539\u3002",
+    "> \u5C0F\u9A74\u5E38\u7528\uFF08\u5185\u6D4B\u7248\uFF09\u5E38\u7528\u5185\u5BB9\u793A\u4F8B\uFF1A\u4F7F\u7528\u8BF4\u660E / \u5730\u5740 / \u90AE\u7BB1 / \u8054\u7CFB\u65B9\u5F0F / \u5BA2\u670D\u56DE\u590D / AI \u63D0\u793A\u8BCD / \u7814\u53D1\u5199\u4F5C / \u5546\u52A1\u8D44\u6599 / \u8EAB\u4EFD\u5360\u4F4D / \u7F51\u5740 / JSON\u3002\u5BFC\u5165\u540E\u5373\u4E3A\u771F\u5B9E\u601D\u6E90\u5757\uFF0C\u53EF\u81EA\u7531\u4FEE\u6539\u3002\u591A\u884C\u6B63\u6587\u4E0E\u6DF7\u5408\u7ED3\u6784\u4ECD\u53D7 B-006 \u5199\u5165\u8FB9\u754C\u9650\u5236\u3002",
     "",
     // ---- 入门与个人信息 ----
     "## \u4F7F\u7528\u8BF4\u660E\uFF1A\u4E09\u6B65\u5F00\u59CB",
@@ -7044,7 +7214,70 @@ ${exception.mark.snippet}`;
     "2. __\u5904\u7406\u6B65\u9AA4\u6216\u6838\u5FC3\u89E3\u7B54__\uFF1B",
     "3. \u5982\u4ECD\u672A\u89E3\u51B3\uFF0C\u53EF\u53C2\u8003\u6587\u6863\uFF1A__\u94FE\u63A5__\uFF0C\u6216\u5C06\u9519\u8BEF\u622A\u56FE\u56DE\u590D\u6211\u4EEC\u3002",
     "",
-    "> \u{1F4A1} \u63D0\u793A\uFF1A\u672C\u7B54\u590D\u9002\u7528\u4E8E\u5E38\u89C1\u6807\u51C6\u6D41\u7A0B\uFF1B\u590D\u6742\u7279\u6B8A\u60C5\u51B5\u8BF7\u8F6C\u4EBA\u5DE5\u4E13\u9879\u5DE5\u5355\u8DDF\u8FDB\u3002{{xlc:cursor}}"
+    "> \u{1F4A1} \u63D0\u793A\uFF1A\u672C\u7B54\u590D\u9002\u7528\u4E8E\u5E38\u89C1\u6807\u51C6\u6D41\u7A0B\uFF1B\u590D\u6742\u7279\u6B8A\u60C5\u51B5\u8BF7\u8F6C\u4EBA\u5DE5\u4E13\u9879\u5DE5\u5355\u8DDF\u8FDB\u3002{{xlc:cursor}}",
+    "",
+    // ---- 场景⑤ 单行资料与代码格式示例（符合当前 B-006 写入边界） ----
+    "## \u90AE\u7BB1\u5730\u5740\uFF08\u5355\u884C\u793A\u4F8B\uFF09",
+    "",
+    "<!-- xlc-item",
+    "id: xlc-pack00000021",
+    "type: text",
+    "tags: \u90AE\u7BB1,\u5355\u884C\u793A\u4F8B",
+    "category: \u90AE\u7BB1",
+    "source-type: external",
+    "-->",
+    "\u90AE\u7BB1\uFF1A{{xlc:ask:\u90AE\u7BB1}}",
+    "",
+    "## \u6536\u4EF6\u5730\u5740\uFF08\u5355\u884C\u793A\u4F8B\uFF09",
+    "",
+    "<!-- xlc-item",
+    "id: xlc-pack00000022",
+    "type: text",
+    "tags: \u5730\u5740,\u5355\u884C\u793A\u4F8B",
+    "category: \u5730\u5740",
+    "source-type: external",
+    "-->",
+    "\u6536\u4EF6\u5730\u5740\uFF1A{{xlc:ask:\u7701\u5E02\u533A}} {{xlc:ask:\u8BE6\u7EC6\u5730\u5740}}\uFF08{{xlc:ask:\u6536\u4EF6\u4EBA}}\uFF09",
+    "",
+    "## \u8EAB\u4EFD\u8BC1\u53F7\uFF08\u65E0\u6548\u5360\u4F4D\uFF09",
+    "",
+    "<!-- xlc-item",
+    "id: xlc-pack00000023",
+    "type: text",
+    "tags: \u8EAB\u4EFD,\u5360\u4F4D,\u9690\u79C1",
+    "category: \u4E2A\u4EBA\u8D44\u6599",
+    "source-type: external",
+    "-->",
+    "\u8EAB\u4EFD\u8BC1\u53F7\uFF08\u65E0\u6548\u5360\u4F4D\uFF0C\u4EC5\u7528\u4E8E\u6392\u7248\u6D4B\u8BD5\uFF09\uFF1A000000000000000000",
+    "",
+    "## \u5E38\u7528\u7F51\u5740\uFF08\u5355\u884C\u793A\u4F8B\uFF09",
+    "",
+    "<!-- xlc-item",
+    "id: xlc-pack00000024",
+    "type: url",
+    "tags: \u7F51\u5740,\u94FE\u63A5",
+    "category: \u5F00\u53D1",
+    "source-type: external",
+    "url: https://example.com/docs",
+    "-->",
+    "https://example.com/docs",
+    "",
+    "## JSON \u914D\u7F6E\u7247\u6BB5",
+    "",
+    "<!-- xlc-item",
+    "id: xlc-pack00000025",
+    "type: code",
+    "tags: \u5F00\u53D1,JSON,\u4EE3\u7801",
+    "category: \u5F00\u53D1",
+    "source-type: external",
+    "-->",
+    "```json",
+    "{",
+    '  "name": "example",',
+    '  "enabled": true,',
+    '  "tags": ["common", "template"]',
+    "}",
+    "```"
   ].join("\n");
 
   // src/ui/settings-dialog.ts
@@ -8965,10 +9198,10 @@ ${exception.mark.snippet}`;
         this.activeCaptures.delete(key);
       }
     }
-    notifyIfTruncated(text) {
-      if (text.length <= 1e5) return text;
-      this.deps.notify("info", this.deps.t("captureTruncated", "100000"));
-      return text.slice(0, 1e5);
+    checkCaptureSize(text) {
+      if (text.length <= LIMITS.contentChars) return true;
+      this.deps.notify("error", this.deps.t("aiContentTooLong", String(LIMITS.contentChars)));
+      return false;
     }
     /** 保存当前选中内容（命令面板/正文右键入口） */
     async saveSelection() {
@@ -8986,7 +9219,8 @@ ${exception.mark.snippet}`;
         this.deps.notify("error", this.deps.t("captureSelectionEmpty"));
         return;
       }
-      const content = this.notifyIfTruncated(text);
+      const content = text;
+      if (!this.checkCaptureSize(content)) return;
       this.openForm(content, inferTypeFromText(content), sel.blockId, {
         docId: (_a = this.deps.currentDocId()) != null ? _a : void 0,
         sourceType: "selection"
@@ -9005,7 +9239,8 @@ ${exception.mark.snippet}`;
             });
             return;
           }
-          const content = this.notifyIfTruncated(text);
+          const content = text;
+          if (!this.checkCaptureSize(content)) return;
           this.openForm(content, inferTypeFromText(content), null, {
             sourceType: "clipboard"
           });
@@ -9040,7 +9275,12 @@ ${exception.mark.snippet}`;
         this.deps.notify("error", this.deps.t(readFailed ? "clipboardReadFailed" : "clipboardEmpty"));
         return;
       }
-      const content = this.notifyIfTruncated(text);
+      const content = text;
+      if (!this.checkCaptureSize(content)) return;
+      if (bodyWriteRestriction(content)) {
+        this.deps.notify("error", this.deps.t("multiBlockPendingHint"));
+        return;
+      }
       let dup;
       try {
         dup = await this.deps.findDuplicate(content);
@@ -9089,7 +9329,8 @@ ${exception.mark.snippet}`;
         this.newManual(options == null ? void 0 : options.title);
         return;
       }
-      const safeText = this.notifyIfTruncated(text);
+      if (!this.checkCaptureSize(text)) return;
+      const safeText = text;
       const inferredType = inferTypeFromText(safeText);
       const derived = inferredType === "url" ? safeText : (safeText.split("\n")[0] || "").slice(0, 60).trim();
       const title = (options == null ? void 0 : options.title) || derived || this.deps.t("unknownType");
@@ -9107,7 +9348,7 @@ ${exception.mark.snippet}`;
         this.deps.notify("error", this.deps.t("invalidItem"));
         return;
       }
-      this.openForm("", "blockref", null, {
+      this.openForm(`((${blockId}))`, "blockref", null, {
         title: (refText || blockId).slice(0, 120),
         targetBlockId: blockId,
         docId: (_a = this.deps.currentDocId()) != null ? _a : void 0,
@@ -9157,7 +9398,8 @@ ${exception.mark.snippet}`;
           this.deps.notify("error", this.deps.t("captureBlockFailed"));
           return;
         }
-        const content = this.notifyIfTruncated(kramdown);
+        const content = kramdown;
+        if (!this.checkCaptureSize(content)) return;
         this.openForm(content, inferTypeFromText(content), blockId, {
           docId: sourceDocId,
           sourceType: "block"
@@ -9184,7 +9426,8 @@ ${exception.mark.snippet}`;
           return;
         }
         const title = (_a = doc.hPath.split("/").filter(Boolean).pop()) != null ? _a : doc.hPath;
-        const content = this.notifyIfTruncated(doc.content);
+        const content = doc.content;
+        if (!this.checkCaptureSize(content)) return;
         this.openForm(content, "markdown", null, { title, docId, sourceType: "doc-fragment" });
       });
     }
@@ -9277,6 +9520,12 @@ ${exception.mark.snippet}`;
       contentError.setAttribute("role", "alert");
       contentError.hidden = true;
       contentWrap.appendChild(contentError);
+      const multiBlockHint = document.createElement("span");
+      multiBlockHint.className = "xlc-form-hint";
+      multiBlockHint.dataset.xlcControl = "capture.body-restriction";
+      multiBlockHint.setAttribute("role", "note");
+      multiBlockHint.textContent = t("multiBlockPendingHint");
+      contentWrap.appendChild(multiBlockHint);
       const varbar = buildVariableBar(t, () => contentEl);
       contentEl.parentElement.after(varbar);
       const titleEl = field(t("title"), (_d = overrides == null ? void 0 : overrides.title) != null ? _d : "", false, "xlc-form-title");
@@ -9571,7 +9820,7 @@ ${exception.mark.snippet}`;
           this.deps.notify("error", t("blockrefNeedsTarget"));
           return;
         }
-        let markdown = contentValue;
+        let markdown = type === "blockref" && !contentValue.trim() && (overrides == null ? void 0 : overrides.targetBlockId) ? `((${overrides.targetBlockId}))` : contentValue;
         if (type === "code" && !/^```/.test(contentValue.trim())) {
           markdown = "```\n" + contentValue + "\n```";
         } else if (type === "url") {
@@ -9581,6 +9830,12 @@ ${exception.mark.snippet}`;
             this.deps.notify("error", t("captureUrlInvalid"));
             return;
           }
+        }
+        if (bodyWriteRestriction(markdown)) {
+          const message = markdown.length > LIMITS.contentChars ? t("aiContentTooLong", String(LIMITS.contentChars)) : t("multiBlockPendingHint");
+          flagContentError(message);
+          this.deps.notify("error", message);
+          return;
         }
         saving = true;
         saveBtn.disabled = true;
@@ -10295,7 +10550,7 @@ ${exception.mark.snippet}`;
       filters.appendChild(this.filterTag);
       this.tagFacets = document.createElement("div");
       this.tagFacets.className = "xlc-discovery-tag-facets";
-      this.tagFacets.setAttribute("role", "list");
+      this.tagFacets.setAttribute("role", "group");
       this.tagFacets.setAttribute("aria-label", this.tx("discoveryTagFacets"));
       filters.appendChild(this.tagFacets);
       if (this.deps.onSaveView) {
@@ -11001,11 +11256,11 @@ ${exception.mark.snippet}`;
         button.className = "b3-button xlc-tag-facet";
         button.dataset.xlcControl = "discovery.tag-facet";
         button.dataset.tag = facet.tag;
-        button.setAttribute("role", "listitem");
         const active2 = this.filter.tag === facet.tag.toLocaleLowerCase();
         button.setAttribute("aria-pressed", String(active2));
-        button.setAttribute("aria-label", this.tx("discoveryTagFacetApply", facet.tag, String(facet.count)));
         button.textContent = `#${facet.tag} \xB7 ${facet.count}`;
+        const actionLabel = this.tx("discoveryTagFacetApply", facet.tag, String(facet.count));
+        button.setAttribute("aria-label", `${button.textContent}\uFF0C${actionLabel}`);
         button.addEventListener("click", () => {
           var _a;
           const next = active2 ? "" : facet.tag;
@@ -11957,134 +12212,6 @@ ${details.join("\n")}` : ""}`;
     return out;
   }
 
-  // src/model/kramdown.ts
-  var ATTRIBUTE_PATTERN = /(^|\s)([\w:-]+)=(?:"[^"]*"|'[^']*'|[^\s}]+)(?=\s|$)/g;
-  var IAL_TOKEN_PATTERN = /(`+)|(\{:[^{}]*\})/g;
-  function normalizeIalToken(ial) {
-    const attributes = ial.slice(2, -1);
-    const safeAttributes = attributes.replace(
-      ATTRIBUTE_PATTERN,
-      (attribute, _space, name) => name === "id" || name === "updated" || name.startsWith("custom-xlc-") ? " " : attribute
-    ).trim();
-    return safeAttributes ? `{: ${safeAttributes}}` : "";
-  }
-  function findCodeLines(lines) {
-    var _a, _b;
-    const codeLines = [];
-    let fence = null;
-    for (const line of lines) {
-      if (fence) {
-        codeLines.push(true);
-        const closing = (_a = line.match(/^\s*(`+|~+)\s*$/)) == null ? void 0 : _a[1];
-        if (closing && closing.charAt(0) === fence.marker && closing.length >= fence.length) fence = null;
-        continue;
-      }
-      if (!line.trim()) {
-        codeLines.push(false);
-        continue;
-      }
-      if (/^(?: {4,}|\t)/.test(line)) {
-        codeLines.push(true);
-        continue;
-      }
-      const opening = (_b = line.match(/^\s*(`{3,}|~{3,})/)) == null ? void 0 : _b[1];
-      if (opening) {
-        fence = { marker: opening.charAt(0), length: opening.length };
-        codeLines.push(true);
-        continue;
-      }
-      codeLines.push(false);
-    }
-    return codeLines;
-  }
-  function findInlineCodeTicks(lines, codeLines) {
-    var _a, _b;
-    const pairedByLine = lines.map(() => /* @__PURE__ */ new Set());
-    let segment = [];
-    const pairSegment = () => {
-      var _a2, _b2;
-      const nextByLength = /* @__PURE__ */ new Map();
-      const nextSameLength = /* @__PURE__ */ new Map();
-      for (let index = segment.length - 1; index >= 0; index--) {
-        const tick = segment[index];
-        if (!tick) continue;
-        const next = nextByLength.get(tick.length);
-        if (next !== void 0) nextSameLength.set(index, next);
-        nextByLength.set(tick.length, index);
-      }
-      for (let index = 0; index < segment.length; index++) {
-        const tick = segment[index];
-        if (!tick) continue;
-        const closeIndex = nextSameLength.get(index);
-        if (closeIndex === void 0) continue;
-        (_a2 = pairedByLine[tick.line]) == null ? void 0 : _a2.add(tick.offset);
-        const close = segment[closeIndex];
-        if (close) (_b2 = pairedByLine[close.line]) == null ? void 0 : _b2.add(close.offset);
-        index = closeIndex;
-      }
-      segment = [];
-    };
-    for (let lineIndex = 0; lineIndex < lines.length; lineIndex++) {
-      const line = (_a = lines[lineIndex]) != null ? _a : "";
-      if (codeLines[lineIndex]) {
-        pairSegment();
-        continue;
-      }
-      IAL_TOKEN_PATTERN.lastIndex = 0;
-      for (const match of line.matchAll(IAL_TOKEN_PATTERN)) {
-        if (!match[1]) continue;
-        segment.push({ line: lineIndex, offset: (_b = match.index) != null ? _b : 0, length: match[0].length });
-      }
-    }
-    pairSegment();
-    return pairedByLine;
-  }
-  function normalizeLineIals(line, activeInlineCodeTicks, pairedInlineCodeTicks) {
-    var _a;
-    let cursor = 0;
-    let inlineCodeTicks = activeInlineCodeTicks;
-    let output = "";
-    IAL_TOKEN_PATTERN.lastIndex = 0;
-    for (const match of line.matchAll(IAL_TOKEN_PATTERN)) {
-      const token = match[0];
-      const start = (_a = match.index) != null ? _a : 0;
-      output += line.slice(cursor, start);
-      cursor = start + token.length;
-      if (match[1]) {
-        if (pairedInlineCodeTicks.has(start)) {
-          if (!inlineCodeTicks) inlineCodeTicks = token.length;
-          else if (inlineCodeTicks === token.length) inlineCodeTicks = 0;
-        }
-        output += token;
-      } else if (inlineCodeTicks) {
-        output += token;
-      } else {
-        output += normalizeIalToken(token);
-      }
-    }
-    return { line: output + line.slice(cursor), activeInlineCodeTicks: inlineCodeTicks };
-  }
-  function normalizeKramdownIal(markdown) {
-    var _a, _b;
-    const lines = markdown.replace(/\r\n?/g, "\n").split("\n");
-    const codeLines = findCodeLines(lines);
-    const pairedInlineCodeTicks = findInlineCodeTicks(lines, codeLines);
-    const output = [];
-    let inlineCodeTicks = 0;
-    for (let index = 0; index < lines.length; index++) {
-      const line = (_a = lines[index]) != null ? _a : "";
-      if (codeLines[index]) {
-        inlineCodeTicks = 0;
-        output.push(line);
-        continue;
-      }
-      const normalized = normalizeLineIals(line, inlineCodeTicks, (_b = pairedInlineCodeTicks[index]) != null ? _b : /* @__PURE__ */ new Set());
-      output.push(normalized.line);
-      inlineCodeTicks = normalized.activeInlineCodeTicks;
-    }
-    return output.join("\n").trim();
-  }
-
   // src/service/library.ts
   function fail(reason, message) {
     return { ok: false, reason, message };
@@ -12093,7 +12220,11 @@ ${details.join("\n")}` : ""}`;
     return { ok: true, data };
   }
   function sameManagedItem(actual, expected) {
-    return actual.id === expected.id && actual.blockId === expected.blockId && actual.libraryDocId === expected.libraryDocId && actual.itemType === expected.itemType && actual.title === expected.title && actual.alias === expected.alias && actual.tags.length === expected.tags.length && actual.tags.every((tag, index) => tag === expected.tags[index]) && actual.category === expected.category && (actual.itemType === "blockref" && expected.itemType === "blockref" ? true : actual.varCount === expected.varCount) && actual.source.sourceDocId === expected.source.sourceDocId && actual.source.sourceBlockId === expected.source.sourceBlockId && actual.source.sourceType === expected.source.sourceType && actual.url === expected.url && actual.targetBlockId === expected.targetBlockId && actual.createdAt === expected.createdAt && actual.updatedAt === expected.updatedAt && actual.droppedFields.length === expected.droppedFields.length && actual.droppedFields.every((field, index) => field === expected.droppedFields[index]);
+    var _a, _b, _c;
+    return actual.id === expected.id && actual.blockId === expected.blockId && actual.libraryDocId === expected.libraryDocId && actual.itemType === expected.itemType && actual.title === expected.title && actual.alias === expected.alias && actual.tags.length === expected.tags.length && actual.tags.every((tag, index) => tag === expected.tags[index]) && actual.category === expected.category && (actual.itemType === "blockref" && expected.itemType === "blockref" ? true : actual.varCount === expected.varCount) && actual.source.sourceDocId === expected.source.sourceDocId && actual.source.sourceBlockId === expected.source.sourceBlockId && actual.source.sourceType === expected.source.sourceType && actual.url === expected.url && actual.targetBlockId === expected.targetBlockId && actual.createdAt === expected.createdAt && actual.updatedAt === expected.updatedAt && Boolean(actual.partsCorrupt) === Boolean(expected.partsCorrupt) && ((_a = actual.partBlockIds) != null ? _a : [actual.blockId]).length === ((_b = expected.partBlockIds) != null ? _b : [expected.blockId]).length && ((_c = actual.partBlockIds) != null ? _c : [actual.blockId]).every((id, index) => {
+      var _a2;
+      return id === ((_a2 = expected.partBlockIds) != null ? _a2 : [expected.blockId])[index];
+    }) && actual.droppedFields.length === expected.droppedFields.length && actual.droppedFields.every((field, index) => field === expected.droppedFields[index]);
   }
   function normalizeConditionalMarkdown(markdown) {
     return normalizeKramdownIal(markdown);
@@ -12515,6 +12646,13 @@ ${details.join("\n")}` : ""}`;
             kramdown
           });
           if (!item) continue;
+          if (item.partsCorrupt) {
+            errors.push(`block ${child.id}: custom-xlc-parts is invalid`);
+          } else if (item.partBlockIds && item.partBlockIds.length > 1) {
+            const full = await this.readManagedPartKramdown(item);
+            if (full.ok) item.summary = deriveSummary(full.data);
+            else errors.push(`block ${child.id}: ${full.message}`);
+          }
           const targetBlockId = resolveBlockRefTarget(item);
           if (item.itemType === "blockref") {
             item.summary = "";
@@ -12629,15 +12767,45 @@ ${details.join("\n")}` : ""}`;
       };
       return expand(text, 1, /* @__PURE__ */ new Set());
     }
-    /** 读取条目在专用库中的物理正文（编辑、导出、撤销恢复使用）。 */
-    async getStoredItemKramdown(item) {
+    /** 按锚块 custom-xlc-parts 清单读取完整正文；旧条目只读取锚块，绝不猜相邻块。 */
+    async readManagedPartKramdown(item) {
+      var _a, _b, _c, _d;
+      if (item.partsCorrupt) return fail("conflict", `item ${item.id} has invalid custom-xlc-parts metadata`);
+      const ids = (_a = item.partBlockIds) != null ? _a : [item.blockId];
+      if (ids.length < 1 || ids.length > LIMITS.maxItemParts || ids[0] !== item.blockId || new Set(ids).size !== ids.length || !ids.every(isBlockId)) {
+        return fail("conflict", `item ${item.id} has invalid physical part list`);
+      }
+      const bodies = [];
       try {
-        const data = parseKramdown(await this.kernel.request("getBlockKramdown", { id: item.blockId }));
-        if (!data) return fail("not-found", `block ${item.blockId} kramdown unavailable`);
-        return ok(data.kramdown);
+        const children = parseChildBlocks(await this.kernel.request("getChildBlocks", { id: item.libraryDocId }));
+        const start = children.findIndex((child) => child.id === item.blockId);
+        if (start < 0 || !ids.every((id, index) => {
+          var _a2;
+          return ((_a2 = children[start + index]) == null ? void 0 : _a2.id) === id;
+        })) {
+          return fail("conflict", "physical parts are not consecutive top-level blocks in the item library document");
+        }
+        if (ids.length > 1) {
+          const attrs = parseBatchAttrs(await this.kernel.request("batchGetBlockAttrs", { ids }));
+          if (((_b = attrs[item.blockId]) == null ? void 0 : _b[ATTR.id]) !== item.id || ((_c = attrs[item.blockId]) == null ? void 0 : _c[ATTR.parts]) !== ids.join(",") || ids.slice(1).some((id) => !attrs[id] || attrs[id][ATTR.id] || attrs[id][ATTR.parts])) {
+            return fail("conflict", "physical part ownership is unverified or overlaps another managed item");
+          }
+        }
+        for (const id of ids) {
+          const data = parseKramdown(await this.kernel.request("getBlockKramdown", { id }));
+          if (!data || data.id !== id || typeof data.kramdown !== "string") {
+            return fail("not-found", `block ${id} kramdown unavailable`);
+          }
+          bodies.push(data.kramdown);
+        }
+        return ok(ids.length === 1 ? (_d = bodies[0]) != null ? _d : "" : bodies.join("\n\n"));
       } catch (err) {
         return toFailureReceipt(err);
       }
+    }
+    /** 读取条目在专用库中的物理正文（编辑、导出、撤销恢复使用）。 */
+    async getStoredItemKramdown(item) {
+      return this.readManagedPartKramdown(item);
     }
     /** 读取条目当前有效正文；引用入口永远跟随目标源块，不读取 marker。 */
     async getItemKramdown(item) {
@@ -12711,7 +12879,9 @@ ${details.join("\n")}` : ""}`;
       return key ? this.withWriteLock(key, action) : action();
     }
     async createItemUnlocked(input, libraryDocId, options = {}) {
-      var _a, _b, _c, _d, _e, _f, _g, _h, _i;
+      var _a, _b, _c, _d, _e, _f;
+      const restriction = bodyWriteRestriction(input.markdown);
+      if (restriction) return fail("conflict", restriction);
       const targetDoc = libraryDocId != null ? libraryDocId : await this.resolveWriteDoc();
       if (!targetDoc || !isBlockId(targetDoc)) return fail("invalid-input", "no library doc");
       const now = Date.now();
@@ -12751,17 +12921,32 @@ ${details.join("\n")}` : ""}`;
         return toFailureReceipt(err);
       }
       const ops = Array.isArray(insertResp) ? insertResp : [];
-      const newBlockId = (_i = (_h = (_g = ops[0]) == null ? void 0 : _g.doOperations) == null ? void 0 : _h[0]) == null ? void 0 : _i.id;
-      if (typeof newBlockId !== "string" || !isBlockId(newBlockId)) {
+      const rawOperations = ops.flatMap((group) => Array.isArray(group == null ? void 0 : group.doOperations) ? group.doOperations : []);
+      const inserts = rawOperations.filter((operation) => (operation == null ? void 0 : operation.action) === "insert");
+      if (!inserts.length || inserts.some((operation) => !isBlockId(operation.id) || operation.parentID !== targetDoc) || rawOperations.some((operation) => (operation == null ? void 0 : operation.action) !== "insert" && (operation == null ? void 0 : operation.action) !== "setAttrs")) {
+        return fail("conflict", `appendBlock outcome is unverified; inspect library document ${targetDoc} before retrying; no automatic deletion was attempted`);
+      }
+      const createdBlockIds = Array.from(new Set(inserts.map((operation) => operation == null ? void 0 : operation.id).filter((id) => typeof id === "string" && isBlockId(id))));
+      const newBlockId = createdBlockIds[0];
+      if (!newBlockId) {
         return fail("kernel-error", "appendBlock returned no block id");
+      }
+      if (createdBlockIds.length !== 1) {
+        return fail("conflict", `appendBlock returned multiple insert operations for restricted input; inspect library document ${targetDoc} before retrying; no automatic deletion was attempted`);
       }
       try {
         await this.kernel.request("setBlockAttrs", { id: newBlockId, attrs });
       } catch (err) {
-        try {
-          await this.kernel.request("deleteBlock", { id: newBlockId });
-        } catch {
-          return fail("kernel-error", `attrs write failed AND rollback failed; orphan block ${newBlockId}`);
+        let rollbackFailed = false;
+        for (const id of [...createdBlockIds].reverse()) {
+          try {
+            await this.kernel.request("deleteBlock", { id }, { maxRetries: 0 });
+          } catch {
+            rollbackFailed = true;
+          }
+        }
+        if (rollbackFailed) {
+          return fail("kernel-error", `attrs write failed AND rollback failed; orphan blocks ${createdBlockIds.join(",")}`);
         }
         return toFailureReceipt(err);
       }
@@ -12822,10 +13007,18 @@ ${details.join("\n")}` : ""}`;
       return this.withWriteLock(key, action);
     }
     async updateItemUnlocked(itemId, patch, options = {}) {
-      var _a;
+      var _a, _b, _c;
+      if (typeof patch.markdown === "string") {
+        const restriction = bodyWriteRestriction(patch.markdown);
+        if (restriction) return fail("conflict", restriction);
+      }
       const got = await this.getItem(itemId);
       if (!got.ok) return { ok: false, reason: got.reason, message: got.message };
       const item = got.data;
+      if (item.partsCorrupt) return fail("conflict", `item ${itemId} has invalid physical part metadata`);
+      if (typeof patch.markdown === "string" && patch.markdown && ((_b = (_a = item.partBlockIds) == null ? void 0 : _a.length) != null ? _b : 1) > 1) {
+        return fail("conflict", "multi-block item body editing is not available until real host update semantics are verified");
+      }
       const attrs = {
         [ATTR.updated]: String(Date.now())
       };
@@ -12848,9 +13041,14 @@ ${details.join("\n")}` : ""}`;
       let oldAttrs = null;
       let oldMarkdown;
       try {
+        const children = parseChildBlocks(await this.kernel.request("getChildBlocks", { id: item.libraryDocId }));
+        if (!children.some((child) => child.id === item.blockId)) return fail("conflict", "item has moved out of its indexed library document");
         oldAttrs = parseAttrs(await this.kernel.request("getBlockAttrs", { id: item.blockId }));
         if (typeof patch.markdown === "string" && patch.markdown) {
-          oldMarkdown = (_a = parseKramdown(await this.kernel.request("getBlockKramdown", { id: item.blockId }))) == null ? void 0 : _a.kramdown;
+          oldMarkdown = (_c = parseKramdown(await this.kernel.request("getBlockKramdown", { id: item.blockId }))) == null ? void 0 : _c.kramdown;
+          if (oldMarkdown === void 0 || bodyWriteRestriction(oldMarkdown)) {
+            return fail("conflict", "existing body cannot be safely restored under the current write restriction; inspect the library document before editing");
+          }
         }
         await this.kernel.request("setBlockAttrs", { id: item.blockId, attrs }, { idempotencyKey: options.idempotencyKey, maxRetries: 0 });
         if (typeof patch.markdown === "string" && patch.markdown) {
@@ -12902,10 +13100,20 @@ ${details.join("\n")}` : ""}`;
       return this.withWriteLock(key, action);
     }
     async removeItemUnlocked(itemId, options = {}) {
+      var _a;
       const got = await this.getItem(itemId);
       if (!got.ok) return got;
+      if (got.data.partsCorrupt) return fail("conflict", `item ${itemId} has invalid physical part metadata`);
+      const partIds = (_a = got.data.partBlockIds) != null ? _a : [got.data.blockId];
+      if (partIds.length > 1) {
+        return fail("conflict", "multi-block item deletion is unavailable until physical ownership is verified; open the library document to inspect it");
+      }
       try {
-        await this.kernel.request("deleteBlock", { id: got.data.blockId }, { idempotencyKey: options.idempotencyKey, maxRetries: 0 });
+        const children = parseChildBlocks(await this.kernel.request("getChildBlocks", { id: got.data.libraryDocId }));
+        if (!children.some((child) => child.id === got.data.blockId)) return fail("conflict", "item has moved out of its indexed library document");
+        for (const id of [...partIds].reverse()) {
+          await this.kernel.request("deleteBlock", { id }, { idempotencyKey: options.idempotencyKey, maxRetries: 0 });
+        }
       } catch (err) {
         return toFailureReceipt(err);
       }
@@ -12923,7 +13131,7 @@ ${details.join("\n")}` : ""}`;
       return this.withWriteLock(`batch:${batchToken}`, () => this.removeItemsIfUnchangedUnlocked(batchToken, inputs));
     }
     async removeItemsIfUnchangedUnlocked(batchToken, inputs) {
-      var _a, _b, _c, _d;
+      var _a, _b, _c, _d, _e;
       if (typeof batchToken !== "string" || batchToken.length < 16 || batchToken.length > 128 || !Array.isArray(inputs) || inputs.length > LIMITS.maxItems) {
         return fail("invalid-input", "conditional delete batch exceeds the supported limit");
       }
@@ -12989,7 +13197,12 @@ ${details.join("\n")}` : ""}`;
             outcomes.push({ status: "skipped", itemId: item.id, blockId: item.blockId, reason: "edited" });
             continue;
           }
-          await this.kernel.request("deleteBlock", { id: item.blockId });
+          const partIds = (_e = item.partBlockIds) != null ? _e : [item.blockId];
+          if (item.partsCorrupt || partIds.length !== 1 || partIds[0] !== item.blockId || new Set(partIds).size !== partIds.length || !partIds.every(isBlockId)) {
+            outcomes.push({ status: "skipped", itemId: item.id, blockId: item.blockId, reason: "identity-changed" });
+            continue;
+          }
+          for (const id of [...partIds].reverse()) await this.kernel.request("deleteBlock", { id });
           deletedAny = true;
           this.conditionalDeleteGrants.delete(item);
           outcomes.push({ status: "deleted", itemId: item.id, blockId: item.blockId });
@@ -13010,15 +13223,14 @@ ${details.join("\n")}` : ""}`;
     }
     async readConditionalDeleteState(expected) {
       const attrs = parseAttrs(await this.kernel.request("getBlockAttrs", { id: expected.blockId }));
-      const body = parseKramdown(await this.kernel.request("getBlockKramdown", { id: expected.blockId }));
-      if (!body || body.id !== expected.blockId) return null;
       const item = normalizeCommonItem({
         blockId: expected.blockId,
         libraryDocId: expected.libraryDocId,
-        attrs,
-        kramdown: body.kramdown
+        attrs
       });
-      return item ? { item, attrs, markdown: body.kramdown } : null;
+      if (!item) return null;
+      const body = await this.readManagedPartKramdown(item);
+      return body.ok ? { item, attrs, markdown: body.data } : null;
     }
     /** 清除来源引用（用户显式操作；空串删除自定义属性，条目本体不受影响） */
     async clearSource(itemId) {
@@ -13065,6 +13277,585 @@ ${details.join("\n")}` : ""}`;
       const refreshed = await this.getItem(itemId);
       return refreshed.ok ? ok({ item: refreshed.data }) : { ok: false, reason: refreshed.reason, message: refreshed.message };
     }
+  };
+
+  // src/i18n/zh-CN.json
+  var zh_CN_default = {
+    pluginName: "\u5C0F\u9A74\u5E38\u7528\uFF08\u5185\u6D4B\u7248\uFF09",
+    contentLabel: "\u5185\u5BB9\uFF08Markdown\uFF09",
+    openSearch: "\u6253\u5F00\u5C0F\u9A74\u5E38\u7528\uFF08\u5185\u6D4B\u7248\uFF09",
+    saveSelection: "\u4FDD\u5B58\u9009\u4E2D\u5185\u5BB9",
+    insertCmd: "\u641C\u7D22\u5E76\u63D2\u5165\u5E38\u7528\u6761\u76EE",
+    copyCmd: "\u641C\u7D22\u5E76\u590D\u5236\u5E38\u7528\u6761\u76EE",
+    openSourceCmd: "\u641C\u7D22\u5E38\u7528\u6761\u76EE\u5E76\u6253\u5F00\u6765\u6E90",
+    discoverCurrentDocument: "\u4ECE\u5F53\u524D\u6587\u6863\u53D1\u73B0\u5E38\u7528\u8BED",
+    discoverCurrentNotebook: "\u4ECE\u5F53\u524D\u7B14\u8BB0\u672C\u53D1\u73B0\u5E38\u7528\u8BED",
+    discoveryNoDocument: "\u5F53\u524D\u6CA1\u6709\u6D3B\u52A8\u6587\u6863\uFF0C\u65E0\u6CD5\u53D1\u73B0\u5E38\u7528\u8BED",
+    discoveryFound: "\u5DF2\u626B\u63CF\u5F53\u524D\u6587\u6863\uFF1A\u53D1\u73B0 %s \u6761\u53EF\u6536\u5F55\u5185\u5BB9",
+    discoveryFoundNotebook: "\u5DF2\u626B\u63CF\u5F53\u524D\u7B14\u8BB0\u672C\uFF08%s \u4E2A\u6587\u6863\uFF09\uFF1A\u53D1\u73B0 %s \u6761\u53EF\u6536\u5F55\u5185\u5BB9",
+    discoveryEmpty: "\u5F53\u524D\u6587\u6863\u6CA1\u6709\u53EF\u6536\u5F55\u7684\u9876\u5C42\u5757",
+    discoveryEmptyNotebook: "\u5F53\u524D\u7B14\u8BB0\u672C\u6CA1\u6709\u53D1\u73B0\u53EF\u6536\u5F55\u5185\u5BB9",
+    discoveryNotebookUnavailable: "\u5F53\u524D\u7248\u672C\u6682\u4E0D\u652F\u6301\u6309\u7B14\u8BB0\u672C\u53D1\u73B0\uFF0C\u8BF7\u66F4\u65B0\u63D2\u4EF6\u540E\u91CD\u8BD5",
+    discoveryNotConfigured: "\u5C1A\u672A\u914D\u7F6E\u5E38\u7528\u5185\u5BB9\u5E93\uFF0C\u65E0\u6CD5\u6536\u5F55\u5019\u9009\u3002",
+    discoveryLibraryDocument: "\u5F53\u524D\u6587\u6863\u5C31\u662F\u4E13\u7528\u5185\u5BB9\u5E93\uFF0C\u4E0D\u80FD\u4ECE\u5E93\u5185\u53D1\u73B0",
+    discoveryBoundaryUnknown: "\u6682\u65F6\u65E0\u6CD5\u786E\u8BA4\u4E13\u7528\u5185\u5BB9\u5E93\u8FB9\u754C\uFF0C\u8BF7\u68C0\u67E5\u8BBE\u7F6E\u540E\u91CD\u8BD5",
+    discoveryInvalidResponse: "\u601D\u6E90\u8FD4\u56DE\u7684\u6570\u636E\u65E0\u6CD5\u8BC6\u522B\uFF0C\u53D1\u73B0\u672A\u5B8C\u6210",
+    discoveryFailed: "\u53D1\u73B0\u5931\u8D25\uFF0C\u8BF7\u91CD\u8BD5",
+    searchPlaceholder: "\u641C\u7D22\u6807\u9898\u3001\u522B\u540D\u3001\u6807\u7B7E\u3001\u5206\u7C7B\u548C\u6B63\u6587\u6458\u8981",
+    searchHint: "\u8F93\u5165 ? \u52A0\u63CF\u8FF0\uFF0C\u6309\u542B\u4E49\u641C\u7D22\uFF08\u9700\u5728\u672C\u63D2\u4EF6\u8BBE\u7F6E\u4E2D\u542F\u7528 AI\uFF09",
+    empty: "\u6CA1\u6709\u627E\u5230\u5339\u914D\u5185\u5BB9",
+    setupTitle: "\u9009\u62E9\u5E38\u7528\u5185\u5BB9\u5E93",
+    setupHint: "\u6761\u76EE\u4FDD\u5B58\u5728\u601D\u6E90\u6587\u6863\u4E2D\uFF0C\u53EF\u7EE7\u7EED\u7F16\u8F91\u3002\u521B\u5EFA\u65B0\u6587\u6863\u524D\u4F1A\u8BF7\u4F60\u786E\u8BA4\u3002",
+    setupUsageGuide: "\u5F00\u59CB\u4F7F\u7528\uFF1A\u4ECE\u9762\u677F\u65B0\u5EFA\uFF0C\u6216\u4ECE\u526A\u8D34\u677F\u6355\u83B7\uFF1B\u641C\u7D22\u540E\u9009\u62E9\u6761\u76EE\uFF0C\u518D\u7528\u64CD\u4F5C\u533A\u63D2\u5165\u6216\u590D\u5236\u3002\u6A21\u677F\u53D8\u91CF {{xlc:ask:\u5B57\u6BB5}} \u4F1A\u5728\u4F7F\u7528\u524D\u8BE2\u95EE\u3002",
+    setupRecommendation: "\u63A8\u8350\u65B0\u5EFA\u4E00\u4E2A\u4E13\u7528\u5E93\u6587\u6863\uFF1B\u5B83\u4F1A\u653E\u5165\u4F60\u9009\u62E9\u7684\u5DF2\u6709\u7B14\u8BB0\u672C\uFF08\u4E0D\u4F1A\u65B0\u5EFA\u7B14\u8BB0\u672C\uFF09\u3002\u5206\u7C7B\u4F1A\u4FDD\u5B58\u5728\u6BCF\u6761\u5185\u5BB9\u4E0A\uFF0C\u6A21\u677F\u7531\u4F60\u786E\u8BA4\u540E\u5BFC\u5165\u5230\u8BE5\u6587\u6863\u3002",
+    setupQuickStartTitle: "\u914D\u7F6E\u5B8C\u6210\u540E\u8FD9\u6837\u5F00\u59CB",
+    setupQuickStart1Title: "\u5148\u653E\u4E00\u6761\u5185\u5BB9",
+    setupQuickStart1Desc: "\u5728\u9762\u677F\u70B9\u300C\u65B0\u5EFA\u6761\u76EE\u300D\uFF0C\u6216\u4ECE\u9009\u533A\u3001\u526A\u8D34\u677F\u548C\u53F3\u952E\u83DC\u5355\u4FDD\u5B58\u3002",
+    setupQuickStart2Title: "\u518D\u627E\u5230\u5B83",
+    setupQuickStart2Desc: "\u8F93\u5165\u6807\u9898\u3001\u6807\u7B7E\u6216\u5206\u7C7B\u641C\u7D22\uFF1B\u70B9\u9009\u6761\u76EE\u5373\u53EF\u67E5\u770B\u9884\u89C8\u3002",
+    setupQuickStart3Title: "\u6700\u540E\u4F7F\u7528",
+    setupQuickStart3Desc: "\u6309 Enter \u63D2\u5165\uFF0C\u6216\u590D\u5236\u540E\u7C98\u8D34\uFF1B\u8BBE\u7F6E\u4E2D\u7684\u6A21\u677F\u53EF\u5728\u4F7F\u7528\u65F6\u586B\u5199\u53D8\u91CF\u3002",
+    setupNewDoc: "\u521B\u5EFA\u65B0\u5E93\u6587\u6863",
+    setupNewDocName: "\u5E38\u7528\u5185\u5BB9\u5E93",
+    setupPickDoc: "\u9009\u62E9\u73B0\u6709\u6587\u6863",
+    setupCreateNewDoc: "\u65B0\u5EFA\u4E13\u7528\u5E93\u6587\u6863\uFF08\u63A8\u8350\uFF09",
+    setupNotebook: "\u6309\u7B14\u8BB0\u672C",
+    setupCreateNotebook: "\u9009\u62E9\u5DF2\u6709\u7B14\u8BB0\u672C\uFF08\u4E0D\u4F1A\u65B0\u5EFA\u7B14\u8BB0\u672C\uFF09",
+    setupChooseNotebook: "\u8BF7\u9009\u62E9\u7B14\u8BB0\u672C",
+    setupNotebookLoading: "\u6B63\u5728\u8BFB\u53D6\u53EF\u7528\u7B14\u8BB0\u672C\u2026",
+    setupNotebookReady: "\u53EF\u7528\u7B14\u8BB0\u672C\u5DF2\u52A0\u8F7D",
+    setupNotebookNeedsDocsCheck: "\u9009\u62E9\u7B14\u8BB0\u672C\u540E\uFF0C\u4E0B\u4E00\u6B65\u4F1A\u68C0\u67E5\u6839\u76EE\u5F55\u6587\u6863",
+    setupNotebookDocsReady: "\u6839\u76EE\u5F55\u6587\u6863\u5DF2\u68C0\u67E5\uFF0C\u53EF\u4EE5\u7EE7\u7EED\u8BBE\u7F6E\u5185\u5BB9\u5E93",
+    setupNotebookEmpty: "\u6CA1\u6709\u53EF\u7528\u7B14\u8BB0\u672C\u3002\u8BF7\u5148\u5728\u601D\u6E90\u65B0\u5EFA\u7B14\u8BB0\u672C\uFF0C\u6216\u5207\u6362\u4E3A\u9009\u62E9\u73B0\u6709\u6587\u6863\u3002",
+    setupNotebookLoadFailed: "\u7B14\u8BB0\u672C\u8BFB\u53D6\u5931\u8D25\uFF0C\u8BF7\u91CD\u8BD5\u6216\u6539\u7528\u73B0\u6709\u6587\u6863",
+    setupNotebookNotReady: "\u7B14\u8BB0\u672C\u5C1A\u672A\u52A0\u8F7D\u5B8C\u6210\uFF0C\u8BF7\u7A0D\u5019\u6216\u6539\u7528\u73B0\u6709\u6587\u6863",
+    setupNotebookNoDocs: "\u8BE5\u7B14\u8BB0\u672C\u6839\u76EE\u5F55\u6CA1\u6709\u6587\u6863\uFF0C\u8BF7\u5148\u521B\u5EFA\u4E00\u4E2A\u5E93\u6587\u6863\uFF0C\u6216\u6539\u7528\u73B0\u6709\u6587\u6863",
+    setupNotebookDocsChecking: "\u6B63\u5728\u68C0\u67E5\u7B14\u8BB0\u672C\u6839\u76EE\u5F55\u6587\u6863\u2026",
+    setupNotebookDocsCheckFailed: "\u68C0\u67E5\u7B14\u8BB0\u672C\u6839\u76EE\u5F55\u5931\u8D25\uFF0C\u53EF\u91CD\u8BD5",
+    setupConfirmCreate: "\u5C06\u521B\u5EFA\u6587\u6863\u300C%s\u300D\u5E76\u7ACB\u5373\u8BBE\u4E3A\u5F53\u524D\u5185\u5BB9\u5E93\uFF0C\u786E\u5B9A\u5417\uFF1F",
+    create: "\u521B\u5EFA",
+    retry: "\u91CD\u8BD5",
+    cancel: "\u53D6\u6D88",
+    save: "\u4FDD\u5B58",
+    saving: "\u4FDD\u5B58\u4E2D\u2026",
+    checkingDuplicate: "\u6B63\u5728\u68C0\u67E5\u91CD\u590D\u5185\u5BB9\u2026",
+    close: "\u5173\u95ED",
+    newItem: "\u65B0\u5EFA\u6761\u76EE",
+    newItemAction: "\uFF0B \u65B0\u5EFA\u6761\u76EE",
+    saveClipboard: "\u4ECE\u526A\u8D34\u677F\u4FDD\u5B58",
+    clipboardReadFailed: "\u65E0\u6CD5\u8BFB\u53D6\u526A\u8D34\u677F\uFF08\u6743\u9650\u6216\u5E73\u53F0\u9650\u5236\uFF09\uFF0C\u8BF7\u624B\u52A8\u8F93\u5165",
+    clipboardEmpty: "\u526A\u8D34\u677F\u6CA1\u6709\u6587\u672C\u5185\u5BB9\uFF0C\u8BF7\u624B\u52A8\u8F93\u5165",
+    type: "\u7C7B\u578B",
+    "type.text": "\u7EAF\u6587\u672C",
+    "type.markdown": "Markdown",
+    "type.url": "\u7F51\u5740",
+    "type.code": "\u4EE3\u7801",
+    "type.image": "\u56FE\u7247",
+    "type.asset": "\u9644\u4EF6",
+    "type.blockref": "\u5757\u5F15\u7528",
+    "type.structure": "\u5757\u7ED3\u6784",
+    title: "\u6807\u9898",
+    alias: "\u522B\u540D",
+    tags: "\u6807\u7B7E",
+    tagsHint: "\u9017\u53F7\u5206\u9694",
+    category: "\u5206\u7C7B",
+    filterAll: "\u5168\u90E8",
+    filterAllType: "\u7C7B\u578B\uFF1A\u5168\u90E8",
+    filterAllTags: "\u6807\u7B7E\uFF1A\u5168\u90E8",
+    filterByThisTag: "\u70B9\u51FB\u6309\u6B64\u6807\u7B7E\u7B5B\u9009\uFF1A%s",
+    clearThisTagFilter: "\u70B9\u51FB\u53D6\u6D88\u6807\u7B7E\u7B5B\u9009\uFF1A%s",
+    filterAllCategories: "\u5206\u7C7B\uFF1A\u5168\u90E8",
+    filterFavorites: "\u53EA\u770B\u6536\u85CF",
+    filterRecent: "\u6700\u8FD1\u4F7F\u7528",
+    favorite: "\u6536\u85CF",
+    unfavorite: "\u53D6\u6D88\u6536\u85CF",
+    insert: "\u63D2\u5165",
+    insertCopy: "\u590D\u5236\u5185\u5BB9",
+    insertRef: "\u63D2\u5165\u5F15\u7528",
+    insertSourceContent: "\u63D2\u5165\u6E90\u5757\u6B63\u6587",
+    insertEmbed: "\u63D2\u5165\u5D4C\u5165\u5757",
+    copy: "\u590D\u5236",
+    openSource: "\u6253\u5F00\u6765\u6E90",
+    edit: "\u7F16\u8F91",
+    delete: "\u5220\u9664",
+    sourceMissing: "\u6765\u6E90\u5931\u6548",
+    assetMissing: "\u8D44\u6E90\u7F3A\u5931",
+    inserted: "\u5DF2\u63D2\u5165\uFF1A%s",
+    copied: "\u5DF2\u590D\u5236\uFF1A%s",
+    copiedRichPending: "\u5DF2\u590D\u5236 Markdown \u94FE\u63A5\uFF1B\u4F4D\u56FE\u590D\u5236\u5F85\u771F\u673A\u9A8C\u8BC1",
+    insertNoEditor: "\u5F53\u524D\u6CA1\u6709\u6D3B\u52A8\u7F16\u8F91\u5668\uFF0C\u5DF2\u590D\u5236\u5230\u526A\u8D34\u677F\uFF0C\u53EF\u624B\u52A8\u7C98\u8D34",
+    insertTargetUnavailableCopied: "\u539F\u63D2\u5165\u4F4D\u7F6E\u5DF2\u5931\u6548\uFF0C\u5185\u5BB9\u5DF2\u590D\u5236\u5230\u526A\u8D34\u677F\uFF1B\u8BF7\u624B\u52A8\u7C98\u8D34",
+    insertNoEditorAction: "\u590D\u5236\uFF08\u65E0\u6D3B\u52A8\u7F16\u8F91\u5668\uFF09",
+    insertNoEditorBanner: "\u5F53\u524D\u6CA1\u6709\u6D3B\u52A8\u7F16\u8F91\u5668\uFF0C\u4E3B\u64CD\u4F5C\u4F1A\u590D\u5236\u5230\u526A\u8D34\u677F",
+    insertCurrentEditorBanner: "\u63D2\u5165\u5230\u6253\u5F00\u5F39\u7A97\u65F6\u7684\u5149\u6807\u4F4D\u7F6E",
+    insertTargetUnavailableBanner: "\u539F\u63D2\u5165\u4F4D\u7F6E\u4E0D\u53EF\u7528\uFF0C\u4E3B\u64CD\u4F5C\u4F1A\u590D\u5236\u5230\u526A\u8D34\u677F",
+    insertMobileActionHint: "\u79FB\u52A8\u7AEF\u76F4\u63A5\u63D2\u5165\u5C1A\u672A\u9A8C\u8BC1\uFF0C\u5F53\u524D\u64CD\u4F5C\u4F1A\u590D\u5236\u5230\u526A\u8D34\u677F",
+    insertFailed: "\u63D2\u5165\u5931\u8D25\uFF0C\u8BF7\u786E\u8BA4\u5F53\u524D\u6587\u6863\u4ECD\u53EF\u7F16\u8F91\u540E\u91CD\u8BD5",
+    insertPendingMobile: "\u79FB\u52A8\u7AEF\u76F4\u63A5\u63D2\u5165\u5F85\u9A8C\u8BC1\uFF0C\u5DF2\u590D\u5236\u5230\u526A\u8D34\u677F",
+    sourceOpened: "\u5DF2\u6253\u5F00\u6765\u6E90",
+    sourceGone: "\u539F\u5185\u5BB9\u5757\u5DF2\u79FB\u52A8\u6216\u5220\u9664\u3002\u53EF\u7F16\u8F91\u6B64\u6761\u76EE\u5E76\u91CD\u65B0\u6307\u5B9A\u6765\u6E90\u3002",
+    deleted: "\u5DF2\u5220\u9664\uFF1A%s",
+    saved: "\u5DF2\u4FDD\u5B58\uFF1A%s",
+    updated: "\u5DF2\u66F4\u65B0\uFF1A%s",
+    deleteConfirm: "\u5220\u9664\u6761\u76EE\u300C%s\u300D\uFF1F\u53EA\u5220\u9664\u5E93\u4E2D\u6761\u76EE\u5757\uFF0C\u4E0D\u52A8\u6765\u6E90\u6587\u6863\u3002",
+    invalidItem: "\u6761\u76EE\u6570\u636E\u65E0\u6548\uFF0C\u5DF2\u8DF3\u8FC7",
+    reindexDone: "\u7D22\u5F15\u5DF2\u91CD\u5EFA\uFF1A%s \u4E2A\u6761\u76EE",
+    reindexTruncated: "\u6761\u76EE\u8D85\u8FC7\u4E0A\u9650 %s\uFF0C\u5DF2\u622A\u65AD\uFF08\u5176\u4F59\u4ECD\u5B89\u5168\u4FDD\u5B58\u5728\u5E93\u6587\u6863\u4E2D\uFF09",
+    kernelError: "\u601D\u6E90\u63A5\u53E3\u8C03\u7528\u5931\u8D25\uFF1A%s",
+    kernelAuthStatus: "\u767B\u5F55\u72B6\u6001\u5931\u6548",
+    kernelPermissionStatus: "\u8BBF\u95EE\u6743\u9650\u4E0D\u8DB3",
+    kernelAuthRequired: "\u601D\u6E90\u62D2\u7EDD\u4E86\u5F53\u524D\u8BF7\u6C42\uFF0C\u767B\u5F55\u72B6\u6001\u53EF\u80FD\u5DF2\u5931\u6548\u3002\u8BF7\u5148\u5728\u601D\u6E90\u4E2D\u91CD\u65B0\u767B\u5F55\uFF0C\u518D\u70B9\u4E0B\u65B9\u91CD\u8BD5\uFF1B\u5F53\u524D\u641C\u7D22\u6761\u4EF6\u5DF2\u4FDD\u7559\u3002",
+    kernelPermissionDenied: "\u5F53\u524D\u64CD\u4F5C\u65E0\u6743\u8BBF\u95EE\u6240\u9009\u5185\u5BB9\u3002\u8BF7\u68C0\u67E5\u7B14\u8BB0\u672C\u6216\u6587\u6863\u6743\u9650\uFF0C\u6216\u5207\u6362\u5230\u6709\u6743\u9650\u7684\u5185\u5BB9\u5E93\uFF0C\u518D\u91CD\u8BD5\uFF1B\u5F53\u524D\u641C\u7D22\u6761\u4EF6\u5DF2\u4FDD\u7559\u3002",
+    libDocCreated: "\u5DF2\u521B\u5EFA\u5E93\u6587\u6863\u300C%s\u300D",
+    libInvalid: "\u5E38\u7528\u5185\u5BB9\u5E93\u914D\u7F6E\u65E0\u6548\uFF0C\u8BF7\u91CD\u65B0\u8BBE\u7F6E",
+    startupFailed: "\u5C0F\u9A74\u5E38\u7528\uFF08\u5185\u6D4B\u7248\uFF09\u542F\u52A8\u5931\u8D25\uFF1A%s\u3002\u5165\u53E3\u4ECD\u53EF\u7528\uFF0C\u8BF7\u91CD\u8F7D\u63D2\u4EF6\u540E\u91CD\u8BD5",
+    sidecarLoadFailed: "\u5C0F\u9A74\u5E38\u7528\uFF08\u5185\u6D4B\u7248\uFF09\u672C\u5730\u8BBE\u7F6E\u8BFB\u53D6\u5931\u8D25\uFF0C\u5DF2\u4F7F\u7528\u9ED8\u8BA4\u8BBE\u7F6E\uFF1B\u5165\u53E3\u4ECD\u53EF\u7528",
+    sidecarLoading: "\u6B63\u5728\u8BFB\u53D6\u5C0F\u9A74\u5E38\u7528\uFF08\u5185\u6D4B\u7248\uFF09\u672C\u5730\u8BBE\u7F6E\uFF0C\u8BF7\u7A0D\u5019",
+    importDone: "\u5BFC\u5165\u5B8C\u6210\uFF1A\u65B0\u589E %s / \u8DF3\u8FC7 %s / \u8986\u76D6 %s / \u6539\u540D %s / \u5931\u8D25 %s",
+    importFailed: "\u5BFC\u5165\u5931\u8D25\uFF1A\u6587\u4EF6\u65E0\u6548\uFF08%s\uFF09\uFF0C\u539F\u59CB\u6570\u636E\u672A\u6539\u52A8",
+    exportDone: "\u5DF2\u5BFC\u51FA %s \u4E2A\u6761\u76EE",
+    providerRegistered: "\u5185\u5BB9\u6765\u6E90\u5DF2\u8FDE\u63A5\uFF1A%s",
+    providerUnregistered: "\u5185\u5BB9\u6765\u6E90\u5DF2\u65AD\u5F00\uFF1A%s",
+    providerUnavailable: "\u5185\u5BB9\u6765\u6E90 %s \u6682\u4E0D\u53EF\u7528",
+    unknownType: "\u672A\u77E5\u7C7B\u578B",
+    previewUnavailable: "\u6682\u65E0\u9884\u89C8",
+    previewNoResult: "\u9009\u62E9\u5DE6\u4FA7\u6761\u76EE\u540E\uFF0C\u8FD9\u91CC\u4F1A\u663E\u793A\u9884\u89C8",
+    usageHint: "\u2191 \u2193 \u9009\u62E9 \xB7 Enter \u63D2\u5165 \xB7 Ctrl/\u2318 + Enter \u590D\u5236 \xB7 Alt + 1-9 \u5FEB\u901F\u63D2\u5165 \xB7 Esc \u5173\u95ED",
+    usageHintMobile: "\u70B9\u6309\u9009\u62E9\u6761\u76EE\uFF0C\u518D\u70B9\u5E95\u680F\u4E3B\u6309\u94AE\u4F7F\u7528 \xB7 \u957F\u6309\u67E5\u770B\u64CD\u4F5C",
+    usageGuideBtn: "\u4F7F\u7528\u5E2E\u52A9",
+    usageGuideTitle: "\u5C0F\u9A74\u5E38\u7528\u600E\u4E48\u7528",
+    usageGuideIntro: "\u628A\u5E38\u7528\u5185\u5BB9\u4FDD\u5B58\u5728\u601D\u6E90\u6587\u6863\u4E2D\uFF0C\u4E4B\u540E\u641C\u7D22\u3001\u9884\u89C8\uFF0C\u518D\u63D2\u5165\u6216\u590D\u5236\u3002",
+    usageGuideAdd: "\u65B0\u589E\uFF1A\u70B9\u300C\uFF0B \u65B0\u5EFA\u6761\u76EE\u300D\uFF0C\u6216\u4ECE\u9009\u533A\u3001\u5F53\u524D\u5757\u3001\u526A\u8D34\u677F\u548C\u53F3\u952E\u83DC\u5355\u4FDD\u5B58\uFF1B\u8FD8\u53EF\u4EE5\u7528\u547D\u4EE4\u9762\u677F\u6216\u6B63\u6587\u53F3\u952E\u7684\u300C\u4ECE\u5F53\u524D\u6587\u6863\u53D1\u73B0\u5E38\u7528\u8BED\u300D\u6279\u91CF\u6311\u9009\u5DF2\u6709\u5185\u5BB9\u3002",
+    usageGuideSearch: "\u67E5\u627E\uFF1A\u641C\u7D22\u6807\u9898\u3001\u522B\u540D\u3001\u6458\u8981\u3001\u6807\u7B7E\u548C\u5206\u7C7B\uFF1B\u4E5F\u53EF\u4EE5\u7528\u62FC\u97F3\u3001\u6536\u85CF\u3001\u6700\u8FD1\u4F7F\u7528\u548C\u5E38\u7528\u6392\u5E8F\u3002",
+    usageGuideInsert: "\u4F7F\u7528\uFF1AEnter \u63D2\u5165\uFF0CCtrl/\u2318 + Enter \u590D\u5236\uFF1BAlt/\u2325 + 1-9 \u76F4\u8FBE\u63D2\u5165\uFF0CAlt/\u2325 + Shift + 1-9 \u76F4\u8FBE\u590D\u5236\uFF1BTab \u53EF\u5728\u641C\u7D22\u6846\u4E0E\u64CD\u4F5C\u533A\u6D41\u8F6C\uFF1B\u957F\u6309\u6761\u76EE\u53EF\u6253\u5F00\u66F4\u591A\u64CD\u4F5C\u3002",
+    usageGuideInsertMobile: "\u4F7F\u7528\uFF1A\u70B9\u6309\u6761\u76EE\u53EA\u9009\u62E9\uFF0C\u518D\u70B9\u5E95\u680F\u4E3B\u6309\u94AE\u4F7F\u7528\uFF1B\u672A\u6307\u5B9A\u76EE\u6807\u65F6\u590D\u5236\uFF0C\u6307\u5B9A\u76EE\u6807\u65F6\u6309\u6309\u94AE\u63D0\u793A\u64CD\u4F5C\u3002\u957F\u6309\u6761\u76EE\u53EF\u6253\u5F00\u66F4\u591A\u64CD\u4F5C\u3002\u79FB\u52A8\u7AEF\u5F53\u524D\u7F16\u8F91\u5668\u76F4\u63A5\u63D2\u5165\u5C1A\u672A\u5728\u771F\u5B9E\u5BA2\u6237\u7AEF\u9A8C\u8BC1\u3002",
+    sidecarReadOnly: "\u4FA7\u8F66\u6570\u636E\u8BFB\u53D6\u5931\u8D25\u6216\u7248\u672C\u9AD8\u4E8E\u5F53\u524D\u63D2\u4EF6\uFF0C\u5DF2\u963B\u6B62\u4FDD\u5B58\u8BBE\u7F6E\u4EE5\u4FDD\u7559\u539F\u6570\u636E\u3002\u8BF7\u4F7F\u7528\u517C\u5BB9\u7248\u672C\u6216\u6062\u590D\u8BFB\u53D6\u540E\u91CD\u8F7D\u63D2\u4EF6\uFF1B\u672C\u6B21\u8BBE\u7F6E\u4E0D\u4F1A\u6301\u4E45\u4FDD\u5B58\u3002",
+    exportIncompleteIndex: "\u5BFC\u51FA\u5DF2\u53D6\u6D88\uFF1A\u5185\u5BB9\u5E93\u7D22\u5F15\u4E0D\u5B8C\u6574\uFF0C\u8BF7\u91CD\u5EFA\u7D22\u5F15\u540E\u91CD\u8BD5\u3002",
+    exportItemReadFailed: "\u5BFC\u51FA\u5DF2\u53D6\u6D88\uFF1A\u65E0\u6CD5\u8BFB\u53D6\u6761\u76EE\u300C%s\u300D\uFF1A%s",
+    exportBodyMissing: "\u5BFC\u51FA\u5DF2\u53D6\u6D88\uFF1A\u7F3A\u5C11\u6761\u76EE\u300C%s\u300D\u7684\u6B63\u6587\uFF0C\u8BF7\u91CD\u8BD5\u3002",
+    exportTooLarge: "\u5BFC\u51FA\u5DF2\u53D6\u6D88\uFF1A\u6A21\u677F\u5305\u8D85\u8FC7 %s \u5B57\u7B26\uFF0C\u8BF7\u6309\u5206\u7C7B\u5206\u6279\u5BFC\u51FA\u3002",
+    usageGuideOrganize: "\u6574\u7406\uFF1A\u7ED9\u6761\u76EE\u8865\u4E0A\u6E05\u695A\u7684\u6807\u9898\u3001\u6807\u7B7E\u548C\u5206\u7C7B\uFF1B\u8BBE\u7F6E \u2192 \u6570\u636E\u4E0E\u6A21\u677F\u53EF\u5BFC\u5165 25 \u6761\u793A\u4F8B\uFF0C\u5176\u4E2D\u90AE\u7BB1\u3001\u5730\u5740\u3001\u65E0\u6548\u8EAB\u4EFD\u5360\u4F4D\u3001\u7F51\u5740\u548C\u4EE3\u7801\u5165\u95E8\u662F\u53EF\u76F4\u63A5\u5BFC\u5165\u7684\u5B89\u5168\u793A\u4F8B\u3002\u7167\u7247\u3001PPT\u3001PDF/DOCX \u548C\u7B80\u5386\u6587\u4EF6\u9700\u5148\u5728\u601D\u6E90\u6DFB\u52A0\u771F\u5B9E\u8D44\u6E90\uFF0C\u518D\u4FDD\u5B58\u8D44\u6E90\u94FE\u63A5\u3002",
+    usageGuideVariables: "\u6A21\u677F\u4E0E\u6CE8\u91CA\u89C4\u5219\uFF1A{{xlc:ask:\u5B57\u6BB5}} \u63D2\u5165\u524D\u8BE2\u95EE\uFF0C\u652F\u6301 {{xlc:ask:\u5B57\u6BB5|\u9009\u9879A,\u9009\u9879B}} \u4E0B\u62C9\u9009\u62E9\uFF1B{{xlc:date}}\u3001{{xlc:clipboard}} \u7B49\u5360\u4F4D\u7B26\u4EC5\u4F7F\u7528\u65F6\u5C55\u5F00\u3002\u4EE3\u7801\u7C7B\u578B\u59CB\u7EC8\u539F\u6837\u4FDD\u7559\uFF0C\u4E0D\u5C55\u5F00\u53D8\u91CF\u3002\u6761\u76EE\u522B\u540D\u53EF\u4F5C\u573A\u666F\u6CE8\u91CA\uFF0C\u6B63\u6587\u5185\u53EF\u7528\u5F15\u7528\u5757\u300C> \u{1F4A1} \u63D0\u793A\uFF1A...\u300D\u8BB0\u5F55\u586B\u5199\u63D0\u9192\u3002AI \u9ED8\u8BA4\u5173\u95ED\u3002",
+    mediaContentHint: "\u56FE\u7247\u548C\u9644\u4EF6\u663E\u793A Markdown \u539F\u6587\uFF1B\u590D\u5236\u5F97\u5230\u94FE\u63A5\u6587\u672C\u3002\u67E5\u770B\u539F\u6587\u4EF6\u8BF7\u7528\u300C\u6253\u5F00\u6765\u6E90\u300D\u3002\u4E0D\u652F\u6301\u590D\u5236\u56FE\u7247\u4F4D\u56FE\u6216\u6587\u4EF6\u672C\u4F53\u3002",
+    usageGuideMedia: "\u56FE\u7247\u4E0E\u9644\u4EF6\uFF1A\u5148\u5C06\u56FE\u7247\u3001PPT\u3001PDF \u6216\u7B80\u5386\u6587\u4EF6\u6DFB\u52A0\u5230\u601D\u6E90\uFF0C\u518D\u4ECE\u56FE\u7247\u6216\u8D44\u6E90\u94FE\u63A5\u7684\u53F3\u952E\u83DC\u5355\u4FDD\u5B58\u3002\u9762\u677F\u663E\u793A Markdown \u539F\u6587\uFF0C\u590D\u5236\u5F97\u5230\u94FE\u63A5\u6587\u672C\uFF1B\u67E5\u770B\u539F\u6587\u4EF6\u8BF7\u7528\u300C\u6253\u5F00\u6765\u6E90\u300D\u3002\u4E0D\u652F\u6301\u590D\u5236\u56FE\u7247\u4F4D\u56FE\u6216\u6587\u4EF6\u672C\u4F53\uFF0C\u672A\u5185\u7F6E PPT \u9605\u8BFB\u5668\uFF1B\u5185\u7F6E\u793A\u4F8B\u5305\u4E0D\u5B89\u88C5\u5047\u8D44\u6E90\uFF0C\u9700\u7528\u6237\u63D0\u4F9B\u771F\u5B9E\u9644\u4EF6\u3002",
+    usageGuideMultiblock: "\u591A\u5757\u6B63\u6587\u5F85\u9A8C\u8BC1\uFF08B-006\uFF09\uFF1A\u65B0\u5EFA\u3001\u6B63\u6587\u66F4\u65B0\u548C\u5BFC\u5165\u6682\u4EC5\u63A5\u53D7\u5355\u884C\u5185\u5BB9\u6216\u4E00\u4E2A\u5B8C\u6574\u4EE3\u7801\u56F4\u680F\uFF0C\u591A\u884C\u6587\u672C\u3001Markdown \u548C\u6DF7\u5408\u7ED3\u6784\u4F1A\u5728\u5199\u5165\u524D\u62D2\u7EDD\u3002\u5F53\u524D 25 \u6761\u793A\u4F8B\u4E2D 8 \u6761\uFF08\u542B\u90AE\u7BB1\u3001\u5730\u5740\u3001\u65E0\u6548\u8EAB\u4EFD\u5360\u4F4D\u3001\u7F51\u5740\u548C\u4EE3\u7801\u5165\u95E8\uFF09\u7B26\u5408\u8BE5\u8FB9\u754C\uFF1B\u5B8C\u6574\u7B80\u5386\u3001\u516C\u53F8\u4ECB\u7ECD\u548C\u7ED3\u6784\u6E05\u5355\u8BF7\u5148\u4FDD\u7559\u5728\u601D\u6E90\u6765\u6E90\u6587\u6863\u4E2D\uFF0C\u7167\u7247/PPT/PDF/DOCX \u4E5F\u9700\u5148\u6DFB\u52A0\u771F\u5B9E\u8D44\u6E90\u3002\u5DF2\u6709\u6761\u76EE\u8BF7\u6253\u5F00\u6765\u6E90\u6838\u5BF9\u5168\u6587\u3002\u5E26 parts \u6E05\u5355\u7684\u65E7\u6761\u76EE\u9700\u901A\u8FC7\u540C\u6587\u6863\u5F52\u5C5E\u68C0\u67E5\u540E\u624D\u80FD\u8BFB\u53D6\uFF0C\u6B63\u6587\u66F4\u65B0\u53CA\u81EA\u52A8\u5220\u9664\u6682\u4E0D\u53EF\u7528\u3002",
+    multiBlockPendingHint: "\u6682\u4EC5\u652F\u6301\u5355\u884C\u5185\u5BB9\u6216\u4E00\u4E2A\u5B8C\u6574\u4EE3\u7801\u56F4\u680F\uFF1B\u591A\u884C\u6B63\u6587\u3001Markdown \u548C\u6DF7\u5408\u7ED3\u6784\u4F1A\u5728\u5199\u5165\u524D\u62D2\u7EDD\uFF08B-006\uFF09\u3002\u5DF2\u6709\u591A\u5757\u6761\u76EE\u8BF7\u6253\u5F00\u6765\u6E90\u6838\u5BF9\uFF0C\u6B63\u6587\u66F4\u65B0\u53CA\u81EA\u52A8\u5220\u9664\u6682\u4E0D\u53EF\u7528\u3002",
+    more: "\u66F4\u591A",
+    dropToAdd: "\u677E\u5F00\u9F20\u6807\u4EE5\u6DFB\u52A0\u5E38\u7528\u6761\u76EE",
+    timeout: "\u64CD\u4F5C\u8D85\u65F6\uFF0C\u8BF7\u91CD\u8BD5",
+    aiSection: "AI \u52A9\u624B",
+    aiEnabled: "\u542F\u7528 AI \u52A9\u624B",
+    aiShareContent: "\u5141\u8BB8 AI \u8BFB\u53D6\u6761\u76EE\u5B8C\u6574\u6B63\u6587",
+    aiTidy: "AI \u6574\u7406",
+    aiDraft: "AI \u8349\u7A3F",
+    aiDraftDesc: "\u63CF\u8FF0\u4F60\u60F3\u8981\u7684\u5185\u5BB9\uFF0CAI \u751F\u6210\u8349\u7A3F",
+    aiDraftNeedDescription: "\u8BF7\u5148\u63CF\u8FF0\u60F3\u751F\u6210\u7684\u5185\u5BB9",
+    aiTransform: "AI \u53D8\u6362",
+    "tf.polish": "\u6DA6\u8272",
+    "tf.shorten": "\u7F29\u77ED",
+    "tf.formal": "\u6B63\u5F0F\u5316",
+    "tf.translate-en": "\u8BD1\u4E3A\u82F1\u6587",
+    "tf.bulletize": "\u5217\u8868\u5316",
+    aiInsertTransformed: "\u63D2\u5165\u53D8\u6362\u7ED3\u679C",
+    aiInsertOriginal: "\u63D2\u5165\u539F\u6587",
+    aiCopyTransformed: "\u590D\u5236\u53D8\u6362\u7ED3\u679C",
+    aiSemanticHint: "\u8F93\u5165 ? \u52A0\u63CF\u8FF0\uFF0C\u4F8B\u5982\u300C?\u7ED9\u5BA2\u6237\u7684\u9053\u6B49\u56DE\u590D\u300D\u3002AI \u4F9D\u636E\u6807\u9898\u3001\u522B\u540D\u3001\u6807\u7B7E\u3001\u5206\u7C7B\u548C\u6458\u8981\u63A8\u8350\u6761\u76EE\uFF0C\u4E0D\u8BFB\u53D6\u5B8C\u6574\u6B63\u6587\u3002",
+    aiFound: "AI \u8BED\u4E49\u641C\u7D22",
+    aiWorking: "AI \u5904\u7406\u4E2D\u2026",
+    aiDisabled: "AI \u52A9\u624B\u672A\u542F\u7528\uFF08\u5728\u672C\u63D2\u4EF6\u8BBE\u7F6E\u4E2D\u5F00\u542F\uFF09",
+    aiNotConfigured: "\u601D\u6E90\u672A\u914D\u7F6E AI \u6A21\u578B\uFF08\u8BBE\u7F6E \u2192 \u4EBA\u5DE5\u667A\u80FD\uFF09",
+    aiEmpty: "AI \u672A\u8FD4\u56DE\u7ED3\u679C\uFF08\u672A\u914D\u7F6E\u6216\u8C03\u7528\u5931\u8D25\uFF09",
+    aiTimeout: "AI \u8C03\u7528\u8D85\u65F6\uFF0C\u8BF7\u91CD\u8BD5",
+    aiContentNotAllowed: "\u6B64\u529F\u80FD\u9700\u8981\u5F00\u542F\u300C\u5141\u8BB8 AI \u8BFB\u53D6\u6761\u76EE\u5B8C\u6574\u6B63\u6587\u300D",
+    aiTransport: "AI \u8C03\u7528\u5931\u8D25",
+    aiApplied: "\u5DF2\u5E94\u7528 AI \u5EFA\u8BAE",
+    aiOriginalPreserved: "\u539F\u6587\u672A\u88AB\u4FEE\u6539",
+    captureBlock: "\u4FDD\u5B58\u5F53\u524D\u5757",
+    captureBlockNone: "\u5149\u6807\u4E0D\u5728\u5757\u5185\uFF0C\u65E0\u6CD5\u5B9A\u4F4D\u5F53\u524D\u5757",
+    captureDoc: "\u4FDD\u5B58\u6574\u7BC7\u6587\u6863\u4E3A\u6761\u76EE",
+    captureSelectionEmpty: "\u5F53\u524D\u6CA1\u6709\u9009\u4E2D\u5185\u5BB9\uFF0C\u8BF7\u5148\u9009\u4E2D\u6587\u672C\uFF1B\u5982\u9700\u4FDD\u5B58\u5F53\u524D\u5757\uFF0C\u8BF7\u4F7F\u7528\u201C\u4FDD\u5B58\u5F53\u524D\u5757\u201D",
+    captureDocEmpty: "\u5F53\u524D\u6587\u6863\u6CA1\u6709\u53EF\u4FDD\u5B58\u5185\u5BB9",
+    captureTruncated: "\u5185\u5BB9\u8D85\u8FC7 %s \u5B57\uFF0C\u5DF2\u622A\u65AD\u540E\u7EE7\u7EED\u7F16\u8F91",
+    captureBusy: "\u6B63\u5728\u8BFB\u53D6\u5185\u5BB9\uFF0C\u8BF7\u7A0D\u5019",
+    docPicker: "\u9009\u62E9\u5E93\u6587\u6863\uFF08\u8F93\u5165\u5173\u952E\u8BCD\u641C\u7D22\uFF09",
+    docPickerEmpty: "\u6CA1\u6709\u5339\u914D\u7684\u6587\u6863",
+    docPickerLoading: "\u6B63\u5728\u641C\u7D22\u6587\u6863\u2026",
+    sort: "\u6392\u5E8F",
+    "sort.manual": "\u9ED8\u8BA4\u6392\u5E8F\uFF08\u6536\u85CF\u4F18\u5148\uFF09",
+    "sortHint.manual": "\u6D4F\u89C8\u65F6\u6536\u85CF\u4F18\u5148\uFF0C\u5176\u4F59\u6309\u6700\u8FD1\u4F7F\u7528\u548C\u66F4\u65B0\u65F6\u95F4\u6392\u5217\uFF1B\u641C\u7D22\u65F6\u6536\u85CF\u4F18\u5148\uFF0C\u518D\u6309\u5339\u914D\u5EA6\u6392\u5217",
+    "sort.recent": "\u6700\u8FD1\u4F7F\u7528\u5728\u524D",
+    "sortHint.recent": "\u6D4F\u89C8\u65F6\u6700\u8FD1\u4F7F\u7528\u7684\u6761\u76EE\u6392\u5728\u524D\u9762\uFF1B\u641C\u7D22\u65F6\u4ECD\u6309\u5339\u914D\u5EA6\u6392\u5217",
+    "sort.title": "\u6309\u6807\u9898\u6392\u5E8F",
+    "sortHint.title": "\u6D4F\u89C8\u5217\u8868\u65F6\u6309\u6807\u9898\u6392\u5E8F\uFF1B\u641C\u7D22\u65F6\u4ECD\u6309\u5339\u914D\u7A0B\u5EA6\u6392\u5E8F",
+    editContentLabel: "\u5185\u5BB9\uFF08\u601D\u6E90 Markdown\uFF09",
+    relinkCurrent: "\u6765\u6E90\u8BBE\u4E3A\u5F53\u524D\u6587\u6863",
+    relinkDone: "\u5DF2\u91CD\u65B0\u6307\u5B9A\u6765\u6E90",
+    relinkNoDoc: "\u5F53\u524D\u6CA1\u6709\u6D3B\u52A8\u6587\u6863\uFF0C\u65E0\u6CD5\u6307\u5B9A\u6765\u6E90",
+    duplicateItem: "\u521B\u5EFA\u526F\u672C",
+    duplicated: "\u5DF2\u521B\u5EFA\u526F\u672C\uFF1A%s",
+    dataSection: "\u6570\u636E\u4E0E\u6A21\u677F\uFF08\u5BFC\u51FA / \u5BFC\u5165\uFF09",
+    exportBtn: "\u5BFC\u51FA\u5168\u90E8\u6761\u76EE\uFF08JSON\uFF09",
+    importBtn: "\u5BFC\u5165 JSON / Markdown \u5305",
+    importPolicyTitle: "\u9009\u62E9\u91CD\u590D\u5904\u7406\u7B56\u7565",
+    importPolicySkip: "\u8DF3\u8FC7\u91CD\u590D\uFF08\u4FDD\u7559\u73B0\u6709\uFF09",
+    importPolicyOverwrite: "\u8986\u76D6\u91CD\u590D",
+    importPolicyRename: "\u91CD\u540D\u5E76\u5B58",
+    importPreview: "\u6587\u4EF6\u5305\u542B %s \u4E2A\u6761\u76EE\uFF0C\u5176\u4E2D %s \u6761\u683C\u5F0F\u65E0\u6548\u5C06\u88AB\u8DF3\u8FC7\u3002\u9009\u62E9\u91CD\u590D\u5904\u7406\u7B56\u7565\uFF1A",
+    insertToDoc: "\u63D2\u5165\u5230\u6307\u5B9A\u6587\u6863",
+    insertToDocPick: "\u9009\u62E9\u76EE\u6807\u6587\u6863\uFF08\u8F93\u5165\u5173\u952E\u8BCD\u641C\u7D22\uFF09",
+    insertToDocDone: "\u5DF2\u63D2\u5165\u5230\u300C%s\u300D",
+    insertToDocFailed: "\u63D2\u5165\u5931\u8D25\uFF0C\u76EE\u6807\u6587\u6863\u53EF\u80FD\u5DF2\u5173\u95ED\u6216\u4E0D\u53EF\u5199",
+    librarySection: "\u5F53\u524D\u5185\u5BB9\u5E93",
+    savedViewsSection: "\u5E38\u7528\u89C6\u56FE",
+    savedViewsEmpty: "\u8FD8\u6CA1\u6709\u4FDD\u5B58\u7684\u89C6\u56FE\u3002\u53EF\u5728\u53D1\u73B0\u9762\u677F\u8F93\u5165\u6807\u7B7E\u540E\u4FDD\u5B58\u3002",
+    savedViewsOpen: "\u6253\u5F00",
+    savedViewsDelete: "\u5220\u9664",
+    savedViewsDeleteConfirm: "\u5220\u9664\u89C6\u56FE\u300C%s\u300D\uFF1F\u53EA\u4F1A\u5220\u9664\u5FEB\u6377\u914D\u7F6E\uFF0C\u4E0D\u4F1A\u5220\u9664\u6E90\u5757\u6216\u5DF2\u6709\u5F15\u7528\u3002",
+    savedViewsScope: "\u8303\u56F4\uFF1A%s",
+    libraryNone: "\u672A\u914D\u7F6E",
+    reindexBtn: "\u91CD\u5EFA\u7D22\u5F15",
+    totalItems: "\u5E93\u5185\u6761\u76EE\uFF1A%s \u6761",
+    resultCount: "%s \u6761\u7ED3\u679C",
+    aiResultCount: "AI \u63A8\u8350\uFF1A%s \u6761",
+    searchSection: "\u641C\u7D22",
+    pinyinToggle: "\u62FC\u97F3\u641C\u7D22",
+    placeholdersToggle: "\u52A8\u6001\u5360\u4F4D\u7B26",
+    saveTransformed: "\u4FDD\u5B58\u4E3A\u65B0\u6761\u76EE",
+    providerSection: "\u5176\u4ED6\u63D2\u4EF6\u5185\u5BB9",
+    providerInsert: "\u63D2\u5165\u5176\u4ED6\u63D2\u4EF6\u5185\u5BB9",
+    providerCopy: "\u590D\u5236\u5176\u4ED6\u63D2\u4EF6\u5185\u5BB9",
+    openSettings: "\u8BBE\u7F6E / \u66F4\u6539\u5185\u5BB9\u5E93",
+    semanticSuggestion: "\u6CA1\u6709\u627E\u5230\u5339\u914D\u5185\u5BB9\uFF0C\u53EF\u5C1D\u8BD5\u8F93\u5165 ? \u52A0\u63CF\u8FF0\u8FDB\u884C AI \u8BED\u4E49\u641C\u7D22",
+    indexing: "\u6B63\u5728\u6784\u5EFA\u7D22\u5F15\u2026",
+    tagAuditBtn: "AI \u6807\u7B7E\u4F53\u68C0",
+    tagAuditTitle: "AI \u6807\u7B7E\u4F53\u68C0\uFF08\u4EC5\u5EFA\u8BAE\uFF0C\u4E0D\u81EA\u52A8\u4FEE\u6539\uFF09",
+    tagAuditEmpty: "AI \u672A\u7ED9\u51FA\u5EFA\u8BAE",
+    tagAuditMerge: "\u5F52\u5E76",
+    tagAuditRename: "\u6539\u540D",
+    tagAuditTooFew: "\u6807\u7B7E\u4E0D\u8DB3 2 \u4E2A\uFF0C\u65E0\u9700\u4F53\u68C0",
+    openSettingsChangeLib: "\u66F4\u6539\u5185\u5BB9\u5E93",
+    exportMdDone: "\u5DF2\u5BFC\u51FA %s \u4E2A\u6761\u76EE\uFF08\u8D44\u6E90 %s\uFF0C\u8DF3\u8FC7 %s\uFF09",
+    clearRecents: "\u6E05\u7A7A\u6700\u8FD1\u4F7F\u7528",
+    clearRecentsEmpty: "\u6682\u65E0\u6700\u8FD1\u4F7F\u7528",
+    emptyFiltered: "\u5F53\u524D\u7B5B\u9009\u4E0B\u6CA1\u6709\u5339\u914D\u6761\u76EE",
+    clearFilters: "\u6E05\u9664\u7B5B\u9009",
+    clearRecentsConfirm: "\u6E05\u7A7A\u6700\u8FD1\u4F7F\u7528\u8BB0\u5F55\uFF08\u4E0D\u5F71\u54CD\u6761\u76EE\u672C\u8EAB\uFF09\uFF1F",
+    clearRecentsDone: "\u5DF2\u6E05\u7A7A\u6700\u8FD1\u4F7F\u7528",
+    insertMenu: "\u63D2\u5165\u5E38\u7528\u6761\u76EE\u2026",
+    clearSource: "\u6E05\u9664\u6765\u6E90\u5F15\u7528",
+    clearSourceDone: "\u5DF2\u6E05\u9664\u6765\u6E90\u5F15\u7528",
+    captureBlockRefMenu: "\u4FDD\u5B58\u5757\u5F15\u7528",
+    captureLinkMenu: "\u4FDD\u5B58\u6B64\u94FE\u63A5",
+    captureImageMenu: "\u4FDD\u5B58\u6B64\u56FE\u7247",
+    setAsLibraryMenu: "\u8BBE\u4E3A\u5E38\u7528\u5185\u5BB9\u5E93",
+    setAsLibraryConfirm: "\u5C06\u9009\u4E2D\u7684 %s \u4E2A\u6587\u6863\u8BBE\u4E3A\u5E38\u7528\u5185\u5BB9\u5E93\uFF08\u66FF\u6362\u73B0\u6709\u5E93\u914D\u7F6E\uFF09\uFF1F",
+    providerExecutable: "\u5DF2\u5C31\u7EEA",
+    providerPendingReload: "\u5F85\u91CD\u8F7D",
+    providerNone: "\u6682\u65E0\u5176\u4ED6\u63D2\u4EF6\u5185\u5BB9\uFF08\u5176\u4ED6\u5C0F\u9A74\u63D2\u4EF6\u8FDE\u63A5\u540E\u4F1A\u663E\u793A\uFF09",
+    insertToDocMenu: "\u63D2\u5165\u5E38\u7528\u6761\u76EE\u5230\u9996\u4E2A\u9009\u4E2D\u6587\u6863",
+    discoveryFromTreeMenu: "\u4ECE\u6B64\u6587\u6863\u53D1\u73B0\u5E38\u7528\u8BED",
+    blockrefNeedsTarget: "\u5757\u5F15\u7528\u6761\u76EE\u9700\u8981\u76EE\u6807\u5757\uFF1A\u8BF7\u53F3\u952E\u70B9\u51FB\u5757\u5F15\u7528\uFF0C\u7528\u300C\u4FDD\u5B58\u5757\u5F15\u7528\u300D",
+    dataTruth: "\u4FDD\u5B58\u5230\u601D\u6E90\u6587\u6863\uFF1B\u6765\u6E90\u79FB\u52A8\u6216\u5220\u9664\u65F6\u4F1A\u63D0\u793A",
+    dataTruthHint: "\u5185\u5BB9\u4EE5\u601D\u6E90\u5757\u4FDD\u5B58\u5728\u6240\u9009\u5185\u5BB9\u5E93\u6587\u6863\uFF0C\u6761\u76EE\u548C\u6765\u6E90\u4ECD\u53EF\u5728\u601D\u6E90\u4E2D\u7F16\u8F91\u3002",
+    adoptAll: "\u5168\u90E8\u91C7\u7EB3",
+    actionsNoun: "\u52A8\u4F5C",
+    ordinalShortcutHint: "Alt+%s \u63D2\u5165 \xB7 Alt+Shift+%s \u590D\u5236",
+    "sort.frequent": "\u4F7F\u7528\u9891\u6B21",
+    "sortHint.frequent": "\u5148\u6309\u4F7F\u7528\u6B21\u6570\u6392\u5217\uFF0C\u6B21\u6570\u76F8\u540C\u518D\u6309\u6700\u8FD1\u4F7F\u7528\uFF1B\u641C\u7D22\u65F6\u4E5F\u9075\u5FAA\u6B64\u987A\u5E8F",
+    varCountBadge: "%s \u53D8\u91CF",
+    paneVarsLabel: "\u63D2\u5165\u65F6\u5C06\u8BE2\u95EE %s \u4E2A\u53D8\u91CF\uFF1A",
+    insertVariable: "\u63D2\u5165\u53D8\u91CF\uFF1A",
+    varFormTitle: "\u586B\u5199\u53D8\u91CF",
+    varFormSub: "\u672C\u6761\u76EE\u542B %s \u4E2A\u53D8\u91CF\uFF0C\u586B\u5199\u540E\u4E00\u6B21\u6027\u63D2\u5165\uFF1B\u586B\u5199\u503C\u4EC5\u7528\u4E8E\u672C\u6B21\uFF0C\u4E0D\u56DE\u5199\u5E93\u3002",
+    varFormHint: "Tab \u4E0B\u4E00\u9879 \xB7 Enter \u63D2\u5165",
+    varFormHintMultiline: "Tab \u4E0B\u4E00\u9879 \xB7 \u591A\u884C\u6846\u5185 Enter \u6362\u884C\uFF0C\u70B9\u6309\u94AE\u63D2\u5165",
+    groupFavorites: "\u6536\u85CF",
+    insertSection: "\u53D8\u91CF\u4E0E\u63D2\u5165",
+    promptVariablesToggle: "\u63D2\u5165\u524D\u8BE2\u95EE\u53D8\u91CF",
+    promptVariablesSub: "\u542B {{xlc:ask:\u2026}} \u7684\u6761\u76EE\u63D2\u5165\u524D\u5F39\u51FA\u586B\u5145\u5361\u7247",
+    recordUsageToggle: "\u8BB0\u5F55\u4F7F\u7528\u6B21\u6570",
+    recordUsageSub: "\u4EC5\u672C\u5730\u5B58\u50A8\uFF0C\u53EF\u4E00\u952E\u6E05\u9664\uFF1B\u7528\u4E8E\u300C\u5E38\u7528\u300D\u6392\u5E8F\u3002\u5173\u95ED\u540E\u4F1A\u4FDD\u7559\u5DF2\u6709\u7EDF\u8BA1\u3002",
+    usageStatsHint: "\u4F7F\u7528\u7EDF\u8BA1\u4EC5\u4FDD\u5B58\u5728\u672C\u673A",
+    clearUsageBtn: "\u6E05\u7A7A\u4F7F\u7528\u7EDF\u8BA1",
+    clearUsageEmpty: "\u6682\u65E0\u4F7F\u7528\u7EDF\u8BA1",
+    clearUsageConfirm: "\u6E05\u7A7A\u5168\u90E8\u4F7F\u7528\u8BA1\u6570\uFF1F\u300C\u5E38\u7528\u300D\u6392\u5E8F\u5C06\u9000\u56DE\u6700\u8FD1\u4F7F\u7528\u3002",
+    clearUsageDone: "\u5DF2\u6E05\u7A7A\u4F7F\u7528\u7EDF\u8BA1",
+    resetItemUsage: "\u91CD\u7F6E\u4F7F\u7528\u9891\u6B21\uFF08\u5F53\u524D %s \u6B21\uFF09",
+    resetItemUsageDone: "\u5DF2\u91CD\u7F6E\u300C%s\u300D\u7684\u4F7F\u7528\u9891\u6B21",
+    importPolicySkipDesc: "\u5DF2\u6709\u6761\u76EE\uFF08\u76F8\u540C ID\uFF09\u4FDD\u7559\u4E0D\u52A8\uFF0C\u4EC5\u5BFC\u5165\u65B0\u589E\u6761\u76EE",
+    importPolicyOverwriteDesc: "\u4EE5\u5BFC\u5165\u5185\u5BB9\u66F4\u65B0\u73B0\u6709\u6761\u76EE\uFF08\u539F\u6587\u5757\u88AB\u6539\u5199\uFF09",
+    importPolicyRenameDesc: "\u5BFC\u5165\u9879\u52A0\u300C\u5BFC\u5165\u300D\u540E\u7F00\uFF0C\u73B0\u6709\u6761\u76EE\u4E0D\u53D7\u5F71\u54CD",
+    recommended: "\u63A8\u8350",
+    importReceiptHint: "\u5BFC\u5165\u5B8C\u6210\u5C06\u9010\u9879\u56DE\u6267\uFF1A\u65B0\u589E / \u8DF3\u8FC7 / \u8986\u76D6 / \u6539\u540D / \u5931\u8D25",
+    setupModeLabel: "\u5185\u5BB9\u5E93\u5F62\u5F0F",
+    setupStep1: "\u7B2C 1 \u6B65 \xB7 \u9009\u62E9\u5185\u5BB9\u5E93\u5F62\u5F0F",
+    setupStep2: "\u7B2C 2 \u6B65 \xB7 \u786E\u8BA4\u843D\u70B9",
+    setupNext: "\u4E0B\u4E00\u6B65\uFF1A\u786E\u8BA4",
+    setupBack: "\u4E0A\u4E00\u6B65",
+    setupFinish: "\u5B8C\u6210\u8BBE\u7F6E",
+    setupLater: "\u7A0D\u540E\u518D\u8BF4",
+    setupConfirmHint: "\u521B\u5EFA\u524D\u4F1A\u660E\u786E\u8BE2\u95EE\u786E\u8BA4\uFF0C\u4E0D\u4F1A\u6539\u52A8\u4F60\u5DF2\u6709\u7684\u4EFB\u4F55\u6587\u6863\uFF1B\u4E4B\u540E\u53EF\u5728 \u8BBE\u7F6E \u2192 \u5F53\u524D\u5185\u5BB9\u5E93 \u66F4\u6539\u3002",
+    setupSummaryDoc: "\u6761\u76EE\u4F1A\u4FDD\u5B58\u5728\u6B64\u6587\u6863\u4E2D\uFF0C\u53EF\u7EE7\u7EED\u7F16\u8F91",
+    setupSummaryNotebook: "\u7D22\u5F15\u7B14\u8BB0\u672C\u6839\u76EE\u5F55\u4E0B\u7684\u4E00\u7EA7\u6587\u6863\uFF0C\u5E76\u628A\u65B0\u6761\u76EE\u4FDD\u5B58\u5728\u5176\u4E2D\u7B2C\u4E00\u4E2A\u6587\u6863",
+    setupSummaryTree: "\u7D22\u5F15\u6240\u9009\u6587\u6863\u53CA\u6700\u591A 3 \u5C42\u5B50\u6587\u6863\uFF0C\u65B0\u6761\u76EE\u4F1A\u4FDD\u5B58\u5728\u6240\u9009\u6839\u6587\u6863",
+    useCount: "%s \u6B21",
+    quickNew: "\uFF0B \u65B0\u5EFA\u6761\u76EE",
+    quickInsertSelected: "\u63D2\u5165\u9009\u4E2D",
+    cursorHint: "\u5149\u6807\u843D\u70B9",
+    itemCountBadge: "%s \u6761\u76EE",
+    invalidSkipBadge: "%s \u6761\u683C\u5F0F\u65E0\u6548\u5C06\u8DF3\u8FC7",
+    aiEnabledSub: "\u4F7F\u7528\u601D\u6E90\u300C\u8BBE\u7F6E \u2192 \u4EBA\u5DE5\u667A\u80FD\u300D\u4E2D\u7684\u6A21\u578B\uFF0C\u63D2\u4EF6\u4E0D\u4FDD\u5B58\u5BC6\u94A5",
+    aiShareContentSub: "\u6574\u7406/\u53D8\u6362/\u8349\u7A3F\u9700\u8981\uFF1B\u5173\u95ED\u65F6\u4EC5\u5143\u6570\u636E",
+    pinyinToggleSub: "\u5168\u62FC/\u9996\u5B57\u6BCD\u672C\u5730\u5339\u914D",
+    placeholdersToggleSub: "\u63D2\u5165/\u590D\u5236\u65F6\u5C06 {{xlc:date}} \u7B49\u66FF\u6362\u4E3A\u5F53\u524D\u65E5\u671F\u65F6\u95F4\uFF1B{{xlc:date|+3d}} \u65E5\u671F\u7B97\u672F\u3001{{xlc:random|A,B}} \u968F\u673A\u9009\u62E9",
+    aiSuggestion: "AI \u5EFA\u8BAE",
+    packBtn: "\u5BFC\u51FA\u6A21\u677F\u5305",
+    packExportTitle: "\u5BFC\u51FA \xB7 \u6A21\u677F\u5305",
+    packCategoryLabel: "\u5206\u7C7B",
+    allCategories: "\u5168\u90E8\u5206\u7C7B",
+    packNameLabel: "\u5305\u540D\u79F0",
+    packNameDefault: "\u5C0F\u9A74\u5E38\u7528\uFF08\u5185\u6D4B\u7248\uFF09\u6A21\u677F\u5305",
+    packContentsHint: "\xB7 \u6761\u76EE Markdown + \u5143\u6570\u636E\uFF08\u6807\u9898/\u6807\u7B7E/\u5206\u7C7B\uFF09\n\xB7 \u53D8\u91CF\u6E05\u5355\uFF08{{xlc:ask:\u2026}} \u5B57\u6BB5\u4E0E\u9009\u9879\uFF09\n\xB7 \u8D44\u6E90\u5F15\u7528\uFF08assets \u539F\u6837\u6253\u5305\uFF09",
+    packTrustHint: "\u4ED6\u4EBA\u5BFC\u5165\u540E\u5373\u4E3A\u771F\u5B9E\u601D\u6E90\u5757\uFF0C\u53EF\u7EE7\u7EED\u7F16\u8F91\u4E0E\u518D\u5206\u4EAB\u2014\u2014\u5206\u4EAB\u7684\u662F\u300C\u6D3B\u7684\u5757\u300D\uFF0C\u4E0D\u662F\u6587\u672C\u5FEB\u7167\u3002",
+    packExportBtn: "\u5BFC\u51FA .md \u5305",
+    packVarsBadge: "%s \u6761\u542B\u53D8\u91CF",
+    emptyFavorites: "\u8FD8\u6CA1\u6709\u6536\u85CF\u7684\u6761\u76EE",
+    emptyFavoritesSub: "\u70B9\u51FB\u6761\u76EE\u53F3\u4FA7 \u2606 \u6536\u85CF\uFF0C\u53EF\u5728\u300C\u6536\u85CF\u300D\u4E2D\u5FEB\u901F\u627E\u5230",
+    emptyRecent: "\u6682\u65E0\u6700\u8FD1\u4F7F\u7528\u7684\u6761\u76EE",
+    customTransformSection: "\u81EA\u5B9A\u4E49\u53D8\u6362",
+    customTransformAdd: "\uFF0B \u6DFB\u52A0\u81EA\u5B9A\u4E49\u53D8\u6362",
+    customTransformName: "\u540D\u79F0",
+    customTransformPrompt: "\u53D8\u6362\u6307\u4EE4\uFF0C\u5982\uFF1A\u6539\u5199\u4E3A\u5BA2\u670D\u8BDD\u672F",
+    customTransformEmpty: "\u6682\u65E0\u81EA\u5B9A\u4E49\u53D8\u6362",
+    customTransformCap: "\u6700\u591A 10 \u4E2A\u81EA\u5B9A\u4E49\u53D8\u6362",
+    customTransformNewName: "\u6211\u7684\u53D8\u6362",
+    customTransformHint: "\u4E0E\u5185\u7F6E\u53D8\u6362\u5E76\u5217\u51FA\u73B0\u5728\u6761\u76EE\u52A8\u4F5C\u83DC\u5355 \u2726 \u533A\uFF1B\u8BFB\u53D6\u6B63\u6587\u9075\u5FAA\u300C\u5141\u8BB8 AI \u8BFB\u53D6\u5B8C\u6574\u6B63\u6587\u300D\u5F00\u5173",
+    quickCapture: "\u5FEB\u901F\u4FDD\u5B58\u526A\u8D34\u677F\u5185\u5BB9\u4E3A\u6761\u76EE",
+    quickCaptureDuplicate: "\u5DF2\u5B58\u5728\u540C\u6587\u6761\u76EE\u300C%s\u300D\uFF0C\u672A\u91CD\u590D\u4FDD\u5B58",
+    promptPackBtn: "\u5BFC\u5165\u5E38\u7528\u5185\u5BB9\u793A\u4F8B",
+    promptPackHint: "\u793A\u4F8B\u5305\u5305\u542B 25 \u6761\u5206\u7C7B\u6A21\u677F\uFF0C\u5176\u4E2D 8 \u6761\uFF08\u90AE\u7BB1\u3001\u5730\u5740\u3001\u65E0\u6548\u8EAB\u4EFD\u5360\u4F4D\u3001\u7F51\u5740\u548C\u4EE3\u7801\u5165\u95E8\u7B49\uFF09\u7B26\u5408\u5F53\u524D\u5355\u884C\u5185\u5BB9\u6216\u5B8C\u6574\u4EE3\u7801\u56F4\u680F\u9650\u5236\uFF1B\u5176\u4F59 17 \u6761\u591A\u884C\u6A21\u677F\u4F1A\u88AB\u62D2\u7EDD\u5E76\u5217\u51FA\u539F\u56E0\uFF08B-006\uFF09\u3002\u5EFA\u8BAE\u8DF3\u8FC7\u91CD\u590D\uFF1B\u5B8C\u6574\u7B80\u5386\u3001\u516C\u53F8\u4ECB\u7ECD\u548C\u7ED3\u6784\u6A21\u677F\u6682\u4E0D\u53EF\u7528\uFF0C\u7167\u7247/PPT/PDF/DOCX \u9700\u5148\u6DFB\u52A0\u771F\u5B9E\u8D44\u6E90\uFF0C\u793A\u4F8B\u5305\u4E0D\u4F1A\u5B89\u88C5\u9644\u4EF6\u3002",
+    clearSearch: "\u6E05\u7A7A\u641C\u7D22",
+    shortcutLabel: "\u64CD\u4F5C\u63D0\u793A",
+    searchAllScopeAction: "\u5728\u5168\u90E8\u5185\u5BB9\u4E2D\u641C\u7D22\u300C%s\u300D",
+    newItemActionWithQuery: "\uFF0B \u65B0\u5EFA\u300C%s\u300D",
+    newItemWithTitle: "\u5C06\u300C%s\u300D\u9884\u586B\u4E3A\u6807\u9898\u5E76\u65B0\u5EFA\u6761\u76EE",
+    emptyQueryHint: "\u65B0\u5EFA\u65F6\u4F1A\u628A\u5F53\u524D\u641C\u7D22\u8BCD\u586B\u5165\u6807\u9898\uFF0C\u4F60\u53EF\u4EE5\u7EE7\u7EED\u4FEE\u6539\u3002",
+    semanticEmptyHint: "AI \u641C\u7D22\u6CA1\u6709\u627E\u5230\u76F8\u5173\u6761\u76EE\u3002\u53EF\u8C03\u6574\u63CF\u8FF0\uFF0C\u6216\u65B0\u5EFA\u6761\u76EE\u540E\u81EA\u884C\u586B\u5199\u6807\u9898\u548C\u5185\u5BB9\u3002",
+    groupUncategorized: "\u65E0\u5206\u7C7B",
+    captureHint: "\u4FDD\u5B58\u5230\u5F53\u524D\u5185\u5BB9\u5E93 \xB7 \u63D2\u5165\u65F6\u586B\u5199\u53D8\u91CF",
+    captureHintLib: "\u5185\u5BB9\u5E93\uFF1A%s",
+    captureContentRequired: "\u8BF7\u586B\u5199\u8981\u4FDD\u5B58\u7684\u5185\u5BB9\u3002",
+    captureUrlInvalid: "\u8BF7\u8F93\u5165\u6709\u6548\u7684 http \u6216 https \u94FE\u63A5\u3002",
+    docCount: "%s \u4E2A\u6587\u6863",
+    emptyLibrary: "\u8FD8\u6CA1\u6709\u5E38\u7528\u5185\u5BB9",
+    emptyLibrarySub: "\u5148\u65B0\u5EFA\u4E00\u6761\uFF0C\u6216\u4ECE\u9009\u533A\u3001\u526A\u8D34\u677F\u548C\u53F3\u952E\u83DC\u5355\u4FDD\u5B58\uFF1B\u5185\u5BB9\u4F1A\u4FDD\u5B58\u5728\u5F53\u524D\u5185\u5BB9\u5E93",
+    updatedAtLabel: "\u66F4\u65B0\u4E8E %s",
+    duplicateTitle: "\u5DF2\u5B58\u5728\u540C\u6587\u6761\u76EE",
+    duplicateConfirm: "\u5DF2\u5B58\u5728\u300C%s\u300D\uFF0C\u4ECD\u8981\u4FDD\u5B58\u5417\uFF1F\u4E24\u6761\u5185\u5BB9\u5E76\u5B58\u3001\u4E92\u4E0D\u5F71\u54CD\u3002",
+    insertTargetBanner: "\u63D2\u5165\u5230\uFF1A%s",
+    libDocSet: "\u5DF2\u5C06 %s \u4E2A\u6587\u6863\u8BBE\u4E3A\u5E38\u7528\u5185\u5BB9\u5E93",
+    providerInserted: "\u5DF2\u63D2\u5165\u5176\u4ED6\u63D2\u4EF6\u5185\u5BB9",
+    sourceWithId: "\u6765\u6E90\uFF1A%s",
+    sourceBlockSuffix: " / \u5757 %s",
+    keyboardHelp: "\u952E\u76D8\u5FEB\u6377\u64CD\u4F5C",
+    kbdNav: "\u5207\u6362\u9009\u4E2D\u6761\u76EE",
+    kbdEnter: "\u63D2\u5165\u9009\u4E2D\u6761\u76EE",
+    kbdCopy: "\u590D\u5236\u9009\u4E2D\u6761\u76EE",
+    kbdAltDirect: "%s + 1-9 \u5FEB\u901F\u63D2\u5165",
+    kbdEsc: "\u5173\u95ED",
+    kbdQuickInsert: "\u5FEB\u901F\u63D2\u5165\u5BF9\u5E94\u6761\u76EE",
+    kbdQuickCopy: "\u5FEB\u901F\u590D\u5236\u5BF9\u5E94\u6761\u76EE",
+    kbdTabActions: "\u5207\u6362\u5230\u64CD\u4F5C\u533A",
+    kbdFavorite: "\u6536\u85CF/\u53D6\u6D88\u6536\u85CF",
+    kbdClose: "\u5173\u95ED\u9762\u677F",
+    loading: "\u52A0\u8F7D\u4E2D\u2026",
+    truncatedHint: "\u6761\u76EE\u8D85\u51FA\u7D22\u5F15\u4E0A\u9650\uFF0C\u5DF2\u622A\u65AD\u663E\u793A\uFF1B\u6570\u636E\u4ECD\u5B89\u5168\u5728\u5E93\u4E2D",
+    copyFailed: "\u590D\u5236\u5931\u8D25\uFF1A\u65E0\u6CD5\u5199\u5165\u526A\u8D34\u677F",
+    libModeNotebook: "\u7B14\u8BB0\u672C \xD7 %s",
+    libModeDoc: "\u6587\u6863\u5E93 \xB7 %s \u4E2A\u6587\u6863",
+    libModeTree: "\u6587\u6863\u6811 \xB7 %s \u4E2A\u6839\u6587\u6863",
+    setupPickDocTree: "\u9009\u62E9\u73B0\u6709\u6587\u6863\uFF08\u542B\u5B50\u6587\u6863\uFF09",
+    ctDeleteConfirm: "\u5220\u9664\u81EA\u5B9A\u4E49\u53D8\u6362\u300C%s\u300D\uFF1F\u8BE5\u64CD\u4F5C\u4E0D\u53EF\u6062\u590D\u3002",
+    ctDeleted: "\u5DF2\u5220\u9664\u81EA\u5B9A\u4E49\u53D8\u6362\u300C%s\u300D",
+    importReasonPackEmpty: "\u5185\u7F6E\u5305\u4E3A\u7A7A",
+    importReasonTooLarge: "\u6587\u4EF6\u8D85\u51FA\u5927\u5C0F\u4E0A\u9650",
+    importReasonNoMeta: "Markdown \u5305\u7F3A\u5C11\u6761\u76EE\u5143\u6570\u636E",
+    importReasonUnknown: "\u672A\u77E5\u539F\u56E0",
+    importRunFailed: "\u5BFC\u5165\u5931\u8D25\uFF1A%s\uFF08\u5199\u5165\u53EF\u80FD\u5DF2\u90E8\u5206\u5B8C\u6210\uFF1B\u91CD\u8BD5\u65F6\u5DF2\u5199\u5165\u6761\u76EE\u6309\u51B2\u7A81\u7B56\u7565\u5904\u7406\uFF09",
+    exportEmpty: "\u5F53\u524D\u7B5B\u9009\u4E0B\u6CA1\u6709\u53EF\u5BFC\u51FA\u7684\u6761\u76EE",
+    resourceFallback: "\u8D44\u6E90",
+    captureBlockFailed: "\u8BFB\u53D6\u5F53\u524D\u5757\u5185\u5BB9\u5931\u8D25\uFF0C\u8BF7\u91CD\u8BD5",
+    captureDocFailed: "\u8BFB\u53D6\u6587\u6863\u5185\u5BB9\u5931\u8D25\uFF0C\u8BF7\u91CD\u8BD5",
+    aiDraftOverwrite: "\u5185\u5BB9\u6846\u5DF2\u6709\u5185\u5BB9\uFF0C\u7528 AI \u8349\u7A3F\u8986\u76D6\u5417\uFF1F",
+    aiParseFailed: "AI \u8FD4\u56DE\u5185\u5BB9\u65E0\u6CD5\u89E3\u6790\uFF0C\u8BF7\u91CD\u8BD5",
+    aiContentTooLong: "\u5185\u5BB9\u8D85\u8FC7 %s \u5B57\uFF0C\u8BF7\u7F29\u77ED\u540E\u91CD\u8BD5",
+    varParseFailed: "\u53D8\u91CF\u89E3\u6790\u5931\u8D25\uFF0C\u672C\u6B21\u5C06\u6309\u539F\u6587\u63D2\u5165",
+    pickNotebookFirst: "\u8BF7\u5148\u5728\u4E0A\u65B9\u9009\u62E9\u7B14\u8BB0\u672C",
+    pickDocFirst: "\u8BF7\u5148\u5728\u4E0A\u65B9\u9009\u62E9\u5E93\u6587\u6863",
+    espansoImportBtn: "\u4ECE Espanso \u5BFC\u5165",
+    espansoTitle: "\u4ECE Espanso \u5BFC\u5165\u5E38\u7528\u8BED",
+    espansoHint: "\u7C98\u8D34 Espanso \u7684 match \u914D\u7F6E\uFF08\u5982 base.yml\uFF09\u5168\u6587\u3002\u65E5\u671F/\u526A\u8D34\u677F/\u968F\u673A\u53D8\u91CF\u4E0E\u8868\u5355\u5B57\u6BB5\u4F1A\u8F6C\u4E3A\u672C\u5E93\u8BED\u6CD5\uFF1Bscript/shell \u7B49\u65E0\u7B49\u4EF7\u6620\u5C04\u7684\u53D8\u91CF\u539F\u6837\u4FDD\u7559\u5E76\u9010\u6761\u5217\u51FA\uFF1BTextExpander \u4E13\u6709\u683C\u5F0F\u6682\u4E0D\u652F\u6301\u3002",
+    espansoPlaceholder: 'matches:\n  - trigger: ":sig"\n    replace: "\u8981\u590D\u7528\u7684\u5185\u5BB9"',
+    espansoParse: "\u89E3\u6790\u9884\u89C8",
+    espansoParsed: "\u89E3\u6790\u51FA %s \u6761\uFF0C\u53EF\u8FDB\u5165\u5BFC\u5165\u7B56\u7565",
+    espansoNone: "\u672A\u89E3\u6790\u51FA\u53EF\u7528\u6761\u76EE\uFF0C\u8BF7\u786E\u8BA4\u7C98\u8D34\u7684\u662F Espanso match \u914D\u7F6E",
+    discoveryTitle: "\u4ECE\u5F53\u524D\u6587\u6863\u53D1\u73B0",
+    discoveryTitleNotebook: "\u4ECE\u5F53\u524D\u7B14\u8BB0\u672C\u53D1\u73B0",
+    discoveryTitleGeneral: "\u53D1\u73B0\u5DF2\u6709\u5185\u5BB9",
+    discoveryTitleTree: "\u4ECE\u6307\u5B9A\u6587\u6863\u6811\u53D1\u73B0\u5E38\u7528\u8BED",
+    discoveryScope: "\u626B\u63CF\u8303\u56F4",
+    discoveryStartDocument: "\u5165\u53E3\u6587\u6863",
+    discoveryScopeDocument: "\u5F53\u524D\u6587\u6863",
+    discoveryScopeNotebook: "\u5F53\u524D\u7B14\u8BB0\u672C",
+    discoveryScopeTree: "\u6307\u5B9A\u6587\u6863\u6811",
+    discoveryScopeSelectedNotebook: "\u6307\u5B9A\u7B14\u8BB0\u672C",
+    discoveryScopeAllNotebooks: "\u5168\u90E8\u7B14\u8BB0\u672C\uFF08\u9AD8\u7EA7\uFF09",
+    discoveryScopeUnavailable: "\u5F53\u524D\u73AF\u5883\u6682\u4E0D\u53EF\u7528\u6B64\u626B\u63CF\u8303\u56F4",
+    discoveryScopeLockedForUndo: "\u5F53\u524D\u4ECD\u6709\u53EF\u64A4\u9500\u7684\u6536\u5F55\u6279\u6B21\uFF1B\u8BF7\u5148\u64A4\u9500\u6216\u5173\u95ED\u672C\u7A97\u53E3\uFF0C\u518D\u66F4\u6362\u626B\u63CF\u8303\u56F4\u3002",
+    discoveryScopeTreeHint: "\u626B\u63CF\u6240\u9009\u6839\u6587\u6863\u53CA\u5176\u4E0B\u7EA7\u6587\u6863\u9876\u5C42\u5757\uFF1B\u786E\u8BA4\u540E\u52A0\u5165\u5E38\u7528\u5E93\uFF0C\u6E90\u6587\u6863\u4E0D\u53D8\uFF0C\u52A0\u5165\u65B9\u5F0F\u89C1\u4E0B\u65B9\u3002",
+    discoveryScopeSelectedNotebookHint: "\u626B\u63CF\u6240\u9009\u7B14\u8BB0\u672C\u7684\u6587\u6863\u9876\u5C42\u5757\uFF1B\u786E\u8BA4\u540E\u52A0\u5165\u5E38\u7528\u5E93\uFF0C\u6E90\u6587\u6863\u4E0D\u53D8\uFF0C\u52A0\u5165\u65B9\u5F0F\u89C1\u4E0B\u65B9\u3002",
+    discoverySelectTree: "\u8F93\u5165\u5173\u952E\u8BCD\u67E5\u627E\u6587\u6863\u6811\u6839\u6587\u6863",
+    discoverySelectTreeRoot: "\u8BF7\u9009\u62E9\u6587\u6863\u6811\u6839\u6587\u6863",
+    discoveryNoDocsFound: "\u6CA1\u6709\u627E\u5230\u5339\u914D\u7684\u6587\u6863",
+    discoveryNoNotebooks: "\u5F53\u524D\u6CA1\u6709\u53EF\u626B\u63CF\u7684\u7B14\u8BB0\u672C",
+    discoverySelectNotebook: "\u9009\u62E9\u8981\u626B\u63CF\u7684\u7B14\u8BB0\u672C",
+    discoverySearch: "\u641C\u7D22",
+    discoverySearchingDocs: "\u6B63\u5728\u641C\u7D22\u6587\u6863\u2026",
+    discoveryNotebookLoading: "\u6B63\u5728\u8BFB\u53D6\u7B14\u8BB0\u672C\u5217\u8868\u2026",
+    discoveryRetryNotebooks: "\u91CD\u8BD5\u52A0\u8F7D\u7B14\u8BB0\u672C",
+    discoveryAllWarning: "\u4E0A\u9650\uFF1A%s \u4E2A\u7B14\u8BB0\u672C\u3001%s \u7BC7\u6587\u6863\u3001%s \u5C42\u76EE\u5F55\u3001%s \u4E2A\u5757\u3001%s \u4E2A\u5019\u9009\u3001\u5355\u5757 %s \u5B57\u7B26\u3001\u5019\u9009\u6587\u672C\u7D2F\u8BA1 %s \u5B57\u7B26\u3001%s \u79D2\u3002\u6587\u6863\u548C\u5757\u6309\u987A\u5E8F\u8BFB\u53D6\uFF1B\u8DEF\u5F84\u67E5\u8BE2\u4E0E\u91CD\u590D\u6838\u9A8C\u6700\u591A 4 \u8DEF\u5E76\u53D1\u3002\u53EA\u8BFB\u626B\u63CF\uFF0C\u4E0D\u4F1A\u81EA\u52A8\u6536\u5F55\u3002",
+    discoveryConfirmAll: "\u6211\u786E\u8BA4\u5F00\u59CB\u626B\u63CF\u6240\u6709\u53EF\u641C\u7D22\u7B14\u8BB0\u672C",
+    discoveryTargetRequired: "\u8BF7\u5148\u9009\u62E9\u6216\u786E\u8BA4\u626B\u63CF\u76EE\u6807",
+    discoverySearchFailed: "\u6587\u6863\u641C\u7D22\u5931\u8D25\uFF1A%s",
+    discoveryNotebookLoadFailed: "\u7B14\u8BB0\u672C\u5217\u8868\u52A0\u8F7D\u5931\u8D25\uFF1A%s",
+    discoveryErrors: "\u626B\u63CF\u6216\u5185\u5BB9\u5E93\u91CD\u590D\u6838\u9A8C\u5931\u8D25 %s \u5904\uFF0C\u5DF2\u4FDD\u7559\u5176\u4ED6\u7ED3\u679C",
+    discoverySkippedLong: "\u8DF3\u8FC7\u8D85\u957F\u5757 %s \u4E2A",
+    discoveryLimitScope: "\u8303\u56F4/\u6DF1\u5EA6\u4E0A\u9650",
+    discoveryLimitNotebooks: "\u7B14\u8BB0\u672C\u6570\u4E0A\u9650",
+    discoveryLimitDocuments: "\u6587\u6863\u6570\u4E0A\u9650",
+    discoveryLimitBlocks: "\u5757\u6570\u4E0A\u9650",
+    discoveryLimitCandidates: "\u5019\u9009\u6570\u4E0A\u9650",
+    discoveryLimitCharacters: "\u6587\u672C\u5B57\u7B26\u4E0A\u9650",
+    discoveryLimitTime: "\u626B\u63CF\u65F6\u95F4\u4E0A\u9650",
+    discoveryResultsPage: "\u7B2C %s / %s \u9875",
+    discoveryPreviousPage: "\u4E0A\u4E00\u9875",
+    discoveryNextPage: "\u4E0B\u4E00\u9875",
+    discoveryPagination: "\u53D1\u73B0\u7ED3\u679C\u5206\u9875",
+    discoveryRescanKeepsUndo: "\u8BF7\u5148\u64A4\u9500\u6216\u5173\u95ED\u672C\u6279\u6B21\uFF0C\u518D\u91CD\u65B0\u626B\u63CF\u3002",
+    discoveryCloseKeepsUndo: "\u672C\u6B21\u53D1\u73B0\u4ECD\u6709\u53EF\u64A4\u9500\u7684\u6536\u5F55\u6279\u6B21\u3002\u5173\u95ED\u4F1A\u4E22\u5931\u64A4\u9500\u5165\u53E3\uFF1B\u4ECD\u8981\u5173\u95ED\u5417\uFF1F",
+    discoveryCloseTitle: "\u5173\u95ED\u53D1\u73B0\u7A97\u53E3",
+    discoveryCloseKeepsItems: "\u5DF2\u52A0\u5165\u7684\u5E38\u7528\u5185\u5BB9\u4F1A\u4FDD\u7559\uFF1B\u5173\u95ED\u4E0D\u4F1A\u64A4\u9500\u65B0\u589E\u5185\u5BB9\u3002",
+    discoveryCloseCancel: "\u8FD4\u56DE\u5E76\u4FDD\u7559\u64A4\u9500",
+    discoveryCloseConfirm: "\u4ECD\u7136\u5173\u95ED",
+    discoverySavedNotebookUnfixed: "\u8BE5\u65E7\u89C6\u56FE\u672A\u56FA\u5B9A\u7B14\u8BB0\u672C\uFF0C\u8BF7\u4ECE\u539F\u7B14\u8BB0\u672C\u91CD\u65B0\u4FDD\u5B58\u3002",
+    discoveryTitleSavedNotebook: "\u4ECE\u5DF2\u4FDD\u5B58\u7B14\u8BB0\u672C\u53D1\u73B0",
+    discoveryScopeSavedNotebook: "\u5DF2\u4FDD\u5B58\u7B14\u8BB0\u672C",
+    discoveryScopeHintSavedNotebook: "\u626B\u63CF\u89C6\u56FE\u4FDD\u5B58\u65F6\u7684\u7B14\u8BB0\u672C\uFF1B\u5165\u53E3\u6587\u6863\u79FB\u52A8\u4E0D\u4F1A\u66F4\u6362\u626B\u63CF\u76EE\u6807\uFF0C\u6E90\u6587\u6863\u4E0D\u4F1A\u88AB\u4FEE\u6539\u3002",
+    discoveryScopeHintDocument: "\u53EA\u8BFB\u53D6\u5F53\u524D\u6587\u6863\u7684\u9876\u5C42\u5757\uFF1B\u6536\u5F55\u524D\u53EF\u9884\u89C8\uFF0C\u539F\u6587\u4E0D\u4F1A\u88AB\u4FEE\u6539\u3002",
+    discoveryScopeHintNotebook: "\u626B\u63CF\u5F53\u524D\u6587\u6863\u6240\u5C5E\u7B14\u8BB0\u672C\u7684\u6587\u6863\u9876\u5C42\u5757\uFF1B\u5019\u9009\u663E\u793A\u5404\u81EA\u6765\u6E90\uFF0C\u6536\u5F55\u53EA\u590D\u5236\u5230\u4E13\u7528\u5E93\u3002",
+    discoveryScannedDocs: "\u626B\u63CF\u6587\u6863 %s \u4E2A",
+    discoveryScannedNotebooks: "\u81F3\u5C11\u6709\u4E00\u6B21\u76EE\u5F55\u8BFB\u53D6\u6210\u529F\u7684\u7B14\u8BB0\u672C %s \u4E2A",
+    discoveryScanningDocument: "\u6B63\u5728\u626B\u63CF\u5F53\u524D\u6587\u6863\u2026",
+    discoveryScanningNotebook: "\u6B63\u5728\u626B\u63CF\u5F53\u524D\u7B14\u8BB0\u672C\u2026",
+    discoveryScanningTree: "\u6B63\u5728\u626B\u63CF\u6240\u9009\u6587\u6863\u6811\u2026",
+    discoveryScanningSelectedNotebook: "\u6B63\u5728\u626B\u63CF\u6240\u9009\u7B14\u8BB0\u672C\u2026",
+    discoveryScanningAllNotebooks: "\u6B63\u5728\u626B\u63CF\u5168\u90E8\u7B14\u8BB0\u672C\u2026",
+    discoveryNotebookEnumerating: "\u6B63\u5728\u67E5\u627E\u6587\u6863\uFF0C\u5DF2\u53D1\u73B0 %s \u4E2A\u2026",
+    discoveryNotebookProgress: "\u626B\u63CF\u6587\u6863 %s / %s\uFF0C\u5DF2\u8BFB\u53D6 %s \u4E2A\u5757\u2026",
+    discoveryCancelPending: "\u5DF2\u8BF7\u6C42\u505C\u6B62\uFF1B\u5F53\u524D\u5DF2\u53D1\u51FA\u7684\u5185\u6838\u8BF7\u6C42\u7ED3\u675F\u540E\u4E0D\u518D\u542F\u52A8\u540E\u7EED\u8BF7\u6C42\uFF0C\u5E76\u4FDD\u7559\u5DF2\u5B8C\u6210\u90E8\u5206\u4F9B\u4F60\u9009\u62E9\u6536\u5F55\u3002",
+    discoveryStopping: "\u6B63\u5728\u7B49\u5F85\u5F53\u524D\u8BF7\u6C42\u7ED3\u675F\u2026",
+    discoveryStopped: "\u5DF2\u505C\u6B62\u626B\u63CF\uFF0C\u4FDD\u7559 %s \u6761\u5019\u9009\uFF1B\u6CA1\u6709\u81EA\u52A8\u6536\u5F55\uFF0C\u5F85\u786E\u8BA4\u91CD\u590D\u72B6\u6001\u7684\u5019\u9009\u4F1A\u5728\u6536\u5F55\u524D\u590D\u67E5\u3002",
+    discoveryStoppedNoResults: "\u5DF2\u505C\u6B62\u3002\u4E13\u7528\u5E93\u8FB9\u754C\u5C1A\u672A\u6838\u5B9E\uFF0C\u56E0\u6B64\u6CA1\u6709\u7EE7\u7EED\u626B\u63CF\u6216\u4FDD\u7559\u5019\u9009\uFF1B\u53EF\u4EE5\u91CD\u65B0\u5F00\u59CB\u3002",
+    discoveryUndoBatch: "\u64A4\u9500\u672C\u6279\u65B0\u589E",
+    discoveryUndoing: "\u6B63\u5728\u5B89\u5168\u68C0\u67E5\u5E76\u64A4\u9500\u2026",
+    discoveryUndoReceiptTitle: "\u64A4\u9500\u56DE\u6267",
+    discoveryUndoDone: "\u5DF2\u64A4\u9500\u65B0\u589E %s \u6761\uFF1B\u5DF2\u8DF3\u8FC7 %s \u6761\uFF0C\u5931\u8D25 %s \u6761\u3002\u91CD\u65B0\u626B\u63CF\u53EF\u5237\u65B0\u5019\u9009\u72B6\u6001\u3002",
+    discoveryUndoAlreadyDone: "\u8FD9\u6279\u65B0\u589E\u5DF2\u64A4\u9500\u3002\u91CD\u65B0\u626B\u63CF\u53EF\u5237\u65B0\u5019\u9009\u72B6\u6001\u3002",
+    discoveryUndoSkipNotFound: "\u6761\u76EE\u5DF2\u5220\u9664",
+    discoveryUndoSkipIdentityChanged: "\u6761\u76EE\u8EAB\u4EFD\u6216\u5185\u5BB9\u5E93\u8303\u56F4\u5DF2\u53D8\u5316",
+    discoveryUndoSkipEdited: "\u6761\u76EE\u5DF2\u88AB\u7F16\u8F91",
+    discoveryUndoSkipLibraryUnverified: "\u5185\u5BB9\u5E93\u7D22\u5F15\u4E0D\u5B8C\u6574\uFF0C\u65E0\u6CD5\u5B89\u5168\u6838\u5BF9",
+    discoveryUndoDeleteFailed: "\u5220\u9664\u5931\u8D25\uFF1A%s",
+    discoveryScanned: "\u5DF2\u626B\u63CF %s \u4E2A\u5757\uFF0C\u53D1\u73B0 %s \u4E2A\u5019\u9009",
+    discoverySkipped: "\u8DF3\u8FC7\u7A7A\u5757 %s \u4E2A",
+    discoveryTruncated: "\u5DF2\u8FBE\u5230\u626B\u63CF\u4E0A\u9650\uFF0C\u7ED3\u679C\u53EF\u80FD\u4E0D\u5B8C\u6574",
+    discoveryCancelScan: "\u505C\u6B62\u626B\u63CF",
+    discoveryRetry: "\u91CD\u65B0\u626B\u63CF",
+    discoveryFilter: "\u7B5B\u9009",
+    discoveryFilterAll: "\u5168\u90E8\u72B6\u6001",
+    discoveryFilterCandidate: "\u5F85\u6536\u5F55",
+    discoveryFilterUnverified: "\u5F85\u786E\u8BA4\u91CD\u590D",
+    discoveryFilterSameContent: "\u5185\u5BB9\u76F8\u540C",
+    discoveryFilterAlready: "\u5DF2\u5728\u5E93\u4E2D",
+    discoveryFilterAdded: "\u5DF2\u6536\u5F55",
+    discoveryTypeAll: "\u5168\u90E8\u7C7B\u578B",
+    discoverySearchPlaceholder: "\u7B5B\u9009\u6807\u9898\u3001\u6458\u8981\u6216\u6765\u6E90",
+    discoveryTagFilterPlaceholder: "\u6309\u601D\u6E90\u539F\u751F\u6807\u7B7E\u6216\u5E38\u7528\u6807\u7B7E\u7B5B\u9009",
+    discoveryTagFacets: "\u5019\u9009\u6807\u7B7E",
+    discoveryTagFacetApply: "\u6309\u6807\u7B7E\u300C%s\u300D\u7B5B\u9009\uFF0C\u5171 %s \u6761",
+    discoverySaveView: "\u4FDD\u5B58\u89C6\u56FE",
+    discoverySaveViewPrompt: "\u4E3A\u5F53\u524D\u6807\u7B7E\u89C6\u56FE\u547D\u540D\uFF1A",
+    discoverySaveViewInvalid: "\u89C6\u56FE\u540D\u79F0\u6216\u626B\u63CF\u76EE\u6807\u65E0\u6548\uFF0C\u672A\u4FDD\u5B58\u3002",
+    discoverySaveViewDone: "\u5DF2\u4FDD\u5B58\u89C6\u56FE\u300C%s\u300D",
+    discoveryAddMode: "\u52A0\u5165\u65B9\u5F0F",
+    discoveryAddModeReference: "\u5EFA\u7ACB\u5F15\u7528\u5165\u53E3\uFF08\u6E90\u5757\u4E0D\u52A8\uFF09",
+    discoveryAddModeCopy: "\u590D\u5236\u5230\u5E38\u7528\u5E93\uFF08\u72EC\u7ACB\u526F\u672C\uFF09",
+    discoveryAddModeHint: "\u5F15\u7528\u5165\u53E3\u53EA\u4FDD\u5B58\u6765\u6E90\u5757 ID \u548C\u5143\u6570\u636E\uFF0C\u8C03\u7528\u65F6\u8BFB\u53D6\u6E90\u5757\u6700\u65B0\u6B63\u6587\u3002",
+    discoveryNoCandidates: "\u6CA1\u6709\u7B26\u5408\u6761\u4EF6\u7684\u5019\u9009",
+    discoveryEmptyScope: "\u6B64\u8303\u56F4\u6CA1\u6709\u53D1\u73B0\u53EF\u6536\u5F55\u7684\u5019\u9009\u3002",
+    discoveryScanningCandidates: "\u6B63\u5728\u626B\u63CF\uFF0C\u5019\u9009\u5B8C\u6210\u540E\u4F1A\u663E\u793A\u5728\u8FD9\u91CC\u3002",
+    discoveryAwaitingScan: "\u9009\u62E9\u626B\u63CF\u76EE\u6807\u540E\uFF0C\u5019\u9009\u4F1A\u663E\u793A\u5728\u8FD9\u91CC\u3002",
+    discoveryScanIncompleteEmpty: "\u626B\u63CF\u672A\u5B8C\u6210\uFF0C\u5C1A\u65E0\u53EF\u5C55\u793A\u7684\u5019\u9009\u3002\u8BF7\u68C0\u67E5\u63D0\u793A\u540E\u91CD\u8BD5\u3002",
+    discoveryScanStoppedEmpty: "\u5DF2\u505C\u6B62\u626B\u63CF\uFF0C\u5C1A\u65E0\u53EF\u5C55\u793A\u7684\u5019\u9009\u3002\u53EF\u91CD\u65B0\u626B\u63CF\u3002",
+    discoveryClearFilters: "\u6E05\u9664\u7B5B\u9009",
+    discoveryPreviewTitle: "\u5019\u9009\u9884\u89C8",
+    discoveryPreviewEmpty: "\u9009\u62E9\u4E00\u6761\u5019\u9009\u540E\u67E5\u770B\u6B63\u6587\uFF1B\u6536\u5F55\u524D\u4F1A\u518D\u6B21\u6821\u9A8C\u6765\u6E90\u3002",
+    discoveryPreviewLoading: "\u6B63\u5728\u8BFB\u53D6\u5019\u9009\u6B63\u6587\u2026",
+    discoveryAddingSingle: "\u6B63\u5728\u6821\u9A8C\u6765\u6E90\u5E76\u52A0\u5165\u5E38\u7528\u5E93\u2026",
+    discoveryAddingBatch: "\u6B63\u5728\u6536\u5F55\u9009\u4E2D\u9879\uFF1A%s / %s",
+    discoveryAdd: "\u52A0\u5165\u5E38\u7528\u5E93",
+    discoveryAddSelected: "\u52A0\u5165\u9009\u4E2D\u9879",
+    discoverySyncView: "\u540C\u6B65\u5230\u5E38\u7528\u5E93",
+    discoverySelectFiltered: "\u9009\u4E2D\u5F53\u524D\u7B5B\u9009\uFF08%s\uFF09",
+    discoveryClearFilteredSelection: "\u6E05\u9664\u5F53\u524D\u7B5B\u9009\u9009\u62E9",
+    discoveryDefaultCategory: "\u9ED8\u8BA4\u5206\u7C7B",
+    discoveryUnsortedCategory: "\u5F85\u6574\u7406",
+    discoveryDefaultCategoryHint: "\u65B0\u6536\u5F55\u9879\u9ED8\u8BA4\u4F7F\u7528\u6B64\u5206\u7C7B\uFF1B\u9884\u89C8\u4E2D\u53EF\u5355\u72EC\u4FEE\u6539\u5F53\u524D\u6761\u76EE\u3002",
+    discoveryCandidateCategory: "\u672C\u6761\u5206\u7C7B",
+    discoveryUseDefaultCategory: "\u6062\u590D\u9ED8\u8BA4",
+    discoveryForceSameContent: "\u6279\u91CF\u5141\u8BB8\u6536\u5F55\u5185\u5BB9\u76F8\u540C\u7684\u5019\u9009",
+    discoverySelected: "\u5DF2\u9009 %s \u9879",
+    discoveryClose: "\u5173\u95ED",
+    discoveryClosePendingWrites: "\u6709\u6536\u5F55\u6B63\u5728\u5199\u5165\u5185\u5BB9\u5E93\u3002\u8BF7\u7B49\u5F85\u6536\u5F55\u56DE\u6267\uFF0C\u5FC5\u8981\u65F6\u5148\u64A4\u9500\u672C\u6279\u65B0\u589E\uFF0C\u518D\u5173\u95ED\u6B64\u7A97\u53E3\u3002",
+    discoveryReceiptTitle: "\u6536\u5F55\u56DE\u6267",
+    discoveryReceiptAdded: "\u5DF2\u52A0\u5165\u5E38\u7528\u5E93\uFF1A%s\uFF1B\u539F\u7B14\u8BB0\u672A\u4FEE\u6539\u3002",
+    discoveryReceiptSameContent: "\u5185\u5BB9\u4E0E\u300C%s\u300D\u76F8\u540C\uFF0C\u672A\u81EA\u52A8\u6536\u5F55\uFF1B\u5982\u4ECD\u8981\u6536\u5F55\uFF0C\u8BF7\u660E\u786E\u786E\u8BA4\u3002",
+    discoveryReceiptAlready: "\u5DF2\u5728\u5E38\u7528\u5E93\u4E2D\uFF1A%s",
+    discoveryReceiptFailed: "\u6536\u5F55\u5931\u8D25\uFF1A%s",
+    discoveryReceiptBatch: "\u6279\u91CF\u6536\u5F55\u5B8C\u6210\uFF1A\u65B0\u589E %s\uFF0C\u8DF3\u8FC7 %s\uFF0C\u5931\u8D25 %s",
+    discoverySessionExpired: "\u53D1\u73B0\u4F1A\u8BDD\u5DF2\u5931\u6548\uFF0C\u5019\u9009\u6B63\u6587\u5DF2\u91CA\u653E\uFF0C\u8BF7\u91CD\u65B0\u626B\u63CF\u3002",
+    discoveryScanFailed: "\u626B\u63CF\u5931\u8D25\uFF1A%s",
+    discoveryUnknown: "\u672A\u77E5\u9519\u8BEF",
+    discoveryStatusCandidate: "\u5F85\u6536\u5F55",
+    discoveryStatusAlready: "\u5DF2\u5728\u5E93\u4E2D",
+    discoveryStatusSameContent: "\u5185\u5BB9\u76F8\u540C",
+    discoveryStatusUnverified: "\u91CD\u590D\u5F85\u786E\u8BA4",
+    discoveryStatusAdded: "\u5DF2\u6536\u5F55",
+    discoveryType: "\u7C7B\u578B",
+    discoverySource: "\u6765\u6E90",
+    discoveryStats: "\u7EDF\u8BA1",
+    settingsIntro: "\u7BA1\u7406\u5185\u5BB9\u5E93\u3001\u8C03\u7528\u65B9\u5F0F\u4E0E\u6570\u636E\u3002\u5E38\u7528\u5185\u5BB9\u4FDD\u5B58\u5728\u601D\u6E90\u4E2D\uFF0C\u53EF\u7EE7\u7EED\u5728\u539F\u6587\u6863\u91CC\u7F16\u8F91\u3002",
+    captureIntro: "\u5148\u653E\u5165\u60F3\u91CD\u590D\u4F7F\u7528\u7684\u5185\u5BB9\uFF0C\u518D\u8865\u5145\u6807\u9898\u4E0E\u5206\u7C7B\uFF0C\u65B9\u4FBF\u4E0B\u6B21\u627E\u5230\u3002",
+    discoveryPreviewRetry: "\u91CD\u65B0\u8BFB\u53D6\u9884\u89C8",
+    discoveryPreviewUnavailable: "\u5019\u9009\u9884\u89C8\u672A\u80FD\u8BFB\u53D6\uFF0C\u8BF7\u91CD\u8BD5\uFF1B\u539F\u7B14\u8BB0\u672A\u4FEE\u6539\u3002",
+    discoverySourceChanged: "\u6765\u6E90\u5185\u5BB9\u6216\u6240\u5728\u8303\u56F4\u5DF2\u53D8\u5316\uFF0C\u8BF7\u91CD\u65B0\u8BFB\u53D6\u9884\u89C8\u540E\u518D\u6536\u5F55\uFF1B\u5FC5\u8981\u65F6\u91CD\u65B0\u626B\u63CF\u3002",
+    discoverySourceUnavailable: "\u6765\u6E90\u6216\u626B\u63CF\u76EE\u6807\u5DF2\u4E0D\u53EF\u7528\uFF0C\u8BF7\u68C0\u67E5\u539F\u7B14\u8BB0\u540E\u91CD\u65B0\u626B\u63CF\u3002",
+    discoveryContentTooLong: "\u6765\u6E90\u6B63\u6587\u8D85\u8FC7\u5355\u6761\u5185\u5BB9\u4E0A\u9650\uFF0C\u8BF7\u7F29\u77ED\u5185\u5BB9\u540E\u91CD\u65B0\u8BFB\u53D6\u9884\u89C8\u3002",
+    discoveryLibraryCheckIncomplete: "\u5185\u5BB9\u5E93\u91CD\u590D\u6838\u9A8C\u672A\u5B8C\u6210\uFF0C\u8BF7\u68C0\u67E5\u5185\u5BB9\u5E93\u72B6\u6001\u540E\u91CD\u8BD5\u3002",
+    discoveryOperationConflict: "\u5F53\u524D\u64CD\u4F5C\u72B6\u6001\u53D1\u751F\u53D8\u5316\uFF0C\u8BF7\u7B49\u5F85\u6B63\u5728\u8FDB\u884C\u7684\u64CD\u4F5C\u7ED3\u675F\u540E\u91CD\u8BD5\u3002",
+    discoveryInvalidInput: "\u626B\u63CF\u76EE\u6807\u6216\u5019\u9009\u72B6\u6001\u65E0\u6548\uFF0C\u8BF7\u91CD\u65B0\u9009\u62E9\u76EE\u6807\u6216\u91CD\u65B0\u626B\u63CF\u3002",
+    discoveryKernelError: "\u601D\u6E90\u8BF7\u6C42\u672A\u5B8C\u6210\uFF0C\u8BF7\u68C0\u67E5\u8FDE\u63A5\u540E\u91CD\u8BD5\u3002",
+    discoveryUndoAvailable: "\u672C\u6B21\u6536\u5F55\u4ECD\u53EF\u64A4\u9500\uFF1B\u5173\u95ED\u7A97\u53E3\u540E\u5C06\u5931\u53BB\u8FD9\u91CC\u7684\u64A4\u9500\u5165\u53E3\u3002"
   };
 
   // scripts/harness/entry.ts
@@ -13300,6 +14091,8 @@ ${details.join("\n")}` : ""}`;
       previewNoResult: "\u9009\u62E9\u5DE6\u4FA7\u6761\u76EE\u540E\uFF0C\u8FD9\u91CC\u4F1A\u663E\u793A\u9884\u89C8",
       mediaContentHint: "\u56FE\u7247\u548C\u9644\u4EF6\u663E\u793A Markdown \u539F\u6587\uFF1B\u590D\u5236\u5F97\u5230\u94FE\u63A5\u6587\u672C\u3002\u67E5\u770B\u539F\u6587\u4EF6\u8BF7\u7528\u300C\u6253\u5F00\u6765\u6E90\u300D\u3002\u4E0D\u652F\u6301\u590D\u5236\u56FE\u7247\u4F4D\u56FE\u6216\u6587\u4EF6\u672C\u4F53\u3002",
       usageGuideMedia: "\u56FE\u7247\u548C\u9644\u4EF6\uFF1A\u5148\u5C06\u8D44\u6E90\u6DFB\u52A0\u5230\u601D\u6E90\uFF0C\u518D\u4ECE\u56FE\u7247\u6216\u9644\u4EF6\u7684\u53F3\u952E\u83DC\u5355\u4FDD\u5B58\u3002\u9884\u89C8\u663E\u793A Markdown \u539F\u6587\uFF0C\u590D\u5236\u5F97\u5230\u94FE\u63A5\u6587\u672C\uFF1B\u67E5\u770B\u539F\u6587\u4EF6\u8BF7\u7528\u300C\u6253\u5F00\u6765\u6E90\u300D\u3002\u4E0D\u652F\u6301\u590D\u5236\u56FE\u7247\u4F4D\u56FE\u6216\u6587\u4EF6\u672C\u4F53\u3002",
+      usageGuideMultiblock: zh_CN_default.usageGuideMultiblock,
+      multiBlockPendingHint: zh_CN_default.multiBlockPendingHint,
       aiFound: "AI \u8BED\u4E49\u641C\u7D22",
       aiWorking: "AI \u5904\u7406\u4E2D\u2026",
       aiOriginalPreserved: "\u539F\u6587\u672A\u88AB\u4FEE\u6539",
@@ -13464,8 +14257,8 @@ ${details.join("\n")}` : ""}`;
       customTransformHint: "\u4E0E\u5185\u7F6E\u53D8\u6362\u5E76\u5217\u51FA\u73B0\u5728\u6761\u76EE\u52A8\u4F5C\u83DC\u5355 \u2726 \u533A\uFF1B\u8BFB\u53D6\u6B63\u6587\u9075\u5FAA\u300C\u5141\u8BB8 AI \u8BFB\u53D6\u5B8C\u6574\u6B63\u6587\u300D\u5F00\u5173",
       quickCapture: "\u5FEB\u901F\u6355\u83B7\u526A\u8D34\u677F\u4E3A\u6761\u76EE",
       quickCaptureDuplicate: "\u5DF2\u5B58\u5728\u540C\u6587\u6761\u76EE\u300C%s\u300D\uFF0C\u672A\u91CD\u590D\u4FDD\u5B58",
-      promptPackBtn: "\u5BFC\u5165\u5185\u7F6E\u5206\u7C7B\u6A21\u677F",
-      promptPackHint: "\u5185\u7F6E\u6A21\u677F\u4F1A\u4EE5\u5206\u7C7B\u5C5E\u6027\u4FDD\u5B58\u5728\u5F53\u524D\u5E93\u6587\u6863\u4E2D",
+      promptPackBtn: "\u5BFC\u5165\u5E38\u7528\u5185\u5BB9\u793A\u4F8B",
+      promptPackHint: zh_CN_default.promptPackHint,
       dataSection: "\u6570\u636E\u4E0E\u6A21\u677F\uFF08\u5BFC\u51FA / \u5BFC\u5165\uFF09",
       librarySection: "\u5F53\u524D\u5185\u5BB9\u5E93",
       libraryNone: "\u672A\u914D\u7F6E",

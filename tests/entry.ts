@@ -13,6 +13,7 @@ import * as zip from "../src/model/zip";
 import * as pinyin from "../src/model/pinyin";
 import * as pinyinTiny from "../src/model/pinyin-tiny";
 import * as placeholders from "../src/model/placeholders";
+import * as kramdown from "../src/model/kramdown";
 import * as variables from "../src/model/variables";
 import * as providerSection from "../src/model/provider-section";
 import * as exportMarkdown from "../src/service/export-markdown";
@@ -42,6 +43,7 @@ export {
     pinyin,
     pinyinTiny,
     placeholders,
+    kramdown,
     variables,
     providerSection,
     exportMarkdown,

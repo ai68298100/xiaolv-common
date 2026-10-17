@@ -35,4 +35,4 @@ T-0092 补齐入口一致性：六个捕获入口超限后明确拒绝，停止�
 
 ## 最终门禁
 
-`pnpm run check`、`pnpm test` 509/509、`pnpm run build`、`pnpm run check:package` 13 项、`pnpm run scan`、Chrome `pnpm run test:ui`、`pnpm run test:ix` 74/74 和 `git diff --check` 均通过。最新搜索 UI 已改用 `list/listitem` + `aria-current`，客服浅色徽标改为高对比色；Chrome axe 的搜索亮色/暗色/移动矩阵为 0 violations。真实 Electron/Android/AI 现场证据仍按 B-001–B-006 分层，B-006 继续开放。
+`pnpm run check`、`pnpm test` 512/512、`pnpm run build`、`pnpm run check:package` 13 项、`pnpm run scan`、Chrome `pnpm run test:ui`、`pnpm run test:ix` 74/74 和 `git diff --check` 均通过。最新搜索 UI 已改用 `list/listitem` + `aria-current`，客服浅色徽标改为高对比色；Chrome axe 的搜索亮色/暗色/移动矩阵为 0 violations。R240 另验证示例包 25/8/17、重复导入 skip 和复制/插入载荷。真实 Electron/Android/AI 现场证据仍按 B-001–B-006 分层，B-006 继续开放。

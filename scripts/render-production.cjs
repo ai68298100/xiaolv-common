@@ -365,10 +365,10 @@ fs.writeFileSync(path.join(OUT, "harness.html"), html);
             const text = intro?.textContent ?? "";
             return !!intro && text.length > 8 && !/^(settingsIntro|captureIntro)$/.test(text);
         })(),
-        // R74：提示词场景包入口
-        promptPack: (document.body.textContent || "").includes("导入内置分类模板"),
+        // R74：常用内容示例入口
+        promptPack: (document.body.textContent || "").includes("导入常用内容示例"),
         promptPackInDataSection: (() => {
-            const btn = Array.from(document.querySelectorAll("button")).find((b) => (b.textContent ?? "").includes("导入内置分类模板"));
+            const btn = Array.from(document.querySelectorAll("button")).find((b) => (b.textContent ?? "").includes("导入常用内容示例"));
             return !!btn && (btn.closest(".xlc-card")?.querySelector(".xlc-form-label")?.textContent ?? "").includes("数据与模板");
         })(),
     }));
