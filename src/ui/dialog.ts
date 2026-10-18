@@ -218,7 +218,17 @@ export class CommonSearchDialog {
             input.value = "";
             syncQMark();
             input.focus();
-            input.dispatchEvent(new Event("input", {bubbles: true}));
+            if (this.inputDebounce) {
+                clearTimeout(this.inputDebounce);
+                this.inputDebounce = null;
+            }
+            this.currentScope = "all";
+            this.syncScopeChips();
+            if (!this.navigatingHistory) {
+                this.historyCursor = -1;
+            }
+            this.deps.setLastQuery("");
+            void this.refresh();
         });
         input.addEventListener("input", () => {
             syncQMark();
@@ -1469,14 +1479,41 @@ export class CommonSearchDialog {
                 list.appendChild(bottomSpacer);
                 this.paintActive();
             };
-            const onScroll = (): void => renderWindow();
+            let rafId: number | null = null;
+            const scheduleRender = (): void => {
+                if (rafId !== null) return;
+                const raf = typeof requestAnimationFrame === "function"
+                    ? requestAnimationFrame
+                    : (cb: FrameRequestCallback) => setTimeout(cb, 16) as unknown as number;
+                rafId = raf(() => {
+                    rafId = null;
+                    renderWindow();
+                });
+            };
+            const onScroll = (): void => scheduleRender();
             list.classList.add("xlc-list--virtual");
             list.addEventListener("scroll", onScroll, {passive: true});
             this.virtualListCleanup = () => {
+                if (rafId !== null) {
+                    const caf = typeof cancelAnimationFrame === "function"
+                        ? cancelAnimationFrame
+                        : (id: number) => clearTimeout(id);
+                    caf(rafId);
+                    rafId = null;
+                }
                 list.removeEventListener("scroll", onScroll);
                 list.classList.remove("xlc-list--virtual");
             };
-            this.virtualEnsureIndex = (index: number) => renderWindow(index);
+            this.virtualEnsureIndex = (index: number) => {
+                if (rafId !== null) {
+                    const caf = typeof cancelAnimationFrame === "function"
+                        ? cancelAnimationFrame
+                        : (id: number) => clearTimeout(id);
+                    caf(rafId);
+                    rafId = null;
+                }
+                renderWindow(index);
+            };
             renderWindow();
         } else {
             for (let i = 0; i < this.results.length; i++) {
@@ -2309,11 +2346,17 @@ export class CommonSearchDialog {
                 input.placeholder = this.deps.t("insertToDocPick");
                 input.setAttribute("aria-label", this.deps.t("insertToDocPick"));
                 input.setAttribute("autocomplete", "off");
+                let docDebounce: ReturnType<typeof setTimeout> | null = null;
                 // Enter 选第一个命中；↑↓ 在输入框内移动光标不被菜单级 keydown 劫持（R138）
                 input.addEventListener("keydown", (ev) => {
                     ev.stopPropagation();
                     if (ev.key === "Enter" && !ev.isComposing) {
                         ev.preventDefault();
+                        if (docDebounce) {
+                            clearTimeout(docDebounce);
+                            docDebounce = null;
+                            runDocSearch(input.value);
+                        }
                         const first = sec.querySelector<HTMLButtonElement>(".xlc-pickdoc-hit");
                         first?.click();
                     }
@@ -2365,13 +2408,23 @@ export class CommonSearchDialog {
                         retry.className = "b3-button xlc-btn-ghost xlc-pickdoc-retry";
                         retry.dataset.xlcControl = "dialog.pickdoc.retry";
                         retry.textContent = this.deps.t("retry");
-                        retry.addEventListener("click", () => runDocSearch(input.value));
+                        retry.addEventListener("click", () => {
+                            if (docDebounce) {
+                                clearTimeout(docDebounce);
+                                docDebounce = null;
+                            }
+                            runDocSearch(input.value);
+                        });
                         searchStatus.appendChild(document.createTextNode(" "));
                         searchStatus.appendChild(retry);
                     });
                 };
                 input.addEventListener("input", () => {
-                    runDocSearch(input.value);
+                    if (docDebounce) clearTimeout(docDebounce);
+                    docDebounce = setTimeout(() => {
+                        docDebounce = null;
+                        runDocSearch(input.value);
+                    }, 200);
                 });
                 const actions2 = menu.querySelectorAll(".xlc-menu-sec");
                 actions2[actions2.length - 1]?.before(sec);
