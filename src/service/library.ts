@@ -53,6 +53,21 @@ export interface IndexBuildOptions {
     shouldStop?: () => boolean;
 }
 
+export interface SnippetExpansionDetail {
+    /** 最终展开后的正文 */
+    text: string;
+    /** 成功展开的子片段标题清单（去重保序） */
+    expandedTitles: string[];
+    /** 未找到对应条目的子片段标题清单（去重保序） */
+    missingTitles: string[];
+    /** 实际展开到达的最大嵌套深度（未嵌套为 0，直接引用为 1，逐层递增） */
+    maxDepthReached: number;
+    /** 是否检测到递归成环（成环时自动熔断并注入可见标记） */
+    hasCycles: boolean;
+    /** 是否有超出 maxDepth 的过深嵌套未展开 */
+    exceededMaxDepth: boolean;
+}
+
 export type IndependentLibraryStep = "creating-notebook" | "creating-doc" | "rolling-back";
 
 export interface IndependentLibraryOptions extends WriteOptions {
@@ -802,13 +817,33 @@ export class LibraryService {
      *  已见条目不重复展开（防环，兄弟引用允许）；标题缺失 / 成环 / 超出层数 →
      *  替换为 __片段：标题__（可见可改，不静默丢）。 */
     async expandSnippetRefs(text: string, opts?: {maxDepth?: number}): Promise<string> {
+        return (await this.expandSnippetRefsDetailed(text, opts)).text;
+    }
+
+    /** 展开片段引用并返回完整展开度量与诊断（可观测性与层级检测用）。 */
+    async expandSnippetRefsDetailed(text: string, opts?: {maxDepth?: number}): Promise<SnippetExpansionDetail> {
         const maxDepth = opts?.maxDepth ?? 3;
-        if (!text || !text.includes("{{xlc:snippet:")) return text;
+        if (!text || !text.includes("{{xlc:snippet:")) {
+            return {
+                text: text || "",
+                expandedTitles: [],
+                missingTitles: [],
+                maxDepthReached: 0,
+                hasCycles: false,
+                exceededMaxDepth: false,
+            };
+        }
         const idx = await this.ensureIndex();
         const byTitle = new Map<string, CommonItem>();
         for (const item of idx.items.values()) {
             if (item.title && !byTitle.has(item.title)) byTitle.set(item.title, item);
         }
+        const expandedTitles: string[] = [];
+        const missingTitles: string[] = [];
+        let maxDepthReached = 0;
+        let hasCycles = false;
+        let exceededMaxDepth = false;
+
         const expand = async (input: string, level: number, seen: Set<string>): Promise<string> => {
             if (!input || !input.includes("{{xlc:snippet:")) return input;
             let out = input;
@@ -817,10 +852,18 @@ export class LibraryService {
                 const title = (match[1] ?? "").trim().slice(0, LIMITS.title);
                 const marker = `__片段：${title || "?"}__`;
                 let replacement = marker;
-                if (level <= maxDepth) {
-                    const target = title ? byTitle.get(title) : undefined;
-                    if (target && !seen.has(target.id)) {
+                if (!title || !byTitle.has(title)) {
+                    if (title && !missingTitles.includes(title)) missingTitles.push(title);
+                } else if (level > maxDepth) {
+                    exceededMaxDepth = true;
+                } else {
+                    const target = byTitle.get(title)!;
+                    if (seen.has(target.id)) {
+                        hasCycles = true;
+                    } else {
                         seen.add(target.id);
+                        if (!expandedTitles.includes(title)) expandedTitles.push(title);
+                        if (level > maxDepthReached) maxDepthReached = level;
                         try {
                             const kd = await this.getItemKramdown(target);
                             if (kd.ok) {
@@ -835,7 +878,16 @@ export class LibraryService {
             }
             return out;
         };
-        return expand(text, 1, new Set());
+
+        const resultText = await expand(text, 1, new Set());
+        return {
+            text: resultText,
+            expandedTitles,
+            missingTitles,
+            maxDepthReached,
+            hasCycles,
+            exceededMaxDepth,
+        };
     }
 
     /** 按锚块 custom-xlc-parts 清单读取完整正文；旧条目只读取锚块，绝不猜相邻块。 */

@@ -13243,14 +13243,32 @@ ${details.join("\n")}` : ""}`;
      *  已见条目不重复展开（防环，兄弟引用允许）；标题缺失 / 成环 / 超出层数 →
      *  替换为 __片段：标题__（可见可改，不静默丢）。 */
     async expandSnippetRefs(text, opts) {
+      return (await this.expandSnippetRefsDetailed(text, opts)).text;
+    }
+    /** 展开片段引用并返回完整展开度量与诊断（可观测性与层级检测用）。 */
+    async expandSnippetRefsDetailed(text, opts) {
       var _a;
       const maxDepth = (_a = opts == null ? void 0 : opts.maxDepth) != null ? _a : 3;
-      if (!text || !text.includes("{{xlc:snippet:")) return text;
+      if (!text || !text.includes("{{xlc:snippet:")) {
+        return {
+          text: text || "",
+          expandedTitles: [],
+          missingTitles: [],
+          maxDepthReached: 0,
+          hasCycles: false,
+          exceededMaxDepth: false
+        };
+      }
       const idx = await this.ensureIndex();
       const byTitle = /* @__PURE__ */ new Map();
       for (const item of idx.items.values()) {
         if (item.title && !byTitle.has(item.title)) byTitle.set(item.title, item);
       }
+      const expandedTitles = [];
+      const missingTitles = [];
+      let maxDepthReached = 0;
+      let hasCycles = false;
+      let exceededMaxDepth = false;
       const expand = async (input, level, seen) => {
         var _a2;
         if (!input || !input.includes("{{xlc:snippet:")) return input;
@@ -13260,10 +13278,18 @@ ${details.join("\n")}` : ""}`;
           const title = ((_a2 = match[1]) != null ? _a2 : "").trim().slice(0, LIMITS.title);
           const marker = `__\u7247\u6BB5\uFF1A${title || "?"}__`;
           let replacement = marker;
-          if (level <= maxDepth) {
-            const target = title ? byTitle.get(title) : void 0;
-            if (target && !seen.has(target.id)) {
+          if (!title || !byTitle.has(title)) {
+            if (title && !missingTitles.includes(title)) missingTitles.push(title);
+          } else if (level > maxDepth) {
+            exceededMaxDepth = true;
+          } else {
+            const target = byTitle.get(title);
+            if (seen.has(target.id)) {
+              hasCycles = true;
+            } else {
               seen.add(target.id);
+              if (!expandedTitles.includes(title)) expandedTitles.push(title);
+              if (level > maxDepthReached) maxDepthReached = level;
               try {
                 const kd = await this.getItemKramdown(target);
                 if (kd.ok) {
@@ -13278,7 +13304,15 @@ ${details.join("\n")}` : ""}`;
         }
         return out;
       };
-      return expand(text, 1, /* @__PURE__ */ new Set());
+      const resultText = await expand(text, 1, /* @__PURE__ */ new Set());
+      return {
+        text: resultText,
+        expandedTitles,
+        missingTitles,
+        maxDepthReached,
+        hasCycles,
+        exceededMaxDepth
+      };
     }
     /** 按锚块 custom-xlc-parts 清单读取完整正文；旧条目只读取锚块，绝不猜相邻块。 */
     async readManagedPartKramdown(item) {

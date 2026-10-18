@@ -158,3 +158,33 @@ test("纯函数诊断：listSnippetRefs 去重解析与 diagnoseSnippetRefs 缺�
         hasSnippets: true,
     });
 });
+
+test("expandSnippetRefsDetailed：跟踪展开片段、缺失项、环检测、最大深度与超限状态", async () => {
+    const lib = makeLibrary();
+
+    // 1. 正常多层展开（B -> C）
+    const normal = await lib.expandSnippetRefsDetailed("开头 {{xlc:snippet:B 条目}} 结尾");
+    assert.strictEqual(normal.text, "开头 B 内容 C 正文 {{xlc:ask:客户}} 结尾");
+    assert.deepStrictEqual(normal.expandedTitles, ["B 条目", "C 条目"]);
+    assert.deepStrictEqual(normal.missingTitles, []);
+    assert.strictEqual(normal.maxDepthReached, 2);
+    assert.strictEqual(normal.hasCycles, false);
+    assert.strictEqual(normal.exceededMaxDepth, false);
+
+    // 2. 递归成环检测
+    const cycle = await lib.expandSnippetRefsDetailed("{{xlc:snippet:自指条目}}");
+    assert.strictEqual(cycle.hasCycles, true);
+    assert.strictEqual(cycle.text, "自 __片段：自指条目__");
+
+    // 3. 缺失片段收集
+    const missing = await lib.expandSnippetRefsDetailed("前 {{xlc:snippet:不存在的片段}} 后");
+    assert.deepStrictEqual(missing.missingTitles, ["不存在的片段"]);
+    assert.strictEqual(missing.text, "前 __片段：不存在的片段__ 后");
+
+    // 4. 超出深度限制
+    const depthExceeded = await lib.expandSnippetRefsDetailed("{{xlc:snippet:B 条目}}", {maxDepth: 1});
+    assert.strictEqual(depthExceeded.exceededMaxDepth, true);
+    assert.strictEqual(depthExceeded.maxDepthReached, 1);
+    assert.deepStrictEqual(depthExceeded.expandedTitles, ["B 条目"]);
+    assert.match(depthExceeded.text, /__片段：C 条目__/);
+});
