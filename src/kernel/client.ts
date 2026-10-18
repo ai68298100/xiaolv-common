@@ -78,6 +78,8 @@ function classifyKernelError(code: string | number, message: string): KernelErro
 export const ENDPOINTS = {
     version: "/api/system/version",
     lsNotebooks: "/api/notebook/lsNotebooks",
+    createNotebook: "/api/notebook/createNotebook",
+    removeNotebook: "/api/notebook/removeNotebook",
     listDocsByPath: "/api/filetree/listDocsByPath",
     searchDocs: "/api/filetree/searchDocs",
     createDocWithMd: "/api/filetree/createDocWithMd",
@@ -359,6 +361,20 @@ export function parseExistingMap(data: unknown): Record<string, boolean> {
 
 export function parseDocId(data: unknown): string | null {
     return typeof data === "string" && data.length > 0 ? data : null;
+}
+
+/** createNotebook 响应：{notebook: {id, ...} | null}。不猜测裸字符串或缺失 ID。 */
+export function parseNotebookId(data: unknown): string | null {
+    if (!data || typeof data !== "object" || Array.isArray(data)) return null;
+    const notebook = (data as {notebook?: unknown}).notebook;
+    if (!notebook || typeof notebook !== "object" || Array.isArray(notebook)) return null;
+    const id = (notebook as {id?: unknown}).id;
+    return typeof id === "string" && /^\d{8,14}$/.test(id) ? id : null;
+}
+
+/** removeNotebook 成功回包必须是 null；避免把未知响应误报为已删除。 */
+export function parseVoid(data: unknown): boolean {
+    return data === null;
 }
 
 export function parseString(data: unknown): string {

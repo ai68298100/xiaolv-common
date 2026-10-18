@@ -11,7 +11,9 @@ import {
     parseDocSearch,
     parseExistingMap,
     parseKramdown,
+    parseNotebookId,
     parseString,
+    parseVoid,
 } from "../kernel/client";
 import {
     CommonItem,
@@ -54,7 +56,14 @@ export type ReceiptReason = "kernel-error" | "timeout" | "invalid-input" | "not-
 
 export type Receipt<T = undefined> =
     | {ok: true; data: T}
-    | {ok: false; reason: ReceiptReason; message: string};
+    | {
+        ok: false;
+        reason: ReceiptReason;
+        message: string;
+        /** 失败发生在独立笔记本已创建之后时保留该 ID，供 UI/人工恢复。 */
+        notebookId?: string;
+        compensation?: "succeeded" | "failed";
+    };
 
 export interface ConditionalDeleteInput {
     item: CommonItem;
@@ -72,6 +81,13 @@ function fail<T>(reason: ReceiptReason, message: string): Receipt<T> {
 
 function ok<T>(data: T): Receipt<T> {
     return {ok: true, data};
+}
+
+/** 为两步编排派生有界幂等键，避免给基础键追加后超过客户端 128 字符上限。 */
+function scopedIdempotencyKey(base: string, suffix: string): string {
+    const tail = `:${suffix}`;
+    const room = Math.max(8, 128 - tail.length);
+    return `${base.slice(0, room)}${tail}`;
 }
 
 function sameManagedItem(actual: CommonItem, expected: CommonItem): boolean {
@@ -190,6 +206,9 @@ export class LibraryService {
     private readonly appendReceipts = new Map<string, boolean>();
     /** 首次设置创建文档的幂等回执，避免确认弹窗/宿主重试产生多个库文档。 */
     private readonly libraryDocReceipts = new Map<string, Receipt<{docId: string}>>();
+    /** 独立笔记本创建/补偿删除回执；只保留本服务生命周期内的幂等结果。 */
+    private readonly notebookReceipts = new Map<string, Receipt<{notebookId: string; name: string}>>();
+    private readonly removeNotebookReceipts = new Map<string, Receipt<{notebookId: string}>>();
     private readonly options: LibraryServiceOptions;
     private readonly conditionalDeleteGrants = new WeakMap<CommonItem, {
         batchToken: string;
@@ -242,6 +261,8 @@ export class LibraryService {
         this.removeReceipts.clear();
         this.appendReceipts.clear();
         this.libraryDocReceipts.clear();
+        this.notebookReceipts.clear();
+        this.removeNotebookReceipts.clear();
         this.invalidateIndex(); // 库配置变化必须重建索引
     }
 
@@ -349,6 +370,96 @@ export class LibraryService {
             }
         };
         return this.withWriteLock(key, action);
+    }
+
+    /** 创建独立笔记本；写请求不重试，重复提交由幂等键和服务锁保护。 */
+    async createNotebook(name: string, options: WriteOptions = {}): Promise<Receipt<{notebookId: string; name: string}>> {
+        const normalizedName = typeof name === "string" ? name.trim() : "";
+        if (!normalizedName || normalizedName.length > LIMITS.title) return fail("invalid-input", "notebook name required");
+        const idempotencyKey = typeof options.idempotencyKey === "string" && options.idempotencyKey.length >= 8
+            && options.idempotencyKey.length <= 128 ? options.idempotencyKey : "";
+        const receiptKey = idempotencyKey ? idempotencyKey : normalizedName;
+        const key = `create-notebook:${receiptKey}`;
+        return this.withWriteLock(key, async () => {
+            const previous = this.notebookReceipts.get(receiptKey);
+            if (previous) return previous;
+            try {
+                const data = await this.kernel.request("createNotebook", {name: normalizedName}, {
+                    idempotencyKey: idempotencyKey || undefined,
+                    maxRetries: 0,
+                });
+                const notebookId = parseNotebookId(data);
+                if (!notebookId) return fail("kernel-error", "createNotebook returned no valid notebook id");
+                const receipt = ok({notebookId, name: normalizedName});
+                this.rememberReceipt(this.notebookReceipts, receiptKey, receipt);
+                return receipt;
+            } catch (err) {
+                return toFailureReceipt(err);
+            }
+        });
+    }
+
+    /** 删除笔记本只接受官方 null 回包；仅供本次创建失败的空笔记本补偿或明确管理动作使用。 */
+    async removeNotebook(notebookId: string, options: WriteOptions = {}): Promise<Receipt<{notebookId: string}>> {
+        if (typeof notebookId !== "string" || !/^\d{8,14}$/.test(notebookId)) {
+            return fail("invalid-input", "valid notebook id required");
+        }
+        const idempotencyKey = typeof options.idempotencyKey === "string" && options.idempotencyKey.length >= 8
+            && options.idempotencyKey.length <= 128 ? options.idempotencyKey : "";
+        const receiptKey = idempotencyKey ? idempotencyKey : notebookId;
+        const key = `remove-notebook:${receiptKey}`;
+        return this.withWriteLock(key, async () => {
+            const previous = this.removeNotebookReceipts.get(receiptKey);
+            if (previous) return previous;
+            try {
+                const data = await this.kernel.request("removeNotebook", {notebook: notebookId}, {
+                    idempotencyKey: idempotencyKey || undefined,
+                    maxRetries: 0,
+                });
+                if (!parseVoid(data)) return fail("kernel-error", "removeNotebook returned an invalid response");
+                const receipt = ok({notebookId});
+                this.rememberReceipt(this.removeNotebookReceipts, receiptKey, receipt);
+                return receipt;
+            } catch (err) {
+                return toFailureReceipt(err);
+            }
+        });
+    }
+
+    /** 两步独立库编排：创建笔记本后创建库文档；文档失败时只补偿删除本次新建的笔记本。 */
+    async createIndependentLibrary(notebookName: string, title: string, options: WriteOptions = {}): Promise<Receipt<{notebookId: string; docId: string}>> {
+        const normalizedName = typeof notebookName === "string" ? notebookName.trim() : "";
+        const normalizedTitle = typeof title === "string" ? title.trim() : "";
+        if (!normalizedName || normalizedName.length > LIMITS.title || !normalizedTitle || normalizedTitle.length > LIMITS.title) {
+            return fail("invalid-input", "notebook/title required");
+        }
+        const baseKey = typeof options.idempotencyKey === "string" && options.idempotencyKey.length >= 8
+            && options.idempotencyKey.length <= 128 ? options.idempotencyKey : `independent:${normalizedName}:${normalizedTitle}`;
+        return this.withWriteLock(`independent-library:${baseKey}`, async () => {
+            const notebook = await this.createNotebook(normalizedName, {idempotencyKey: scopedIdempotencyKey(baseKey, "nb")});
+            if (!notebook.ok) return notebook;
+            const createdNotebookId = notebook.data.notebookId;
+            const doc = await this.createLibraryDoc(createdNotebookId, normalizedTitle, {idempotencyKey: scopedIdempotencyKey(baseKey, "doc")});
+            if (doc.ok) return ok({notebookId: createdNotebookId, docId: doc.data.docId});
+
+            const compensation = await this.removeNotebook(createdNotebookId, {idempotencyKey: scopedIdempotencyKey(baseKey, "rollback")});
+            if (compensation.ok) {
+                return {
+                    ok: false,
+                    reason: doc.reason,
+                    message: `${doc.message}; empty notebook ${createdNotebookId} was removed`,
+                    notebookId: createdNotebookId,
+                    compensation: "succeeded",
+                };
+            }
+            return {
+                ok: false,
+                reason: doc.reason,
+                message: `${doc.message}; notebook ${createdNotebookId} could not be removed: ${compensation.message}`,
+                notebookId: createdNotebookId,
+                compensation: "failed",
+            };
+        });
     }
 
     /** 列出笔记本根下的一级文档，供首跑校验真实可写落点。 */

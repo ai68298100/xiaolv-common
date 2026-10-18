@@ -629,7 +629,14 @@
 - [x] 使用帮助增加图片/证件示意图、PPT/PDF/DOCX、简历正文/附件三类真实资源示例；每条明确“先在思源添加真实资源”、当前链接动作和未验证能力。
 - [x] 新增 `guide.media.image`、`guide.media.attachment`、`guide.media.resume` 稳定控件，Chrome 交互审计仍为 74/74，并验证三条示例同时可见。
 - [x] 新增 [ADR 0059](docs/adr/0059-issue1-independent-notebook-creation-plan.md) 与 [R241 账本](docs/dev-plan-2026-10-18-r241.md)，记录 Issue #1 的 createNotebook → library doc 两步回执、补偿删除、幂等、权限/超时和真实宿主验收边界。
-- [ ] Issue #1 尚未实现或关闭；B-005 解除前不启动新的 Electron/思源宿主实验。
+- [ ] Issue #1 的 UI/真实宿主验收尚未完成；离线 `createNotebook → createLibraryDoc` 契约与补偿编排已在 R242 落地。B-005 解除前不启动新的 Electron/思源宿主实验。
+
+## T-0095 / R242（2026-10-18 Issue #1 离线契约与补偿编排）
+
+- [x] 内核白名单登记 `createNotebook` / `removeNotebook`，严格校验 notebook ID、删除 `null` 回包与写端点不重试。
+- [x] 服务层提供 `createNotebook`、`removeNotebook`、`createIndependentLibrary`；写锁、幂等回执和文档失败补偿删除均保留可审计结果。
+- [x] `LibraryConfig` 兼容 `createdNotebookIds`，旧配置归一化为空数组。
+- [x] 新增契约/服务测试覆盖畸形响应、失败、重复提交及补偿成功/失败；Issue #1 仍未关闭，设置 UI 与真实宿主验收后置。
 
 ## T-0086–T-0092 / R233–R239（2026-10-18 审计、示例调研与多块保护）
 

@@ -16,6 +16,8 @@ export interface LibraryConfig {
     containerDocIds: string[];
     /** 由插件创建的库文档（首次引导回执用） */
     createdDocIds: string[];
+    /** 由插件创建的独立笔记本（Issue #1；旧配置缺省为空） */
+    createdNotebookIds?: string[];
     configuredAt: number;
 }
 
@@ -38,6 +40,7 @@ export function normalizeLibraryConfig(raw: unknown): LibraryConfig | null {
     const containerDocIds = ids(obj.containerDocIds, isBlockId, 64);
     const notebookIds = ids(obj.notebookIds, (x) => typeof x === "string" && NOTEBOOK_ID_RE.test(x), 16);
     const createdDocIds = ids(obj.createdDocIds, isBlockId, 64);
+    const createdNotebookIds = ids(obj.createdNotebookIds, (x) => typeof x === "string" && NOTEBOOK_ID_RE.test(x), 16);
     if (mode !== "notebook" && containerDocIds.length === 0) return null;
     if (mode === "notebook" && notebookIds.length === 0) return null;
     const configuredAt = Number(obj.configuredAt);
@@ -47,6 +50,7 @@ export function normalizeLibraryConfig(raw: unknown): LibraryConfig | null {
         notebookIds,
         containerDocIds,
         createdDocIds,
+        createdNotebookIds,
         configuredAt: Number.isFinite(configuredAt) && configuredAt > 0 ? configuredAt : 0,
     };
 }

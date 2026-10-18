@@ -45,6 +45,42 @@ test("解析器：形状不符时返回安全空值", () => {
     assert.deepEqual(client.parseExistingMap({a: true, b: "no"}), {a: true, b: false});
     assert.equal(client.parseDocId(42), null);
     assert.equal(client.parseKramdown({noId: 1}), null);
+    assert.equal(client.parseNotebookId({notebook: {id: "20240101123456", name: "独立库"}}), "20240101123456");
+    assert.equal(client.parseNotebookId({notebook: null}), null);
+    assert.equal(client.parseNotebookId({notebook: {id: "not-a-notebook"}}), null);
+    assert.equal(client.parseNotebookId("20240101123456"), null);
+    assert.equal(client.parseVoid(null), true);
+    assert.equal(client.parseVoid({}), false);
+});
+
+test("独立笔记本端点已登记且写请求按原样发送", async () => {
+    const calls = [];
+    const kernel = client.createKernelClient({syncPost: async (url, data, context) => {
+        calls.push({url, data, context});
+        if (url.endsWith("createNotebook")) return {code: 0, data: {notebook: {id: "20240101123456", name: data.name}}};
+        return {code: 0, data: null};
+    }});
+    const created = await kernel.request("createNotebook", {name: "独立库"}, {idempotencyKey: "issue1-create-1"});
+    const removed = await kernel.request("removeNotebook", {notebook: "20240101123456"}, {idempotencyKey: "issue1-remove-1"});
+    assert.deepEqual(created, {notebook: {id: "20240101123456", name: "独立库"}});
+    assert.equal(removed, null);
+    assert.deepEqual(calls.map((call) => [call.url, call.data]), [
+        ["/api/notebook/createNotebook", {name: "独立库"}],
+        ["/api/notebook/removeNotebook", {notebook: "20240101123456"}],
+    ]);
+    assert.equal(calls[0].context.attempt, 0);
+    assert.equal(calls[1].context.attempt, 0);
+});
+
+test("独立笔记本写端点网络失败不自动重试", async () => {
+    let calls = 0;
+    const kernel = client.createKernelClient({syncPost: async () => {
+        calls += 1;
+        throw new Error("network offline");
+    }});
+    await assert.rejects(() => kernel.request("createNotebook", {name: "库"}), (err) => err.kind === "network");
+    await assert.rejects(() => kernel.request("removeNotebook", {notebook: "20240101123456"}), (err) => err.kind === "network");
+    assert.equal(calls, 2);
 });
 
 test("同一在途读取请求去重，键序不同也只触发一次传输", async () => {

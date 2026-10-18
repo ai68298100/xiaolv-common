@@ -12210,6 +12210,16 @@ ${details.join("\n")}` : ""}`;
   function parseDocId(data) {
     return typeof data === "string" && data.length > 0 ? data : null;
   }
+  function parseNotebookId(data) {
+    if (!data || typeof data !== "object" || Array.isArray(data)) return null;
+    const notebook = data.notebook;
+    if (!notebook || typeof notebook !== "object" || Array.isArray(notebook)) return null;
+    const id = notebook.id;
+    return typeof id === "string" && /^\d{8,14}$/.test(id) ? id : null;
+  }
+  function parseVoid(data) {
+    return data === null;
+  }
   function parseString(data) {
     return typeof data === "string" ? data : "";
   }
@@ -12240,6 +12250,11 @@ ${details.join("\n")}` : ""}`;
   }
   function ok(data) {
     return { ok: true, data };
+  }
+  function scopedIdempotencyKey(base, suffix) {
+    const tail = `:${suffix}`;
+    const room = Math.max(8, 128 - tail.length);
+    return `${base.slice(0, room)}${tail}`;
   }
   function sameManagedItem(actual, expected) {
     var _a, _b, _c;
@@ -12299,6 +12314,9 @@ ${details.join("\n")}` : ""}`;
       this.appendReceipts = /* @__PURE__ */ new Map();
       /** 首次设置创建文档的幂等回执，避免确认弹窗/宿主重试产生多个库文档。 */
       this.libraryDocReceipts = /* @__PURE__ */ new Map();
+      /** 独立笔记本创建/补偿删除回执；只保留本服务生命周期内的幂等结果。 */
+      this.notebookReceipts = /* @__PURE__ */ new Map();
+      this.removeNotebookReceipts = /* @__PURE__ */ new Map();
       this.conditionalDeleteGrants = /* @__PURE__ */ new WeakMap();
       /** 索引（可丢弃缓存）。为空或超过 maxAgeMs 时重建（SWR：陈旧索引透明刷新）。 */
       /** 索引（可丢弃缓存）。为空或超过 maxAgeMs 时重建（SWR）。
@@ -12347,6 +12365,8 @@ ${details.join("\n")}` : ""}`;
       this.removeReceipts.clear();
       this.appendReceipts.clear();
       this.libraryDocReceipts.clear();
+      this.notebookReceipts.clear();
+      this.removeNotebookReceipts.clear();
       this.invalidateIndex();
     }
     /** 使索引缓存失效（公开供宿主 onDataChanged 使用：外部同步/数据变更后下次打开重建，R148） */
@@ -12429,6 +12449,89 @@ ${details.join("\n")}` : ""}`;
         }
       };
       return this.withWriteLock(key, action);
+    }
+    /** 创建独立笔记本；写请求不重试，重复提交由幂等键和服务锁保护。 */
+    async createNotebook(name, options = {}) {
+      const normalizedName = typeof name === "string" ? name.trim() : "";
+      if (!normalizedName || normalizedName.length > LIMITS.title) return fail("invalid-input", "notebook name required");
+      const idempotencyKey = typeof options.idempotencyKey === "string" && options.idempotencyKey.length >= 8 && options.idempotencyKey.length <= 128 ? options.idempotencyKey : "";
+      const receiptKey = idempotencyKey ? idempotencyKey : normalizedName;
+      const key = `create-notebook:${receiptKey}`;
+      return this.withWriteLock(key, async () => {
+        const previous = this.notebookReceipts.get(receiptKey);
+        if (previous) return previous;
+        try {
+          const data = await this.kernel.request("createNotebook", { name: normalizedName }, {
+            idempotencyKey: idempotencyKey || void 0,
+            maxRetries: 0
+          });
+          const notebookId = parseNotebookId(data);
+          if (!notebookId) return fail("kernel-error", "createNotebook returned no valid notebook id");
+          const receipt = ok({ notebookId, name: normalizedName });
+          this.rememberReceipt(this.notebookReceipts, receiptKey, receipt);
+          return receipt;
+        } catch (err) {
+          return toFailureReceipt(err);
+        }
+      });
+    }
+    /** 删除笔记本只接受官方 null 回包；仅供本次创建失败的空笔记本补偿或明确管理动作使用。 */
+    async removeNotebook(notebookId, options = {}) {
+      if (typeof notebookId !== "string" || !/^\d{8,14}$/.test(notebookId)) {
+        return fail("invalid-input", "valid notebook id required");
+      }
+      const idempotencyKey = typeof options.idempotencyKey === "string" && options.idempotencyKey.length >= 8 && options.idempotencyKey.length <= 128 ? options.idempotencyKey : "";
+      const receiptKey = idempotencyKey ? idempotencyKey : notebookId;
+      const key = `remove-notebook:${receiptKey}`;
+      return this.withWriteLock(key, async () => {
+        const previous = this.removeNotebookReceipts.get(receiptKey);
+        if (previous) return previous;
+        try {
+          const data = await this.kernel.request("removeNotebook", { notebook: notebookId }, {
+            idempotencyKey: idempotencyKey || void 0,
+            maxRetries: 0
+          });
+          if (!parseVoid(data)) return fail("kernel-error", "removeNotebook returned an invalid response");
+          const receipt = ok({ notebookId });
+          this.rememberReceipt(this.removeNotebookReceipts, receiptKey, receipt);
+          return receipt;
+        } catch (err) {
+          return toFailureReceipt(err);
+        }
+      });
+    }
+    /** 两步独立库编排：创建笔记本后创建库文档；文档失败时只补偿删除本次新建的笔记本。 */
+    async createIndependentLibrary(notebookName, title, options = {}) {
+      const normalizedName = typeof notebookName === "string" ? notebookName.trim() : "";
+      const normalizedTitle = typeof title === "string" ? title.trim() : "";
+      if (!normalizedName || normalizedName.length > LIMITS.title || !normalizedTitle || normalizedTitle.length > LIMITS.title) {
+        return fail("invalid-input", "notebook/title required");
+      }
+      const baseKey = typeof options.idempotencyKey === "string" && options.idempotencyKey.length >= 8 && options.idempotencyKey.length <= 128 ? options.idempotencyKey : `independent:${normalizedName}:${normalizedTitle}`;
+      return this.withWriteLock(`independent-library:${baseKey}`, async () => {
+        const notebook = await this.createNotebook(normalizedName, { idempotencyKey: scopedIdempotencyKey(baseKey, "nb") });
+        if (!notebook.ok) return notebook;
+        const createdNotebookId = notebook.data.notebookId;
+        const doc = await this.createLibraryDoc(createdNotebookId, normalizedTitle, { idempotencyKey: scopedIdempotencyKey(baseKey, "doc") });
+        if (doc.ok) return ok({ notebookId: createdNotebookId, docId: doc.data.docId });
+        const compensation = await this.removeNotebook(createdNotebookId, { idempotencyKey: scopedIdempotencyKey(baseKey, "rollback") });
+        if (compensation.ok) {
+          return {
+            ok: false,
+            reason: doc.reason,
+            message: `${doc.message}; empty notebook ${createdNotebookId} was removed`,
+            notebookId: createdNotebookId,
+            compensation: "succeeded"
+          };
+        }
+        return {
+          ok: false,
+          reason: doc.reason,
+          message: `${doc.message}; notebook ${createdNotebookId} could not be removed: ${compensation.message}`,
+          notebookId: createdNotebookId,
+          compensation: "failed"
+        };
+      });
     }
     /** 列出笔记本根下的一级文档，供首跑校验真实可写落点。 */
     async listNotebookDocs(notebookId) {

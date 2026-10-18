@@ -7,6 +7,8 @@
 | 端点 | 用途 | 证据（router.go） | 验证 |
 | --- | --- | --- | --- |
 | `/api/notebook/lsNotebooks` | 首次引导列笔记本 | L150 | 结构✓ / 真机待 B-001 |
+| `/api/notebook/createNotebook` | 创建 Issue #1 独立笔记本 | L150；请求 `{name}`，回包 `data.notebook.id` | 离线契约✓ / 真机待 B-005 |
+| `/api/notebook/removeNotebook` | 独立笔记本创建失败时补偿删除 | L150；请求 `{notebook}`，成功回包 `data=null` | 离线契约✓ / 真机待 B-005 |
 | `/api/filetree/listDocsByPath` | notebook/tree 模式列文档 | L184 | 结构✓ / 真机待 |
 | `/api/filetree/createDocWithMd` | 创建库文档（先 confirm） | L193 | 结构✓ / 真机待 |
 | `/api/block/getChildBlocks` | 库文档有序遍历（无 SQL） | L286 | 结构✓ / 真机待 |
@@ -23,6 +25,8 @@
 | `/api/export/exportMdContent` | 捕获当前文档（captureCurrentDoc） | L437 | 结构✓ / 真机待 |
 
 写端点均带 `CheckAdminRole + CheckReadonly`（只读模式/访客下会失败→回执 kernel-error，UI 明示）。
+
+`createNotebook` 与 `removeNotebook` 属于写端点：客户端不自动重试；服务层以幂等键、写锁和严格回包解析保护重复点击。两步编排在库文档创建失败时只尝试删除本次刚创建的空笔记本，补偿失败回执保留 notebook ID；上述离线契约不能替代真实宿主权限与生命周期验收。
 
 ## 二、客户端 API（siyuan@1.2.9 官方导出）
 

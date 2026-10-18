@@ -28,6 +28,8 @@ function makeKernel(overrides = {}) {
         listDocsByPath: () => ({files: []}),
         lsNotebooks: () => [{id: "20240101", name: "笔记"}],
         createDocWithMd: () => "20240101120004-ddddddd",
+        createNotebook: ({name}) => ({notebook: {id: "20240101123456", name}}),
+        removeNotebook: () => null,
     };
     const handlers = {...base, ...overrides};
     return {
@@ -622,4 +624,107 @@ test("notebook 首跑：无效笔记本 ID 被拒且不请求内核", async () =
     const result = await service.listNotebookDocs("");
     assert.equal(result.ok, false);
     assert.equal(kernel.calls.length, 0);
+});
+
+test("createNotebook：严格校验响应、写请求不重试并支持幂等回执", async () => {
+    let createCalls = 0;
+    const {kernel, service} = makeService({
+        createNotebook: ({name}) => {
+            createCalls += 1;
+            return {notebook: {id: "20240101123456", name}};
+        },
+    });
+    const first = await service.createNotebook(" 独立库 ", {idempotencyKey: "issue1-nb-001"});
+    const second = await service.createNotebook("独立库", {idempotencyKey: "issue1-nb-001"});
+    assert.deepEqual(first, {ok: true, data: {notebookId: "20240101123456", name: "独立库"}});
+    assert.deepEqual(second, first);
+    assert.equal(createCalls, 1);
+    const call = kernel.calls.find((entry) => entry.endpoint === "createNotebook");
+    assert.deepEqual(call.payload, {name: "独立库"});
+    const invalid = await service.createNotebook(" ");
+    assert.equal(invalid.ok, false);
+    assert.equal(invalid.reason, "invalid-input");
+});
+
+test("createNotebook：空/畸形回包明确失败", async () => {
+    for (const response of [{notebook: null}, {notebook: {name: "缺 ID"}}, "20240101123456"]) {
+        const {service} = makeService({createNotebook: () => response});
+        const result = await service.createNotebook("独立库");
+        assert.equal(result.ok, false);
+        assert.equal(result.reason, "kernel-error");
+    }
+});
+
+test("removeNotebook：严格 ID 与 null 回包，失败不伪报成功", async () => {
+    const {kernel, service} = makeService({removeNotebook: () => null});
+    const result = await service.removeNotebook("20240101123456", {idempotencyKey: "issue1-rm-001"});
+    assert.deepEqual(result, {ok: true, data: {notebookId: "20240101123456"}});
+    assert.deepEqual(kernel.calls.find((entry) => entry.endpoint === "removeNotebook").payload, {notebook: "20240101123456"});
+    const invalid = await service.removeNotebook("bad-id");
+    assert.equal(invalid.ok, false);
+    assert.equal(invalid.reason, "invalid-input");
+    const malformed = await makeService({removeNotebook: () => ({ok: true})}).service.removeNotebook("20240101123456");
+    assert.equal(malformed.ok, false);
+    assert.equal(malformed.reason, "kernel-error");
+});
+
+test("createIndependentLibrary：先建笔记本再建库文档，成功返回两个 ID", async () => {
+    const {kernel, service} = makeService({
+        createNotebook: ({name}) => ({notebook: {id: "20240101123456", name}}),
+        createDocWithMd: () => "20240101123457-ddddddd",
+    });
+    const result = await service.createIndependentLibrary("独立库", "常用内容库", {idempotencyKey: "issue1-flow-001"});
+    assert.deepEqual(result, {ok: true, data: {notebookId: "20240101123456", docId: "20240101123457-ddddddd"}});
+    assert.deepEqual(kernel.calls.filter((entry) => ["createNotebook", "createDocWithMd"].includes(entry.endpoint)).map((entry) => entry.endpoint), ["createNotebook", "createDocWithMd"]);
+});
+
+test("createIndependentLibrary：库文档失败时补偿删除成功并保留 notebook ID", async () => {
+    const {kernel, service} = makeService({
+        createNotebook: ({name}) => ({notebook: {id: "20240101123456", name}}),
+        createDocWithMd: () => { throw new Error("doc denied"); },
+        removeNotebook: () => null,
+    });
+    const result = await service.createIndependentLibrary("独立库", "常用内容库", {idempotencyKey: "issue1-flow-002"});
+    assert.equal(result.ok, false);
+    assert.equal(result.notebookId, "20240101123456");
+    assert.equal(result.compensation, "succeeded");
+    assert.match(result.message, /was removed/);
+    assert.ok(kernel.calls.some((entry) => entry.endpoint === "removeNotebook"));
+});
+
+test("createIndependentLibrary：补偿删除失败时回执保留 notebook ID 且明确失败", async () => {
+    const {service} = makeService({
+        createNotebook: ({name}) => ({notebook: {id: "20240101123456", name}}),
+        createDocWithMd: () => { throw new Error("doc denied"); },
+        removeNotebook: () => { throw new Error("permission denied"); },
+    });
+    const result = await service.createIndependentLibrary("独立库", "常用内容库", {idempotencyKey: "issue1-flow-003"});
+    assert.equal(result.ok, false);
+    assert.equal(result.notebookId, "20240101123456");
+    assert.equal(result.compensation, "failed");
+    assert.match(result.message, /could not be removed/);
+});
+
+test("createIndependentLibrary：最长幂等键仍派生有界子键并只创建一次", async () => {
+    let notebookCalls = 0;
+    let docCalls = 0;
+    const {kernel, service} = makeService({
+        createNotebook: ({name}) => {
+            notebookCalls += 1;
+            return {notebook: {id: "20240101123456", name}};
+        },
+        createDocWithMd: () => {
+            docCalls += 1;
+            return "20240101123457-ddddddd";
+        },
+    });
+    const key = "x".repeat(128);
+    const first = await service.createIndependentLibrary("独立库", "常用内容库", {idempotencyKey: key});
+    const second = await service.createIndependentLibrary("独立库", "常用内容库", {idempotencyKey: key});
+    assert.deepEqual(second, first);
+    assert.equal(notebookCalls, 1);
+    assert.equal(docCalls, 1);
+    for (const call of kernel.calls.filter((entry) => ["createNotebook", "createDocWithMd"].includes(entry.endpoint))) {
+        assert.ok(call.payload);
+    }
 });

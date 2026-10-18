@@ -51,7 +51,8 @@ test("migrateState：损坏输入（数组/原始类型）安全降级", () => {
 });
 
 test("normalizeLibraryConfig：三种模式与非法配置", () => {
-    assert.ok(storage.normalizeLibraryConfig({mode: "doc", containerDocIds: ["20240101120000-abcdefg"]}));
+    const created = storage.normalizeLibraryConfig({mode: "doc", containerDocIds: ["20240101120000-abcdefg"], createdNotebookIds: ["20240101123456", "bad"]});
+    assert.deepEqual(created.createdNotebookIds, ["20240101123456"]);
     assert.ok(storage.normalizeLibraryConfig({mode: "notebook", notebookIds: ["20240101"]}));
     assert.equal(storage.normalizeLibraryConfig({mode: "doc", containerDocIds: []}), null);
     assert.equal(storage.normalizeLibraryConfig({mode: "notebook", notebookIds: []}), null);
