@@ -101,3 +101,56 @@ export function stripCursorToken(text: string): string {
 export function hasCursorToken(text: string): boolean {
     return text.includes(CURSOR_TOKEN);
 }
+
+export interface SnippetRefDiagnosis {
+    /** 引用的所有片段标题（去重，保留首次出现顺序，最多 16 个） */
+    referencedTitles: string[];
+    /** 缺失的片段标题（当前已知可用标题集合中不存在的项） */
+    missingTitles: string[];
+    /** 是否包含任何片段引用语法 */
+    hasSnippets: boolean;
+}
+
+/** 解析并列出文本中出现的片段引用标题（去重、去首尾空白、限长截断，最多 16 个）。 */
+export function listSnippetRefs(text: string): string[] {
+    if (!text || !text.includes("{{xlc:snippet:")) return [];
+    const titles: string[] = [];
+    const seen = new Set<string>();
+    for (const match of text.matchAll(SNIPPET_PATTERN)) {
+        const title = (match[1] ?? "").trim().slice(0, LIMITS.title);
+        if (!title || seen.has(title)) continue;
+        seen.add(title);
+        titles.push(title);
+        if (titles.length >= 16) break;
+    }
+    return titles;
+}
+
+/** 诊断文本中的片段引用完整性：判断是否有引用、提取引用列表并核对缺失项。 */
+export function diagnoseSnippetRefs(
+    text: string,
+    availableTitles?: ReadonlySet<string> | ReadonlyMap<string, unknown> | readonly string[],
+): SnippetRefDiagnosis {
+    const referencedTitles = listSnippetRefs(text);
+    if (referencedTitles.length === 0) {
+        return {referencedTitles: [], missingTitles: [], hasSnippets: false};
+    }
+    let availableSet: ReadonlySet<string> | null = null;
+    if (availableTitles) {
+        if (availableTitles instanceof Set) {
+            availableSet = availableTitles;
+        } else if (availableTitles instanceof Map) {
+            availableSet = new Set(availableTitles.keys());
+        } else if (Array.isArray(availableTitles)) {
+            availableSet = new Set(availableTitles);
+        }
+    }
+    const missingTitles = availableSet
+        ? referencedTitles.filter((title) => !availableSet!.has(title))
+        : [];
+    return {
+        referencedTitles,
+        missingTitles,
+        hasSnippets: true,
+    };
+}

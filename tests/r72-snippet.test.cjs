@@ -2,7 +2,7 @@
 // 菱形引用允许、嵌套内 ask 保留给填充卡、code 条目字面）。
 const test = require("node:test");
 const assert = require("node:assert");
-const {library: libSvc, commands} = require("./.build/entry.cjs");
+const {library: libSvc, commands, variables} = require("./.build/entry.cjs");
 const {LibraryService} = libSvc;
 const {ActionExecutor} = commands;
 
@@ -122,4 +122,39 @@ test("执行层：code 条目不展开（字面）", async () => {
     };
     await executor.run(item, "insert");
     assert.match(host.last, /\{\{xlc:snippet:B 条目\}\}/);
+});
+
+test("纯函数诊断：listSnippetRefs 去重解析与 diagnoseSnippetRefs 缺失判定", () => {
+    const {listSnippetRefs, diagnoseSnippetRefs} = variables;
+
+    // 空内容与普通内容
+    assert.deepEqual(listSnippetRefs(""), []);
+    assert.deepEqual(listSnippetRefs("普通段落没有片段引用"), []);
+    assert.deepEqual(diagnoseSnippetRefs("普通段落"), {
+        referencedTitles: [],
+        missingTitles: [],
+        hasSnippets: false,
+    });
+
+    // 提取并去重
+    const text = "头部 {{xlc:snippet:页眉}} 中间 {{xlc:snippet:页眉}} 尾部 {{xlc:snippet:  页脚  }}";
+    assert.deepEqual(listSnippetRefs(text), ["页眉", "页脚"]);
+
+    // 诊断缺失项
+    const available = new Set(["页眉", "公司介绍"]);
+    const diag = diagnoseSnippetRefs(text, available);
+    assert.deepEqual(diag, {
+        referencedTitles: ["页眉", "页脚"],
+        missingTitles: ["页脚"],
+        hasSnippets: true,
+    });
+
+    // 全部存在时 missingTitles 为空
+    const allAvailable = new Map([["页眉", 1], ["页脚", 2]]);
+    const fullDiag = diagnoseSnippetRefs(text, allAvailable);
+    assert.deepEqual(fullDiag, {
+        referencedTitles: ["页眉", "页脚"],
+        missingTitles: [],
+        hasSnippets: true,
+    });
 });
