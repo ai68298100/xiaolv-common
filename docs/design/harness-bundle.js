@@ -5320,7 +5320,7 @@ ${exception.mark.snippet}`;
           paneVars.appendChild(chip);
         }
       }
-      if (false) {
+      if (snippets.length > 0) {
         const sep = fields.length > 0 ? " \xB7 " : "";
         const label = document.createElement("span");
         label.textContent = sep + this.deps.t("paneSnippetsLabel", String(snippets.length));
@@ -6691,7 +6691,7 @@ ${exception.mark.snippet}`;
     }
   };
   async function buildMarkdownExport(items, kramdownById, fetchAssetBytes, pack) {
-    var _a, _b;
+    var _a, _b, _c;
     const oneLine = (value) => value.replace(/[\r\n]+/g, " ").trim();
     for (const item of items) {
       if (!kramdownById.has(item.id)) {
@@ -6712,6 +6712,15 @@ ${exception.mark.snippet}`;
       }
       if (varNames.length >= LIMITS.maxAskFields) break;
     }
+    const snippetNames = [];
+    for (const item of items) {
+      if (item.itemType === "code") continue;
+      for (const snippet of listSnippetRefs((_b = kramdownById.get(item.id)) != null ? _b : "")) {
+        if (!snippetNames.includes(snippet)) snippetNames.push(snippet);
+        if (snippetNames.length >= 16) break;
+      }
+      if (snippetNames.length >= 16) break;
+    }
     const mdParts = [
       "# \u5C0F\u9A74\u5E38\u7528\uFF08\u5185\u6D4B\u7248\uFF09 \xB7 \u6761\u76EE\u5BFC\u51FA",
       "",
@@ -6724,13 +6733,14 @@ ${exception.mark.snippet}`;
         `name: ${oneLine(pack.name).slice(0, LIMITS.title)}`,
         `items: ${items.length}`,
         varNames.length ? `vars: ${varNames.join(",")}` : "",
+        snippetNames.length ? `snippets: ${snippetNames.join(",")}` : "",
         `-->`
       ].filter(Boolean).join("\n");
       mdParts.unshift(manifest, "");
     }
     let totalLen = mdParts.reduce((length, part) => length + part.length, 0) + mdParts.length - 1;
     for (const item of items) {
-      const kramdown = (_b = kramdownById.get(item.id)) != null ? _b : "";
+      const kramdown = (_c = kramdownById.get(item.id)) != null ? _c : "";
       const meta = [
         `<!-- xlc-item`,
         `id: ${item.id}`,
@@ -6769,7 +6779,7 @@ ${exception.mark.snippet}`;
     const markdown = mdParts.join("\n");
     entries.push({ name: "items.md", data: new TextEncoder().encode(markdown) });
     entries.push(...assetEntries.values());
-    return { entries, itemCount: items.length, assetCount, skippedAssets, varNames };
+    return { entries, itemCount: items.length, assetCount, skippedAssets, varNames, snippetNames };
   }
 
   // src/service/import-markdown.ts
@@ -6948,7 +6958,7 @@ ${exception.mark.snippet}`;
     return { fields, titleHint };
   }
   function parsePackManifest(md, firstItemAt) {
-    var _a, _b;
+    var _a, _b, _c;
     const start = md.indexOf(PACK_COMMENT_START);
     if (start === -1 || start > firstItemAt) return void 0;
     const end = md.indexOf(ITEM_COMMENT_END, start);
@@ -6956,8 +6966,9 @@ ${exception.mark.snippet}`;
     const fields = parseMetadata(md.slice(start + PACK_COMMENT_START.length, end).split("\n")).fields;
     const name = ((_a = fields.get("name")) != null ? _a : "").slice(0, LIMITS.title);
     const vars = ((_b = fields.get("vars")) != null ? _b : "").split(",").map((s) => s.trim()).filter(Boolean).slice(0, LIMITS.maxAskFields);
+    const snippets = ((_c = fields.get("snippets")) != null ? _c : "").split(",").map((s) => s.trim()).filter(Boolean).slice(0, 16);
     if (!name) return void 0;
-    return { name, vars };
+    return { name, vars, ...snippets.length > 0 ? { snippets } : {} };
   }
   function parseMarkdownPack(md) {
     var _a, _b;
@@ -9353,7 +9364,11 @@ ${exception.mark.snippet}`;
     if (parsed.pack) {
       const metaPack = document.createElement("span");
       metaPack.className = "xlc-badge xlc-badge--var";
-      metaPack.textContent = `${parsed.pack.name} \xB7 ${t("packVarsBadge", String(parsed.pack.vars.length))}`;
+      let packText = `${parsed.pack.name} \xB7 ${t("packVarsBadge", String(parsed.pack.vars.length))}`;
+      if (parsed.pack.snippets && parsed.pack.snippets.length > 0) {
+        packText += ` \xB7 ${t("packSnippetsBadge", String(parsed.pack.snippets.length))}`;
+      }
+      metaPack.textContent = packText;
       meta.appendChild(metaPack);
     }
     wrap.appendChild(meta);
@@ -14057,6 +14072,7 @@ ${details.join("\n")}` : ""}`;
     packTrustHint: "\u4ED6\u4EBA\u5BFC\u5165\u540E\u5373\u4E3A\u771F\u5B9E\u601D\u6E90\u5757\uFF0C\u53EF\u7EE7\u7EED\u7F16\u8F91\u4E0E\u518D\u5206\u4EAB\u2014\u2014\u5206\u4EAB\u7684\u662F\u300C\u6D3B\u7684\u5757\u300D\uFF0C\u4E0D\u662F\u6587\u672C\u5FEB\u7167\u3002",
     packExportBtn: "\u5BFC\u51FA .md \u5305",
     packVarsBadge: "%s \u6761\u542B\u53D8\u91CF",
+    packSnippetsBadge: "%s \u6761\u542B\u5D4C\u5957\u7247\u6BB5",
     emptyFavorites: "\u8FD8\u6CA1\u6709\u6536\u85CF\u7684\u6761\u76EE",
     emptyFavoritesSub: "\u70B9\u51FB\u6761\u76EE\u53F3\u4FA7 \u2606 \u6536\u85CF\uFF0C\u53EF\u5728\u300C\u6536\u85CF\u300D\u4E2D\u5FEB\u901F\u627E\u5230",
     emptyRecent: "\u6682\u65E0\u6700\u8FD1\u4F7F\u7528\u7684\u6761\u76EE",
@@ -14649,6 +14665,7 @@ ${details.join("\n")}` : ""}`;
       packNameDefault: "\u5C0F\u9A74\u5E38\u7528\uFF08\u5185\u6D4B\u7248\uFF09\u6A21\u677F\u5305",
       packExportBtn: "\u5BFC\u51FA .md \u5305",
       packVarsBadge: "%s \u6761\u542B\u53D8\u91CF",
+      packSnippetsBadge: "%s \u6761\u542B\u5D4C\u5957\u7247\u6BB5",
       packContentsHint: "\xB7 \u6761\u76EE Markdown + \u5143\u6570\u636E\uFF08\u6807\u9898/\u6807\u7B7E/\u5206\u7C7B\uFF09\n\xB7 \u53D8\u91CF\u6E05\u5355\uFF08{{xlc:ask:\u2026}} \u5B57\u6BB5\u4E0E\u9009\u9879\uFF09\n\xB7 \u8D44\u6E90\u5F15\u7528\uFF08assets \u539F\u6837\u6253\u5305\uFF09",
       packTrustHint: "\u4ED6\u4EBA\u5BFC\u5165\u540E\u5373\u4E3A\u771F\u5B9E\u601D\u6E90\u5757\uFF0C\u53EF\u7EE7\u7EED\u7F16\u8F91\u4E0E\u518D\u5206\u4EAB\u2014\u2014\u5206\u4EAB\u7684\u662F\u300C\u6D3B\u7684\u5757\u300D\uFF0C\u4E0D\u662F\u6587\u672C\u5FEB\u7167\u3002",
       emptyFavorites: "\u8FD8\u6CA1\u6709\u6536\u85CF\u7684\u6761\u76EE",

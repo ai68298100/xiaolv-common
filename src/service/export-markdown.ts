@@ -8,7 +8,7 @@ import {ZipEntry} from "../model/zip";
 import {extractAssetPath} from "../model/actions";
 import {CommonItem} from "../model/item";
 import {LIMITS} from "../constants";
-import {listAskFields} from "../model/variables";
+import {listAskFields, listSnippetRefs} from "../model/variables";
 
 export class ExportIntegrityError extends Error {
     constructor(
@@ -29,6 +29,8 @@ export interface MarkdownExportResult {
     skippedAssets: string[];
     /** 聚合的 ask 变量名清单（包清单用；去重保序） */
     varNames: string[];
+    /** 聚合引用的子片段清单（包清单用；去重保序） */
+    snippetNames: string[];
 }
 
 export async function buildMarkdownExport(
@@ -58,6 +60,16 @@ export async function buildMarkdownExport(
         }
         if (varNames.length >= LIMITS.maxAskFields) break;
     }
+    // 片段清单（F6）：跨条目聚合引用的片段标题（去重保序，封顶 16 条）
+    const snippetNames: string[] = [];
+    for (const item of items) {
+        if (item.itemType === "code") continue;
+        for (const snippet of listSnippetRefs(kramdownById.get(item.id) ?? "")) {
+            if (!snippetNames.includes(snippet)) snippetNames.push(snippet);
+            if (snippetNames.length >= 16) break;
+        }
+        if (snippetNames.length >= 16) break;
+    }
     const mdParts: string[] = [
         "# 小驴常用（内测版） · 条目导出",
         "",
@@ -70,6 +82,7 @@ export async function buildMarkdownExport(
             `name: ${oneLine(pack.name).slice(0, LIMITS.title)}`,
             `items: ${items.length}`,
             varNames.length ? `vars: ${varNames.join(",")}` : "",
+            snippetNames.length ? `snippets: ${snippetNames.join(",")}` : "",
             `-->`,
         ].filter(Boolean).join("\n");
         mdParts.unshift(manifest, "");
@@ -118,5 +131,5 @@ export async function buildMarkdownExport(
     const markdown = mdParts.join("\n");
     entries.push({name: "items.md", data: new TextEncoder().encode(markdown)});
     entries.push(...assetEntries.values());
-    return {entries, itemCount: items.length, assetCount, skippedAssets, varNames};
+    return {entries, itemCount: items.length, assetCount, skippedAssets, varNames, snippetNames};
 }

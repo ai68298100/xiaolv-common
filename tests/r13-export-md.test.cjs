@@ -8,6 +8,7 @@ const {zip, actions} = {
 };
 const {buildZip, readZipEntries} = zip;
 const {buildMarkdownExport} = require("./.build/entry.cjs").exportMarkdown;
+const {parseMarkdownPack} = require("./.build/entry.cjs").importMarkdown;
 
 const enc = (s) => new TextEncoder().encode(s);
 
@@ -69,4 +70,43 @@ test("门禁：重复资源只打包一次；取不到的字节如实计入 skip
 test("extractAssetPath 复用（与 actions 同一解析）", () => {
     assert.equal(actions.extractAssetPath("![](assets/pic.png)"), "assets/pic.png");
     // item 模块同时可用（entry 桶校验）
+});
+
+test("模板包导出与解析双向闭环：聚合声明 snippets 清单并互逆解析", async () => {
+    const mk = (id, title, kramdown) => ({
+        id, blockId: `20240101120000-${id}`, libraryDocId: "20240101120001-hijklmn",
+        itemType: "text", title, alias: "", tags: ["模板"], category: "常用", summary: "",
+        source: {sourceDocId: "", sourceBlockId: "", sourceType: "manual"},
+        url: "", targetBlockId: "", createdAt: 0, updatedAt: 0, droppedFields: [],
+    });
+    const items = [
+        mk("xlc-t000000001", "主模板", "致 {{xlc:ask:客户}}：\n\n{{xlc:snippet:公司抬头}}\n\n感谢配合！\n\n{{xlc:snippet:联系方式}}"),
+        mk("xlc-t000000002", "次模板", "备用方案\n\n{{xlc:snippet:联系方式}}"),
+    ];
+    const kramdownById = new Map([
+        ["xlc-t000000001", "致 {{xlc:ask:客户}}：\n\n{{xlc:snippet:公司抬头}}\n\n感谢配合！\n\n{{xlc:snippet:联系方式}}"],
+        ["xlc-t000000002", "备用方案\n\n{{xlc:snippet:联系方式}}"],
+    ]);
+
+    // 导出为带包名的模板包
+    const exportRes = await buildMarkdownExport(items, kramdownById, async () => null, {name: "客户沟通包"});
+    assert.deepEqual(exportRes.varNames, ["客户"]);
+    assert.deepEqual(exportRes.snippetNames, ["公司抬头", "联系方式"]);
+
+    // 检查导出的 items.md 文本
+    const itemsMdEntry = exportRes.entries.find((e) => e.name === "items.md");
+    assert.ok(itemsMdEntry);
+    const mdText = new TextDecoder().decode(itemsMdEntry.data);
+    assert.ok(mdText.includes("<!-- xlc-pack"));
+    assert.ok(mdText.includes("name: 客户沟通包"));
+    assert.ok(mdText.includes("vars: 客户"));
+    assert.ok(mdText.includes("snippets: 公司抬头,联系方式"));
+
+    // 导入解析互逆验证
+    const parseRes = parseMarkdownPack(mdText);
+    assert.equal(parseRes.items.length, 2);
+    assert.ok(parseRes.pack);
+    assert.equal(parseRes.pack.name, "客户沟通包");
+    assert.deepEqual(parseRes.pack.vars, ["客户"]);
+    assert.deepEqual(parseRes.pack.snippets, ["公司抬头", "联系方式"]);
 });

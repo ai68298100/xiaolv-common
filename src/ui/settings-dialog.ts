@@ -2026,7 +2026,7 @@ async function runTagAudit(ctx: SettingsUiContext): Promise<"empty" | "shown"> {
 /** 导入策略确认（导入前校验已过；策略三选 → importBundleText → 汇总回执）。导出供渲染 harness 取证。 */
 export function openImportPolicyDialog(
     ctx: SettingsUiContext,
-    parsed: {items: Array<{id: string; title: string}>; pack?: {name: string; vars: string[]}},
+    parsed: {items: Array<{id: string; title: string}>; pack?: {name: string; vars: string[]; snippets?: string[]}},
     issues: ImportIssue[],
     source: {kind: "json"; text: string} | {kind: "markdown-pack"; items: ExportedItem[]} | {kind: "espanso"; items: ExportedItem[]},
 ): void {
@@ -2059,7 +2059,11 @@ export function openImportPolicyDialog(
     if (parsed.pack) {
         const metaPack = document.createElement("span");
         metaPack.className = "xlc-badge xlc-badge--var";
-        metaPack.textContent = `${parsed.pack.name} · ${t("packVarsBadge", String(parsed.pack.vars.length))}`;
+        let packText = `${parsed.pack.name} · ${t("packVarsBadge", String(parsed.pack.vars.length))}`;
+        if (parsed.pack.snippets && parsed.pack.snippets.length > 0) {
+            packText += ` · ${t("packSnippetsBadge", String(parsed.pack.snippets.length))}`;
+        }
+        metaPack.textContent = packText;
         meta.appendChild(metaPack);
     }
     wrap.appendChild(meta);

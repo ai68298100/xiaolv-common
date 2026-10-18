@@ -355,6 +355,7 @@
   "packTrustHint": "Recipients get real SiYuan blocks they can edit and re-share — you share live blocks, not text snapshots.",
   "packExportBtn": "Export .md pack",
   "packVarsBadge": "%s with variables",
+  "packSnippetsBadge": "%s with snippets",
   "emptyFavorites": "No favorites yet",
   "emptyFavoritesSub": "Tap the ☆ on a row to favorite it and find it quickly under Favorites",
   "emptyRecent": "No recently used items",

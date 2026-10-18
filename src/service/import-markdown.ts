@@ -28,11 +28,11 @@ export interface MarkdownPackParseResult {
     items: ExportedItem[];
     issues: Array<{index: number; reason: string}>;
     /** 包清单（F6）：xlc-pack 注释中的包名与变量清单；旧包/外来 MD 无此信息 */
-    pack?: {name: string; vars: string[]};
+    pack?: {name: string; vars: string[]; snippets?: string[]};
 }
 
 /** 解析首部 xlc-pack 清单（存在且位于首个条目之前才有效；字段缺失容忍）。 */
-function parsePackManifest(md: string, firstItemAt: number): {name: string; vars: string[]} | undefined {
+function parsePackManifest(md: string, firstItemAt: number): {name: string; vars: string[]; snippets?: string[]} | undefined {
     const start = md.indexOf(PACK_COMMENT_START);
     if (start === -1 || start > firstItemAt) return undefined;
     const end = md.indexOf(ITEM_COMMENT_END, start);
@@ -40,8 +40,9 @@ function parsePackManifest(md: string, firstItemAt: number): {name: string; vars
     const fields = parseMetadata(md.slice(start + PACK_COMMENT_START.length, end).split("\n")).fields;
     const name = (fields.get("name") ?? "").slice(0, LIMITS.title);
     const vars = (fields.get("vars") ?? "").split(",").map((s) => s.trim()).filter(Boolean).slice(0, LIMITS.maxAskFields);
+    const snippets = (fields.get("snippets") ?? "").split(",").map((s) => s.trim()).filter(Boolean).slice(0, 16);
     if (!name) return undefined;
-    return {name, vars};
+    return {name, vars, ...(snippets.length > 0 ? {snippets} : {})};
 }
 
 /** 解析 items.md → 可导入条目。无 xlc-item 注释的内容一律忽略（不吞外来文本）。 */

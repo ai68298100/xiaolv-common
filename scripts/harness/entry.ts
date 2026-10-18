@@ -188,7 +188,7 @@ const T = (key: string, ...args: string[]): string => {
         create: "创建", retry: "重试",
         useCount: "%s 次", quickNew: "＋ 新建条目", quickInsertSelected: "插入选中",
         packBtn: "导出模板包", packExportTitle: "导出 · 模板包", packCategoryLabel: "分类", allCategories: "全部分类",
-        packNameLabel: "包名称", packNameDefault: "小驴常用（内测版）模板包", packExportBtn: "导出 .md 包", packVarsBadge: "%s 条含变量",
+        packNameLabel: "包名称", packNameDefault: "小驴常用（内测版）模板包", packExportBtn: "导出 .md 包", packVarsBadge: "%s 条含变量", packSnippetsBadge: "%s 条含嵌套片段",
         packContentsHint: "· 条目 Markdown + 元数据（标题/标签/分类）\n· 变量清单（{{xlc:ask:…}} 字段与选项）\n· 资源引用（assets 原样打包）",
         packTrustHint: "他人导入后即为真实思源块，可继续编辑与再分享——分享的是「活的块」，不是文本快照。",
         emptyFavorites: "还没有收藏的条目", emptyFavoritesSub: "点击条目右侧 ☆ 一键收藏，收藏会置顶显示", emptyRecent: "暂无最近使用的条目",
