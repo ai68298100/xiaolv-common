@@ -578,3 +578,129 @@ $roots: ".xlc-dialog, .xlc-form, .xlc-varform, .b3-dialog__container.xlc-dialog-
     .xlc-menu-item { min-height: 44px; }
   }
 }
+
+// ══════════ 强制颜色与系统变量映射（forced-colors: active · Epoch 5）══════════
+@media (forced-colors: active) {
+  :is(#{$roots}) {
+    --xlc-canvas: Canvas;
+    --xlc-surface: Canvas;
+    --xlc-soft: Canvas;
+    --xlc-raised: Canvas;
+    --xlc-ink: CanvasText;
+    --xlc-muted: CanvasText;
+    --xlc-line: CanvasText;
+    --xlc-accent: Highlight;
+    --xlc-accent-text: Highlight;
+    --xlc-accent-contrast: HighlightText;
+    --xlc-lavender: Canvas;
+    --xlc-lavender-ink: Highlight;
+    --xlc-warm: Canvas;
+    --xlc-warm-ink: CanvasText;
+    --xlc-success: CanvasText;
+    --xlc-success-soft: Canvas;
+    --xlc-warning: CanvasText;
+    --xlc-danger: CanvasText;
+    --xlc-danger-soft: Canvas;
+    --xlc-info: CanvasText;
+    --xlc-info-soft: Canvas;
+    --xlc-favorite: Highlight;
+    --xlc-control-knob: CanvasText;
+    --xlc-overlay-shadow: none;
+
+    --b3-theme-background: Canvas;
+    --b3-theme-surface: Canvas;
+    --b3-theme-on-background: CanvasText;
+    --b3-theme-on-surface: CanvasText;
+    --b3-theme-primary: Highlight;
+    --b3-theme-on-primary: HighlightText;
+    --b3-border-color: CanvasText;
+    --b3-list-hover: Highlight;
+    --b3-menu-background: Canvas;
+    --b3-dialog-shadow: none;
+
+    .b3-button,
+    .b3-text-field,
+    .b3-select,
+    .xlc-card,
+    .xlc-chip,
+    .xlc-search,
+    .xlc-list,
+    .xlc-pane,
+    .xlc-discovery-list,
+    .xlc-discovery-preview,
+    .xlc-menu,
+    .xlc-kbd-hint,
+    .xlc-doclist-item,
+    .xlc-policy {
+      border: 1px solid CanvasText;
+    }
+
+    .b3-dialog__container {
+      border: 2px solid CanvasText;
+      background: Canvas;
+    }
+
+    .b3-button.xlc-btn-primary,
+    .b3-button--primary {
+      background: Highlight;
+      color: HighlightText;
+      border: 1px solid Highlight;
+    }
+
+    .xlc-row--active,
+    .xlc-discovery-row--active,
+    .xlc-chip--on,
+    .xlc-doclist-item--on,
+    .xlc-policy--recommended {
+      outline: 2px solid Highlight;
+      outline-offset: 1px;
+      border-color: Highlight;
+      background: Highlight;
+      color: HighlightText;
+    }
+
+    :is(button, input, select, textarea, a, [tabindex]):focus-visible {
+      outline: 2px solid Highlight;
+      outline-color: Highlight;
+      outline-offset: 2px;
+    }
+
+    .xlc-badge,
+    .xlc-switch::after,
+    .xlc-row-ordinal,
+    svg {
+      forced-color-adjust: none;
+    }
+  }
+}
+
+// ══════════ 用户高对比度偏好（prefers-contrast: more · Epoch 5）══════════
+@media (prefers-contrast: more) {
+  :is(#{$roots}) {
+    --xlc-line: var(--xlc-ink);
+    --xlc-muted: var(--xlc-ink);
+
+    .b3-button,
+    .b3-text-field,
+    .b3-select,
+    .xlc-card,
+    .xlc-search,
+    .xlc-list,
+    .xlc-pane {
+      border: 1px solid var(--xlc-ink);
+    }
+
+    .xlc-row--active,
+    .xlc-discovery-row--active,
+    .xlc-chip--on {
+      outline: 2px solid var(--xlc-accent);
+      outline-offset: 1px;
+      font-weight: 700;
+    }
+
+    :is(button, input, select, textarea, a, [tabindex]):focus-visible {
+      outline: 3px solid var(--xlc-accent);
+      outline-offset: 2px;
+    }
+  }
+}
