@@ -121,11 +121,11 @@ function cleanString(v: unknown, max: number): string {
 }
 
 export function cleanTagList(v: unknown): string[] {
-    const raw = Array.isArray(v) ? v : typeof v === "string" ? v.split(/[,,、]/) : [];
+    const raw = Array.isArray(v) ? v : typeof v === "string" ? v.split(/[,，、;；\s]+/) : [];
     const out: string[] = [];
     for (const item of raw) {
         if (typeof item !== "string") continue;
-        const tag = item.trim().slice(0, LIMITS.tag);
+        const tag = item.trim().replace(/^#+/, "").replace(/#+$/, "").slice(0, LIMITS.tag);
         if (!tag) continue;
         if (!out.includes(tag)) out.push(tag);
         if (out.length >= LIMITS.tags) break;

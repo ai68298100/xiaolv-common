@@ -70,6 +70,26 @@ test("标签列表：去重、逐项裁剪、数量上限 32", () => {
     assert.equal(item.cleanTagList("x,y、z").join("|"), "x|y|z");
 });
 
+test("cleanTagList：中英文逗号、顿号、分号、空格分割与 # 前缀清洗", () => {
+    // 1. 中文全角逗号切分（修复原 /[,,、]/ 错写两遍半角逗号导致无法切分中文逗号的缺陷）
+    assert.deepEqual(item.cleanTagList("工作，客服，模板"), ["工作", "客服", "模板"]);
+
+    // 2. 顿号与中英文分号
+    assert.deepEqual(item.cleanTagList("开发、测试;运维；部署"), ["开发", "测试", "运维", "部署"]);
+
+    // 3. 空白字符（空格、制表符、连续混合空白）切分
+    assert.deepEqual(item.cleanTagList("tag1  tag2 \t tag3"), ["tag1", "tag2", "tag3"]);
+
+    // 4. 思源原生 # 标签前缀与后缀清洗
+    assert.deepEqual(item.cleanTagList("#工作 #客服# #模板"), ["工作", "客服", "模板"]);
+
+    // 5. 混用多维标点、井号与空白
+    assert.deepEqual(
+        item.cleanTagList("工作， #客服 ; #运维# 、 部署 \t #日常 "),
+        ["工作", "客服", "运维", "部署", "日常"],
+    );
+});
+
 test("blockref 目标解析：显式 target 优先，旧记录回退 sourceBlockId", () => {
     assert.equal(item.resolveBlockRefTarget({itemType: "blockref", targetBlockId: VALID_BLOCK_ID, source: {sourceBlockId: VALID_DOC_ID}}), VALID_BLOCK_ID);
     assert.equal(item.resolveBlockRefTarget({itemType: "blockref", targetBlockId: "", source: {sourceBlockId: VALID_DOC_ID}}), VALID_DOC_ID);
