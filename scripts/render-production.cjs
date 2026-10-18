@@ -681,17 +681,30 @@ fs.writeFileSync(path.join(OUT, "harness.html"), html);
         await new Promise((resolve) => setTimeout(resolve, 0));
         window.__xlcAutoConfirm = false;
         const status = document.querySelector(".xlc-setup-create-status");
+        const orphanBox = document.querySelector("[data-xlc-control='setup.independent.orphan-notebook']");
+        const copyBtn = document.querySelector("[data-xlc-control='setup.independent.copy-orphan-id']");
+        const copyBtnVisible = !!copyBtn;
+        copyBtn?.click();
+        const copyBtnUpdated = copyBtn?.textContent === "已复制笔记本 ID";
+        notebookName.value = "再次尝试库";
+        notebookName.dispatchEvent(new Event("input", {bubbles: true}));
+        const orphanBoxCleared = !document.querySelector("[data-xlc-control='setup.independent.orphan-notebook']");
         return {
             dialogKept: !!document.querySelector(".xlc-setup"),
             errorVisible: !!status && status.textContent.includes("创建独立笔记本失败"),
             configUnchanged: !document.body.dataset.xlcSetupConfig,
             errorClass: status?.classList.contains("xlc-form-error") === true,
+            orphanBoxVisible: !!orphanBox,
+            orphanWarnText: !!orphanBox && orphanBox.textContent.includes("20240101999999"),
+            copyBtnVisible,
+            copyBtnUpdated,
+            orphanBoxCleared,
         };
     });
     if (Object.values(independentFailureFlow).some((v) => !v)) {
         throw new Error("independent notebook failure smoke failed: " + JSON.stringify(independentFailureFlow));
     }
-    console.log("  smoke ✓ independent notebook failure keeps form and exposes compensation receipt: 4 assertions");
+    console.log("  smoke ✓ independent notebook failure keeps form and exposes compensation receipt: 9 assertions");
     const dismissSetup = await page.evaluate(() => {
         const stage = document.getElementById("stage");
         document.querySelectorAll(".b3-dialog").forEach((el) => el.remove());

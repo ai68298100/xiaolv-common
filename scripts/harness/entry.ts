@@ -57,6 +57,7 @@ const T = (key: string, ...args: string[]): string => {
     const map: Record<string, string> = {
         pluginName: "小驴常用（内测版）",
         setupCreateIndependentNotebook: "新建独立笔记本与库文档", setupIndependentNotebookName: "新笔记本名称", setupIndependentNotebookNamePlaceholder: "例如：工作常用语", setupIndependentNotebookHint: "会先新建一个笔记本，再在其中创建库文档；两步都成功后才保存配置。", setupIndependentConfirmCreate: "将新建笔记本「%s」和库文档「%s」，确定吗？", setupIndependentCreateFailed: "创建独立笔记本失败：%s",
+        setupIndependentStepNotebook: "第 1/2 步：正在新建笔记本…", setupIndependentStepDoc: "第 2/2 步：正在新建库文档…", setupIndependentStepRollback: "正在回滚清理未完成的笔记本…", setupIndependentOrphanWarning: "注意：笔记本已创建但未成功清理（ID：%s）。请在思源左侧笔记本列表手动确认或删除。", setupIndependentCopyOrphanId: "复制笔记本 ID", setupIndependentOrphanCopied: "已复制笔记本 ID",
         settingsIntro: "管理内容库、复用偏好和数据。库内内容会保留在思源文档中，并可继续编辑。",
         captureIntro: "先放入想要复用的内容，再补充标题和分类，之后可以更快找到它。",
         discoveryTitle: "从当前文档发现", discoveryTitleNotebook: "从当前笔记本发现", discoveryTitleGeneral: "发现已有内容", discoveryTitleTree: "从此文档发现常用语",
@@ -564,9 +565,22 @@ function makeDeps(overrides: {aiEnabled?: boolean; missing?: boolean; mobile?: b
                     return {ok: true, data: options?.emptyNotebook ? [] : [{id: "20240101120001-hijklmn", name: "常用内容库"}]} as const;
                 },
                 createLibraryDoc: async () => ({ok: true, data: {docId: "20240101120001-hijklmn"}}),
-                createIndependentLibrary: async (notebookName: string) => notebookName === "失败库"
-                    ? ({ok: false, reason: "kernel-error", message: "补偿失败：20240101999999"} as const)
-                    : ({ok: true, data: {notebookId: "20240101999999", docId: "20240101120001-hijklmn"}} as const),
+                createIndependentLibrary: async (notebookName: string, _title?: string, opts?: {onProgress?: (step: string) => void}) => {
+                    opts?.onProgress?.("creating-notebook");
+                    if (notebookName === "失败库") {
+                        opts?.onProgress?.("creating-doc");
+                        opts?.onProgress?.("rolling-back");
+                        return {
+                            ok: false,
+                            reason: "kernel-error",
+                            message: "补偿失败：20240101999999",
+                            notebookId: "20240101999999",
+                            compensation: "failed",
+                        } as const;
+                    }
+                    opts?.onProgress?.("creating-doc");
+                    return {ok: true, data: {notebookId: "20240101999999", docId: "20240101120001-hijklmn"}} as const;
+                },
                 searchDocs: async (k: string) => {
                     docSearchRequests++;
                     const delay = options?.docSearchDelayByKeyword?.[k] ?? options?.docSearchDelayMs ?? 0;
@@ -686,7 +700,7 @@ function makeDeps(overrides: {aiEnabled?: boolean; missing?: boolean; mobile?: b
                 stopRequested = false;
                 options?.onProgress?.({phase: "enumerating", scannedDocs: 0, scannedBlocks: 0, discoveredDocs: 3});
                 options?.onProgress?.({phase: "scanning", scannedDocs: 1, scannedBlocks: 4, discoveredDocs: 3, totalDocs: 3});
-                await new Promise((resolve) => setTimeout(resolve, 80));
+                await new Promise((resolve) => setTimeout(resolve, 300));
                 return {ok: true as const, data: {...makeView("notebook", stopRequested), scannedBlocks: 12, scannedDocs: 3, skippedEmpty: 2}};
             },
             discoverTree: async (docId: string) => {

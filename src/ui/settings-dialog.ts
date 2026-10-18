@@ -888,9 +888,18 @@ function buildLibraryPickerSection(ctx: SettingsUiContext, root: HTMLElement, on
     independentNotebookStatus.setAttribute("role", "status");
     independentNotebookStatus.setAttribute("aria-live", "polite");
     independentNotebookWrap.appendChild(independentNotebookStatus);
+
+    let orphanReceiptEl: HTMLElement | null = null;
+    const clearOrphanReceipt = (): void => {
+        if (orphanReceiptEl) {
+            orphanReceiptEl.remove();
+            orphanReceiptEl = null;
+        }
+    };
     step1.appendChild(independentNotebookWrap);
 
     const syncModeUi = (): void => {
+        clearOrphanReceipt();
         const mode = modeSelect.value;
         const needsNotebook = mode === "notebook" || mode === "new-doc";
         pickerWrap.style.display = mode === "doc" || mode === "tree" ? "" : "none";
@@ -952,16 +961,28 @@ function buildLibraryPickerSection(ctx: SettingsUiContext, root: HTMLElement, on
                 || (mode === "new-notebook" && independentNotebookInput.value.trim() !== notebookName)
                 || nameInput.value.trim() !== title) return;
             creatingLibrary = true;
+            clearOrphanReceipt();
             modeSelect.disabled = true;
             nbSelect.disabled = true;
             nameInput.disabled = true;
             independentNotebookInput.disabled = true;
             createBtn.textContent = t("saving");
-            independentNotebookStatus.textContent = mode === "new-notebook" ? t("saving") : "";
+            independentNotebookStatus.textContent = mode === "new-notebook" ? t("setupIndependentStepNotebook") : "";
             independentNotebookStatus.classList.remove("xlc-form-error");
             syncCreateState();
             const createTask = mode === "new-notebook"
-                ? ctx.library.createIndependentLibrary(notebookName, title)
+                ? ctx.library.createIndependentLibrary(notebookName, title, {
+                    onProgress: (step) => {
+                        if (setupRevision !== revision || !creatingLibrary) return;
+                        if (step === "creating-notebook") {
+                            independentNotebookStatus.textContent = t("setupIndependentStepNotebook");
+                        } else if (step === "creating-doc") {
+                            independentNotebookStatus.textContent = t("setupIndependentStepDoc");
+                        } else if (step === "rolling-back") {
+                            independentNotebookStatus.textContent = t("setupIndependentStepRollback");
+                        }
+                    },
+                })
                 : ctx.library.createLibraryDoc(notebookId, title);
             void createTask.then((result) => {
                 creatingLibrary = false;
@@ -978,6 +999,39 @@ function buildLibraryPickerSection(ctx: SettingsUiContext, root: HTMLElement, on
                     independentNotebookStatus.classList.toggle("xlc-form-error", mode === "new-notebook");
                     independentNotebookStatus.textContent = mode === "new-notebook" ? message : "";
                     nbStatus.textContent = mode === "new-notebook" ? message : t("kernelError", result.message);
+                    if (mode === "new-notebook" && result.compensation === "failed" && result.notebookId) {
+                        clearOrphanReceipt();
+                        const orphanBox = document.createElement("div");
+                        orphanBox.className = "xlc-form-field";
+                        orphanBox.dataset.xlcControl = "setup.independent.orphan-notebook";
+                        orphanBox.style.marginTop = "8px";
+
+                        const warnP = document.createElement("p");
+                        warnP.className = "xlc-form-hint xlc-form-error";
+                        warnP.textContent = t("setupIndependentOrphanWarning", result.notebookId);
+                        orphanBox.appendChild(warnP);
+
+                        const copyBtn = document.createElement("button");
+                        copyBtn.type = "button";
+                        copyBtn.className = "b3-button";
+                        copyBtn.dataset.xlcControl = "setup.independent.copy-orphan-id";
+                        copyBtn.textContent = t("setupIndependentCopyOrphanId");
+                        const orphanId = result.notebookId;
+                        copyBtn.addEventListener("click", () => {
+                            try {
+                                if (navigator.clipboard?.writeText) {
+                                    void navigator.clipboard.writeText(orphanId);
+                                }
+                            } catch {
+                                // fallback ignored in offline test environment
+                            }
+                            copyBtn.textContent = t("setupIndependentOrphanCopied");
+                            ctx.notify("info", t("setupIndependentOrphanCopied"));
+                        });
+                        orphanBox.appendChild(copyBtn);
+                        independentNotebookWrap.appendChild(orphanBox);
+                        orphanReceiptEl = orphanBox;
+                    }
                     ctx.notify("error", message);
                     return;
                 }
@@ -1036,8 +1090,14 @@ function buildLibraryPickerSection(ctx: SettingsUiContext, root: HTMLElement, on
         syncCreateState();
         syncNextState();
     });
-    nameInput.addEventListener("input", syncCreateState);
-    independentNotebookInput.addEventListener("input", syncCreateState);
+    nameInput.addEventListener("input", () => {
+        clearOrphanReceipt();
+        syncCreateState();
+    });
+    independentNotebookInput.addEventListener("input", () => {
+        clearOrphanReceipt();
+        syncCreateState();
+    });
 
     const step1Actions = document.createElement("div");
     step1Actions.className = "xlc-form-actions";

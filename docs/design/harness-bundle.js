@@ -6685,14 +6685,15 @@ ${exception.mark.snippet}`;
   }
 
   // src/model/kramdown.ts
+  var STRUCTURED_PATTERN = /\{:|[{]{3}|[}]{3}|^ {0,3}(?:`{3,}|~{3,}|>|(?:[-*+]|\d{1,9}[.)])[ \t]|\||(?:[-*_][ \t]*){3,}$)/;
   function bodyWriteRestriction(markdown) {
     var _a;
     if (!markdown.trim()) return "body is empty";
     if (markdown.length > LIMITS.contentChars) return "body exceeds the supported size; nothing was written";
     if (/[\u2028\u2029]/.test(markdown)) return "multi-line body writing is unavailable pending B-006 host verification";
     const lines = markdown.replace(/\r\n?/g, "\n").split("\n");
-    while (lines.length > 1 && lines[0] === "") lines.shift();
-    while (lines.length > 1 && lines[lines.length - 1] === "") lines.pop();
+    while (lines.length > 1 && lines[0].trim() === "") lines.shift();
+    while (lines.length > 1 && lines[lines.length - 1].trim() === "") lines.pop();
     const opening = (_a = lines[0]) == null ? void 0 : _a.match(/^(`{3,}|~{3,})([a-zA-Z0-9_+.-]*)[ \t]*$/);
     if (opening && lines.length >= 2) {
       const fence = opening[1];
@@ -6700,7 +6701,7 @@ ${exception.mark.snippet}`;
       const closingIndex = lines.findIndex((line, index) => index > 0 && close.test(line));
       if (closingIndex === lines.length - 1) return void 0;
     }
-    if (lines.length === 1 && !/\{:|\{\{\{|^ {0,3}(`{3,}|~{3,})/.test(lines[0])) return void 0;
+    if (lines.length === 1 && !STRUCTURED_PATTERN.test(lines[0])) return void 0;
     return "multi-line or structured body writing is unavailable pending B-006 host verification; use a single line or a complete code fence";
   }
   var ATTRIBUTE_PATTERN = /(^|\s)([\w:-]+)=(?:"[^"]*"|'[^']*'|[^\s}]+)(?=\s|$)/g;
@@ -8151,8 +8152,16 @@ ${exception.mark.snippet}`;
     independentNotebookStatus.setAttribute("role", "status");
     independentNotebookStatus.setAttribute("aria-live", "polite");
     independentNotebookWrap.appendChild(independentNotebookStatus);
+    let orphanReceiptEl = null;
+    const clearOrphanReceipt = () => {
+      if (orphanReceiptEl) {
+        orphanReceiptEl.remove();
+        orphanReceiptEl = null;
+      }
+    };
     step1.appendChild(independentNotebookWrap);
     const syncModeUi = () => {
+      clearOrphanReceipt();
       const mode = modeSelect.value;
       const needsNotebook = mode === "notebook" || mode === "new-doc";
       pickerWrap.style.display = mode === "doc" || mode === "tree" ? "" : "none";
@@ -8206,15 +8215,27 @@ ${exception.mark.snippet}`;
       (0, import_siyuan3.confirm)("\u26A0\uFE0F " + t("setupTitle"), confirmText, () => {
         if (creatingLibrary || setupRevision !== revision || modeSelect.value !== mode || mode === "new-doc" && nbSelect.value !== notebookId || mode === "new-notebook" && independentNotebookInput.value.trim() !== notebookName || nameInput.value.trim() !== title) return;
         creatingLibrary = true;
+        clearOrphanReceipt();
         modeSelect.disabled = true;
         nbSelect.disabled = true;
         nameInput.disabled = true;
         independentNotebookInput.disabled = true;
         createBtn.textContent = t("saving");
-        independentNotebookStatus.textContent = mode === "new-notebook" ? t("saving") : "";
+        independentNotebookStatus.textContent = mode === "new-notebook" ? t("setupIndependentStepNotebook") : "";
         independentNotebookStatus.classList.remove("xlc-form-error");
         syncCreateState();
-        const createTask = mode === "new-notebook" ? ctx.library.createIndependentLibrary(notebookName, title) : ctx.library.createLibraryDoc(notebookId, title);
+        const createTask = mode === "new-notebook" ? ctx.library.createIndependentLibrary(notebookName, title, {
+          onProgress: (step3) => {
+            if (setupRevision !== revision || !creatingLibrary) return;
+            if (step3 === "creating-notebook") {
+              independentNotebookStatus.textContent = t("setupIndependentStepNotebook");
+            } else if (step3 === "creating-doc") {
+              independentNotebookStatus.textContent = t("setupIndependentStepDoc");
+            } else if (step3 === "rolling-back") {
+              independentNotebookStatus.textContent = t("setupIndependentStepRollback");
+            }
+          }
+        }) : ctx.library.createLibraryDoc(notebookId, title);
         void createTask.then((result) => {
           creatingLibrary = false;
           modeSelect.disabled = false;
@@ -8228,6 +8249,37 @@ ${exception.mark.snippet}`;
             independentNotebookStatus.classList.toggle("xlc-form-error", mode === "new-notebook");
             independentNotebookStatus.textContent = mode === "new-notebook" ? message : "";
             nbStatus.textContent = mode === "new-notebook" ? message : t("kernelError", result.message);
+            if (mode === "new-notebook" && result.compensation === "failed" && result.notebookId) {
+              clearOrphanReceipt();
+              const orphanBox = document.createElement("div");
+              orphanBox.className = "xlc-form-field";
+              orphanBox.dataset.xlcControl = "setup.independent.orphan-notebook";
+              orphanBox.style.marginTop = "8px";
+              const warnP = document.createElement("p");
+              warnP.className = "xlc-form-hint xlc-form-error";
+              warnP.textContent = t("setupIndependentOrphanWarning", result.notebookId);
+              orphanBox.appendChild(warnP);
+              const copyBtn = document.createElement("button");
+              copyBtn.type = "button";
+              copyBtn.className = "b3-button";
+              copyBtn.dataset.xlcControl = "setup.independent.copy-orphan-id";
+              copyBtn.textContent = t("setupIndependentCopyOrphanId");
+              const orphanId = result.notebookId;
+              copyBtn.addEventListener("click", () => {
+                var _a;
+                try {
+                  if ((_a = navigator.clipboard) == null ? void 0 : _a.writeText) {
+                    void navigator.clipboard.writeText(orphanId);
+                  }
+                } catch {
+                }
+                copyBtn.textContent = t("setupIndependentOrphanCopied");
+                ctx.notify("info", t("setupIndependentOrphanCopied"));
+              });
+              orphanBox.appendChild(copyBtn);
+              independentNotebookWrap.appendChild(orphanBox);
+              orphanReceiptEl = orphanBox;
+            }
             ctx.notify("error", message);
             return;
           }
@@ -8276,8 +8328,14 @@ ${exception.mark.snippet}`;
       syncCreateState();
       syncNextState();
     });
-    nameInput.addEventListener("input", syncCreateState);
-    independentNotebookInput.addEventListener("input", syncCreateState);
+    nameInput.addEventListener("input", () => {
+      clearOrphanReceipt();
+      syncCreateState();
+    });
+    independentNotebookInput.addEventListener("input", () => {
+      clearOrphanReceipt();
+      syncCreateState();
+    });
     const step1Actions = document.createElement("div");
     step1Actions.className = "xlc-form-actions";
     if (opts == null ? void 0 : opts.onDismiss) {
@@ -12635,11 +12693,15 @@ ${details.join("\n")}` : ""}`;
       }
       const baseKey = typeof options.idempotencyKey === "string" && options.idempotencyKey.length >= 8 && options.idempotencyKey.length <= 128 ? options.idempotencyKey : `independent:${normalizedName}:${normalizedTitle}`;
       return this.withWriteLock(`independent-library:${baseKey}`, async () => {
+        var _a, _b, _c;
+        (_a = options.onProgress) == null ? void 0 : _a.call(options, "creating-notebook");
         const notebook = await this.createNotebook(normalizedName, { idempotencyKey: scopedIdempotencyKey(baseKey, "nb") });
         if (!notebook.ok) return notebook;
         const createdNotebookId = notebook.data.notebookId;
+        (_b = options.onProgress) == null ? void 0 : _b.call(options, "creating-doc");
         const doc = await this.createLibraryDoc(createdNotebookId, normalizedTitle, { idempotencyKey: scopedIdempotencyKey(baseKey, "doc") });
         if (doc.ok) return ok({ notebookId: createdNotebookId, docId: doc.data.docId });
+        (_c = options.onProgress) == null ? void 0 : _c.call(options, "rolling-back");
         const compensation = await this.removeNotebook(createdNotebookId, { idempotencyKey: scopedIdempotencyKey(baseKey, "rollback") });
         if (compensation.ok) {
           return {
@@ -13578,6 +13640,12 @@ ${details.join("\n")}` : ""}`;
     setupIndependentNotebookHint: "\u4F1A\u5148\u65B0\u5EFA\u4E00\u4E2A\u7B14\u8BB0\u672C\uFF0C\u518D\u5728\u5176\u4E2D\u521B\u5EFA\u5E93\u6587\u6863\uFF1B\u4E24\u6B65\u90FD\u6210\u529F\u540E\u624D\u4FDD\u5B58\u914D\u7F6E\u3002",
     setupIndependentConfirmCreate: "\u5C06\u65B0\u5EFA\u7B14\u8BB0\u672C\u300C%s\u300D\u548C\u5E93\u6587\u6863\u300C%s\u300D\uFF0C\u786E\u5B9A\u5417\uFF1F",
     setupIndependentCreateFailed: "\u521B\u5EFA\u72EC\u7ACB\u7B14\u8BB0\u672C\u5931\u8D25\uFF1A%s",
+    setupIndependentStepNotebook: "\u7B2C 1/2 \u6B65\uFF1A\u6B63\u5728\u65B0\u5EFA\u7B14\u8BB0\u672C\u2026",
+    setupIndependentStepDoc: "\u7B2C 2/2 \u6B65\uFF1A\u6B63\u5728\u65B0\u5EFA\u5E93\u6587\u6863\u2026",
+    setupIndependentStepRollback: "\u6B63\u5728\u56DE\u6EDA\u6E05\u7406\u672A\u5B8C\u6210\u7684\u7B14\u8BB0\u672C\u2026",
+    setupIndependentOrphanWarning: "\u6CE8\u610F\uFF1A\u7B14\u8BB0\u672C\u5DF2\u521B\u5EFA\u4F46\u672A\u6210\u529F\u6E05\u7406\uFF08ID\uFF1A%s\uFF09\u3002\u8BF7\u5728\u601D\u6E90\u5DE6\u4FA7\u7B14\u8BB0\u672C\u5217\u8868\u624B\u52A8\u786E\u8BA4\u6216\u5220\u9664\u3002",
+    setupIndependentCopyOrphanId: "\u590D\u5236\u7B14\u8BB0\u672C ID",
+    setupIndependentOrphanCopied: "\u5DF2\u590D\u5236\u7B14\u8BB0\u672C ID",
     setupChooseNotebook: "\u8BF7\u9009\u62E9\u7B14\u8BB0\u672C",
     setupNotebookLoading: "\u6B63\u5728\u8BFB\u53D6\u53EF\u7528\u7B14\u8BB0\u672C\u2026",
     setupNotebookReady: "\u53EF\u7528\u7B14\u8BB0\u672C\u5DF2\u52A0\u8F7D",
@@ -14166,6 +14234,12 @@ ${details.join("\n")}` : ""}`;
       setupIndependentNotebookHint: "\u4F1A\u5148\u65B0\u5EFA\u4E00\u4E2A\u7B14\u8BB0\u672C\uFF0C\u518D\u5728\u5176\u4E2D\u521B\u5EFA\u5E93\u6587\u6863\uFF1B\u4E24\u6B65\u90FD\u6210\u529F\u540E\u624D\u4FDD\u5B58\u914D\u7F6E\u3002",
       setupIndependentConfirmCreate: "\u5C06\u65B0\u5EFA\u7B14\u8BB0\u672C\u300C%s\u300D\u548C\u5E93\u6587\u6863\u300C%s\u300D\uFF0C\u786E\u5B9A\u5417\uFF1F",
       setupIndependentCreateFailed: "\u521B\u5EFA\u72EC\u7ACB\u7B14\u8BB0\u672C\u5931\u8D25\uFF1A%s",
+      setupIndependentStepNotebook: "\u7B2C 1/2 \u6B65\uFF1A\u6B63\u5728\u65B0\u5EFA\u7B14\u8BB0\u672C\u2026",
+      setupIndependentStepDoc: "\u7B2C 2/2 \u6B65\uFF1A\u6B63\u5728\u65B0\u5EFA\u5E93\u6587\u6863\u2026",
+      setupIndependentStepRollback: "\u6B63\u5728\u56DE\u6EDA\u6E05\u7406\u672A\u5B8C\u6210\u7684\u7B14\u8BB0\u672C\u2026",
+      setupIndependentOrphanWarning: "\u6CE8\u610F\uFF1A\u7B14\u8BB0\u672C\u5DF2\u521B\u5EFA\u4F46\u672A\u6210\u529F\u6E05\u7406\uFF08ID\uFF1A%s\uFF09\u3002\u8BF7\u5728\u601D\u6E90\u5DE6\u4FA7\u7B14\u8BB0\u672C\u5217\u8868\u624B\u52A8\u786E\u8BA4\u6216\u5220\u9664\u3002",
+      setupIndependentCopyOrphanId: "\u590D\u5236\u7B14\u8BB0\u672C ID",
+      setupIndependentOrphanCopied: "\u5DF2\u590D\u5236\u7B14\u8BB0\u672C ID",
       settingsIntro: "\u7BA1\u7406\u5185\u5BB9\u5E93\u3001\u590D\u7528\u504F\u597D\u548C\u6570\u636E\u3002\u5E93\u5185\u5185\u5BB9\u4F1A\u4FDD\u7559\u5728\u601D\u6E90\u6587\u6863\u4E2D\uFF0C\u5E76\u53EF\u7EE7\u7EED\u7F16\u8F91\u3002",
       captureIntro: "\u5148\u653E\u5165\u60F3\u8981\u590D\u7528\u7684\u5185\u5BB9\uFF0C\u518D\u8865\u5145\u6807\u9898\u548C\u5206\u7C7B\uFF0C\u4E4B\u540E\u53EF\u4EE5\u66F4\u5FEB\u627E\u5230\u5B83\u3002",
       discoveryTitle: "\u4ECE\u5F53\u524D\u6587\u6863\u53D1\u73B0",
@@ -14993,7 +15067,23 @@ ${details.join("\n")}` : ""}`;
             return { ok: true, data: (options == null ? void 0 : options.emptyNotebook) ? [] : [{ id: "20240101120001-hijklmn", name: "\u5E38\u7528\u5185\u5BB9\u5E93" }] };
           },
           createLibraryDoc: async () => ({ ok: true, data: { docId: "20240101120001-hijklmn" } }),
-          createIndependentLibrary: async (notebookName) => notebookName === "\u5931\u8D25\u5E93" ? { ok: false, reason: "kernel-error", message: "\u8865\u507F\u5931\u8D25\uFF1A20240101999999" } : { ok: true, data: { notebookId: "20240101999999", docId: "20240101120001-hijklmn" } },
+          createIndependentLibrary: async (notebookName, _title, opts) => {
+            var _a, _b, _c, _d;
+            (_a = opts == null ? void 0 : opts.onProgress) == null ? void 0 : _a.call(opts, "creating-notebook");
+            if (notebookName === "\u5931\u8D25\u5E93") {
+              (_b = opts == null ? void 0 : opts.onProgress) == null ? void 0 : _b.call(opts, "creating-doc");
+              (_c = opts == null ? void 0 : opts.onProgress) == null ? void 0 : _c.call(opts, "rolling-back");
+              return {
+                ok: false,
+                reason: "kernel-error",
+                message: "\u8865\u507F\u5931\u8D25\uFF1A20240101999999",
+                notebookId: "20240101999999",
+                compensation: "failed"
+              };
+            }
+            (_d = opts == null ? void 0 : opts.onProgress) == null ? void 0 : _d.call(opts, "creating-doc");
+            return { ok: true, data: { notebookId: "20240101999999", docId: "20240101120001-hijklmn" } };
+          },
           searchDocs: async (k) => {
             var _a, _b, _c, _d, _e;
             docSearchRequests++;
@@ -15120,7 +15210,7 @@ ${details.join("\n")}` : ""}`;
           stopRequested = false;
           (_a = options2 == null ? void 0 : options2.onProgress) == null ? void 0 : _a.call(options2, { phase: "enumerating", scannedDocs: 0, scannedBlocks: 0, discoveredDocs: 3 });
           (_b = options2 == null ? void 0 : options2.onProgress) == null ? void 0 : _b.call(options2, { phase: "scanning", scannedDocs: 1, scannedBlocks: 4, discoveredDocs: 3, totalDocs: 3 });
-          await new Promise((resolve) => setTimeout(resolve, 80));
+          await new Promise((resolve) => setTimeout(resolve, 300));
           return { ok: true, data: { ...makeView("notebook", stopRequested), scannedBlocks: 12, scannedDocs: 3, skippedEmpty: 2 } };
         },
         discoverTree: async (docId) => {

@@ -728,3 +728,28 @@ test("createIndependentLibrary：最长幂等键仍派生有界子键并只创�
         assert.ok(call.payload);
     }
 });
+
+test("createIndependentLibrary：两步与回滚时按顺序回调 onProgress", async () => {
+    const successSteps = [];
+    const {service: successService} = makeService({
+        createNotebook: ({name}) => ({notebook: {id: "20240101123456", name}}),
+        createDocWithMd: () => "20240101123457-ddddddd",
+    });
+    const successRes = await successService.createIndependentLibrary("独立库", "常用内容库", {
+        onProgress: (step) => successSteps.push(step),
+    });
+    assert.equal(successRes.ok, true);
+    assert.deepEqual(successSteps, ["creating-notebook", "creating-doc"]);
+
+    const rollbackSteps = [];
+    const {service: rollbackService} = makeService({
+        createNotebook: ({name}) => ({notebook: {id: "20240101123456", name}}),
+        createDocWithMd: () => { throw new Error("doc denied"); },
+        removeNotebook: () => null,
+    });
+    const failRes = await rollbackService.createIndependentLibrary("独立库", "常用内容库", {
+        onProgress: (step) => rollbackSteps.push(step),
+    });
+    assert.equal(failRes.ok, false);
+    assert.deepEqual(rollbackSteps, ["creating-notebook", "creating-doc", "rolling-back"]);
+});

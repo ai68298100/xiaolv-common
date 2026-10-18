@@ -53,6 +53,12 @@ export interface IndexBuildOptions {
     shouldStop?: () => boolean;
 }
 
+export type IndependentLibraryStep = "creating-notebook" | "creating-doc" | "rolling-back";
+
+export interface IndependentLibraryOptions extends WriteOptions {
+    onProgress?: (step: IndependentLibraryStep) => void;
+}
+
 export type ReceiptReason = "kernel-error" | "timeout" | "invalid-input" | "not-found" | "conflict";
 
 export type Receipt<T = undefined> =
@@ -428,7 +434,7 @@ export class LibraryService {
     }
 
     /** 两步独立库编排：创建笔记本后创建库文档；文档失败时只补偿删除本次新建的笔记本。 */
-    async createIndependentLibrary(notebookName: string, title: string, options: WriteOptions = {}): Promise<Receipt<{notebookId: string; docId: string}>> {
+    async createIndependentLibrary(notebookName: string, title: string, options: IndependentLibraryOptions = {}): Promise<Receipt<{notebookId: string; docId: string}>> {
         const normalizedName = typeof notebookName === "string" ? notebookName.trim() : "";
         const normalizedTitle = typeof title === "string" ? title.trim() : "";
         if (!normalizedName || normalizedName.length > LIMITS.title || !normalizedTitle || normalizedTitle.length > LIMITS.title) {
@@ -437,12 +443,16 @@ export class LibraryService {
         const baseKey = typeof options.idempotencyKey === "string" && options.idempotencyKey.length >= 8
             && options.idempotencyKey.length <= 128 ? options.idempotencyKey : `independent:${normalizedName}:${normalizedTitle}`;
         return this.withWriteLock(`independent-library:${baseKey}`, async () => {
+            options.onProgress?.("creating-notebook");
             const notebook = await this.createNotebook(normalizedName, {idempotencyKey: scopedIdempotencyKey(baseKey, "nb")});
             if (!notebook.ok) return notebook;
             const createdNotebookId = notebook.data.notebookId;
+
+            options.onProgress?.("creating-doc");
             const doc = await this.createLibraryDoc(createdNotebookId, normalizedTitle, {idempotencyKey: scopedIdempotencyKey(baseKey, "doc")});
             if (doc.ok) return ok({notebookId: createdNotebookId, docId: doc.data.docId});
 
+            options.onProgress?.("rolling-back");
             const compensation = await this.removeNotebook(createdNotebookId, {idempotencyKey: scopedIdempotencyKey(baseKey, "rollback")});
             if (compensation.ok) {
                 return {

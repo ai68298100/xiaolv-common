@@ -1,13 +1,15 @@
 import {LIMITS} from "../constants";
 
 /** Temporary B-006 write boundary, not a general Markdown parser or host acceptance. */
+const STRUCTURED_PATTERN = /\{:|[{]{3}|[}]{3}|^ {0,3}(?:`{3,}|~{3,}|>|(?:[-*+]|\d{1,9}[.)])[ \t]|\||(?:[-*_][ \t]*){3,}$)/;
+
 export function bodyWriteRestriction(markdown: string): string | undefined {
     if (!markdown.trim()) return "body is empty";
     if (markdown.length > LIMITS.contentChars) return "body exceeds the supported size; nothing was written";
     if (/[\u2028\u2029]/.test(markdown)) return "multi-line body writing is unavailable pending B-006 host verification";
     const lines = markdown.replace(/\r\n?/g, "\n").split("\n");
-    while (lines.length > 1 && lines[0] === "") lines.shift();
-    while (lines.length > 1 && lines[lines.length - 1] === "") lines.pop();
+    while (lines.length > 1 && lines[0]!.trim() === "") lines.shift();
+    while (lines.length > 1 && lines[lines.length - 1]!.trim() === "") lines.pop();
     // A complete, unindented fence is the only multi-line form currently allowed.
     const opening = lines[0]?.match(/^(`{3,}|~{3,})([a-zA-Z0-9_+.-]*)[ \t]*$/);
     if (opening && lines.length >= 2) {
@@ -16,7 +18,7 @@ export function bodyWriteRestriction(markdown: string): string | undefined {
         const closingIndex = lines.findIndex((line, index) => index > 0 && close.test(line));
         if (closingIndex === lines.length - 1) return undefined;
     }
-    if (lines.length === 1 && !/\{:|\{\{\{|^ {0,3}(`{3,}|~{3,})/.test(lines[0]!)) return undefined;
+    if (lines.length === 1 && !STRUCTURED_PATTERN.test(lines[0]!)) return undefined;
     return "multi-line or structured body writing is unavailable pending B-006 host verification; use a single line or a complete code fence";
 }
 
