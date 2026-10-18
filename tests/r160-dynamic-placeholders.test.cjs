@@ -42,6 +42,34 @@ test("日期算术：大小写与空白宽容（参数 trim + 小写化）", () 
     assert.equal(ph.resolveDateArg(NOW, "NEXT_MONDAY"), "2026-10-12");
 });
 
+test("日期算术：中文自然语言快捷支持（今天/明天/后天/昨天/下周X）", () => {
+    // 相对日
+    assert.equal(ph.resolveDateArg(NOW, "今天"), "2026-10-06");
+    assert.equal(ph.resolveDateArg(NOW, "明天"), "2026-10-07");
+    assert.equal(ph.resolveDateArg(NOW, "后天"), "2026-10-08");
+    assert.equal(ph.resolveDateArg(NOW, "大后天"), "2026-10-09");
+    assert.equal(ph.resolveDateArg(NOW, "昨天"), "2026-10-05");
+    assert.equal(ph.resolveDateArg(NOW, "前天"), "2026-10-04");
+    assert.equal(ph.resolveDateArg(NOW, "大前天"), "2026-10-03");
+
+    // 下周各星期（NOW 为 2026-10-06 周二）
+    assert.equal(ph.resolveDateArg(NOW, "下周一"), "2026-10-12");
+    assert.equal(ph.resolveDateArg(NOW, "下星期一"), "2026-10-12");
+    assert.equal(ph.resolveDateArg(NOW, "下礼拜一"), "2026-10-12");
+    assert.equal(ph.resolveDateArg(NOW, "下周二"), "2026-10-13");
+    assert.equal(ph.resolveDateArg(NOW, "下周三"), "2026-10-07");
+    assert.equal(ph.resolveDateArg(NOW, "下周五"), "2026-10-09");
+    assert.equal(ph.resolveDateArg(NOW, "下周日"), "2026-10-11");
+    assert.equal(ph.resolveDateArg(NOW, "下周天"), "2026-10-11");
+
+    // 全文占位符替换应用
+    const text = "请于 {{xlc:date|明天}} 前回复，或在 {{xlc:date|下周五}} 参加会议。";
+    assert.equal(
+        ph.applyPlaceholders(text, NOW, true),
+        "请于 2026-10-07 前回复，或在 2026-10-09 参加会议。",
+    );
+});
+
 test("负向：非法日期表达式原样保留，不吞内容", () => {
     const raw = "{{xlc:date:bogus}} {{xlc:date|+3x}} {{xlc:date|monday}}";
     assert.equal(ph.applyPlaceholders(raw, NOW, true), raw);

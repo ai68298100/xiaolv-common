@@ -2,6 +2,7 @@
 // 基础语法 {{xlc:date}} {{xlc:time}} {{xlc:datetime}} {{xlc:weekday}} {{xlc:title}} {{xlc:path}} {{xlc:doc}}
 // 日期算术（R160，对齐 Espanso/TextExpander 核心差距）：{{xlc:date|+3d}} {{xlc:date|-1w}} {{xlc:date|+2m}}
 //   {{xlc:date|+1y}} {{xlc:date|next_monday}} —— 月/年进位按日历钳制（1/31 +1m → 2/28），next_* 取严格未来最近一天。
+//   中文自然语言快捷（T-0112）：{{xlc:date|明天}} {{xlc:date|后天}} {{xlc:date|昨天}} {{xlc:date|下周五}} 等。
 // 随机选择（R160）：{{xlc:random|a,b,c}} —— 每次替换随机取一项（每选项前后空白忽略）。
 // 带参语法分隔符必须是 | 而非 :（R161 真机验收发现）：Lute 把 :date: 当 emoji 短代码转换，
 // {{xlc:date:+3d}} 落库即损坏成 {{xlc📅+3d}}；ask 冒号语法无此问题（:ask: 非短代码，真机已验证）。
@@ -19,6 +20,26 @@ export const PLACEHOLDER_PATTERN = /\{\{xlc:(date|time|datetime|weekday|title|pa
 export type PlaceholderResolver = (kind: PlaceholderKind) => string;
 
 const WEEKDAYS_ZH = ["周日", "周一", "周二", "周三", "周四", "周五", "周六"];
+
+const ZH_RELATIVE_DAYS: Readonly<Record<string, number>> = {
+    今天: 0,
+    明天: 1,
+    后天: 2,
+    大后天: 3,
+    昨天: -1,
+    前天: -2,
+    大前天: -3,
+};
+
+const ZH_NEXT_WEEKDAY: Readonly<Record<string, number>> = {
+    下周一: 1, 下星期一: 1, 下礼拜一: 1,
+    下周二: 2, 下星期二: 2, 下礼拜二: 2,
+    下周三: 3, 下星期三: 3, 下礼拜三: 3,
+    下周四: 4, 下星期四: 4, 下礼拜四: 4,
+    下周五: 5, 下星期五: 5, 下礼拜五: 5,
+    下周六: 6, 下星期六: 6, 下礼拜六: 6,
+    下周日: 0, 下周天: 0, 下星期日: 0, 下星期天: 0, 下礼拜日: 0, 下礼拜天: 0,
+};
 
 // 日期算术参数：相对偏移 [+-]N(d|w|m|y) 与 next_星期；数字限 4 位防荒诞值。
 const RELATIVE_ARG = /^([+-])(\d{1,4})([dwmy])$/;
@@ -47,6 +68,19 @@ function addMonthsClamped(base: Date, months: number): Date {
 /** 解析日期算术参数并渲染；非法参数返回 null（调用方保留占位符原文）。 */
 export function resolveDateArg(now: Date, rawArg: string): string | null {
     const arg = rawArg.trim().toLowerCase();
+    if (Object.prototype.hasOwnProperty.call(ZH_RELATIVE_DAYS, arg)) {
+        const offset = ZH_RELATIVE_DAYS[arg]!;
+        const next = new Date(now);
+        next.setDate(next.getDate() + offset);
+        return renderDate(next);
+    }
+    if (Object.prototype.hasOwnProperty.call(ZH_NEXT_WEEKDAY, arg)) {
+        const target = ZH_NEXT_WEEKDAY[arg]!;
+        const ahead = (target - now.getDay() + 7) % 7 || 7;
+        const next = new Date(now);
+        next.setDate(next.getDate() + ahead);
+        return renderDate(next);
+    }
     const rel = RELATIVE_ARG.exec(arg);
     if (rel) {
         const sign = rel[1] === "+" ? 1 : -1;

@@ -12149,6 +12149,41 @@ ${details.join("\n")}` : ""}`;
   // src/model/placeholders.ts
   var PLACEHOLDER_PATTERN = /\{\{xlc:(date|time|datetime|weekday|title|path|doc|random)(?:\|([^}]+))?\}\}/g;
   var WEEKDAYS_ZH = ["\u5468\u65E5", "\u5468\u4E00", "\u5468\u4E8C", "\u5468\u4E09", "\u5468\u56DB", "\u5468\u4E94", "\u5468\u516D"];
+  var ZH_RELATIVE_DAYS = {
+    \u4ECA\u5929: 0,
+    \u660E\u5929: 1,
+    \u540E\u5929: 2,
+    \u5927\u540E\u5929: 3,
+    \u6628\u5929: -1,
+    \u524D\u5929: -2,
+    \u5927\u524D\u5929: -3
+  };
+  var ZH_NEXT_WEEKDAY = {
+    \u4E0B\u5468\u4E00: 1,
+    \u4E0B\u661F\u671F\u4E00: 1,
+    \u4E0B\u793C\u62DC\u4E00: 1,
+    \u4E0B\u5468\u4E8C: 2,
+    \u4E0B\u661F\u671F\u4E8C: 2,
+    \u4E0B\u793C\u62DC\u4E8C: 2,
+    \u4E0B\u5468\u4E09: 3,
+    \u4E0B\u661F\u671F\u4E09: 3,
+    \u4E0B\u793C\u62DC\u4E09: 3,
+    \u4E0B\u5468\u56DB: 4,
+    \u4E0B\u661F\u671F\u56DB: 4,
+    \u4E0B\u793C\u62DC\u56DB: 4,
+    \u4E0B\u5468\u4E94: 5,
+    \u4E0B\u661F\u671F\u4E94: 5,
+    \u4E0B\u793C\u62DC\u4E94: 5,
+    \u4E0B\u5468\u516D: 6,
+    \u4E0B\u661F\u671F\u516D: 6,
+    \u4E0B\u793C\u62DC\u516D: 6,
+    \u4E0B\u5468\u65E5: 0,
+    \u4E0B\u5468\u5929: 0,
+    \u4E0B\u661F\u671F\u65E5: 0,
+    \u4E0B\u661F\u671F\u5929: 0,
+    \u4E0B\u793C\u62DC\u65E5: 0,
+    \u4E0B\u793C\u62DC\u5929: 0
+  };
   var RELATIVE_ARG = /^([+-])(\d{1,4})([dwmy])$/;
   var NEXT_WEEKDAY_ARG = /^next_(monday|tuesday|wednesday|thursday|friday|saturday|sunday)$/;
   var WEEKDAY_INDEX = {
@@ -12174,6 +12209,19 @@ ${details.join("\n")}` : ""}`;
   }
   function resolveDateArg(now, rawArg) {
     const arg = rawArg.trim().toLowerCase();
+    if (Object.prototype.hasOwnProperty.call(ZH_RELATIVE_DAYS, arg)) {
+      const offset = ZH_RELATIVE_DAYS[arg];
+      const next = new Date(now);
+      next.setDate(next.getDate() + offset);
+      return renderDate(next);
+    }
+    if (Object.prototype.hasOwnProperty.call(ZH_NEXT_WEEKDAY, arg)) {
+      const target2 = ZH_NEXT_WEEKDAY[arg];
+      const ahead = (target2 - now.getDay() + 7) % 7 || 7;
+      const next = new Date(now);
+      next.setDate(next.getDate() + ahead);
+      return renderDate(next);
+    }
     const rel = RELATIVE_ARG.exec(arg);
     if (rel) {
       const sign = rel[1] === "+" ? 1 : -1;
