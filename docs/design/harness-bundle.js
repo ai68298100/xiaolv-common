@@ -3305,16 +3305,26 @@ ${exception.mark.snippet}`;
   var ASK_PATTERN = /\{\{xlc:ask:([^|}]+)(?:\|([^}]*))?\}\}/g;
   function parseAskField(rawName, rawOptions) {
     var _a, _b;
-    const name = rawName.trim().slice(0, LIMITS.tag);
+    let name = rawName.trim().slice(0, LIMITS.tag);
+    let defaultValue;
+    const eqIdx = name.indexOf("=");
+    if (eqIdx !== -1) {
+      defaultValue = name.slice(eqIdx + 1).trim().slice(0, LIMITS.askValueChars);
+      name = name.slice(0, eqIdx).trim().slice(0, LIMITS.tag);
+    }
     if (!name) return null;
     const options = (rawOptions != null ? rawOptions : "").split(",").map((s) => s.trim().slice(0, LIMITS.tag)).filter(Boolean).slice(0, 16);
-    if (options.length === 1 && ((_a = options[0]) == null ? void 0 : _a.toLowerCase()) === "date") return { name, kind: "date", options: [] };
-    if (options.length === 1 && ((_b = options[0]) == null ? void 0 : _b.toLowerCase()) === "textarea") return { name, kind: "textarea", options: [] };
-    if (options.length >= 2) return { name, kind: "select", options };
-    return { name, kind: "text", options: [] };
+    if (options.length === 1 && ((_a = options[0]) == null ? void 0 : _a.toLowerCase()) === "date") return { name, kind: "date", options: [], ...defaultValue ? { defaultValue } : {} };
+    if (options.length === 1 && ((_b = options[0]) == null ? void 0 : _b.toLowerCase()) === "textarea") return { name, kind: "textarea", options: [], ...defaultValue ? { defaultValue } : {} };
+    if (options.length >= 2) return { name, kind: "select", options, ...defaultValue ? { defaultValue } : {} };
+    if (options.length === 1 && !defaultValue) {
+      defaultValue = options[0];
+    }
+    return { name, kind: "text", options: [], ...defaultValue ? { defaultValue } : {} };
   }
   function askFieldTag(field) {
-    if (field.kind === "text") return `{{xlc:ask:${field.name}}}`;
+    const nameWithDef = field.defaultValue && field.kind === "text" && field.options.length === 0 ? `${field.name}=${field.defaultValue}` : field.name;
+    if (field.kind === "text") return field.defaultValue && field.options.length === 0 ? `{{xlc:ask:${nameWithDef}}}` : `{{xlc:ask:${field.name}}}`;
     if (field.kind === "select") return `{{xlc:ask:${field.name}|${field.options.join(",")}}}`;
     return `{{xlc:ask:${field.name}|${field.kind}}}`;
   }
@@ -3346,6 +3356,7 @@ ${exception.mark.snippet}`;
       if (!field) return _match;
       const filled = Object.prototype.hasOwnProperty.call(fills, field.name) ? cleanFillValue((_a = fills[field.name]) != null ? _a : "") : "";
       if (filled) return filled;
+      if (field.defaultValue) return cleanFillValue(field.defaultValue);
       return `__${field.name}__`;
     });
   }
@@ -3449,6 +3460,9 @@ ${exception.mark.snippet}`;
         wrap.appendChild(datalist);
       }
       input.dataset.xlcVarField = field.name;
+      if (field.defaultValue) {
+        input.value = field.defaultValue;
+      }
       wrap.appendChild(input);
       inputs.push(input);
       fieldsWrap.appendChild(wrap);

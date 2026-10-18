@@ -40,6 +40,39 @@ test("ask 展开：填充值生效、缺失兜底 __名称__、值清洗", () =>
     assert.strictEqual(variables.applyAskDefaults(tpl), "尊敬的 __客户__：减免 __比例__，{{xlc:cursor}}");
 });
 
+test("ask 默认值与语法回显：等号语法、单选项回退默认值与默认值优先展开", () => {
+    // 等号语法解析默认值
+    const f1 = variables.parseAskField("币种=CNY", undefined);
+    assert.deepStrictEqual(f1, {name: "币种", kind: "text", options: [], defaultValue: "CNY"});
+    assert.strictEqual(variables.askFieldTag(f1), "{{xlc:ask:币种=CNY}}");
+
+    // 单选项作为默认值
+    const f2 = variables.parseAskField("数量", "1");
+    assert.deepStrictEqual(f2, {name: "数量", kind: "text", options: [], defaultValue: "1"});
+
+    // date/textarea 依然是对应类型，且支持等号默认值
+    const fDate = variables.parseAskField("截止=2026-10-19", "date");
+    assert.deepStrictEqual(fDate, {name: "截止", kind: "date", options: [], defaultValue: "2026-10-19"});
+    const fTextarea = variables.parseAskField("备注=无", "textarea");
+    assert.deepStrictEqual(fTextarea, {name: "备注", kind: "textarea", options: [], defaultValue: "无"});
+
+    // 下拉选项结合等号默认值
+    const fSelect = variables.parseAskField("城市=北京", "上海,北京,广州");
+    assert.deepStrictEqual(fSelect, {name: "城市", kind: "select", options: ["上海", "北京", "广州"], defaultValue: "北京"});
+
+    // 默认值展开：未提供填充值时优先采用 defaultValue，无默认值才落 __名称__
+    const tpl = "付款：{{xlc:ask:币种=CNY}} {{xlc:ask:数量|1}} 到 {{xlc:ask:客户}}";
+    assert.strictEqual(
+        variables.expandAsks(tpl, {}),
+        "付款：CNY 1 到 __客户__",
+    );
+    // 用户显式填充优先于默认值
+    assert.strictEqual(
+        variables.expandAsks(tpl, {币种: "USD", 数量: "5"}),
+        "付款：USD 5 到 __客户__",
+    );
+});
+
 test("光标标记：插入路径移除，检测可用", () => {
     assert.strictEqual(variables.stripCursorToken("A{{xlc:cursor}}B{{xlc:cursor}}"), "AB");
     assert.strictEqual(variables.hasCursorToken("A{{xlc:cursor}}"), true);

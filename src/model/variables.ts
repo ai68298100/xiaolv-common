@@ -17,13 +17,21 @@ export interface AskField {
     kind: AskFieldKind;
     /** select 选项列表 */
     options: string[];
+    /** 默认填充建议值（由 {{xlc:ask:名称=默认值}} 或 {{xlc:ask:名称|默认值}} 提取） */
+    defaultValue?: string;
 }
 
 // 名称禁 | 与 }；选项段不含 }。懒惰量防跨占位符误吞。
 const ASK_PATTERN = /\{\{xlc:ask:([^|}]+)(?:\|([^}]*))?\}\}/g;
 
 export function parseAskField(rawName: string, rawOptions: string | undefined): AskField | null {
-    const name = rawName.trim().slice(0, LIMITS.tag);
+    let name = rawName.trim().slice(0, LIMITS.tag);
+    let defaultValue: string | undefined;
+    const eqIdx = name.indexOf("=");
+    if (eqIdx !== -1) {
+        defaultValue = name.slice(eqIdx + 1).trim().slice(0, LIMITS.askValueChars);
+        name = name.slice(0, eqIdx).trim().slice(0, LIMITS.tag);
+    }
     if (!name) return null;
     const options = (rawOptions ?? "")
         .split(",")
@@ -31,15 +39,21 @@ export function parseAskField(rawName: string, rawOptions: string | undefined): 
         .filter(Boolean)
         .slice(0, 16);
     // date/textarea 单选项大小写不敏感：{{xlc:ask:x|DATE}} / {{xlc:ask:x|TextArea}} 语义不变（R139/R160）
-    if (options.length === 1 && options[0]?.toLowerCase() === "date") return {name, kind: "date", options: []};
-    if (options.length === 1 && options[0]?.toLowerCase() === "textarea") return {name, kind: "textarea", options: []};
-    if (options.length >= 2) return {name, kind: "select", options};
-    return {name, kind: "text", options: []};
+    if (options.length === 1 && options[0]?.toLowerCase() === "date") return {name, kind: "date", options: [], ...(defaultValue ? {defaultValue} : {})};
+    if (options.length === 1 && options[0]?.toLowerCase() === "textarea") return {name, kind: "textarea", options: [], ...(defaultValue ? {defaultValue} : {})};
+    if (options.length >= 2) return {name, kind: "select", options, ...(defaultValue ? {defaultValue} : {})};
+    if (options.length === 1 && !defaultValue) {
+        defaultValue = options[0];
+    }
+    return {name, kind: "text", options: [], ...(defaultValue ? {defaultValue} : {})};
 }
 
 /** 字段语法回显（填充卡片/预览 chip 共用）：展示与解析口径一致，不各写一份模板字符串。 */
 export function askFieldTag(field: AskField): string {
-    if (field.kind === "text") return `{{xlc:ask:${field.name}}}`;
+    const nameWithDef = field.defaultValue && field.kind === "text" && field.options.length === 0
+        ? `${field.name}=${field.defaultValue}`
+        : field.name;
+    if (field.kind === "text") return field.defaultValue && field.options.length === 0 ? `{{xlc:ask:${nameWithDef}}}` : `{{xlc:ask:${field.name}}}`;
     if (field.kind === "select") return `{{xlc:ask:${field.name}|${field.options.join(",")}}}`;
     return `{{xlc:ask:${field.name}|${field.kind}}}`;
 }
@@ -79,6 +93,7 @@ export function expandAsks(text: string, fills: Record<string, string>): string 
         if (!field) return _match;
         const filled = Object.prototype.hasOwnProperty.call(fills, field.name) ? cleanFillValue(fills[field.name] ?? "") : "";
         if (filled) return filled;
+        if (field.defaultValue) return cleanFillValue(field.defaultValue);
         return `__${field.name}__`;
     });
 }

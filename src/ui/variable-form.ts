@@ -109,6 +109,9 @@ export function openVariableFillCard(options: VariableFillOptions): void {
             wrap.appendChild(datalist);
         }
         input.dataset.xlcVarField = field.name;
+        if (field.defaultValue) {
+            input.value = field.defaultValue;
+        }
         wrap.appendChild(input);
         inputs.push(input);
         fieldsWrap.appendChild(wrap);
