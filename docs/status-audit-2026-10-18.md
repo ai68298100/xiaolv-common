@@ -10,7 +10,7 @@
 
 | 层级 | 本轮状态 | 可以声称 | 不能声称 |
 | --- | --- | --- | --- |
-| 源码/模型 | `pnpm run check`、`pnpm run check:errors` 通过；单元门禁最终 540/540 | 纯函数、服务装配和错误边界符合当前测试 | 不能代替宿主行为 |
+| 源码/模型 | `pnpm run check`、`pnpm run check:errors` 通过；单元门禁最终 542/542 | 纯函数、服务装配和错误边界符合当前测试 | 不能代替宿主行为 |
 | Chrome 离线生产 UI | `test:ui` 通过；`test:ix` 交互 74/74；0 pageerror/console；基线文件已恢复 | 原型对应的桌面、暗色、窄屏、移动、设置、首跑、捕获、发现、导入和动作菜单状态可渲染并可操作 | 不能代替思源 Electron/Android |
 | 隔离内核/历史 Electron | 复用既有 v3.8.8-alpha.1 与固定 Electron 3.8.7 证据 | 桌面核心块读写、协议入口、普通/引用动作和无编辑器复制降级已有局部证据 | B-005 使镜像整体隔离声明失效；不能外推到日常工作区或 Android |
 | 真实服务/provider/AI | provider 合同和 AI 失败边界已实现；真实模型端到端未完成 | 默认关、正文出域双开关、原文不变、失败可见 | 不能称真实 AI 已验收；第三方 provider 仍依赖兄弟插件接入 |
@@ -150,6 +150,12 @@ Chrome 离线审计上一轮暴露的搜索 `role=option` 嵌套交互和客服�
 - `src/model/transfer.ts` 导出 `COMPACT_BUNDLE_PREFIX`（`"xlc-bundle:"`）与跨平台安全的 `serializeCompactBundle` / `deserializeCompactBundle`。
 - `validateImport` 支持紧凑分享字符串与 `xlc://import?bundle=` URL 链接自动反序列化直接导入，与标准 JSON 导入享受相同校验与错误边界。
 - 新增 `tests/transfer.test.cjs` 专项断言（单元门禁 540/540 全部通过），并通过故意跳过解码分支的严格负向验证。
+
+## R262 变量下拉与随机选择选项多维分隔符归一化
+
+- `src/model/variables.ts` 的 `parseAskField` 接入 `/[,，、]/` 切分，彻底消除中文全角逗号 `，` 与顿号 `、` 导致的单项误判。
+- `src/model/placeholders.ts` 的 `pickRandomOption` 同步接入 `/[,，、]/` 切分，支持中文全角标点随机选择。
+- 新增 `tests/r67-variables.test.cjs` 与 `tests/r160-dynamic-placeholders.test.cjs` 专项断言（单元门禁 542/542 全部通过），并通过故意改回半角逗号的严格负向验证。
 
 仍开放但已明确记录：B-006 的真实宿主验收、多块正文更新和旧数据边界；Android、真实 AI、B-004 根因与 B-005 隔离/影响审计。发现页标签可访问名称已经修复，不再把历史诊断写成当前缺陷；有限 axe 场景仍不等于全插件无障碍保证。
 

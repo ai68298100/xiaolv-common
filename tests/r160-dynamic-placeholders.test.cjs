@@ -96,6 +96,26 @@ test("随机选择：结果必在选项集中；选项去空白；多次取值�
     assert.equal(ph.applyPlaceholders("{{xlc:random|唯一}}", NOW, true), "唯一");
 });
 
+test("随机选择：支持中文逗号与顿号（[,，、]）切分选项", () => {
+    // 中文逗号切分
+    const seenComma = new Set();
+    for (let i = 0; i < 100; i++) {
+        const out = ph.applyPlaceholders("{{xlc:random| 红包 ， 优惠券 ， 感谢信 }}", NOW, true);
+        assert.match(out, /^红包$|^优惠券$|^感谢信$/);
+        seenComma.add(out);
+    }
+    assert.ok(seenComma.size >= 2);
+
+    // 顿号切分
+    const seenDun = new Set();
+    for (let i = 0; i < 100; i++) {
+        const out = ph.applyPlaceholders("{{xlc:random|特等奖、一等奖、二等奖}}", NOW, true);
+        assert.match(out, /^特等奖$|^一等奖$|^二等奖$/);
+        seenDun.add(out);
+    }
+    assert.ok(seenDun.size >= 2);
+});
+
 test("listPlaceholders 识别带参形态", () => {
     assert.deepEqual(ph.listPlaceholders("{{xlc:date|+3d}}{{xlc:random|a,b}}"), ["date", "random"]);
     assert.deepEqual(ph.listPlaceholders("{{xlc:date}} {{xlc:date|next_monday}}"), ["date"]);

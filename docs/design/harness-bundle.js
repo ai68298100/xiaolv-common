@@ -3313,7 +3313,7 @@ ${exception.mark.snippet}`;
       name = name.slice(0, eqIdx).trim().slice(0, LIMITS.tag);
     }
     if (!name) return null;
-    const options = (rawOptions != null ? rawOptions : "").split(",").map((s) => s.trim().slice(0, LIMITS.tag)).filter(Boolean).slice(0, 16);
+    const options = (rawOptions != null ? rawOptions : "").split(/[,，、]/).map((s) => s.trim().slice(0, LIMITS.tag)).filter(Boolean).slice(0, 16);
     if (options.length === 1 && ((_a = options[0]) == null ? void 0 : _a.toLowerCase()) === "date") return { name, kind: "date", options: [], ...defaultValue ? { defaultValue } : {} };
     if (options.length === 1 && ((_b = options[0]) == null ? void 0 : _b.toLowerCase()) === "textarea") return { name, kind: "textarea", options: [], ...defaultValue ? { defaultValue } : {} };
     if (options.length >= 2) return { name, kind: "select", options, ...defaultValue ? { defaultValue } : {} };
@@ -12288,7 +12288,7 @@ ${details.join("\n")}` : ""}`;
   }
   function pickRandomOption(rawArg) {
     var _a;
-    const options = rawArg.split(",").map((s) => s.trim()).filter(Boolean).slice(0, 16);
+    const options = rawArg.split(/[,，、]/).map((s) => s.trim()).filter(Boolean).slice(0, 16);
     if (options.length === 0) return null;
     return (_a = options[Math.floor(Math.random() * options.length)]) != null ? _a : null;
   }

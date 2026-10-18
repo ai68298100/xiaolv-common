@@ -27,6 +27,26 @@ test("ask 解析：空名/畸形输入安全返回", () => {
     assert.strictEqual(variables.listAskFields("").length, 0);
 });
 
+test("ask 选项切分：支持中文全角逗号与顿号（[,，、]）归一化", () => {
+    // 中文全角逗号
+    const fZhComma = variables.parseAskField("方案", "标准版，专业版，旗舰版");
+    assert.deepStrictEqual(fZhComma, {name: "方案", kind: "select", options: ["标准版", "专业版", "旗舰版"]});
+
+    // 顿号切分
+    const fDun = variables.parseAskField("阶段", "需求澄清、原型确认、研发交付");
+    assert.deepStrictEqual(fDun, {name: "阶段", kind: "select", options: ["需求澄清", "原型确认", "研发交付"]});
+
+    // 混用多种分隔符与首尾空格
+    const fMixed = variables.parseAskField("付款方式", " 微信 , 支付宝 ， 银行卡 、 对公转账 ");
+    assert.deepStrictEqual(fMixed, {name: "付款方式", kind: "select", options: ["微信", "支付宝", "银行卡", "对公转账"]});
+
+    // 全文模板提取
+    const fields = variables.listAskFields("选择 {{xlc:ask:套餐|A，B，C}} 与 {{xlc:ask:渠道|线上、线下}}");
+    assert.strictEqual(fields.length, 2);
+    assert.deepStrictEqual(fields[0].options, ["A", "B", "C"]);
+    assert.deepStrictEqual(fields[1].options, ["线上", "线下"]);
+});
+
 test("ask 展开：填充值生效、缺失兜底 __名称__、值清洗", () => {
     const tpl = "尊敬的 {{xlc:ask:客户}}：减免 {{xlc:ask:比例|5%,10%}}，{{xlc:cursor}}";
     assert.strictEqual(

@@ -106,9 +106,9 @@ export function resolveDateArg(now: Date, rawArg: string): string | null {
     return null;
 }
 
-/** 随机选一：逗号分隔选项，每项去首尾空白；无可选项返回 null（保留原文）。 */
+/** 随机选一：逗号分隔选项（支持中英文逗号与顿号 [,，、]），每项去首尾空白；无可选项返回 null（保留原文）。 */
 export function pickRandomOption(rawArg: string): string | null {
-    const options = rawArg.split(",").map((s) => s.trim()).filter(Boolean).slice(0, 16);
+    const options = rawArg.split(/[,，、]/).map((s) => s.trim()).filter(Boolean).slice(0, 16);
     if (options.length === 0) return null;
     return options[Math.floor(Math.random() * options.length)] ?? null;
 }

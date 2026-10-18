@@ -34,7 +34,7 @@ export function parseAskField(rawName: string, rawOptions: string | undefined): 
     }
     if (!name) return null;
     const options = (rawOptions ?? "")
-        .split(",")
+        .split(/[,，、]/)
         .map((s) => s.trim().slice(0, LIMITS.tag))
         .filter(Boolean)
         .slice(0, 16);
