@@ -298,6 +298,7 @@
   "sortHint.frequent": "Sort by use count, then recent use for ties; this order also applies to search",
   "varCountBadge": "%s vars",
   "paneVarsLabel": "Will prompt %s variables on insert:",
+  "paneSnippetsLabel": "Includes %s snippets:",
   "insertVariable": "Insert variable:",
   "varFormTitle": "Fill variables",
   "varFormSub": "This item has %s variables; they are filled once for this insert only and never written back.",

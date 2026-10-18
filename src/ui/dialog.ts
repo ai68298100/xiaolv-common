@@ -12,7 +12,7 @@ import {SearchEntry, SearchQuery} from "../model/search";
 import {InsertMode} from "../model/actions";
 import {TransformKind} from "../service/ai";
 import {ProviderRow} from "../model/provider-section";
-import {AskField, askFieldTag, hasCursorToken, listAskFields} from "../model/variables";
+import {AskField, askFieldTag, hasCursorToken, listAskFields, listSnippetRefs} from "../model/variables";
 import {openVariableFillCard} from "./variable-form";
 import {formatScopeFallbackQuery, shouldShowScopeFallback} from "./empty-state";
 import {findPinyinMatches} from "../model/pinyin-tiny";
@@ -1759,16 +1759,16 @@ export class CommonSearchDialog {
         this.updatePreview(entry.id);
     }
 
-    /** 变量提示行：从预览文本解析 ask 字段与光标标记并列出语法 chip（code/提供方行不展示）。 */
+    /** 变量提示行：从预览文本解析 ask 字段、嵌套片段与光标标记并列出语法 chip（code/提供方行不展示）。 */
     private paintPaneVars(text: string | null, itemType: ItemType | "provider" | undefined): void {
         const paneVars = this.dialog?.element.querySelector<HTMLElement>(".xlc-pane-vars");
         if (!paneVars) return;
         const hasCursor = Boolean(text && hasCursorToken(text));
-        const fields = itemType && itemType !== "code" && itemType !== "provider" && text
-            ? listAskFields(text)
-            : [];
+        const isNormalTemplate = Boolean(itemType && itemType !== "code" && itemType !== "provider" && text);
+        const fields = isNormalTemplate && text ? listAskFields(text) : [];
+        const snippets = isNormalTemplate && text ? listSnippetRefs(text) : [];
         paneVars.textContent = "";
-        if (fields.length === 0 && !hasCursor) {
+        if (fields.length === 0 && snippets.length === 0 && !hasCursor) {
             paneVars.style.display = "none";
             return;
         }
@@ -1776,16 +1776,28 @@ export class CommonSearchDialog {
             const label = document.createElement("span");
             label.textContent = this.deps.t("paneVarsLabel", String(fields.length));
             paneVars.appendChild(label);
+            for (const field of fields) {
+                const chip = document.createElement("code");
+                chip.textContent = askFieldTag(field);
+                paneVars.appendChild(chip);
+            }
         }
-        for (const field of fields) {
-            const chip = document.createElement("code");
-            chip.textContent = askFieldTag(field);
-            paneVars.appendChild(chip);
+        if (snippets.length > 0) {
+            const sep = fields.length > 0 ? " · " : "";
+            const label = document.createElement("span");
+            label.textContent = sep + this.deps.t("paneSnippetsLabel", String(snippets.length));
+            paneVars.appendChild(label);
+            for (const snippetTitle of snippets) {
+                const chip = document.createElement("code");
+                chip.dataset.xlcControl = "preview.snippet-tag";
+                chip.textContent = `{{xlc:snippet:${snippetTitle}}}`;
+                paneVars.appendChild(chip);
+            }
         }
         // 光标落点提示（原型屏 1：内容含 {{xlc:cursor}} 时附带说明）
         if (hasCursor) {
             const sep = document.createElement("span");
-            sep.textContent = (fields.length > 0 ? "· " : "") + this.deps.t("cursorHint");
+            sep.textContent = (fields.length > 0 || snippets.length > 0 ? " · " : "") + this.deps.t("cursorHint");
             paneVars.appendChild(sep);
             const chip = document.createElement("code");
             chip.textContent = "{{xlc:cursor}}";

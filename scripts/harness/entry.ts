@@ -22,7 +22,7 @@ const ENTRIES: SearchEntry[] = [
 ];
 
 const PREVIEWS: Record<string, string> = {
-    "xlc-demo0000001": "尊敬的 {{xlc:ask:客户名称}}：\n\n关于本期「会员系统」交付延期，我们深表歉意。经复盘，主要原因为第三方支付联调超期。目前联调已完成 92%，预计推迟 2 个工作日上线。\n\n为弥补影响，我们提供以下补偿：\n1. 本期服务费减免 {{xlc:ask:补偿比例|5%,10%}}；\n2. 上线后 48 小时专属值守；\n3. 下期迭代优先排入贵方需求。\n\n再次感谢理解与支持，有任何问题随时联系我。{{xlc:cursor}}",
+    "xlc-demo0000001": "尊敬的 {{xlc:ask:客户名称}}：\n\n关于本期「会员系统」交付延期，我们深表歉意。经复盘，主要原因为第三方支付联调超期。目前联调已完成 92%，预计推迟 2 个工作日上线。\n\n为弥补影响，我们提供以下补偿：\n1. 本期服务费减免 {{xlc:ask:补偿比例|5%,10%}}；\n2. 上线后 48 小时专属值守；\n3. 下期迭代优先排入贵方需求。\n\n再次感谢理解与支持，有任何问题随时联系我。{{xlc:cursor}}\n\n{{xlc:snippet:联系方式}}",
     "xlc-demo0000002": "您好，本次迭代因联调超期，上线推迟 2 天。给您带来不便深表歉意，有问题随时找我。",
     "xlc-demo0000003": "```sql\nSELECT * FROM articles\nWHERE status = 'published'\nORDER BY updated_at DESC\nLIMIT 20 OFFSET 40;\n```",
     "xlc-demo0000004": "（引用语法预览）((20240101120002-bbbbbbb '产品需求模板'))",
@@ -58,6 +58,7 @@ const T = (key: string, ...args: string[]): string => {
         pluginName: "小驴常用（内测版）",
         setupCreateIndependentNotebook: "新建独立笔记本与库文档", setupIndependentNotebookName: "新笔记本名称", setupIndependentNotebookNamePlaceholder: "例如：工作常用语", setupIndependentNotebookHint: "会先新建一个笔记本，再在其中创建库文档；两步都成功后才保存配置。", setupIndependentConfirmCreate: "将新建笔记本「%s」和库文档「%s」，确定吗？", setupIndependentCreateFailed: "创建独立笔记本失败：%s",
         setupIndependentStepNotebook: "第 1/2 步：正在新建笔记本…", setupIndependentStepDoc: "第 2/2 步：正在新建库文档…", setupIndependentStepRollback: "正在回滚清理未完成的笔记本…", setupIndependentOrphanWarning: "注意：笔记本已创建但未成功清理（ID：%s）。请在思源左侧笔记本列表手动确认或删除。", setupIndependentCopyOrphanId: "复制笔记本 ID", setupIndependentOrphanCopied: "已复制笔记本 ID",
+        paneSnippetsLabel: "嵌套 %s 个片段：",
         settingsIntro: "管理内容库、复用偏好和数据。库内内容会保留在思源文档中，并可继续编辑。",
         captureIntro: "先放入想要复用的内容，再补充标题和分类，之后可以更快找到它。",
         discoveryTitle: "从当前文档发现", discoveryTitleNotebook: "从当前笔记本发现", discoveryTitleGeneral: "发现已有内容", discoveryTitleTree: "从此文档发现常用语",

@@ -174,6 +174,9 @@ fs.writeFileSync(path.join(OUT, "harness.html"), html);
             return el !== null && el.offsetParent !== null && text.includes("变量") && text.includes("客户名称");
         })(),
         paneVarsCursor: (document.querySelector(".xlc-pane-vars")?.textContent ?? "").includes("光标落点"),
+        paneVarsSnippet: (document.querySelector(".xlc-pane-vars")?.textContent ?? "").includes("嵌套 1 个片段"),
+        paneSnippetTag: !!document.querySelector("[data-xlc-control='preview.snippet-tag']")
+            && (document.querySelector("[data-xlc-control='preview.snippet-tag']")?.textContent ?? "").includes("{{xlc:snippet:联系方式}}"),
         // R169：桌面顶栏常驻新增入口 + 底栏使用说明入口
         topNewItem: (() => {
             const btn = document.querySelector(".xlc-top-new");

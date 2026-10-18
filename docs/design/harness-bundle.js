@@ -3371,6 +3371,20 @@ ${exception.mark.snippet}`;
   function hasCursorToken(text) {
     return text.includes(CURSOR_TOKEN);
   }
+  function listSnippetRefs(text) {
+    var _a;
+    if (!text || !text.includes("{{xlc:snippet:")) return [];
+    const titles = [];
+    const seen = /* @__PURE__ */ new Set();
+    for (const match of text.matchAll(SNIPPET_PATTERN)) {
+      const title = ((_a = match[1]) != null ? _a : "").trim().slice(0, LIMITS.title);
+      if (!title || seen.has(title)) continue;
+      seen.add(title);
+      titles.push(title);
+      if (titles.length >= 16) break;
+    }
+    return titles;
+  }
 
   // src/ui/variable-form.ts
   var import_siyuan = __toESM(require_stub_dom());
@@ -5282,15 +5296,17 @@ ${exception.mark.snippet}`;
     schedulePreview(entry) {
       this.updatePreview(entry.id);
     }
-    /** 变量提示行：从预览文本解析 ask 字段与光标标记并列出语法 chip（code/提供方行不展示）。 */
+    /** 变量提示行：从预览文本解析 ask 字段、嵌套片段与光标标记并列出语法 chip（code/提供方行不展示）。 */
     paintPaneVars(text, itemType) {
       var _a;
       const paneVars = (_a = this.dialog) == null ? void 0 : _a.element.querySelector(".xlc-pane-vars");
       if (!paneVars) return;
       const hasCursor = Boolean(text && hasCursorToken(text));
-      const fields = itemType && itemType !== "code" && itemType !== "provider" && text ? listAskFields(text) : [];
+      const isNormalTemplate = Boolean(itemType && itemType !== "code" && itemType !== "provider" && text);
+      const fields = isNormalTemplate && text ? listAskFields(text) : [];
+      const snippets = isNormalTemplate && text ? listSnippetRefs(text) : [];
       paneVars.textContent = "";
-      if (fields.length === 0 && !hasCursor) {
+      if (fields.length === 0 && snippets.length === 0 && !hasCursor) {
         paneVars.style.display = "none";
         return;
       }
@@ -5298,15 +5314,27 @@ ${exception.mark.snippet}`;
         const label = document.createElement("span");
         label.textContent = this.deps.t("paneVarsLabel", String(fields.length));
         paneVars.appendChild(label);
+        for (const field of fields) {
+          const chip = document.createElement("code");
+          chip.textContent = askFieldTag(field);
+          paneVars.appendChild(chip);
+        }
       }
-      for (const field of fields) {
-        const chip = document.createElement("code");
-        chip.textContent = askFieldTag(field);
-        paneVars.appendChild(chip);
+      if (false) {
+        const sep = fields.length > 0 ? " \xB7 " : "";
+        const label = document.createElement("span");
+        label.textContent = sep + this.deps.t("paneSnippetsLabel", String(snippets.length));
+        paneVars.appendChild(label);
+        for (const snippetTitle of snippets) {
+          const chip = document.createElement("code");
+          chip.dataset.xlcControl = "preview.snippet-tag";
+          chip.textContent = `{{xlc:snippet:${snippetTitle}}}`;
+          paneVars.appendChild(chip);
+        }
       }
       if (hasCursor) {
         const sep = document.createElement("span");
-        sep.textContent = (fields.length > 0 ? "\xB7 " : "") + this.deps.t("cursorHint");
+        sep.textContent = (fields.length > 0 || snippets.length > 0 ? " \xB7 " : "") + this.deps.t("cursorHint");
         paneVars.appendChild(sep);
         const chip = document.createElement("code");
         chip.textContent = "{{xlc:cursor}}";
@@ -13972,6 +14000,7 @@ ${details.join("\n")}` : ""}`;
     "sortHint.frequent": "\u5148\u6309\u4F7F\u7528\u6B21\u6570\u6392\u5217\uFF0C\u6B21\u6570\u76F8\u540C\u518D\u6309\u6700\u8FD1\u4F7F\u7528\uFF1B\u641C\u7D22\u65F6\u4E5F\u9075\u5FAA\u6B64\u987A\u5E8F",
     varCountBadge: "%s \u53D8\u91CF",
     paneVarsLabel: "\u63D2\u5165\u65F6\u5C06\u8BE2\u95EE %s \u4E2A\u53D8\u91CF\uFF1A",
+    paneSnippetsLabel: "\u5D4C\u5957 %s \u4E2A\u7247\u6BB5\uFF1A",
     insertVariable: "\u63D2\u5165\u53D8\u91CF\uFF1A",
     varFormTitle: "\u586B\u5199\u53D8\u91CF",
     varFormSub: "\u672C\u6761\u76EE\u542B %s \u4E2A\u53D8\u91CF\uFF0C\u586B\u5199\u540E\u4E00\u6B21\u6027\u63D2\u5165\uFF1B\u586B\u5199\u503C\u4EC5\u7528\u4E8E\u672C\u6B21\uFF0C\u4E0D\u56DE\u5199\u5E93\u3002",
@@ -14276,7 +14305,7 @@ ${details.join("\n")}` : ""}`;
     { id: "xlc-demo0000005", blockId: "20240101120000-fffffff", libraryDocId: "20240101120001-hijklmn", itemType: "url", title: "SLA \u8D54\u4ED8\u6807\u51C6\u6587\u6863", alias: "", tags: [], category: "", summary: "https://wiki.example.com/sla", createdAt: 1, updatedAt: Date.now() - 1 * 864e5, url: "https://wiki.example.com/sla" }
   ];
   var PREVIEWS = {
-    "xlc-demo0000001": "\u5C0A\u656C\u7684 {{xlc:ask:\u5BA2\u6237\u540D\u79F0}}\uFF1A\n\n\u5173\u4E8E\u672C\u671F\u300C\u4F1A\u5458\u7CFB\u7EDF\u300D\u4EA4\u4ED8\u5EF6\u671F\uFF0C\u6211\u4EEC\u6DF1\u8868\u6B49\u610F\u3002\u7ECF\u590D\u76D8\uFF0C\u4E3B\u8981\u539F\u56E0\u4E3A\u7B2C\u4E09\u65B9\u652F\u4ED8\u8054\u8C03\u8D85\u671F\u3002\u76EE\u524D\u8054\u8C03\u5DF2\u5B8C\u6210 92%\uFF0C\u9884\u8BA1\u63A8\u8FDF 2 \u4E2A\u5DE5\u4F5C\u65E5\u4E0A\u7EBF\u3002\n\n\u4E3A\u5F25\u8865\u5F71\u54CD\uFF0C\u6211\u4EEC\u63D0\u4F9B\u4EE5\u4E0B\u8865\u507F\uFF1A\n1. \u672C\u671F\u670D\u52A1\u8D39\u51CF\u514D {{xlc:ask:\u8865\u507F\u6BD4\u4F8B|5%,10%}}\uFF1B\n2. \u4E0A\u7EBF\u540E 48 \u5C0F\u65F6\u4E13\u5C5E\u503C\u5B88\uFF1B\n3. \u4E0B\u671F\u8FED\u4EE3\u4F18\u5148\u6392\u5165\u8D35\u65B9\u9700\u6C42\u3002\n\n\u518D\u6B21\u611F\u8C22\u7406\u89E3\u4E0E\u652F\u6301\uFF0C\u6709\u4EFB\u4F55\u95EE\u9898\u968F\u65F6\u8054\u7CFB\u6211\u3002{{xlc:cursor}}",
+    "xlc-demo0000001": "\u5C0A\u656C\u7684 {{xlc:ask:\u5BA2\u6237\u540D\u79F0}}\uFF1A\n\n\u5173\u4E8E\u672C\u671F\u300C\u4F1A\u5458\u7CFB\u7EDF\u300D\u4EA4\u4ED8\u5EF6\u671F\uFF0C\u6211\u4EEC\u6DF1\u8868\u6B49\u610F\u3002\u7ECF\u590D\u76D8\uFF0C\u4E3B\u8981\u539F\u56E0\u4E3A\u7B2C\u4E09\u65B9\u652F\u4ED8\u8054\u8C03\u8D85\u671F\u3002\u76EE\u524D\u8054\u8C03\u5DF2\u5B8C\u6210 92%\uFF0C\u9884\u8BA1\u63A8\u8FDF 2 \u4E2A\u5DE5\u4F5C\u65E5\u4E0A\u7EBF\u3002\n\n\u4E3A\u5F25\u8865\u5F71\u54CD\uFF0C\u6211\u4EEC\u63D0\u4F9B\u4EE5\u4E0B\u8865\u507F\uFF1A\n1. \u672C\u671F\u670D\u52A1\u8D39\u51CF\u514D {{xlc:ask:\u8865\u507F\u6BD4\u4F8B|5%,10%}}\uFF1B\n2. \u4E0A\u7EBF\u540E 48 \u5C0F\u65F6\u4E13\u5C5E\u503C\u5B88\uFF1B\n3. \u4E0B\u671F\u8FED\u4EE3\u4F18\u5148\u6392\u5165\u8D35\u65B9\u9700\u6C42\u3002\n\n\u518D\u6B21\u611F\u8C22\u7406\u89E3\u4E0E\u652F\u6301\uFF0C\u6709\u4EFB\u4F55\u95EE\u9898\u968F\u65F6\u8054\u7CFB\u6211\u3002{{xlc:cursor}}\n\n{{xlc:snippet:\u8054\u7CFB\u65B9\u5F0F}}",
     "xlc-demo0000002": "\u60A8\u597D\uFF0C\u672C\u6B21\u8FED\u4EE3\u56E0\u8054\u8C03\u8D85\u671F\uFF0C\u4E0A\u7EBF\u63A8\u8FDF 2 \u5929\u3002\u7ED9\u60A8\u5E26\u6765\u4E0D\u4FBF\u6DF1\u8868\u6B49\u610F\uFF0C\u6709\u95EE\u9898\u968F\u65F6\u627E\u6211\u3002",
     "xlc-demo0000003": "```sql\nSELECT * FROM articles\nWHERE status = 'published'\nORDER BY updated_at DESC\nLIMIT 20 OFFSET 40;\n```",
     "xlc-demo0000004": "\uFF08\u5F15\u7528\u8BED\u6CD5\u9884\u89C8\uFF09((20240101120002-bbbbbbb '\u4EA7\u54C1\u9700\u6C42\u6A21\u677F'))",
@@ -14319,6 +14348,7 @@ ${details.join("\n")}` : ""}`;
       setupIndependentOrphanWarning: "\u6CE8\u610F\uFF1A\u7B14\u8BB0\u672C\u5DF2\u521B\u5EFA\u4F46\u672A\u6210\u529F\u6E05\u7406\uFF08ID\uFF1A%s\uFF09\u3002\u8BF7\u5728\u601D\u6E90\u5DE6\u4FA7\u7B14\u8BB0\u672C\u5217\u8868\u624B\u52A8\u786E\u8BA4\u6216\u5220\u9664\u3002",
       setupIndependentCopyOrphanId: "\u590D\u5236\u7B14\u8BB0\u672C ID",
       setupIndependentOrphanCopied: "\u5DF2\u590D\u5236\u7B14\u8BB0\u672C ID",
+      paneSnippetsLabel: "\u5D4C\u5957 %s \u4E2A\u7247\u6BB5\uFF1A",
       settingsIntro: "\u7BA1\u7406\u5185\u5BB9\u5E93\u3001\u590D\u7528\u504F\u597D\u548C\u6570\u636E\u3002\u5E93\u5185\u5185\u5BB9\u4F1A\u4FDD\u7559\u5728\u601D\u6E90\u6587\u6863\u4E2D\uFF0C\u5E76\u53EF\u7EE7\u7EED\u7F16\u8F91\u3002",
       captureIntro: "\u5148\u653E\u5165\u60F3\u8981\u590D\u7528\u7684\u5185\u5BB9\uFF0C\u518D\u8865\u5145\u6807\u9898\u548C\u5206\u7C7B\uFF0C\u4E4B\u540E\u53EF\u4EE5\u66F4\u5FEB\u627E\u5230\u5B83\u3002",
       discoveryTitle: "\u4ECE\u5F53\u524D\u6587\u6863\u53D1\u73B0",

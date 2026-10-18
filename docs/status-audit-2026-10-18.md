@@ -109,6 +109,18 @@ Chrome 离线审计上一轮暴露的搜索 `role=option` 嵌套交互和客服�
 - `expandAsks` 接入默认值优先展开；`variable-form.ts` 渲染时为输入框预填 `defaultValue`。
 - 新增 `tests/r67-variables.test.cjs` 专项断言（单元门禁 535/535 全部通过），并通过故意跳过默认值展开逻辑的严格负向验证。
 
+## R255 拼音前缀连续音节高亮定位平滑化
+
+- 重构 `src/model/pinyin-tiny.ts` 的 `findPinyinMatches` 全拼音节定位算法，支持连续音节末字前缀拼音平滑匹配（`item.py.startsWith(remainingToken)`）与单字前缀匹配，消除打词输入中标题高亮闪断（闪烁）。
+- 单字母规则隔离：单字母仅走首字母匹配，不触发单字前缀匹配，避免高亮泛滥。
+- 新增 `tests/r212-pinyin-highlighting.test.cjs` 专项断言（单元门禁 536/536 全部通过），并通过故意跳过末字前缀匹配的严格负向验证。
+
+## R256 预览窗格嵌套片段语法回显与可视化
+
+- `src/ui/dialog.ts` 的 `paintPaneVars` 接入 `listSnippetRefs`，提取并渲染嵌套片段说明与 `preview.snippet-tag` 代码芯片。
+- 增补中英国际化资源 `paneSnippetsLabel`，保持与变量芯片、光标提示的优雅隔点分隔，纯文本安全防注入。
+- 扩展 `scripts/render-production.cjs` 桌面冒烟断言（20/20），并通过故意跳过片段芯片渲染的严格双向负向验证。
+
 仍开放但已明确记录：B-006 的真实宿主验收、多块正文更新和旧数据边界；Android、真实 AI、B-004 根因与 B-005 隔离/影响审计。发现页标签可访问名称已经修复，不再把历史诊断写成当前缺陷；有限 axe 场景仍不等于全插件无障碍保证。
 
 ## R241 资源示例与 Issue #1 续审
