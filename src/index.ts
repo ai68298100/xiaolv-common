@@ -12,6 +12,7 @@ import "@/styles/index.scss";
 import {LIMITS, SIDECAR_LOAD_TIMEOUT_MS, STORAGE_KEYS} from "./constants";
 import {createKernelClient, parseExistingMap, type IKernelClient, type SyncPost, type SyncPostContext} from "./kernel/client";
 import {CommonItem, isBlockId, isItemType, isSafeHttpUrl, resolveBlockRefTarget} from "./model/item";
+import {toErrorMessage} from "./model/errors";
 import {getSingleDocTreeDiscoveryTarget} from "./model/discovery-target";
 import {buildBlockRef, buildEmbedBlock} from "./model/actions";
 import {ExportedItem, buildBundle, validateImport, ConflictPolicy, ImportReceipt} from "./model/transfer";
@@ -109,7 +110,7 @@ export default class XiaolvCommonPlugin extends Plugin {
         try {
             this.addIcons(ICONS);
         } catch (err) {
-            const detail = err instanceof Error ? err.message : String(err);
+            const detail = toErrorMessage(err);
             showMessage(this.i18nFn()("startupFailed", detail || "icon registration failed"), 7000, "error");
         }
         // 先装配安全默认值并注册入口。宿主 loadData 在存储损坏/网络异常时可能悬挂，
@@ -121,7 +122,7 @@ export default class XiaolvCommonPlugin extends Plugin {
         try {
             this.bootServices();
         } catch (err) {
-            const detail = err instanceof Error ? err.message : String(err);
+            const detail = toErrorMessage(err);
             showMessage(this.i18nFn()("startupFailed", detail || "unknown error"), 7000, "error");
             return;
         }
@@ -230,7 +231,7 @@ export default class XiaolvCommonPlugin extends Plugin {
                     try {
                         return await this.service.searchForAgent(args?.query);
                     } catch (err) {
-                        return {error: (err as Error).message};
+                        return {error: toErrorMessage(err)};
                     }
                 },
             });
@@ -388,7 +389,7 @@ export default class XiaolvCommonPlugin extends Plugin {
                 result = await this.discovery.discoverCurrentDocument(docId);
             }
         } catch (error) {
-            const message = error instanceof Error ? error.message : String(error);
+            const message = toErrorMessage(error);
             result = {ok: false, reason: "kernel-error", message};
         }
         if (!result.ok) {
@@ -648,7 +649,7 @@ export default class XiaolvCommonPlugin extends Plugin {
                 default: return t("aiTransport");
             }
         }
-        return t("kernelError", (err as Error)?.message ?? String(err));
+        return t("kernelError", toErrorMessage(err));
     }
 
     /** 来源失效预检节流（30s 内至多一次批量 checkBlocksExist；打开来源仍实时校验兜底） */
@@ -713,7 +714,7 @@ export default class XiaolvCommonPlugin extends Plugin {
         }
         void this.saveData(key, value).catch((err) => {
             if (notifyFailure) {
-                const detail = err instanceof Error ? err.message : String(err);
+                const detail = toErrorMessage(err);
                 this.notify("error", this.i18nFn()("kernelError", detail || "sidecar save failed"));
             }
         });
@@ -926,7 +927,7 @@ export default class XiaolvCommonPlugin extends Plugin {
                         if (!docId) return;
                         void this.library.getDocPath(docId).then((path) => {
                             this.openSearch({docId, hPath: path});
-                        }).catch((err) => this.notify("error", this.i18nFn()("kernelError", (err as Error).message)));
+                        }).catch((err) => this.notify("error", this.i18nFn()("kernelError", toErrorMessage(err))));
                     },
                 });
                 if (treeTarget) {
@@ -1094,7 +1095,7 @@ export default class XiaolvCommonPlugin extends Plugin {
                     else this.notify("error", this.i18nFn()("insertToDocFailed"));
                     return inserted;
                 } catch (err) {
-                    this.notify("error", (err as Error).message);
+                    this.notify("error", toErrorMessage(err));
                     return false;
                 }
             },
@@ -1180,7 +1181,7 @@ export default class XiaolvCommonPlugin extends Plugin {
                         // 提供方失败不阻断主搜索；通知每提供方每会话仅一次（防刷新通知轰炸），恢复成功后清记忆
                         if (!this.providerFailureSeen.has(provider.record.pluginId)) {
                             this.providerFailureSeen.add(provider.record.pluginId);
-                            this.notify("error", this.i18nFn()("providerUnavailable", provider.record.displayName) + ` (${(err as Error).message})`);
+                            this.notify("error", this.i18nFn()("providerUnavailable", provider.record.displayName) + ` (${toErrorMessage(err)})`);
                         }
                     }
                 }
@@ -1199,7 +1200,7 @@ export default class XiaolvCommonPlugin extends Plugin {
                         else this.notify("error", this.i18nFn()("insertToDocFailed"));
                         return inserted;
                     } catch (err) {
-                        this.notify("error", (err as Error).message);
+                        this.notify("error", toErrorMessage(err));
                         return false;
                     }
                 }
@@ -1449,7 +1450,7 @@ export default class XiaolvCommonPlugin extends Plugin {
                         // 搜索弹窗若开着，同步移除已删行（R138）
                         this.searchDialog?.refreshAfterExternalChange();
                         this.library.reindex().catch((err) => {
-                            this.notify("error", this.i18nFn()("kernelError", (err as Error).message));
+                            this.notify("error", this.i18nFn()("kernelError", toErrorMessage(err)));
                         });
                     } else {
                         this.notify("error", removed.message);
@@ -1579,7 +1580,7 @@ export default class XiaolvCommonPlugin extends Plugin {
                 } else {
                     this.notify("error", result.message);
                 }
-            }).catch((err) => this.notify("error", t("kernelError", (err as Error).message)));
+            }).catch((err) => this.notify("error", t("kernelError", toErrorMessage(err))));
         });
         srcRow.appendChild(relinkBtn);
         if (item.source.sourceDocId || item.source.sourceBlockId) {
@@ -1595,7 +1596,7 @@ export default class XiaolvCommonPlugin extends Plugin {
                     } else {
                         this.notify("error", result.message);
                     }
-                }).catch((err) => this.notify("error", t("kernelError", (err as Error).message)));
+            }).catch((err) => this.notify("error", t("kernelError", toErrorMessage(err))));
             });
             srcRow.appendChild(clearBtn);
         }
@@ -1667,7 +1668,7 @@ export default class XiaolvCommonPlugin extends Plugin {
                 save.disabled = false;
                 save.textContent = t("save");
                 cancel.disabled = false;
-                this.notify("error", t("kernelError", err instanceof Error ? err.message : String(err)));
+            this.notify("error", t("kernelError", toErrorMessage(err)));
             });
         });
         actions.appendChild(cancel);
@@ -1713,7 +1714,7 @@ export default class XiaolvCommonPlugin extends Plugin {
                 },
             });
         }).catch((err: unknown) => {
-            this.notify("error", this.i18nFn()("startupFailed", err instanceof Error ? err.message : String(err)));
+            this.notify("error", this.i18nFn()("startupFailed", toErrorMessage(err)));
         });
     }
 
@@ -1723,7 +1724,7 @@ export default class XiaolvCommonPlugin extends Plugin {
         void import("./ui/settings-dialog").then(({openSettingsDialog}) => {
             openSettingsDialog(context);
         }).catch((err: unknown) => {
-            this.notify("error", this.i18nFn()("startupFailed", err instanceof Error ? err.message : String(err)));
+            this.notify("error", this.i18nFn()("startupFailed", toErrorMessage(err)));
         });
     }
 
@@ -1753,7 +1754,7 @@ export default class XiaolvCommonPlugin extends Plugin {
             this.notify("info", idx.truncated
                 ? this.i18nFn()("reindexTruncated", String(LIMITS.maxItems))
                 : this.i18nFn()("reindexDone", String(idx.entries.length)));
-        }).catch((err) => this.notify("error", this.i18nFn()("kernelError", (err as Error).message)));
+        }).catch((err) => this.notify("error", this.i18nFn()("kernelError", toErrorMessage(err))));
     }
 
     // ---- 导入导出 ----

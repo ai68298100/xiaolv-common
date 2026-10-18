@@ -3,6 +3,7 @@
 import {Dialog, confirm} from "siyuan";
 import {getDialogBody} from "./dialog-dom";
 import {ItemType, isSafeHttpUrl} from "../model/item";
+import {toErrorMessage} from "../model/errors";
 import {NewItemInput} from "../service/library";
 import {buildVariableBar} from "./variable-form";
 import {bodyWriteRestriction} from "../model/kramdown";
@@ -84,7 +85,7 @@ export class CaptureDialog {
         try {
             await action();
         } catch (err) {
-            this.deps.notify("error", this.deps.t("kernelError", err instanceof Error ? err.message : String(err)));
+            this.deps.notify("error", this.deps.t("kernelError", toErrorMessage(err)));
         } finally {
             this.activeCaptures.delete(key);
         }
@@ -103,7 +104,7 @@ export class CaptureDialog {
         try {
             sel = this.deps.getSelectionText();
         } catch (err) {
-            this.deps.notify("error", this.deps.t("kernelError", err instanceof Error ? err.message : String(err)));
+            this.deps.notify("error", this.deps.t("kernelError", toErrorMessage(err)));
             return;
         }
         const text = sel.text.trim();
@@ -178,7 +179,7 @@ export class CaptureDialog {
         try {
             dup = await this.deps.findDuplicate(content);
         } catch (err) {
-            this.deps.notify("error", this.deps.t("kernelError", err instanceof Error ? err.message : String(err)));
+            this.deps.notify("error", this.deps.t("kernelError", toErrorMessage(err)));
             return;
         }
         if (dup) {
@@ -195,7 +196,7 @@ export class CaptureDialog {
                 source: {sourceType: "clipboard"},
             }, {idempotencyKey: newWriteKey("clipboard")});
         } catch (err) {
-            this.deps.notify("error", this.deps.t("kernelError", err instanceof Error ? err.message : String(err)));
+            this.deps.notify("error", this.deps.t("kernelError", toErrorMessage(err)));
             return;
         }
         if (created.ok) {
@@ -594,7 +595,7 @@ export class CaptureDialog {
                         tidyBtn.textContent = "✦ " + t("aiTidy");
                         tidyBusy = false;
                         syncTidyButton();
-                        showTidyFailure(err instanceof Error ? err.message : t("aiTransport"));
+                        showTidyFailure(toErrorMessage(err, t("aiTransport")));
                     });
                 };
                 tidyBtn.addEventListener("click", runTidy);
@@ -688,7 +689,7 @@ export class CaptureDialog {
                     draftBtn.textContent = "✦ " + t("aiDraftDesc");
                     draftBusy = false;
                     syncDraftButton();
-                    showDraftFailure(err instanceof Error ? err.message : t("aiTransport"));
+                    showDraftFailure(toErrorMessage(err, t("aiTransport")));
                 });
             };
             draftBtn.addEventListener("click", runDraft);
@@ -808,7 +809,7 @@ export class CaptureDialog {
                     saveBtn.disabled = false;
                     saveBtn.textContent = t("save");
                     cancelBtn.disabled = false;
-                    this.deps.notify("error", t("kernelError", err instanceof Error ? err.message : String(err)));
+                    this.deps.notify("error", t("kernelError", toErrorMessage(err)));
                 });
             };
             // 去重防护：同文条目已存在 → 明确确认（不静默重复入库）
@@ -832,7 +833,7 @@ export class CaptureDialog {
                 saveBtn.disabled = false;
                 saveBtn.textContent = t("save");
                 cancelBtn.disabled = false;
-                this.deps.notify("error", t("kernelError", err instanceof Error ? err.message : String(err)));
+                this.deps.notify("error", t("kernelError", toErrorMessage(err)));
             });
         });
         actions.appendChild(cancelBtn);

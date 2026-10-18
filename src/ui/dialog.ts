@@ -7,6 +7,7 @@
 import {Dialog} from "siyuan";
 import {getDialogBody} from "./dialog-dom";
 import {ITEM_TYPES, ItemType, getCategoryColorVariant} from "../model/item";
+import {toErrorMessage} from "../model/errors";
 import {SearchEntry, SearchQuery} from "../model/search";
 import {InsertMode} from "../model/actions";
 import {TransformKind} from "../service/ai";
@@ -937,7 +938,7 @@ export class CommonSearchDialog {
             this.emptyMessage = "";
             if (aiBanner) aiBanner.style.display = "none";
             if (status) {
-                status.textContent = this.deps.t("kernelError", (err as Error).message);
+                status.textContent = this.deps.t("kernelError", toErrorMessage(err));
                 status.classList.add("xlc-status--error");
             }
             if (footer) {
@@ -2346,7 +2347,7 @@ export class CommonSearchDialog {
                         if (mySeq !== seq) return;
                         searchStatus.className = "xlc-pickdoc-empty xlc-status--error";
                         searchStatus.setAttribute("aria-busy", "false");
-                        searchStatus.textContent = this.deps.t("kernelError", err instanceof Error ? err.message : String(err));
+                        searchStatus.textContent = this.deps.t("kernelError", toErrorMessage(err));
                         const retry = document.createElement("button");
                         retry.type = "button";
                         retry.className = "b3-button xlc-btn-ghost xlc-pickdoc-retry";
@@ -2443,7 +2444,7 @@ export class CommonSearchDialog {
             try {
                 result = await run();
             } catch (err) {
-                result = {ok: false, message: this.deps.t("kernelError", err instanceof Error ? err.message : String(err))};
+                result = {ok: false, message: this.deps.t("kernelError", toErrorMessage(err))};
             }
             if (gen !== this.transformSeq) return; // 连点两个变换：先返回的旧结果直接丢弃（R138）
             const apply = (menu as HTMLElement & {applyTransform?: (text: string) => void}).applyTransform;

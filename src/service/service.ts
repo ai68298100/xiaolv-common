@@ -4,6 +4,7 @@ import {CAPABILITIES, ActionResult, CapabilityDescriptor, CommonItemRef, Provide
 import {SearchQuery, SearchContext, searchEntries, listByScope} from "../model/search";
 import {InsertMode} from "../model/actions";
 import {CommonItem, isItemType} from "../model/item";
+import {toErrorMessage} from "../model/errors";
 import {PluginState} from "../model/storage";
 import {EVENTS, PROTOCOL_VERSION} from "../constants";
 import {ActionExecutor, type EditorInsertTargetSnapshot} from "./commands";
@@ -113,7 +114,7 @@ export class XiaolvCommonService {
             const idx = await this.deps.library.ensureIndex();
             return successEnvelope(fn(idx));
         } catch (err) {
-            return failureEnvelope("kernel-error", (err as Error).message);
+            return failureEnvelope("kernel-error", toErrorMessage(err));
         }
     }
 
@@ -266,7 +267,7 @@ export class XiaolvCommonService {
             const idx = await this.deps.library.reindex();
             return successEnvelope({count: idx.entries.length, truncated: idx.truncated});
         } catch (err) {
-            return failureEnvelope("kernel-error", (err as Error).message);
+            return failureEnvelope("kernel-error", toErrorMessage(err));
         }
     }
 

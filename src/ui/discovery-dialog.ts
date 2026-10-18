@@ -2,6 +2,7 @@ import {Dialog} from "siyuan";
 import {LIMITS} from "../constants";
 import {getDialogBody} from "./dialog-dom";
 import {isBlockId, ITEM_TYPES, ItemType} from "../model/item";
+import {toErrorMessage} from "../model/errors";
 import {buildDiscoveryTagFacets, matchesDiscoveryTag} from "../model/discovery-facets";
 import type {SavedDiscoveryView} from "../model/storage";
 import type {
@@ -1156,7 +1157,7 @@ export class DiscoveryDialog implements DiscoveryDialogController {
                 result = await this.deps.service.discoverCurrentDocument(this.options.docId);
             }
         } catch (error) {
-            result = {ok: false, reason: "kernel-error", message: error instanceof Error ? error.message : String(error)};
+            result = {ok: false, reason: "kernel-error", message: toErrorMessage(error)};
         }
         if (this.closed) return;
         if (seq !== this.scanSeq) return;
@@ -1882,7 +1883,7 @@ export class DiscoveryDialog implements DiscoveryDialogController {
     }
 
     private errorMessage(error: unknown): string {
-        const message = error instanceof Error ? error.message : typeof error === "string" ? error : "";
+        const message = toErrorMessage(error, "");
         return /[\u3400-\u9fff]/.test(message) ? message : this.tx("discoveryKernelError");
     }
 

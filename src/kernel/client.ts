@@ -1,6 +1,7 @@
 // 内核 HTTP 客户端：端点白名单 + 超时 + 非零 code 抛错。
 // 只允许本文件登记的官方端点；新增端点须先在上游 kernel/api/router.go 核对请求/响应结构。
 import {LIMITS} from "../constants";
+import {getErrorProperty, toErrorMessage} from "../model/errors";
 
 export type KernelPayload = Record<string, unknown>;
 
@@ -143,7 +144,7 @@ function stableSerialize(value: unknown): string {
 }
 
 function isAbortError(err: unknown): boolean {
-    return err instanceof KernelCancelledError || err instanceof KernelStaleError || (err as {name?: unknown})?.name === "AbortError";
+    return err instanceof KernelCancelledError || err instanceof KernelStaleError || getErrorProperty(err, "name") === "AbortError";
 }
 
 function shouldRetry(err: unknown, endpoint: EndpointName): boolean {
@@ -237,7 +238,7 @@ export function createKernelClient(options: {
         } catch (err) {
             if (err instanceof KernelError || err instanceof KernelTimeoutError || err instanceof KernelCancelledError) throw err;
             if (isAbortError(err)) throw new KernelCancelledError();
-            throw new KernelError("TRANSPORT", (err as Error)?.message || String(err), "network");
+            throw new KernelError("TRANSPORT", toErrorMessage(err), "network");
         } finally {
             if (timer) clearTimeout(timer);
             signal.removeEventListener("abort", abortChild);

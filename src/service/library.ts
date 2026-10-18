@@ -33,6 +33,7 @@ import {SearchEntry} from "../model/search";
 import {bodyWriteRestriction, normalizeKramdownIal} from "../model/kramdown";
 import {getPinyinAdapter} from "../model/pinyin";
 import {countAskFields, SNIPPET_PATTERN} from "../model/variables";
+import {getErrorProperty, toErrorMessage} from "../model/errors";
 
 export interface IndexBuildResult {
     entries: SearchEntry[];
@@ -130,9 +131,9 @@ function sameCustomAttrs(actual: Record<string, string>, expected: Record<string
 }
 
 function toFailureReceipt(err: unknown): Receipt<never> {
-    const name = (err as {name?: string})?.name;
-    if (name === "KernelTimeoutError") return fail("timeout", (err as Error).message);
-    return fail("kernel-error", (err as Error).message);
+    const name = getErrorProperty(err, "name");
+    if (name === "KernelTimeoutError") return fail("timeout", toErrorMessage(err));
+    return fail("kernel-error", toErrorMessage(err));
 }
 
 function toSearchEntry(item: CommonItem): SearchEntry {
@@ -569,7 +570,7 @@ export class LibraryService {
                         if (typeof id === "string" && isBlockId(id)) docIds.push(id);
                     }
                 } catch (err) {
-                    errors.push(`notebook ${notebookId}: ${(err as Error).message}`);
+                    errors.push(`notebook ${notebookId}: ${toErrorMessage(err)}`);
                 }
             }
             return {docIds, errors, stopped: options.shouldStop?.() === true};
@@ -592,7 +593,7 @@ export class LibraryService {
                 const path = typeof info?.path === "string" ? info.path : "";
                 if (box && path) queue.push({box, path});
             } catch (err) {
-                errors.push(`tree ${root}: ${(err as Error).message}`);
+                errors.push(`tree ${root}: ${toErrorMessage(err)}`);
             }
         }
         const TREE_MAX_DEPTH = 3;
@@ -618,7 +619,7 @@ export class LibraryService {
                         }
                     }
                 } catch (err) {
-                    errors.push(`tree ${node.path}: ${(err as Error).message}`);
+                    errors.push(`tree ${node.path}: ${toErrorMessage(err)}`);
                 }
             }
             depth++;
@@ -651,7 +652,7 @@ export class LibraryService {
                 try {
                     children = parseChildBlocks(await this.kernel.request("getChildBlocks", {id: docId}));
                 } catch (err) {
-                    errors.push(`doc ${docId}: ${(err as Error).message}`);
+                    errors.push(`doc ${docId}: ${toErrorMessage(err)}`);
                     continue;
                 }
                 if (options.shouldStop?.()) { stopped = true; truncated = true; return; }
@@ -662,7 +663,7 @@ export class LibraryService {
                         ids: children.map((c) => c.id),
                     }));
                 } catch (err) {
-                    errors.push(`attrs ${docId}: ${(err as Error).message}`);
+                    errors.push(`attrs ${docId}: ${toErrorMessage(err)}`);
                     continue;
                 }
                 perDoc[index] = children.map((child) => ({child, attrs: attrsByBlock[child.id] ?? {}}));
@@ -686,7 +687,7 @@ export class LibraryService {
                     kramdown = body?.kramdown ?? "";
                 } catch (err) {
                     // 属性仍可用于展示；正文失败要进入诊断，而不是伪造完整摘要。
-                    errors.push(`block ${child.id}: ${(err as Error).message}`);
+                    errors.push(`block ${child.id}: ${toErrorMessage(err)}`);
                 }
                 if (options.shouldStop?.()) { stopped = true; truncated = true; break outer; }
                 const item = normalizeCommonItem({
@@ -751,7 +752,7 @@ export class LibraryService {
             } catch (err) {
                 // Keep reference records searchable by their title/tags while clearly
                 // reporting that source-derived summary metadata could not be refreshed.
-                errors.push(`blockref targets: ${(err as Error).message}`);
+                errors.push(`blockref targets: ${toErrorMessage(err)}`);
             }
         }
         return {entries, items, truncated, ...(stopped ? {stopped: true} : {}), docsScanned, errors, builtAt: Date.now()};
@@ -1160,7 +1161,7 @@ export class LibraryService {
                 } catch { rollbackFailed = true; }
             }
             if (rollbackFailed) {
-                return fail("kernel-error", `${(err as Error)?.message || String(err)}; rollback failed and item state may be partially updated`);
+                return fail("kernel-error", `${toErrorMessage(err)}; rollback failed and item state may be partially updated`);
             }
             return toFailureReceipt(err);
         }
@@ -1311,7 +1312,7 @@ export class LibraryService {
                     status: "failed",
                     itemId: item.id,
                     blockId: item.blockId,
-                    message: (err as Error)?.message || String(err),
+                    message: toErrorMessage(err),
                 });
             }
         }

@@ -5,38 +5,10 @@ import {ExportedItem, ImportReceipt, ImportReceiptLine, ConflictKind, classifyCo
 import {LibraryService, NewItemInput} from "./library";
 import {isItemType} from "../model/item";
 import {bodyWriteRestriction} from "../model/kramdown";
+import {toErrorMessage} from "../model/errors";
 
 function isKnownType(v: string): v is NewItemInput["itemType"] {
     return isItemType(v);
-}
-
-/**
- * Convert an arbitrary thrown value into receipt-safe text.
- *
- * Kernel adapters and test doubles do not always throw `Error` instances. In
- * particular, `null`, strings, and plain objects are all legal JavaScript
- * thrown values. Reading `.message` from those values inside the import catch
- * would throw again and lose the per-item receipt entirely.
- */
-function safeErrorMessage(error: unknown): string {
-    try {
-        if (error instanceof Error) return error.message || error.name || "Unknown error";
-        if (typeof error === "string") return error;
-        if (error && typeof error === "object") {
-            const message = (error as {message?: unknown}).message;
-            if (typeof message === "string" && message) return message;
-            try {
-                const serialized = JSON.stringify(error);
-                if (serialized) return serialized;
-            } catch {
-                // Fall through to String() for circular or hostile objects.
-            }
-        }
-        return String(error);
-    } catch {
-        // A hostile Proxy can throw while reading properties or coercing text.
-        return "Unknown error";
-    }
 }
 
 // 同一 LibraryService 的两个导入入口（设置页与协议调用）必须串行；否则双方
@@ -198,7 +170,7 @@ async function importBundleUnlocked(library: LibraryService, parsed: ParsedImpor
         } catch (err) {
             receipt.failed++;
             // 失败行记录真实决策类型（原硬编码 skip 导致回执失真，R144）
-            receipt.lines.push({id: incoming.id, title: incoming.title, action: decision?.kind ?? "new", ok: false, error: safeErrorMessage(err)});
+            receipt.lines.push({id: incoming.id, title: incoming.title, action: decision?.kind ?? "new", ok: false, error: toErrorMessage(err)});
         }
     }
     try {
@@ -207,7 +179,7 @@ async function importBundleUnlocked(library: LibraryService, parsed: ParsedImpor
         // The item writes may already have committed. Preserve their per-line
         // receipts and report the failed refresh explicitly; throwing here
         // would make the UI lose the partial-write outcome.
-        receipt.reindexError = safeErrorMessage(err);
+        receipt.reindexError = toErrorMessage(err);
     }
     return receipt;
 }

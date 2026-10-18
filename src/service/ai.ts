@@ -7,6 +7,7 @@
 //  - 空响应=失败（上游吞错为空串，model/ai.go L75-78），绝不拿假结果兜底
 //  - AI 结果永不回写来源块
 import {LIMITS} from "../constants";
+import {getErrorProperty} from "../model/errors";
 
 export interface IKernelTransport {
     request<T = unknown>(endpoint: AiEndpointName, payload?: Record<string, unknown>): Promise<T>;
@@ -238,7 +239,7 @@ export class AiAssistant {
         try {
             raw = await this.transport.request<string>("chatGPT", {msg: prompt});
         } catch (err) {
-            if ((err as {name?: string})?.name === "KernelTimeoutError") throw new AiUnavailableError("timeout");
+            if (getErrorProperty(err, "name") === "KernelTimeoutError") throw new AiUnavailableError("timeout");
             throw new AiUnavailableError("transport");
         }
         if (typeof raw !== "string" || raw.trim().length === 0) {

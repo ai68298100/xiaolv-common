@@ -5,6 +5,7 @@ import {parseBatchKramdowns} from "../kernel/client";
 import {cleanTagList, deriveSummary, deriveTitle, inferItemType, isBlockId, ItemType} from "../model/item";
 import {buildBlockRef} from "../model/actions";
 import {normalizeKramdownIal} from "../model/kramdown";
+import {getErrorProperty, toErrorMessage} from "../model/errors";
 import type {CommonItem} from "../model/item";
 import type {LibraryConfig} from "../model/storage";
 import type {ConditionalDeleteInput, ConditionalDeleteOutcome, IndexBuildOptions, IndexBuildResult, NewItemInput, Receipt} from "./library";
@@ -203,13 +204,13 @@ function fail<T = never>(reason: DiscoveryReason, message: string): DiscoveryRec
 }
 
 function errorReceipt<T>(error: unknown): DiscoveryReceipt<T> {
-    if ((error as {discoveryReason?: unknown})?.discoveryReason === "timeout") {
-        return fail("timeout", (error as Error).message || "discovery time limit reached");
+    if (getErrorProperty(error, "discoveryReason") === "timeout") {
+        return fail("timeout", toErrorMessage(error, "discovery time limit reached"));
     }
-    const name = (error as {name?: unknown})?.name;
+    const name = getErrorProperty(error, "name");
     return name === "KernelTimeoutError"
-        ? fail("timeout", (error as Error).message || "kernel request timed out")
-        : fail("kernel-error", (error as Error)?.message || String(error));
+        ? fail("timeout", toErrorMessage(error, "kernel request timed out"))
+        : fail("kernel-error", toErrorMessage(error));
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -381,8 +382,8 @@ export class DiscoveryService {
             libraryDocs = await this.resolveLibraryDocuments(config, generation);
         } catch (error) {
             if (this.isCancelled(generation) || this.isStopRequested(generation)) return this.cancelled();
-            if ((error as {discoveryReason?: unknown})?.discoveryReason === "library-boundary-unknown") {
-                return fail("library-boundary-unknown", (error as Error).message);
+            if (getErrorProperty(error, "discoveryReason") === "library-boundary-unknown") {
+                return fail("library-boundary-unknown", toErrorMessage(error));
             }
             return errorReceipt(error);
         }
@@ -764,7 +765,7 @@ export class DiscoveryService {
                         source: {sourceDocId: candidate.sourceDocId, sourceBlockId: candidate.sourceBlockId, sourceType: "block"},
                     }, undefined, {batchToken: batch.id});
                 } catch (error) {
-                    if (this.shuttingDown) this.shutdownResult.unresolved.push({batchId: batch.id, title: candidate.title, message: `create result is unknown: ${(error as Error)?.message || String(error)}`});
+                    if (this.shuttingDown) this.shutdownResult.unresolved.push({batchId: batch.id, title: candidate.title, message: `create result is unknown: ${toErrorMessage(error)}`});
                     return errorReceipt(error);
                 }
                 if (!created.ok) {
@@ -831,7 +832,7 @@ export class DiscoveryService {
                 }, undefined, {batchToken: batch.id});
             } catch (error) {
                 if (this.shuttingDown) {
-                    this.shutdownResult.unresolved.push({batchId: batch.id, title, message: `create result is unknown: ${(error as Error)?.message || String(error)}`});
+                    this.shutdownResult.unresolved.push({batchId: batch.id, title, message: `create result is unknown: ${toErrorMessage(error)}`});
                 }
                 return errorReceipt(error);
             }
@@ -960,7 +961,7 @@ export class DiscoveryService {
                 unresolved("conditional removal returned no outcome");
             }
         } catch (error) {
-            unresolved(`conditional removal result is unknown: ${(error as Error)?.message || String(error)}`);
+            unresolved(`conditional removal result is unknown: ${toErrorMessage(error)}`);
         }
     }
 
@@ -1014,7 +1015,7 @@ export class DiscoveryService {
             } catch (error) {
                 if (this.isCancelled(generation)) return this.cancelled();
                 if (scope === "document") return errorReceipt(error);
-                errors.push({sourcePath: doc.displayPath ?? doc.path, message: (error as Error)?.message || String(error)});
+                errors.push({sourcePath: doc.displayPath ?? doc.path, message: toErrorMessage(error)});
                 continue;
             }
             if (this.isCancelled(generation)) return this.cancelled();
@@ -1042,7 +1043,7 @@ export class DiscoveryService {
                     rawAttrs = await this.kernel.request("batchGetBlockAttrs", {ids: scanned.map((child) => child.id)});
                 } catch (error) {
                     if (this.isCancelled(generation)) return this.cancelled();
-                    errors.push({sourcePath: doc.displayPath ?? doc.path, message: (error as Error)?.message || String(error)});
+                    errors.push({sourcePath: doc.displayPath ?? doc.path, message: toErrorMessage(error)});
                     rawAttrs = null;
                 }
                 if (this.isCancelled(generation)) return this.cancelled();
@@ -1061,7 +1062,7 @@ export class DiscoveryService {
                         nativeTagsById = Object.fromEntries(Object.entries(kramdowns).map(([id, textmark]) => [id, extractNativeTags(textmark)]));
                         if (missing) errors.push({sourcePath: doc.displayPath ?? doc.path, message: `native tag metadata unavailable for ${missing} blocks`});
                     } catch (error) {
-                        errors.push({sourcePath: doc.displayPath ?? doc.path, message: `native tags: ${(error as Error)?.message || String(error)}`});
+                        errors.push({sourcePath: doc.displayPath ?? doc.path, message: `native tags: ${toErrorMessage(error)}`});
                     }
                 } else {
                     truncated = true;
@@ -1113,7 +1114,7 @@ export class DiscoveryService {
                 });
             } catch (error) {
                 if (this.isCancelled(generation)) return this.cancelled();
-                errors.push({sourcePath: "专用内容库", message: (error as Error)?.message || String(error)});
+                errors.push({sourcePath: "专用内容库", message: toErrorMessage(error)});
             }
         } else if (!this.isStopRequested(generation)) {
             truncated = true;
@@ -1275,7 +1276,7 @@ export class DiscoveryService {
                 raw = await this.kernel.request("listDocsByPath", {notebook: node.notebookId, path: node.path});
             } catch (error) {
                 if (this.isCancelled(generation)) break;
-                errors.push({sourcePath: node.path, message: (error as Error)?.message || String(error)});
+                errors.push({sourcePath: node.path, message: toErrorMessage(error)});
                 continue;
             }
             if (this.isCancelled(generation)) break;
@@ -1337,7 +1338,7 @@ export class DiscoveryService {
                 raw = await this.kernel.request("listDocsByPath", {notebook: notebookId, path: node.path});
             } catch (error) {
                 if (this.isCancelled(generation)) break;
-                errors.push({sourcePath: node.path, message: (error as Error)?.message || String(error)});
+                errors.push({sourcePath: node.path, message: toErrorMessage(error)});
                 continue;
             }
             if (!this.withinScanBudget(generation)) {
@@ -1387,8 +1388,8 @@ export class DiscoveryService {
             return ok({documents: await this.resolveLibraryDocuments(config, generation)});
         } catch (error) {
             if (this.isCancelled(generation) || this.isStopRequested(generation)) return this.cancelled();
-            if ((error as {discoveryReason?: unknown})?.discoveryReason === "library-boundary-unknown") {
-                return fail("library-boundary-unknown", (error as Error).message);
+            if (getErrorProperty(error, "discoveryReason") === "library-boundary-unknown") {
+                return fail("library-boundary-unknown", toErrorMessage(error));
             }
             return errorReceipt(error);
         }
@@ -1472,8 +1473,8 @@ export class DiscoveryService {
         try {
             libraryDocs = await this.resolveLibraryDocuments(config);
         } catch (error) {
-            if ((error as {discoveryReason?: unknown})?.discoveryReason === "library-boundary-unknown") {
-                return fail("library-boundary-unknown", (error as Error).message);
+            if (getErrorProperty(error, "discoveryReason") === "library-boundary-unknown") {
+                return fail("library-boundary-unknown", toErrorMessage(error));
             }
             return errorReceipt(error);
         }
@@ -1611,7 +1612,7 @@ export class DiscoveryService {
                     response = await this.kernel.request("listDocsByPath", {notebook: notebookId, path: "/"});
                 } catch (error) {
                     ensureActive();
-                    throw this.boundaryError(`cannot identify library root documents: ${(error as Error).message}`);
+                    throw this.boundaryError(`cannot identify library root documents: ${toErrorMessage(error)}`);
                 }
                 ensureActive();
                 const parsed = parseDocFiles(response);
@@ -1634,7 +1635,7 @@ export class DiscoveryService {
                 info = await this.kernel.request("getBlockInfo", {id: rootId});
             } catch (error) {
                 ensureActive();
-                throw this.boundaryError(`cannot identify configured library tree: ${(error as Error).message}`);
+                throw this.boundaryError(`cannot identify configured library tree: ${toErrorMessage(error)}`);
             }
             ensureActive();
             if (!isRecord(info) || typeof info.box !== "string" || !info.box || typeof info.path !== "string" || !info.path) {
@@ -1652,7 +1653,7 @@ export class DiscoveryService {
                 response = await this.kernel.request("listDocsByPath", {notebook: node.box, path: node.path});
             } catch (error) {
                 ensureActive();
-                throw this.boundaryError(`cannot identify configured library tree: ${(error as Error).message}`);
+                throw this.boundaryError(`cannot identify configured library tree: ${toErrorMessage(error)}`);
             }
             ensureActive();
             const parsed = parseDocFiles(response);

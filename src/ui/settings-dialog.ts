@@ -12,6 +12,7 @@ import {LibraryService} from "../service/library";
 import {AiAssistant} from "../service/ai";
 import {ProviderRegistry} from "../service/providers";
 import {CommonItem} from "../model/item";
+import {toErrorMessage} from "../model/errors";
 import {collectTags} from "../model/search";
 import {PROMPT_PACK_MD} from "../service/prompt-pack";
 import type {SavedDiscoveryScope, SavedDiscoveryView} from "../model/storage";
@@ -394,7 +395,7 @@ function formatExportError(ctx: Pick<SettingsUiContext, "t">, err: unknown): str
             case "too-large": return ctx.t("exportTooLarge", err.detail);
         }
     }
-    return ctx.t("kernelError", err instanceof Error ? err.message : String(err));
+    return ctx.t("kernelError", toErrorMessage(err));
 }
 
 /** 变量与插入（F1/F3，原型屏 5）：插入前询问 / 使用计数开关 / 清空统计 */
@@ -695,7 +696,7 @@ function buildLibraryPickerSection(ctx: SettingsUiContext, root: HTMLElement, on
         }).catch((err) => {
             if (seq !== pickerSeq) return;
             pickerList.removeAttribute("aria-busy");
-            showDocPickerMessage(t("kernelError", err instanceof Error ? err.message : String(err)), () => {
+            showDocPickerMessage(t("kernelError", toErrorMessage(err)), () => {
                 if (pickerInput.value.trim() === keyword) searchPickerDocs(keyword);
             });
         });
@@ -851,7 +852,7 @@ function buildLibraryPickerSection(ctx: SettingsUiContext, root: HTMLElement, on
             return true;
         } catch (err) {
             notebookDocsState = "error";
-            ctx.notify("error", t("kernelError", err instanceof Error ? err.message : String(err)));
+            ctx.notify("error", t("kernelError", toErrorMessage(err)));
             return false;
         } finally {
             notebookDocsChecking = false;
@@ -1007,8 +1008,8 @@ function buildLibraryPickerSection(ctx: SettingsUiContext, root: HTMLElement, on
                 createBtn.textContent = t("create");
                 syncCreateState();
                 const message = mode === "new-notebook"
-                    ? t("setupIndependentCreateFailed", (err as Error).message)
-                    : t("kernelError", (err as Error).message);
+                    ? t("setupIndependentCreateFailed", toErrorMessage(err))
+                    : t("kernelError", toErrorMessage(err));
                 independentNotebookStatus.classList.toggle("xlc-form-error", mode === "new-notebook");
                 independentNotebookStatus.textContent = mode === "new-notebook" ? message : "";
                 ctx.notify("error", message);
@@ -1363,7 +1364,7 @@ function buildSearchSection(ctx: SettingsUiContext, root: HTMLElement): void {
             ctx.notify("info", t("reindexDone", String(idx.entries.length)));
         }).catch((err) => {
             if (mySeq !== pinyinSeq) return;
-            ctx.notify("error", t("kernelError", (err as Error).message));
+            ctx.notify("error", t("kernelError", toErrorMessage(err)));
         }).finally(() => {
             if (pinyinInput) {
                 pinyinInput.disabled = false;
@@ -1565,7 +1566,7 @@ function buildDataSection(ctx: SettingsUiContext, root: HTMLElement): void {
                     }
                 })
                 .catch((err: unknown) => {
-                    const message = opts.formatError?.(err) ?? t("kernelError", err instanceof Error ? err.message : String(err));
+                    const message = opts.formatError?.(err) ?? t("kernelError", toErrorMessage(err));
                     ctx.notify("error", message);
                     setOperationStatus("error", message, () => btn.click());
                 })
@@ -1605,7 +1606,7 @@ function buildDataSection(ctx: SettingsUiContext, root: HTMLElement): void {
         withFlight(auditBtn, async () => {
             const result = await runTagAudit(ctx);
             return result === "empty" ? {status: "empty" as const, message: t("tagAuditTooFew")} : undefined;
-        }, {flightLabel: "✦ " + t("aiWorking"), loading: t("aiWorking"), formatError: (err) => err instanceof Error ? err.message : String(err)});
+        }, {flightLabel: "✦ " + t("aiWorking"), loading: t("aiWorking"), formatError: (err) => toErrorMessage(err)});
     }
     const exportBtn = mkBtn(t("exportBtn"), undefined, "settings.data.export");
     withFlight(exportBtn, async () => {
@@ -1699,7 +1700,7 @@ function buildDataSection(ctx: SettingsUiContext, root: HTMLElement): void {
                 setOperationStatus("success", t("importPreview", String(validation.parsed.items.length), String(validation.issues.length)));
                 finish();
             }).catch((err: unknown) => {
-                const message = t("importFailed", err instanceof Error ? err.message : String(err));
+                const message = t("importFailed", toErrorMessage(err));
                 ctx.notify("error", message);
                 setOperationStatus("error", message, () => importBtn.click());
                 finish();
@@ -1851,7 +1852,7 @@ function openEspansoImportDialog(ctx: SettingsUiContext, onClose?: () => void): 
         try {
             parser = await loadEspansoParser();
         } catch (err) {
-            preview.textContent = t("importFailed", (err as Error).message.slice(0, 120));
+            preview.textContent = t("importFailed", toErrorMessage(err).slice(0, 120));
             return;
         }
         // 输入等待期间可能已经变化；旧解析结果不能覆盖最新文本。
@@ -1905,7 +1906,7 @@ async function runTagAudit(ctx: SettingsUiContext): Promise<"empty" | "shown"> {
     try {
         idx = await ctx.library.ensureIndex();
     } catch (err) {
-        throw new Error(t("kernelError", err instanceof Error ? err.message : String(err)));
+        throw new Error(t("kernelError", toErrorMessage(err)));
     }
     const tags = collectTags(idx.entries);
     if (tags.length < 2) {
@@ -2038,7 +2039,7 @@ export function openImportPolicyDialog(
             ctx.notify(receipt.failed > 0 ? "error" : "info", message);
         } catch (err) {
             // 执行期失败≠校验失败：写入可能已部分完成，文案不得谎称「原始数据未改动」。
-            const message = t("importRunFailed", err instanceof Error ? err.message : String(err));
+            const message = t("importRunFailed", toErrorMessage(err));
             receiptHint.dataset.state = "error";
             receiptHint.replaceChildren();
             const error = document.createElement("span");

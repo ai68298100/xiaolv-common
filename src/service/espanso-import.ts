@@ -12,6 +12,7 @@
 
 import {load as loadYaml} from "js-yaml";
 import {ExportedItem} from "../model/transfer";
+import {toErrorMessage} from "../model/errors";
 
 export interface EspansoImportResult {
     items: ExportedItem[];
@@ -91,7 +92,7 @@ export function parseEspansoYaml(text: string, now = Date.now()): EspansoImportR
     try {
         doc = loadYaml(text);
     } catch (err) {
-        return {items: [], issues: [`YAML 解析失败：${(err as Error).message.slice(0, 120)}`]};
+        return {items: [], issues: [`YAML 解析失败：${toErrorMessage(err).slice(0, 120)}`]};
     }
     const root = asRecord(doc);
     const matches = root ? root.matches : null;
