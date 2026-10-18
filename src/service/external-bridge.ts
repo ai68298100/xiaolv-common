@@ -29,8 +29,11 @@ export interface XlcBridgeApi {
     getCapabilities(): CapabilityDescriptor[];
     search(query?: BridgeSearchInput): Promise<ActionResult<CommonItemRef[]>>;
     get(itemId: string): Promise<ActionResult<CommonItem>>;
+    getBatch(itemIds: string[]): Promise<ActionResult<CommonItem[]>>;
     getRecent(limit?: number): Promise<ActionResult<CommonItemRef[]>>;
     getFavorites(): Promise<ActionResult<CommonItemRef[]>>;
+    getCategories(): Promise<ActionResult<string[]>>;
+    getTags(): Promise<ActionResult<string[]>>;
 }
 
 /** 搜索入参收敛：非字符串字段丢弃（protocol invalid-input 语义交给 service 层表达） */
@@ -50,7 +53,7 @@ export function buildXlcBridge(service: XiaolvCommonService): XlcBridgeApi {
         protocol: XLC_BRIDGE_PROTOCOL,
         protocolName: "xiaolv-common",
         // v1 只读面（ADR-0013）：写方法不挂桥对象——门禁测试锁定此边界
-        capabilities: ["search", "get", "recent", "favorites"],
+        capabilities: ["search", "get", "getBatch", "recent", "favorites", "categories", "tags"],
 
         whenReady() {
             return Promise.resolve(true);
@@ -68,12 +71,24 @@ export function buildXlcBridge(service: XiaolvCommonService): XlcBridgeApi {
             return service.get(String(itemId ?? ""));
         },
 
+        getBatch(itemIds) {
+            return service.getBatch(itemIds);
+        },
+
         getRecent(limit) {
             return service.getRecent(typeof limit === "number" ? limit : undefined);
         },
 
         getFavorites() {
             return service.getFavorites();
+        },
+
+        getCategories() {
+            return service.getCategories();
+        },
+
+        getTags() {
+            return service.getTags();
         },
     };
 }

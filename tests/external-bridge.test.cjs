@@ -28,19 +28,22 @@ function makeService() {
     });
 }
 
-test("桥形状：protocol/protocolName/capabilities 只读四能力；写方法不存在于桥对象（ADR-0013 门禁）", () => {
+test("桥形状：protocol/protocolName/capabilities 只读能力；写方法不存在于桥对象（ADR-0013 门禁）", () => {
     const bridge = externalBridge.buildXlcBridge(makeService());
     assert.equal(bridge.protocol, 1);
     assert.equal(bridge.protocolName, "xiaolv-common");
-    assert.deepEqual(bridge.capabilities, ["search", "get", "recent", "favorites"]);
+    assert.deepEqual(bridge.capabilities, ["search", "get", "getBatch", "recent", "favorites", "categories", "tags"]);
     // 负向验证：写面不挂桥——意外扩面会让本断言失败
     for (const forbidden of ["save", "update", "remove", "insert", "copy", "openSource", "reindex"]) {
         assert.equal(bridge[forbidden], undefined, `写能力 ${forbidden} 不得出现在只读桥`);
     }
     assert.equal(typeof bridge.search, "function");
     assert.equal(typeof bridge.get, "function");
+    assert.equal(typeof bridge.getBatch, "function");
     assert.equal(typeof bridge.getRecent, "function");
     assert.equal(typeof bridge.getFavorites, "function");
+    assert.equal(typeof bridge.getCategories, "function");
+    assert.equal(typeof bridge.getTags, "function");
     assert.equal(typeof bridge.getCapabilities, "function");
 });
 
@@ -82,6 +85,36 @@ test("getRecent/getFavorites：limit 缺省走服务默认；信封透传", asyn
     assert.equal(fav.ok, true);
     const bounded = await bridge.getRecent(Number.MAX_SAFE_INTEGER);
     assert.equal(bounded.ok, true, "越界 limit 由服务层钳制");
+});
+
+test("getBatch：批量查询入参校验、上限钳制与协议信封透传", async () => {
+    const bridge = externalBridge.buildXlcBridge(makeService());
+    // 非数组输入返回 invalid-input
+    const badInput = await bridge.getBatch("not-array");
+    assert.equal(badInput.ok, false);
+    assert.equal(badInput.reason, "invalid-input");
+
+    // 空数组返回空结果
+    const empty = await bridge.getBatch([]);
+    assert.equal(empty.ok, true);
+    assert.deepEqual(empty.data, []);
+
+    // 含有非法元素与超量元素被安全过滤和截断
+    const ids = Array.from({length: 60}, (_, i) => `id-${i}`);
+    const res = await bridge.getBatch(ids);
+    assert.equal(res.ok, true);
+    assert.ok(Array.isArray(res.data));
+});
+
+test("getCategories / getTags：返回去重排序后的分类与标签列表", async () => {
+    const bridge = externalBridge.buildXlcBridge(makeService());
+    const cats = await bridge.getCategories();
+    assert.equal(cats.ok, true);
+    assert.ok(Array.isArray(cats.data));
+
+    const tags = await bridge.getTags();
+    assert.equal(tags.ok, true);
+    assert.ok(Array.isArray(tags.data));
 });
 
 test("挂载/卸载：首实例持有；二次挂载跳过；disposer 只删自己的桥", () => {

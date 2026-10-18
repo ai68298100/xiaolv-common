@@ -287,6 +287,54 @@ export class XiaolvCommonService {
         });
     }
 
+    async getBatch(itemIds: unknown): Promise<ActionResult<CommonItem[]>> {
+        if (!Array.isArray(itemIds)) {
+            return failureEnvelope("invalid-input", "itemIds must be an array");
+        }
+        // 限制批量上限不超过 50，防止过度占用内存
+        const safeIds = itemIds
+            .filter((id): id is string => typeof id === "string" && id.trim().length > 0)
+            .slice(0, 50);
+        return this.withIndex((idx) => {
+            const items: CommonItem[] = [];
+            for (const id of safeIds) {
+                const item = idx.items.get(id);
+                if (item) items.push(item);
+            }
+            return items;
+        });
+    }
+
+    async getCategories(): Promise<ActionResult<string[]>> {
+        return this.withIndex((idx) => {
+            const catSet = new Set<string>();
+            for (const entry of idx.entries) {
+                if (entry.category && typeof entry.category === "string") {
+                    const trimmed = entry.category.trim();
+                    if (trimmed) catSet.add(trimmed);
+                }
+            }
+            return Array.from(catSet).sort();
+        });
+    }
+
+    async getTags(): Promise<ActionResult<string[]>> {
+        return this.withIndex((idx) => {
+            const tagSet = new Set<string>();
+            for (const entry of idx.entries) {
+                if (Array.isArray(entry.tags)) {
+                    for (const tag of entry.tags) {
+                        if (typeof tag === "string") {
+                            const trimmed = tag.trim();
+                            if (trimmed) tagSet.add(trimmed);
+                        }
+                    }
+                }
+            }
+            return Array.from(tagSet).sort();
+        });
+    }
+
     // ---- provider 联动 ----
 
     registerProvider(descriptor: ProviderDescriptor, runtime?: {search?(query: string): Promise<Array<{title: string; payload: string}>>}): ActionResult<void> {

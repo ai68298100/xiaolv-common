@@ -29,7 +29,7 @@
   ],
   "author": "ai68298100",
   "license": "MIT",
-  "packageManager": "pnpm@12.5.1",
+  "packageManager": "pnpm@12.9.1",
   "engines": {
     "node": ">=18.0.0"
   },

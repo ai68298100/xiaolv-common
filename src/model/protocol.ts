@@ -9,6 +9,9 @@ import {ProviderRecord} from "./storage";
 export const CAPABILITIES = [
     "search",
     "get",
+    "getBatch",
+    "categories",
+    "tags",
     "save",
     "update",
     "remove",
