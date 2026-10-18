@@ -3710,19 +3710,27 @@ ${exception.mark.snippet}`;
       initCursor = at + 1;
     }
     for (let i = 0; i < chars.length; i++) {
-      let concatPy = "";
+      let accumulatedTokenIndex = 0;
       for (let j = i; j < chars.length; j++) {
         const item = chars[j];
         if (!item || !item.py) break;
-        concatPy += item.py;
-        if (concatPy === token) {
+        const remainingToken = token.slice(accumulatedTokenIndex);
+        if (!remainingToken) break;
+        if (remainingToken === item.py) {
           const startItem = chars[i];
           if (startItem) {
             intervals.push([startItem.index, item.index + 1]);
           }
           break;
-        }
-        if (concatPy.length >= token.length) {
+        } else if (remainingToken.startsWith(item.py)) {
+          accumulatedTokenIndex += item.py.length;
+        } else if (token.length >= 2 && item.py.startsWith(remainingToken)) {
+          const startItem = chars[i];
+          if (startItem) {
+            intervals.push([startItem.index, item.index + 1]);
+          }
+          break;
+        } else {
           break;
         }
       }

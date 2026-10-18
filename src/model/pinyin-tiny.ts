@@ -153,21 +153,33 @@ export function findPinyinMatches(text: string, rawToken: string): Array<[number
         initCursor = at + 1;
     }
 
-    // 2. 连续汉字全拼匹配（Full Pinyin Syllables Match）
+    // 2. 连续汉字全拼音节匹配（含输入过程中的前缀音节平滑匹配，消除输入中高亮闪断）
     for (let i = 0; i < chars.length; i++) {
-        let concatPy = "";
+        let accumulatedTokenIndex = 0;
         for (let j = i; j < chars.length; j++) {
             const item = chars[j];
             if (!item || !item.py) break;
-            concatPy += item.py;
-            if (concatPy === token) {
+            const remainingToken = token.slice(accumulatedTokenIndex);
+            if (!remainingToken) break;
+
+            if (remainingToken === item.py) {
+                // 当前汉字完整拼音恰好消耗完剩余 token
                 const startItem = chars[i];
                 if (startItem) {
                     intervals.push([startItem.index, item.index + 1]);
                 }
                 break;
-            }
-            if (concatPy.length >= token.length) {
+            } else if (remainingToken.startsWith(item.py)) {
+                // 当前汉字完整拼音被 token 包含，继续向后匹配下一汉字
+                accumulatedTokenIndex += item.py.length;
+            } else if (token.length >= 2 && item.py.startsWith(remainingToken)) {
+                // 最后一个汉字的前缀拼音匹配（例如 "yanq" 匹配 "延" [yan] + "期" [qi 开头]）
+                const startItem = chars[i];
+                if (startItem) {
+                    intervals.push([startItem.index, item.index + 1]);
+                }
+                break;
+            } else {
                 break;
             }
         }

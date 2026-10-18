@@ -55,3 +55,25 @@ test("拼音高亮边界保护与优雅降级", () => {
     const upper = findPinyinMatches("延期致歉回复", "YQ");
     assert.deepEqual(upper, [[0, 2]]);
 });
+
+test("拼音连续音节前缀平滑匹配（Prefix Syllable Match，消除输入中高亮闪断）", () => {
+    // 1. 多音节词输入到一半（末字前缀匹配）："yanq" 匹配 "延期致歉回复" 中的 "延期"
+    const m1 = findPinyinMatches("延期致歉回复", "yanq");
+    assert.deepEqual(m1, [[0, 2]]);
+
+    // 2. "kaipi" 匹配 "开票资料" 中的 "开票"
+    const m2 = findPinyinMatches("开票资料", "kaipi");
+    assert.deepEqual(m2, [[0, 2]]);
+
+    // 3. 多音字词输入中："zhongy" 匹配 "重要通知" 中的 "重要"
+    const m3 = findPinyinMatches("重要通知", "zhongy");
+    assert.deepEqual(m3, [[0, 2]]);
+
+    // 4. 单字拼音前缀（token.length >= 2）："ya" 匹配 "延期致歉回复" 中的 "延"
+    const m4 = findPinyinMatches("延期致歉回复", "ya");
+    assert.deepEqual(m4, [[0, 1]]);
+
+    // 5. 单字母 "y" 只按首字母规则匹配，不把所有 y 开头单字泛滥前缀高亮
+    const m5 = findPinyinMatches("延期致歉回复", "y");
+    assert.deepEqual(m5, [[0, 1]]);
+});
