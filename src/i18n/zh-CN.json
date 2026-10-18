@@ -304,6 +304,7 @@
   "recordUsageToggle": "记录使用次数",
   "recordUsageSub": "仅本地存储，可一键清除；用于「常用」排序。关闭后会保留已有统计。",
   "usageStatsHint": "使用统计仅保存在本机",
+  "usageStatsSummary": "累计使用 %s 次，涉及 %s 个条目",
   "clearUsageBtn": "清空使用统计",
   "clearUsageEmpty": "暂无使用统计",
   "clearUsageConfirm": "清空全部使用计数？「常用」排序将退回最近使用。",

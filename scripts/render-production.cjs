@@ -359,6 +359,10 @@ fs.writeFileSync(path.join(OUT, "harness.html"), html);
             const button = Array.from(document.querySelectorAll("button")).find((b) => (b.textContent ?? "").includes("暂无使用统计"));
             return !!button && button.disabled;
         })(),
+        usageSummary: (() => {
+            const summary = document.querySelector("[data-xlc-control='settings.usage.summary']");
+            return !!summary && (summary.textContent ?? "").includes("累计使用 0 次");
+        })(),
         usageRetentionExplained: (document.body.textContent || "").includes("关闭后会保留已有统计"),
         introLocalized: (() => {
             const intro = document.querySelector(".xlc-page-intro");
@@ -375,7 +379,7 @@ fs.writeFileSync(path.join(OUT, "harness.html"), html);
     if (Object.values(settingsAssertions).some((v) => !v)) {
         throw new Error("settings smoke failed: " + JSON.stringify(settingsAssertions));
     }
-    console.log("  smoke ✓ settings: 11 assertions");
+    console.log("  smoke ✓ settings: 12 assertions");
     await page.screenshot({path: path.join(OUT, "production-settings-light.png")});
     // 模板包导出对话框（R71/F6，原型屏 8 右帧：分类筛选 / 包名 / 内容清单）
     await page.evaluate(() => {

@@ -2,7 +2,7 @@
 // 依赖经 SettingsUiContext 注入（不持有插件实例）；状态对象按引用共享，落盘由 persistSoon 节流。
 import {Dialog, confirm} from "siyuan";
 import {getDialogBody} from "./dialog-dom";
-import {CONFIG_VERSION, LibraryConfig, PluginState} from "../model/storage";
+import {CONFIG_VERSION, LibraryConfig, PluginState, summarizeUsage} from "../model/storage";
 import {LIMITS} from "../constants";
 import {validateImport, ConflictPolicy, ImportIssue, ImportReceipt, ExportedItem} from "../model/transfer";
 import {buildZip} from "../model/zip";
@@ -445,11 +445,23 @@ function buildInsertSection(ctx: SettingsUiContext, root: HTMLElement): void {
             ctx.persistSoon();
             ctx.refreshSearch?.();
             syncClearUsage();
+            paintSummary();
             ctx.notify("info", t("clearUsageDone"));
         });
     });
     foot.appendChild(clearBtn);
     sec.appendChild(foot);
+    const summary = document.createElement("div");
+    summary.className = "xlc-usage-summary";
+    summary.dataset.xlcControl = "settings.usage.summary";
+    summary.setAttribute("role", "status");
+    summary.setAttribute("aria-live", "polite");
+    const paintSummary = (): void => {
+        const current = summarizeUsage(ctx.state.usage);
+        summary.textContent = t("usageStatsSummary", String(current.totalCount), String(current.trackedItems));
+    };
+    paintSummary();
+    sec.appendChild(summary);
     root.appendChild(sec);
 }
 

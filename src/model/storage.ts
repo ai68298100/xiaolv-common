@@ -189,6 +189,26 @@ export interface UsageEntry {
     lastAt: number;
 }
 
+export interface UsageSummary {
+    totalCount: number;
+    trackedItems: number;
+    latestAt: number | null;
+}
+
+/** 汇总本机使用计数；只返回聚合数字，不暴露条目正文或来源。 */
+export function summarizeUsage(usage: Readonly<Record<string, UsageEntry>>): UsageSummary {
+    let totalCount = 0;
+    let trackedItems = 0;
+    let latestAt: number | null = null;
+    for (const entry of Object.values(usage)) {
+        if (!Number.isInteger(entry.count) || entry.count <= 0 || !Number.isFinite(entry.lastAt) || entry.lastAt <= 0) continue;
+        totalCount += entry.count;
+        trackedItems++;
+        latestAt = latestAt === null ? entry.lastAt : Math.max(latestAt, entry.lastAt);
+    }
+    return {totalCount, trackedItems, latestAt};
+}
+
 /** 插入偏好（F1/F3）：插入前询问变量 / 记录使用次数。默认都开。 */
 export interface InsertPrefs {
     promptVariables: boolean;

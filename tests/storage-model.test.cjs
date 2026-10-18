@@ -12,6 +12,16 @@ test("normalizeState：空输入产出安全默认值", () => {
     assert.deepEqual(state.providers, []);
 });
 
+test("summarizeUsage：只汇总合法计数并返回最新时间", () => {
+    assert.deepEqual(storage.summarizeUsage({
+        "xlc-a": {count: 3, lastAt: 20},
+        "xlc-b": {count: 2, lastAt: 40},
+        "xlc-bad": {count: 0, lastAt: 50},
+        "xlc-invalid": {count: 1.5, lastAt: 60},
+    }), {totalCount: 5, trackedItems: 2, latestAt: 40});
+    assert.deepEqual(storage.summarizeUsage({}), {totalCount: 0, trackedItems: 0, latestAt: null});
+});
+
 test("normalizeState：收藏去重 + 容量上限；recents 保序去重", () => {
     const favorites = Array.from({length: 600}, (_, i) => `xlc-fav${i}`);
     favorites.push("xlc-fav0"); // 重复

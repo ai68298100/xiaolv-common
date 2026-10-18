@@ -1775,6 +1775,16 @@
   }
 }
 
+.xlc-usage-summary {
+  margin-top: var(--xlc-space-1);
+  padding: var(--xlc-space-2) var(--xlc-space-3);
+  border: 1px solid var(--b3-border-color);
+  border-radius: var(--xlc-radius-sm);
+  color: var(--b3-theme-on-surface);
+  font-size: var(--xlc-font-xs);
+  line-height: var(--xlc-leading-relaxed);
+}
+
 .xlc-saved-view-list {
   display: flex;
   flex-direction: column;

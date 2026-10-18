@@ -6188,6 +6188,18 @@ ${exception.mark.snippet}`;
 
   // src/model/storage.ts
   var CONFIG_VERSION = 1;
+  function summarizeUsage(usage) {
+    let totalCount = 0;
+    let trackedItems = 0;
+    let latestAt = null;
+    for (const entry of Object.values(usage)) {
+      if (!Number.isInteger(entry.count) || entry.count <= 0 || !Number.isFinite(entry.lastAt) || entry.lastAt <= 0) continue;
+      totalCount += entry.count;
+      trackedItems++;
+      latestAt = latestAt === null ? entry.lastAt : Math.max(latestAt, entry.lastAt);
+    }
+    return { totalCount, trackedItems, latestAt };
+  }
 
   // src/model/transfer.ts
   function toTimestamp(v) {
@@ -7670,11 +7682,23 @@ ${exception.mark.snippet}`;
         ctx.persistSoon();
         (_a = ctx.refreshSearch) == null ? void 0 : _a.call(ctx);
         syncClearUsage();
+        paintSummary();
         ctx.notify("info", t("clearUsageDone"));
       });
     });
     foot.appendChild(clearBtn);
     sec.appendChild(foot);
+    const summary = document.createElement("div");
+    summary.className = "xlc-usage-summary";
+    summary.dataset.xlcControl = "settings.usage.summary";
+    summary.setAttribute("role", "status");
+    summary.setAttribute("aria-live", "polite");
+    const paintSummary = () => {
+      const current = summarizeUsage(ctx.state.usage);
+      summary.textContent = t("usageStatsSummary", String(current.totalCount), String(current.trackedItems));
+    };
+    paintSummary();
+    sec.appendChild(summary);
     root.appendChild(sec);
   }
   function buildProviderSection(ctx, root) {
@@ -8172,7 +8196,7 @@ ${exception.mark.snippet}`;
           });
           independentNotebookStatus.textContent = "";
           independentNotebookStatus.classList.remove("xlc-form-error");
-          ctx.notify("info", mode === "new-notebook" ? t("libDocCreated", title) : t("libDocCreated", title));
+          ctx.notify("info", t("libDocCreated", title));
           onConfigured();
         }).catch((err) => {
           creatingLibrary = false;
@@ -13761,6 +13785,7 @@ ${details.join("\n")}` : ""}`;
     recordUsageToggle: "\u8BB0\u5F55\u4F7F\u7528\u6B21\u6570",
     recordUsageSub: "\u4EC5\u672C\u5730\u5B58\u50A8\uFF0C\u53EF\u4E00\u952E\u6E05\u9664\uFF1B\u7528\u4E8E\u300C\u5E38\u7528\u300D\u6392\u5E8F\u3002\u5173\u95ED\u540E\u4F1A\u4FDD\u7559\u5DF2\u6709\u7EDF\u8BA1\u3002",
     usageStatsHint: "\u4F7F\u7528\u7EDF\u8BA1\u4EC5\u4FDD\u5B58\u5728\u672C\u673A",
+    usageStatsSummary: "\u7D2F\u8BA1\u4F7F\u7528 %s \u6B21\uFF0C\u6D89\u53CA %s \u4E2A\u6761\u76EE",
     clearUsageBtn: "\u6E05\u7A7A\u4F7F\u7528\u7EDF\u8BA1",
     clearUsageEmpty: "\u6682\u65E0\u4F7F\u7528\u7EDF\u8BA1",
     clearUsageConfirm: "\u6E05\u7A7A\u5168\u90E8\u4F7F\u7528\u8BA1\u6570\uFF1F\u300C\u5E38\u7528\u300D\u6392\u5E8F\u5C06\u9000\u56DE\u6700\u8FD1\u4F7F\u7528\u3002",
@@ -14345,6 +14370,7 @@ ${details.join("\n")}` : ""}`;
       recordUsageToggle: "\u8BB0\u5F55\u4F7F\u7528\u6B21\u6570",
       recordUsageSub: "\u4EC5\u672C\u5730\u5B58\u50A8\uFF0C\u53EF\u4E00\u952E\u6E05\u9664\uFF1B\u7528\u4E8E\u300C\u5E38\u7528\u300D\u6392\u5E8F\u3002\u5173\u95ED\u540E\u4F1A\u4FDD\u7559\u5DF2\u6709\u7EDF\u8BA1\u3002",
       usageStatsHint: "\u4F7F\u7528\u7EDF\u8BA1\u4EC5\u4FDD\u5B58\u5728\u672C\u673A",
+      usageStatsSummary: "\u7D2F\u8BA1\u4F7F\u7528 %s \u6B21\uFF0C\u6D89\u53CA %s \u4E2A\u6761\u76EE",
       clearUsageBtn: "\u6E05\u7A7A\u4F7F\u7528\u7EDF\u8BA1",
       clearUsageEmpty: "\u6682\u65E0\u4F7F\u7528\u7EDF\u8BA1",
       clearUsageConfirm: "\u6E05\u7A7A\u5168\u90E8\u4F7F\u7528\u8BA1\u6570\uFF1F",

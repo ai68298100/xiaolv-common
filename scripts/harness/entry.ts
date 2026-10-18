@@ -171,7 +171,7 @@ const T = (key: string, ...args: string[]): string => {
         groupFavorites: "收藏", groupAll: "全部", groupUncategorized: "无分类", insertSection: "变量与插入",
         promptVariablesToggle: "插入前询问变量", promptVariablesSub: "含 {{xlc:ask:…}} 的条目插入前弹出填充卡片",
         recordUsageToggle: "记录使用次数", recordUsageSub: "仅本地存储，可一键清除；用于「常用」排序。关闭后会保留已有统计。",
-        usageStatsHint: "使用统计仅保存在本机", clearUsageBtn: "清空使用统计", clearUsageEmpty: "暂无使用统计", clearUsageConfirm: "清空全部使用计数？", clearUsageDone: "已清空使用统计",
+        usageStatsHint: "使用统计仅保存在本机", usageStatsSummary: "累计使用 %s 次，涉及 %s 个条目", clearUsageBtn: "清空使用统计", clearUsageEmpty: "暂无使用统计", clearUsageConfirm: "清空全部使用计数？", clearUsageDone: "已清空使用统计",
         resetItemUsage: "重置使用频次（当前 %s 次）", resetItemUsageDone: "已重置「%s」的使用频次",
         importPolicySkipDesc: "同名同源条目不动，仅新增缺失项", importPolicyOverwriteDesc: "以导入内容更新现有条目（原文块被改写）", importPolicyRenameDesc: "导入项加「导入」后缀，现有条目不受影响",
         recommended: "推荐", importReceiptHint: "导入完成将逐项回执：新增 / 跳过 / 覆盖 / 改名 / 失败",

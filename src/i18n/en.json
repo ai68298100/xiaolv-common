@@ -304,6 +304,7 @@
   "recordUsageToggle": "Record usage counts",
   "recordUsageSub": "Stored locally and used for Frequent sort. Turning this off keeps existing counts.",
   "usageStatsHint": "Usage stats stay on this device",
+  "usageStatsSummary": "%s uses recorded across %s items",
   "clearUsageBtn": "Clear usage stats",
   "clearUsageEmpty": "No usage stats",
   "clearUsageConfirm": "Clear all usage counts? Frequent sort falls back to recently used.",
