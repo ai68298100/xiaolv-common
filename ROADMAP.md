@@ -4,7 +4,7 @@
 
 > 定位：**思源笔记的内容资产层**——高频内容是有元数据、有来源、可检索、可变通、可共享的真实块资产（v3，2026-10-07 调研后修订）。三大一级场景：客服/邮件模板、AI 提示词库、研发/写作常用件。
 > 精准定位与调研证据：[docs/positioning.md](docs/positioning.md)。UI 唯一视觉事实源：[docs/design/prototype.html](docs/design/prototype.html)（v4 实现镜像）+ [docs/design/design-spec.md](docs/design/design-spec.md)；组件清单：[docs/ui-component-catalog.md](docs/ui-component-catalog.md)。生产证据：docs/design/production-*.png。
-> 状态：**[v0.4.2 已在 GitHub 发布](https://github.com/ai68298100/xiaolv-common/releases/tag/v0.4.2)（2026-10-16）**。T-0059–T-0084 的搜索/快捷工作流、标签引用和保存视图、编辑器目标修复及验收工具加固均已包含；本地 T-0086–T-0104 追加了导出保护、示例调研、写前保守限制、捕获入口/恢复保护、常用内容示例包、独立笔记本设置接线、本机使用统计摘要、导入异常回执加固、共享异常文本转换重构、异常处理源码门禁、独立笔记本两步进度/补偿凭据、B-006 单行结构标记写前防御/围栏空白清洗、Espanso 导入类型推断/URL 对齐以及 G4 搜索时间范围筛选模型，尚未发布；R237 的 parts 完整清单假设已撤回，现仅允许单行/完整代码围栏写入，多 parts 更新及自动删除暂停。当前本地门禁单元 532/532、Chrome UI smoke、交互 74/74、构建/密钥/包检查通过；真实宿主边界仍按 B-001–B-006 分层。**Electron 临时 renderer 已有局部功能观测，镜像整体隔离声明已撤回**；Android、真实 AI、连续嵌入后选区、B-004、B-005 和 B-006 真实多块验收继续开放，后续宿主实验停止。发布说明保留这些边界，集市未获推送授权。当前状态：[docs/status-audit-2026-10-18.md](docs/status-audit-2026-10-18.md)；当期账本：[docs/dev-plan-2026-10-06.md](docs/dev-plan-2026-10-06.md)。
+> 状态：**[v0.4.2 已在 GitHub 发布](https://github.com/ai68298100/xiaolv-common/releases/tag/v0.4.2)（2026-10-16）**。T-0059–T-0084 的搜索/快捷工作流、标签引用和保存视图、编辑器目标修复及验收工具加固均已包含；本地 T-0086–T-0105 追加了导出保护、示例调研、写前保守限制、捕获入口/恢复保护、常用内容示例包、独立笔记本设置接线、本机使用统计摘要、导入异常回执加固、共享异常文本转换重构、异常处理源码门禁、独立笔记本两步进度/补偿凭据、B-006 单行结构标记写前防御/围栏空白清洗、Espanso 导入类型推断/URL 对齐、G4 搜索时间范围筛选模型以及捕获查重排除自身/全角空白归一化，尚未发布；R237 的 parts 完整清单假设已撤回，现仅允许单行/完整代码围栏写入，多 parts 更新及自动删除暂停。当前本地门禁单元 533/533、Chrome UI smoke、交互 74/74、构建/密钥/包检查通过；真实宿主边界仍按 B-001–B-006 分层。**Electron 临时 renderer 已有局部功能观测，镜像整体隔离声明已撤回**；Android、真实 AI、连续嵌入后选区、B-004、B-005 和 B-006 真实多块验收继续开放，后续宿主实验停止。发布说明保留这些边界，集市未获推送授权。当前状态：[docs/status-audit-2026-10-18.md](docs/status-audit-2026-10-18.md)；当期账本：[docs/dev-plan-2026-10-06.md](docs/dev-plan-2026-10-06.md)。
 
 ## R2：AI 融入与原型质感（2026-10-06，用户指令立项）
 
@@ -695,6 +695,13 @@
 - [x] `src/model/search.ts` 扩展 `DateRangeFilter` 与 `SearchQuery.dateRange`，支持 `from`、`to` 闭区间时间过滤与 `createdAt`/`updatedAt` 字段维度。
 - [x] `passesFilters` 与 `applyBasicFilters` 实现数值安全性校验、矛盾区间过滤（`from > to` 返回空）与时间范围判定。
 - [x] 新增 `tests/search-model.test.cjs` 专项断言（单元门禁 532/532 全部通过），并通过颠倒 `ts < from` 逻辑的严格负向验证。
+
+## T-0105 / R252（2026-10-19 捕获查重算法健全性与自我误报防御）
+
+- [x] `src/model/dedupe.ts` 导出 `DedupeOptions` 接口，支持 `excludeId` 排除指定条目以杜绝编辑条目自我误撞。
+- [x] `normalizeForCompare` 支持全角空格 `\u3000` 归一化；支持大小写敏感/不敏感双模式（默认不区分大小写更易发现重复）。
+- [x] 在 `src/ui/capture.ts` 与 `src/index.ts` 依赖链中透传 options。
+- [x] 新增 `tests/r14-dedupe-agent.test.cjs` 专项断言（单元门禁 533/533 全部通过），并通过故意跳过 `excludeId` 检查的严格负向验证。
 
 ## T-0086–T-0092 / R233–R239（2026-10-18 审计、示例调研与多块保护）
 

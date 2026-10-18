@@ -44,7 +44,7 @@ export interface CaptureDeps {
     aiTidy(content: string): Promise<{ok: true; title?: string; alias?: string; tags?: string[]; category?: string} | {ok: false; message: string}>;
     aiDraft(description: string): Promise<{ok: true; text: string} | {ok: false; message: string}>;
     /** 捕获去重：与索引内容同文的既有条目（无则 null） */
-    findDuplicate(content: string): Promise<{id: string; title: string} | null>;
+    findDuplicate(content: string, options?: {excludeId?: string}): Promise<{id: string; title: string} | null>;
     /** 落点库名（异步可缺；null/失败则提示行保持缺省，不阻塞表单） */
     getLibraryName?: () => Promise<string | null>;
     isConfigured?: () => boolean;

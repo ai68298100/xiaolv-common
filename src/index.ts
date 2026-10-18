@@ -281,10 +281,10 @@ export default class XiaolvCommonPlugin extends Plugin {
                     return {ok: false as const, message: this.aiErrorText(err)};
                 }
             },
-            findDuplicate: async (content) => {
+            findDuplicate: async (content, options) => {
                 const idx = await this.library.ensureIndex();
                 // 查重失败必须回到表单错误态，不能把“无法检查”伪装成“没有重复”。
-                return findDuplicateByContent(content, idx.entries);
+                return findDuplicateByContent(content, idx.entries, options);
             },
             getLibraryName: async () => {
                 const cfg = this.config;
