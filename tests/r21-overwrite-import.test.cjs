@@ -122,3 +122,35 @@ test("导入冲突：同批两个新 ID 均按一次快照判定为 new", async 
     assert.equal(receipt.failed, 0);
     assert.equal(calls.filter((call) => call.endpoint === "appendBlock").length, 2);
 });
+
+test("异常边界：任意 thrown value 都保留逐条失败回执", async () => {
+    const {importBundle} = require("./.build/entry.cjs").importer;
+    const incoming = (id) => ({
+        id,
+        itemType: "text",
+        title: id,
+        alias: "",
+        tags: [],
+        category: "",
+        kramdown: "正文",
+        source: {sourceDocId: "", sourceBlockId: "", sourceType: "manual"},
+        url: "",
+        targetBlockId: "",
+        createdAt: 0,
+        updatedAt: 0,
+    });
+    for (const [index, thrown] of [null, "底层字符串异常", {reason: "普通对象异常"}].entries()) {
+        const library = {
+            ensureIndex: async () => ({items: new Map()}),
+            createItem: async () => { throw thrown; },
+            reindex: async () => ({items: new Map()}),
+        };
+        const receipt = await importBundle(library, {items: [incoming(`xlc-throw-${index}`)]}, "skip");
+        assert.equal(receipt.total, 1);
+        assert.equal(receipt.failed, 1);
+        assert.equal(receipt.lines.length, 1);
+        assert.equal(receipt.lines[0].ok, false);
+        assert.equal(receipt.lines[0].action, "new");
+        assert.match(receipt.lines[0].error, /底层字符串异常|普通对象异常|null/);
+    }
+});
