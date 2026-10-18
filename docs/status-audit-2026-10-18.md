@@ -2,7 +2,7 @@
 
 ## 结论
 
-当前发布基线是 GitHub `v0.4.2`；本轮续作起点为本地 `34fee9c`，后续 R238/R239/R240/R241/R242 修复尚未推送或发布。插件已覆盖捕获、搜索、预览、调用和导入导出主链，但多块正文不能认作完整可用。
+当前发布基线是 GitHub `v0.4.2`；本轮续作起点为本地 `34fee9c`，后续 R238/R239/R240/R241/R242/R243 修复尚未推送或发布。插件已覆盖捕获、搜索、预览、调用和导入导出主链，但多块正文不能认作完整可用。
 
 **R238 更正**：上游源码表明 appendBlock 可只返回首块 insert，且可能附带已有块 setAttrs；更新还可能只采用首个正文块。撤回 R237“全部 operation ID 可构成完整 parts 清单”的结论。当前新建、正文更新和导入写前仅接受单行内容或一个完整代码围栏，其余多行/结构、空白和超限正文拒绝；只采目标文档 insert，不盲删异常响应 ID。已有 parts 经同文档、连续顶层顺序和独立条目冲突检查读取，正文更新和自动删除暂停；旧无清单条目仍不能推断历史尾块。依据见 [ADR 0058](adr/0058-restrict-unverified-multiblock-writes.md)。
 
@@ -19,7 +19,7 @@
 
 | 功能 | 当前判定 | 证据/边界 |
 | --- | --- | --- |
-| 首次设置、文档/文档树/笔记本内容库 | 已实现；独立笔记本创建已完成离线契约与补偿编排 | GitHub issue #1 的设置 UI、真实宿主权限/生命周期验收仍未完成，不能声称 issue 已关闭 |
+| 首次设置、文档/文档树/笔记本内容库 | 已实现；独立笔记本设置 UI 已接入离线契约与补偿编排 | GitHub issue #1 的真实宿主权限/生命周期验收仍未完成，不能声称 issue 已关闭 |
 | 选区、块、文档、剪贴板、拖拽/粘贴捕获 | 已实现源码/UI；宿主现场分层 | 多段内容受 B-006；移动端和系统权限按 B-002/B-003 待验证 |
 | 图片/附件捕获 | 单块真实 `assets/` 路径可用 | 复制为 Markdown 链接，打开走资源；不支持位图剪贴板、文件本体复制、自动上传 |
 | 条目 CRUD、标题/别名/标签/分类/收藏/最近/频次 | 单行/完整代码围栏写入及元数据编辑已实现，多行写入受限 | 已有 parts 可经归属检查读取，正文更新和自动删除暂停；缓存锚块移出原文档后拒绝读取/更新/删除。侧车保护已修复 |
@@ -57,13 +57,19 @@ Chrome 离线审计上一轮暴露的搜索 `role=option` 嵌套交互和客服�
 
 - 使用帮助已拆出图片/证件示意图、PPT/PDF/DOCX、简历正文/附件三类真实资源示例；每条都说明先在思源添加真实资源，以及当前仅支持 Markdown/资源链接、打开来源和链接复制。
 - `guide.media.image`、`guide.media.attachment`、`guide.media.resume` 已纳入 Chrome 交互审计；三类示例可见，`test:ix` 仍为 74/74。该证据属于离线 harness，不代表 Android 位图剪贴板、Office 预览或跨应用文件发送已验收。
-- Issue #1 仍开放、无开放 PR。`createNotebook`/`removeNotebook` 契约与 `createIndependentLibrary` 离线编排已落地；设置 UI 与真实宿主权限/生命周期验收仍待完成。依据 [ADR 0059](adr/0059-issue1-independent-notebook-creation-plan.md)，B-005 解除前不启动新的宿主实验。
+- Issue #1 仍开放、无开放 PR。`createNotebook`/`removeNotebook` 契约、`createIndependentLibrary` 离线编排和首次运行设置 UI 已落地；真实宿主权限/生命周期验收仍待完成。依据 [ADR 0059](adr/0059-issue1-independent-notebook-creation-plan.md)，B-005 解除前不启动新的宿主实验。
+
+## R243 设置 UI 接线
+
+- 首次运行设置新增独立笔记本模式，独立笔记本名称与库文档名称分开填写；普通新建专用库文档仍保持推荐默认。
+- 成功 smoke 覆盖模式可见、空字段禁用、填写后启用、`createdNotebookIds` 持久化和对话框关闭；失败 smoke 覆盖表单保留、错误可见、不写配置和错误样式。
+- 该证据属于 Chrome/harness；真实思源权限、生命周期、补偿删除和 Issue #1 关闭条件仍未验收。
 
 ## GitHub 状态
 
 - 最新 release：[`v0.4.2`](https://github.com/ai68298100/xiaolv-common/releases/tag/v0.4.2)，非草稿、非 prerelease，附件 `package.zip` SHA256 `9bd5251cc823ffe1ed4b306431fa7477db576e5117865c523b6847e4bfb58b4a`，manifest `xiaolv-common / 0.4.2`，13 个根资源正确。
 - `main` 与 tag CI 均成功；GitHub 最新 main 仍为发布记录同步提交 `dc778017f5dd3557d31a749f534ca2f9c084712e`，本地后续修复尚未推送。
-- 开放 issue：[#1 选择内容库时支持新建独立笔记本](https://github.com/ai68298100/xiaolv-common/issues/1)。当前无开放 PR；该 issue 未在本轮实现，也未发送评论。
+- 开放 issue：[#1 选择内容库时支持新建独立笔记本](https://github.com/ai68298100/xiaolv-common/issues/1)。当前无开放 PR；本轮已完成设置 UI 与离线接线，但未发送评论，真实宿主验收仍待完成。
 - GitHub Dependabot alerts 已关闭/接口返回 403，code scanning 没有分析结果，secret scanning API 返回空；本地 `pnpm audit` 生产与全依赖均为 0 漏洞。不能把“未启用/无分析结果”写成 GitHub 已完成安全扫描。
 - 集市未推送；本轮修复形成本地里程碑提交，未推送 GitHub 或发布新版本。发布前仍须重新执行发布门禁。
 

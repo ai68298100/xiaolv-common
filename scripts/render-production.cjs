@@ -472,6 +472,7 @@ fs.writeFileSync(path.join(OUT, "harness.html"), html);
             notebook: text.includes("按笔记本"),
             createBtn: text.includes("创建新库文档"),
             createTargetVisible: text.includes("选择已有笔记本（不会新建笔记本）"),
+            independentModeVisible: text.includes("新建独立笔记本与库文档"),
             createDisabledUntilNotebookSelection: !!create && create.disabled,
             nextDisabledWithoutDoc: !!next && next.disabled,
             docPicker: (document.querySelector("input[placeholder]")?.getAttribute("placeholder") ?? "").includes("选择库文档") || !!document.querySelector(".xlc-doclist"),
@@ -485,7 +486,7 @@ fs.writeFileSync(path.join(OUT, "harness.html"), html);
     if (Object.values(setupAssertions).some((v) => !v)) {
         throw new Error("setup smoke failed: " + JSON.stringify(setupAssertions));
     }
-    console.log("  smoke ✓ setup: 18 assertions");
+    console.log("  smoke ✓ setup: 19 assertions");
     await page.screenshot({path: path.join(OUT, "production-setup-light.png")});
     const setupStepTransition = await page.evaluate(async () => {
         const mode = document.querySelector("[data-xlc-control='setup.mode']");
@@ -601,6 +602,92 @@ fs.writeFileSync(path.join(OUT, "harness.html"), html);
         throw new Error("setup create-library smoke failed: " + JSON.stringify(createLibraryFlow));
     }
     console.log("  smoke ✓ create library confirms and applies its real target: 3 assertions");
+    await page.evaluate(() => {
+        const stage = document.getElementById("stage");
+        document.querySelectorAll(".b3-dialog").forEach((el) => el.remove());
+        stage.innerHTML = "";
+        delete document.body.dataset.xlcSetupConfig;
+        delete document.body.dataset.xlcSetupNotice;
+        window.XlcHarness.openSetup();
+        const dialogRoot = document.querySelector(".b3-dialog");
+        if (dialogRoot) stage.appendChild(dialogRoot);
+    });
+    await page.waitForFunction(() => {
+        const notebook = document.querySelector("[data-xlc-control='setup.notebook']");
+        return !!notebook && !notebook.disabled && notebook.options.length > 1;
+    }, undefined, {timeout: 3000});
+    const independentLibraryFlow = await page.evaluate(async () => {
+        const mode = document.querySelector("[data-xlc-control='setup.mode']");
+        mode.value = "new-notebook";
+        mode.dispatchEvent(new Event("change", {bubbles: true}));
+        const notebookName = document.querySelector("[data-xlc-control='setup.new-notebook.name']");
+        const title = document.querySelector("[data-xlc-control='setup.newdoc.title']");
+        const create = document.querySelector("[data-xlc-control='setup.new-notebook.create']");
+        const before = {shown: getComputedStyle(notebookName.closest(".xlc-form-field")).display !== "none", disabled: create.disabled};
+        notebookName.value = "工作常用语";
+        notebookName.dispatchEvent(new Event("input", {bubbles: true}));
+        title.value = "独立常用库";
+        title.dispatchEvent(new Event("input", {bubbles: true}));
+        const enabled = !create.disabled;
+        window.__xlcAutoConfirm = true;
+        create.click();
+        await new Promise((resolve) => setTimeout(resolve, 0));
+        window.__xlcAutoConfirm = false;
+        const applied = JSON.parse(document.body.dataset.xlcSetupConfig || "null");
+        return {
+            shownBeforeInput: before.shown,
+            disabledBeforeInput: before.disabled,
+            enabledAfterInputs: enabled,
+            createdLibraryConfigApplied: applied?.mode === "doc"
+                && applied?.containerDocIds?.[0] === "20240101120001-hijklmn"
+                && applied?.createdNotebookIds?.[0] === "20240101999999",
+            dialogClosed: !document.querySelector(".b3-dialog.xlc-form-host"),
+        };
+    });
+    if (Object.values(independentLibraryFlow).some((v) => !v)) {
+        throw new Error("independent notebook setup smoke failed: " + JSON.stringify(independentLibraryFlow));
+    }
+    console.log("  smoke ✓ independent notebook creation applies notebook provenance: 5 assertions");
+    await page.evaluate(() => {
+        const stage = document.getElementById("stage");
+        document.querySelectorAll(".b3-dialog").forEach((el) => el.remove());
+        stage.innerHTML = "";
+        delete document.body.dataset.xlcSetupConfig;
+        window.XlcHarness.openSetup();
+        const dialogRoot = document.querySelector(".b3-dialog");
+        if (dialogRoot) stage.appendChild(dialogRoot);
+    });
+    await page.waitForFunction(() => {
+        const notebook = document.querySelector("[data-xlc-control='setup.notebook']");
+        return !!notebook && !notebook.disabled && notebook.options.length > 1;
+    }, undefined, {timeout: 3000});
+    const independentFailureFlow = await page.evaluate(async () => {
+        const mode = document.querySelector("[data-xlc-control='setup.mode']");
+        mode.value = "new-notebook";
+        mode.dispatchEvent(new Event("change", {bubbles: true}));
+        const notebookName = document.querySelector("[data-xlc-control='setup.new-notebook.name']");
+        const title = document.querySelector("[data-xlc-control='setup.newdoc.title']");
+        const create = document.querySelector("[data-xlc-control='setup.new-notebook.create']");
+        notebookName.value = "失败库";
+        notebookName.dispatchEvent(new Event("input", {bubbles: true}));
+        title.value = "独立常用库";
+        title.dispatchEvent(new Event("input", {bubbles: true}));
+        window.__xlcAutoConfirm = true;
+        create.click();
+        await new Promise((resolve) => setTimeout(resolve, 0));
+        window.__xlcAutoConfirm = false;
+        const status = document.querySelector(".xlc-setup-create-status");
+        return {
+            dialogKept: !!document.querySelector(".xlc-setup"),
+            errorVisible: !!status && status.textContent.includes("创建独立笔记本失败"),
+            configUnchanged: !document.body.dataset.xlcSetupConfig,
+            errorClass: status?.classList.contains("xlc-form-error") === true,
+        };
+    });
+    if (Object.values(independentFailureFlow).some((v) => !v)) {
+        throw new Error("independent notebook failure smoke failed: " + JSON.stringify(independentFailureFlow));
+    }
+    console.log("  smoke ✓ independent notebook failure keeps form and exposes compensation receipt: 4 assertions");
     const dismissSetup = await page.evaluate(() => {
         const stage = document.getElementById("stage");
         document.querySelectorAll(".b3-dialog").forEach((el) => el.remove());

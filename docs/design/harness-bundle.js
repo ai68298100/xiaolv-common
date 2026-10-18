@@ -7799,6 +7799,7 @@ ${exception.mark.snippet}`;
     modeLabel.htmlFor = modeSelect.id;
     const modes = [
       { v: "new-doc", label: t("setupCreateNewDoc") },
+      { v: "new-notebook", label: t("setupCreateIndependentNotebook") },
       { v: "doc", label: t("setupPickDoc") },
       { v: "tree", label: t("setupPickDocTree") },
       { v: "notebook", label: t("setupNotebook") }
@@ -8054,13 +8055,40 @@ ${exception.mark.snippet}`;
         syncNextState();
       }
     }
+    const independentNotebookWrap = document.createElement("div");
+    independentNotebookWrap.className = "xlc-form-field xlc-setup-independent-notebook";
+    independentNotebookWrap.style.display = "none";
+    const independentNotebookLabel = document.createElement("label");
+    independentNotebookLabel.className = "xlc-form-label";
+    independentNotebookLabel.textContent = t("setupIndependentNotebookName");
+    independentNotebookWrap.appendChild(independentNotebookLabel);
+    const independentNotebookInput = document.createElement("input");
+    independentNotebookInput.className = "b3-text-field";
+    independentNotebookInput.id = "xlc-setup-independent-notebook";
+    independentNotebookInput.placeholder = t("setupIndependentNotebookNamePlaceholder");
+    independentNotebookInput.setAttribute("aria-label", t("setupIndependentNotebookName"));
+    independentNotebookInput.dataset.xlcControl = "setup.new-notebook.name";
+    independentNotebookLabel.htmlFor = independentNotebookInput.id;
+    independentNotebookWrap.appendChild(independentNotebookInput);
+    const independentNotebookHint = document.createElement("p");
+    independentNotebookHint.className = "xlc-form-hint";
+    independentNotebookHint.textContent = t("setupIndependentNotebookHint");
+    independentNotebookWrap.appendChild(independentNotebookHint);
+    const independentNotebookStatus = document.createElement("p");
+    independentNotebookStatus.className = "xlc-form-hint xlc-setup-create-status";
+    independentNotebookStatus.setAttribute("role", "status");
+    independentNotebookStatus.setAttribute("aria-live", "polite");
+    independentNotebookWrap.appendChild(independentNotebookStatus);
+    step1.appendChild(independentNotebookWrap);
     const syncModeUi = () => {
       const mode = modeSelect.value;
       const needsNotebook = mode === "notebook" || mode === "new-doc";
       pickerWrap.style.display = mode === "doc" || mode === "tree" ? "" : "none";
       nbWrap.style.display = needsNotebook ? "" : "none";
-      nameWrap.style.display = mode === "new-doc" ? "" : "none";
+      independentNotebookWrap.style.display = mode === "new-notebook" ? "" : "none";
+      nameWrap.style.display = mode === "new-doc" || mode === "new-notebook" ? "" : "none";
       nbLabel.textContent = mode === "new-doc" ? t("setupCreateNotebook") : t("setupNotebook");
+      createBtn.dataset.xlcControl = mode === "new-notebook" ? "setup.new-notebook.create" : "setup.newdoc.create";
       if (needsNotebook) loadNotebooks();
       renderNotebookStatus();
       syncCreateState();
@@ -8093,51 +8121,71 @@ ${exception.mark.snippet}`;
     createBtn.disabled = true;
     let creatingLibrary = false;
     createBtn.addEventListener("click", () => {
-      const notebookId = nbSelect.value;
+      const mode = modeSelect.value;
+      const notebookId = mode === "new-doc" ? nbSelect.value : "";
+      const notebookName = independentNotebookInput.value.trim();
       const title = nameInput.value.trim();
-      if (!notebookId || !title) {
+      if (mode === "new-doc" && !notebookId || mode === "new-notebook" && !notebookName || !title) {
         ctx.notify("error", t("invalidItem"));
         return;
       }
       const revision = setupRevision;
-      (0, import_siyuan3.confirm)("\u26A0\uFE0F " + t("setupTitle"), t("setupConfirmCreate", title), () => {
-        if (creatingLibrary || setupRevision !== revision || modeSelect.value !== "new-doc" || nbSelect.value !== notebookId || nameInput.value.trim() !== title) return;
+      const confirmText = mode === "new-notebook" ? t("setupIndependentConfirmCreate", notebookName, title) : t("setupConfirmCreate", title);
+      (0, import_siyuan3.confirm)("\u26A0\uFE0F " + t("setupTitle"), confirmText, () => {
+        if (creatingLibrary || setupRevision !== revision || modeSelect.value !== mode || mode === "new-doc" && nbSelect.value !== notebookId || mode === "new-notebook" && independentNotebookInput.value.trim() !== notebookName || nameInput.value.trim() !== title) return;
         creatingLibrary = true;
         modeSelect.disabled = true;
         nbSelect.disabled = true;
         nameInput.disabled = true;
+        independentNotebookInput.disabled = true;
         createBtn.textContent = t("saving");
+        independentNotebookStatus.textContent = mode === "new-notebook" ? t("saving") : "";
+        independentNotebookStatus.classList.remove("xlc-form-error");
         syncCreateState();
-        void ctx.library.createLibraryDoc(notebookId, title).then((result) => {
+        const createTask = mode === "new-notebook" ? ctx.library.createIndependentLibrary(notebookName, title) : ctx.library.createLibraryDoc(notebookId, title);
+        void createTask.then((result) => {
           creatingLibrary = false;
           modeSelect.disabled = false;
           nbSelect.disabled = !notebooksLoaded || nbSelect.options.length <= 1;
           nameInput.disabled = false;
+          independentNotebookInput.disabled = false;
           createBtn.textContent = t("create");
           syncCreateState();
           if (!result.ok) {
-            nbStatus.textContent = t("kernelError", result.message);
-            ctx.notify("error", t("kernelError", result.message));
+            const message = mode === "new-notebook" ? t("setupIndependentCreateFailed", result.message) : t("kernelError", result.message);
+            independentNotebookStatus.classList.toggle("xlc-form-error", mode === "new-notebook");
+            independentNotebookStatus.textContent = mode === "new-notebook" ? message : "";
+            nbStatus.textContent = mode === "new-notebook" ? message : t("kernelError", result.message);
+            ctx.notify("error", message);
             return;
           }
+          const docId = result.data.docId;
+          const createdNotebookId = mode === "new-notebook" && "notebookId" in result.data && typeof result.data.notebookId === "string" ? result.data.notebookId : "";
           ctx.applyConfig({
             configVersion: CONFIG_VERSION,
             mode: "doc",
             notebookIds: [],
-            containerDocIds: [result.data.docId],
-            createdDocIds: [result.data.docId],
+            containerDocIds: [docId],
+            createdDocIds: [docId],
+            ...createdNotebookId ? { createdNotebookIds: [createdNotebookId] } : {},
             configuredAt: Date.now()
           });
-          ctx.notify("info", t("libDocCreated", title));
+          independentNotebookStatus.textContent = "";
+          independentNotebookStatus.classList.remove("xlc-form-error");
+          ctx.notify("info", mode === "new-notebook" ? t("libDocCreated", title) : t("libDocCreated", title));
           onConfigured();
         }).catch((err) => {
           creatingLibrary = false;
           modeSelect.disabled = false;
           nbSelect.disabled = !notebooksLoaded || nbSelect.options.length <= 1;
           nameInput.disabled = false;
+          independentNotebookInput.disabled = false;
           createBtn.textContent = t("create");
           syncCreateState();
-          ctx.notify("error", t("kernelError", err.message));
+          const message = mode === "new-notebook" ? t("setupIndependentCreateFailed", err.message) : t("kernelError", err.message);
+          independentNotebookStatus.classList.toggle("xlc-form-error", mode === "new-notebook");
+          independentNotebookStatus.textContent = mode === "new-notebook" ? message : "";
+          ctx.notify("error", message);
         });
       });
     });
@@ -8145,7 +8193,8 @@ ${exception.mark.snippet}`;
     nameWrap.appendChild(nameRow);
     step1.appendChild(nameWrap);
     function syncCreateState() {
-      createBtn.disabled = creatingLibrary || modeSelect.value !== "new-doc" || !notebooksLoaded || !nbSelect.value || !nameInput.value.trim();
+      const mode = modeSelect.value;
+      createBtn.disabled = creatingLibrary || mode === "new-doc" && (!notebooksLoaded || !nbSelect.value) || mode !== "new-doc" && mode !== "new-notebook" || mode === "new-notebook" && !independentNotebookInput.value.trim() || !nameInput.value.trim();
     }
     nbSelect.addEventListener("change", () => {
       setupRevision++;
@@ -8156,6 +8205,7 @@ ${exception.mark.snippet}`;
       syncNextState();
     });
     nameInput.addEventListener("input", syncCreateState);
+    independentNotebookInput.addEventListener("input", syncCreateState);
     const step1Actions = document.createElement("div");
     step1Actions.className = "xlc-form-actions";
     if (opts == null ? void 0 : opts.onDismiss) {
@@ -8200,8 +8250,8 @@ ${exception.mark.snippet}`;
     function syncNextState() {
       const mode = modeSelect.value;
       const rootCheckFailed = checkedNotebookId === nbSelect.value && (notebookDocsState === "empty" || notebookDocsState === "error");
-      nextBtn.style.display = mode === "new-doc" ? "none" : "";
-      nextBtn.disabled = mode === "notebook" ? !notebooksLoaded || !nbSelect.value || notebookDocsChecking || rootCheckFailed : mode === "new-doc" || !pickedDoc;
+      nextBtn.style.display = mode === "new-doc" || mode === "new-notebook" ? "none" : "";
+      nextBtn.disabled = mode === "notebook" ? !notebooksLoaded || !nbSelect.value || notebookDocsChecking || rootCheckFailed : mode === "new-doc" || mode === "new-notebook" || !pickedDoc;
     }
     syncModeUi();
     root.appendChild(step1);
@@ -13444,8 +13494,14 @@ ${details.join("\n")}` : ""}`;
     setupNewDocName: "\u5E38\u7528\u5185\u5BB9\u5E93",
     setupPickDoc: "\u9009\u62E9\u73B0\u6709\u6587\u6863",
     setupCreateNewDoc: "\u65B0\u5EFA\u4E13\u7528\u5E93\u6587\u6863\uFF08\u63A8\u8350\uFF09",
+    setupCreateIndependentNotebook: "\u65B0\u5EFA\u72EC\u7ACB\u7B14\u8BB0\u672C\u4E0E\u5E93\u6587\u6863",
     setupNotebook: "\u6309\u7B14\u8BB0\u672C",
     setupCreateNotebook: "\u9009\u62E9\u5DF2\u6709\u7B14\u8BB0\u672C\uFF08\u4E0D\u4F1A\u65B0\u5EFA\u7B14\u8BB0\u672C\uFF09",
+    setupIndependentNotebookName: "\u65B0\u7B14\u8BB0\u672C\u540D\u79F0",
+    setupIndependentNotebookNamePlaceholder: "\u4F8B\u5982\uFF1A\u5DE5\u4F5C\u5E38\u7528\u8BED",
+    setupIndependentNotebookHint: "\u4F1A\u5148\u65B0\u5EFA\u4E00\u4E2A\u7B14\u8BB0\u672C\uFF0C\u518D\u5728\u5176\u4E2D\u521B\u5EFA\u5E93\u6587\u6863\uFF1B\u4E24\u6B65\u90FD\u6210\u529F\u540E\u624D\u4FDD\u5B58\u914D\u7F6E\u3002",
+    setupIndependentConfirmCreate: "\u5C06\u65B0\u5EFA\u7B14\u8BB0\u672C\u300C%s\u300D\u548C\u5E93\u6587\u6863\u300C%s\u300D\uFF0C\u786E\u5B9A\u5417\uFF1F",
+    setupIndependentCreateFailed: "\u521B\u5EFA\u72EC\u7ACB\u7B14\u8BB0\u672C\u5931\u8D25\uFF1A%s",
     setupChooseNotebook: "\u8BF7\u9009\u62E9\u7B14\u8BB0\u672C",
     setupNotebookLoading: "\u6B63\u5728\u8BFB\u53D6\u53EF\u7528\u7B14\u8BB0\u672C\u2026",
     setupNotebookReady: "\u53EF\u7528\u7B14\u8BB0\u672C\u5DF2\u52A0\u8F7D",
@@ -14027,6 +14083,12 @@ ${details.join("\n")}` : ""}`;
     var _a;
     const map = {
       pluginName: "\u5C0F\u9A74\u5E38\u7528\uFF08\u5185\u6D4B\u7248\uFF09",
+      setupCreateIndependentNotebook: "\u65B0\u5EFA\u72EC\u7ACB\u7B14\u8BB0\u672C\u4E0E\u5E93\u6587\u6863",
+      setupIndependentNotebookName: "\u65B0\u7B14\u8BB0\u672C\u540D\u79F0",
+      setupIndependentNotebookNamePlaceholder: "\u4F8B\u5982\uFF1A\u5DE5\u4F5C\u5E38\u7528\u8BED",
+      setupIndependentNotebookHint: "\u4F1A\u5148\u65B0\u5EFA\u4E00\u4E2A\u7B14\u8BB0\u672C\uFF0C\u518D\u5728\u5176\u4E2D\u521B\u5EFA\u5E93\u6587\u6863\uFF1B\u4E24\u6B65\u90FD\u6210\u529F\u540E\u624D\u4FDD\u5B58\u914D\u7F6E\u3002",
+      setupIndependentConfirmCreate: "\u5C06\u65B0\u5EFA\u7B14\u8BB0\u672C\u300C%s\u300D\u548C\u5E93\u6587\u6863\u300C%s\u300D\uFF0C\u786E\u5B9A\u5417\uFF1F",
+      setupIndependentCreateFailed: "\u521B\u5EFA\u72EC\u7ACB\u7B14\u8BB0\u672C\u5931\u8D25\uFF1A%s",
       settingsIntro: "\u7BA1\u7406\u5185\u5BB9\u5E93\u3001\u590D\u7528\u504F\u597D\u548C\u6570\u636E\u3002\u5E93\u5185\u5185\u5BB9\u4F1A\u4FDD\u7559\u5728\u601D\u6E90\u6587\u6863\u4E2D\uFF0C\u5E76\u53EF\u7EE7\u7EED\u7F16\u8F91\u3002",
       captureIntro: "\u5148\u653E\u5165\u60F3\u8981\u590D\u7528\u7684\u5185\u5BB9\uFF0C\u518D\u8865\u5145\u6807\u9898\u548C\u5206\u7C7B\uFF0C\u4E4B\u540E\u53EF\u4EE5\u66F4\u5FEB\u627E\u5230\u5B83\u3002",
       discoveryTitle: "\u4ECE\u5F53\u524D\u6587\u6863\u53D1\u73B0",
@@ -14775,6 +14837,7 @@ ${details.join("\n")}` : ""}`;
           listNotebooks: async () => ({ ok: true, data: [{ id: "20240101", name: "\u7B14\u8BB0" }] }),
           listNotebookDocs: async () => ({ ok: true, data: [{ id: "20240101120001-hijklmn", name: "\u5E38\u7528\u5185\u5BB9\u5E93" }] }),
           createLibraryDoc: async () => ({ ok: true, data: { docId: "20240101120001-hijklmn" } }),
+          createIndependentLibrary: async () => ({ ok: true, data: { notebookId: "20240101999999", docId: "20240101120001-hijklmn" } }),
           searchDocs: async (k) => k ? { ok: true, data: [{ id: "20240101120001-hijklmn", hPath: "/\u5E38\u7528\u5185\u5BB9\u5E93", box: "nb", name: "\u5E38\u7528\u5185\u5BB9\u5E93" }] } : { ok: true, data: [] },
           getDocPath: async () => "/\u5E38\u7528\u5185\u5BB9\u5E93",
           reindex: async () => ({ entries: [], items: /* @__PURE__ */ new Map(), truncated: false, docsScanned: 1, errors: [], builtAt: 1 }),
@@ -14852,6 +14915,7 @@ ${details.join("\n")}` : ""}`;
             return { ok: true, data: (options == null ? void 0 : options.emptyNotebook) ? [] : [{ id: "20240101120001-hijklmn", name: "\u5E38\u7528\u5185\u5BB9\u5E93" }] };
           },
           createLibraryDoc: async () => ({ ok: true, data: { docId: "20240101120001-hijklmn" } }),
+          createIndependentLibrary: async (notebookName) => notebookName === "\u5931\u8D25\u5E93" ? { ok: false, reason: "kernel-error", message: "\u8865\u507F\u5931\u8D25\uFF1A20240101999999" } : { ok: true, data: { notebookId: "20240101999999", docId: "20240101120001-hijklmn" } },
           searchDocs: async (k) => {
             var _a, _b, _c, _d, _e;
             docSearchRequests++;

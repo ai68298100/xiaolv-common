@@ -591,8 +591,9 @@ function buildLibraryPickerSection(ctx: SettingsUiContext, root: HTMLElement, on
     modeSelect.id = "xlc-setup-mode";
     modeSelect.dataset.xlcControl = "setup.mode";
     modeLabel.htmlFor = modeSelect.id;
-    const modes: Array<{v: "new-doc" | "doc" | "tree" | "notebook"; label: string}> = [
+    const modes: Array<{v: "new-doc" | "new-notebook" | "doc" | "tree" | "notebook"; label: string}> = [
         {v: "new-doc", label: t("setupCreateNewDoc")},
+        {v: "new-notebook", label: t("setupCreateIndependentNotebook")},
         {v: "doc", label: t("setupPickDoc")},
         {v: "tree", label: t("setupPickDocTree")},
         {v: "notebook", label: t("setupNotebook")},
@@ -848,13 +849,43 @@ function buildLibraryPickerSection(ctx: SettingsUiContext, root: HTMLElement, on
             syncNextState();
         }
     }
+
+    // new-notebook：独立笔记本名称；与已有笔记本选择分开，避免把“创建”误解成切换已有容器。
+    const independentNotebookWrap = document.createElement("div");
+    independentNotebookWrap.className = "xlc-form-field xlc-setup-independent-notebook";
+    independentNotebookWrap.style.display = "none";
+    const independentNotebookLabel = document.createElement("label");
+    independentNotebookLabel.className = "xlc-form-label";
+    independentNotebookLabel.textContent = t("setupIndependentNotebookName");
+    independentNotebookWrap.appendChild(independentNotebookLabel);
+    const independentNotebookInput = document.createElement("input");
+    independentNotebookInput.className = "b3-text-field";
+    independentNotebookInput.id = "xlc-setup-independent-notebook";
+    independentNotebookInput.placeholder = t("setupIndependentNotebookNamePlaceholder");
+    independentNotebookInput.setAttribute("aria-label", t("setupIndependentNotebookName"));
+    independentNotebookInput.dataset.xlcControl = "setup.new-notebook.name";
+    independentNotebookLabel.htmlFor = independentNotebookInput.id;
+    independentNotebookWrap.appendChild(independentNotebookInput);
+    const independentNotebookHint = document.createElement("p");
+    independentNotebookHint.className = "xlc-form-hint";
+    independentNotebookHint.textContent = t("setupIndependentNotebookHint");
+    independentNotebookWrap.appendChild(independentNotebookHint);
+    const independentNotebookStatus = document.createElement("p");
+    independentNotebookStatus.className = "xlc-form-hint xlc-setup-create-status";
+    independentNotebookStatus.setAttribute("role", "status");
+    independentNotebookStatus.setAttribute("aria-live", "polite");
+    independentNotebookWrap.appendChild(independentNotebookStatus);
+    step1.appendChild(independentNotebookWrap);
+
     const syncModeUi = (): void => {
         const mode = modeSelect.value;
         const needsNotebook = mode === "notebook" || mode === "new-doc";
         pickerWrap.style.display = mode === "doc" || mode === "tree" ? "" : "none";
         nbWrap.style.display = needsNotebook ? "" : "none";
-        nameWrap.style.display = mode === "new-doc" ? "" : "none";
+        independentNotebookWrap.style.display = mode === "new-notebook" ? "" : "none";
+        nameWrap.style.display = mode === "new-doc" || mode === "new-notebook" ? "" : "none";
         nbLabel.textContent = mode === "new-doc" ? t("setupCreateNotebook") : t("setupNotebook");
+        createBtn.dataset.xlcControl = mode === "new-notebook" ? "setup.new-notebook.create" : "setup.newdoc.create";
         if (needsNotebook) loadNotebooks();
         renderNotebookStatus();
         syncCreateState();
@@ -889,42 +920,70 @@ function buildLibraryPickerSection(ctx: SettingsUiContext, root: HTMLElement, on
     createBtn.disabled = true;
     let creatingLibrary = false;
     createBtn.addEventListener("click", () => {
-        const notebookId = nbSelect.value;
+        const mode = modeSelect.value;
+        const notebookId = mode === "new-doc" ? nbSelect.value : "";
+        const notebookName = independentNotebookInput.value.trim();
         const title = nameInput.value.trim();
-        if (!notebookId || !title) {
+        if ((mode === "new-doc" && !notebookId) || (mode === "new-notebook" && !notebookName) || !title) {
             ctx.notify("error", t("invalidItem"));
             return;
         }
         const revision = setupRevision;
         // 创建前明确确认（不静默写入）；执行期飞行态防重入——并发创建会产生孤儿库文档（R138）
-        confirm("⚠️ " + t("setupTitle"), t("setupConfirmCreate", title), () => {
-            if (creatingLibrary || setupRevision !== revision || modeSelect.value !== "new-doc" || nbSelect.value !== notebookId || nameInput.value.trim() !== title) return;
+        const confirmText = mode === "new-notebook"
+            ? t("setupIndependentConfirmCreate", notebookName, title)
+            : t("setupConfirmCreate", title);
+        confirm("⚠️ " + t("setupTitle"), confirmText, () => {
+            if (creatingLibrary || setupRevision !== revision || modeSelect.value !== mode
+                || (mode === "new-doc" && nbSelect.value !== notebookId)
+                || (mode === "new-notebook" && independentNotebookInput.value.trim() !== notebookName)
+                || nameInput.value.trim() !== title) return;
             creatingLibrary = true;
             modeSelect.disabled = true;
             nbSelect.disabled = true;
             nameInput.disabled = true;
+            independentNotebookInput.disabled = true;
             createBtn.textContent = t("saving");
+            independentNotebookStatus.textContent = mode === "new-notebook" ? t("saving") : "";
+            independentNotebookStatus.classList.remove("xlc-form-error");
             syncCreateState();
-            void ctx.library.createLibraryDoc(notebookId, title).then((result) => {
+            const createTask = mode === "new-notebook"
+                ? ctx.library.createIndependentLibrary(notebookName, title)
+                : ctx.library.createLibraryDoc(notebookId, title);
+            void createTask.then((result) => {
                 creatingLibrary = false;
                 modeSelect.disabled = false;
                 nbSelect.disabled = !notebooksLoaded || nbSelect.options.length <= 1;
                 nameInput.disabled = false;
+                independentNotebookInput.disabled = false;
                 createBtn.textContent = t("create");
                 syncCreateState();
                 if (!result.ok) {
-                    nbStatus.textContent = t("kernelError", result.message);
-                    ctx.notify("error", t("kernelError", result.message));
+                    const message = mode === "new-notebook"
+                        ? t("setupIndependentCreateFailed", result.message)
+                        : t("kernelError", result.message);
+                    independentNotebookStatus.classList.toggle("xlc-form-error", mode === "new-notebook");
+                    independentNotebookStatus.textContent = mode === "new-notebook" ? message : "";
+                    nbStatus.textContent = mode === "new-notebook" ? message : t("kernelError", result.message);
+                    ctx.notify("error", message);
                     return;
                 }
+                const docId = result.data.docId;
+                const createdNotebookId = mode === "new-notebook" && "notebookId" in result.data
+                    && typeof result.data.notebookId === "string"
+                    ? result.data.notebookId
+                    : "";
                 ctx.applyConfig({
                     configVersion: CONFIG_VERSION,
                     mode: "doc",
                     notebookIds: [],
-                    containerDocIds: [result.data.docId],
-                    createdDocIds: [result.data.docId],
+                    containerDocIds: [docId],
+                    createdDocIds: [docId],
+                    ...(createdNotebookId ? {createdNotebookIds: [createdNotebookId]} : {}),
                     configuredAt: Date.now(),
                 });
+                independentNotebookStatus.textContent = "";
+                independentNotebookStatus.classList.remove("xlc-form-error");
                 ctx.notify("info", t("libDocCreated", title));
                 onConfigured();
             }).catch((err) => {
@@ -932,9 +991,15 @@ function buildLibraryPickerSection(ctx: SettingsUiContext, root: HTMLElement, on
                 modeSelect.disabled = false;
                 nbSelect.disabled = !notebooksLoaded || nbSelect.options.length <= 1;
                 nameInput.disabled = false;
+                independentNotebookInput.disabled = false;
                 createBtn.textContent = t("create");
                 syncCreateState();
-                ctx.notify("error", t("kernelError", (err as Error).message));
+                const message = mode === "new-notebook"
+                    ? t("setupIndependentCreateFailed", (err as Error).message)
+                    : t("kernelError", (err as Error).message);
+                independentNotebookStatus.classList.toggle("xlc-form-error", mode === "new-notebook");
+                independentNotebookStatus.textContent = mode === "new-notebook" ? message : "";
+                ctx.notify("error", message);
             });
         });
     });
@@ -943,7 +1008,12 @@ function buildLibraryPickerSection(ctx: SettingsUiContext, root: HTMLElement, on
     step1.appendChild(nameWrap);
 
     function syncCreateState(): void {
-        createBtn.disabled = creatingLibrary || modeSelect.value !== "new-doc" || !notebooksLoaded || !nbSelect.value || !nameInput.value.trim();
+        const mode = modeSelect.value;
+        createBtn.disabled = creatingLibrary
+            || (mode === "new-doc" && (!notebooksLoaded || !nbSelect.value))
+            || (mode !== "new-doc" && mode !== "new-notebook")
+            || (mode === "new-notebook" && !independentNotebookInput.value.trim())
+            || !nameInput.value.trim();
     }
     nbSelect.addEventListener("change", () => {
         setupRevision++;
@@ -954,6 +1024,7 @@ function buildLibraryPickerSection(ctx: SettingsUiContext, root: HTMLElement, on
         syncNextState();
     });
     nameInput.addEventListener("input", syncCreateState);
+    independentNotebookInput.addEventListener("input", syncCreateState);
 
     const step1Actions = document.createElement("div");
     step1Actions.className = "xlc-form-actions";
@@ -997,10 +1068,10 @@ function buildLibraryPickerSection(ctx: SettingsUiContext, root: HTMLElement, on
         const mode = modeSelect.value;
         const rootCheckFailed = checkedNotebookId === nbSelect.value
             && (notebookDocsState === "empty" || notebookDocsState === "error");
-        nextBtn.style.display = mode === "new-doc" ? "none" : "";
+        nextBtn.style.display = mode === "new-doc" || mode === "new-notebook" ? "none" : "";
         nextBtn.disabled = mode === "notebook"
             ? !notebooksLoaded || !nbSelect.value || notebookDocsChecking || rootCheckFailed
-            : mode === "new-doc" || !pickedDoc;
+            : mode === "new-doc" || mode === "new-notebook" || !pickedDoc;
     }
     syncModeUi();
     root.appendChild(step1);

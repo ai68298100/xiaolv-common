@@ -41,7 +41,7 @@
 
 ## P2 核心内容库
 
-- [x] 首次运行引导：选择已有文档/文档树/笔记本或新建库文档；直接新建独立笔记本未实现（Issue #1）
+- [x] 首次运行引导：选择已有文档/文档树/笔记本、新建库文档或新建独立笔记本与库文档；Issue #1 的真实宿主验收仍开放
 - [x] 条目 CRUD（新建/编辑/删除/恢复来源/收藏置顶/最近/排序/标签/分类/别名/来源回链）
 - [x] 来源失效检测（块/文档/资源三态）
 - [x] 可重建索引（有界、可丢弃缓存）
@@ -629,14 +629,21 @@
 - [x] 使用帮助增加图片/证件示意图、PPT/PDF/DOCX、简历正文/附件三类真实资源示例；每条明确“先在思源添加真实资源”、当前链接动作和未验证能力。
 - [x] 新增 `guide.media.image`、`guide.media.attachment`、`guide.media.resume` 稳定控件，Chrome 交互审计仍为 74/74，并验证三条示例同时可见。
 - [x] 新增 [ADR 0059](docs/adr/0059-issue1-independent-notebook-creation-plan.md) 与 [R241 账本](docs/dev-plan-2026-10-18-r241.md)，记录 Issue #1 的 createNotebook → library doc 两步回执、补偿删除、幂等、权限/超时和真实宿主验收边界。
-- [ ] Issue #1 的 UI/真实宿主验收尚未完成；离线 `createNotebook → createLibraryDoc` 契约与补偿编排已在 R242 落地。B-005 解除前不启动新的 Electron/思源宿主实验。
+- [x] Issue #1 的离线契约与补偿编排已在 R242 落地；设置 UI 接线在 R243 完成。真实宿主权限/生命周期验收仍未完成，B-005 解除前不启动新的 Electron/思源宿主实验。
 
 ## T-0095 / R242（2026-10-18 Issue #1 离线契约与补偿编排）
 
 - [x] 内核白名单登记 `createNotebook` / `removeNotebook`，严格校验 notebook ID、删除 `null` 回包与写端点不重试。
 - [x] 服务层提供 `createNotebook`、`removeNotebook`、`createIndependentLibrary`；写锁、幂等回执和文档失败补偿删除均保留可审计结果。
 - [x] `LibraryConfig` 兼容 `createdNotebookIds`，旧配置归一化为空数组。
-- [x] 新增契约/服务测试覆盖畸形响应、失败、重复提交及补偿成功/失败；Issue #1 仍未关闭，设置 UI 与真实宿主验收后置。
+- [x] 新增契约/服务测试覆盖畸形响应、失败、重复提交及补偿成功/失败；Issue #1 仍未关闭，设置 UI 已转入 R243 接线，真实宿主验收后置。
+
+## T-0096 / R243（2026-10-18 Issue #1 设置 UI 接线与离线回执）
+
+- [x] 首次运行设置新增“新建独立笔记本与库文档”模式，独立笔记本名称与库文档名称分开填写，避免误把新建理解为切换已有容器。
+- [x] 成功流程调用 `createIndependentLibrary`，双步骤成功后才保存 `containerDocIds`、`createdDocIds` 与 `createdNotebookIds`；创建期间锁定字段防止重复提交。
+- [x] 失败流程保留表单并展示可换行错误，补齐中英文文案、harness mock、成功/失败 smoke 断言和样式。
+- [ ] Issue #1 的真实思源权限/生命周期验收仍开放；B-005 解除前不启动新的 Electron/思源宿主实验。
 
 ## T-0086–T-0092 / R233–R239（2026-10-18 审计、示例调研与多块保护）
 

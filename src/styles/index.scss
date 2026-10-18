@@ -1667,6 +1667,14 @@
   > .b3-button { flex: 0 0 auto; }
 }
 
+// 独立笔记本创建状态保持在字段下方，失败时不把错误挤到按钮行或隐藏到滚动边界外。
+.xlc-setup-create-status {
+  margin-top: var(--xlc-space-2);
+  overflow-wrap: anywhere;
+}
+
+.xlc-setup-create-status:empty { display: none; }
+
 @media (max-width: 520px) {
   .xlc-template-import-row { flex-direction: column; align-items: stretch; }
 }
