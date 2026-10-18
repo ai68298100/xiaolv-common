@@ -111,3 +111,32 @@ test("逻辑 ID：确定性、平台规则形、CJK 触发词不坍缩互撞（R
     assert.notEqual(espanso.espansoLogicalId(":跟进"), espanso.espansoLogicalId(":表单"));
     assert.notEqual(espanso.espansoLogicalId(":sig"), espanso.espansoLogicalId(":表单"));
 });
+
+test("类型推断与元数据对齐：code 围栏、安全 URL、markdown 与纯文本", () => {
+    const yaml = `matches:
+  - trigger: ":sql"
+    replace: |
+      \`\`\`sql
+      SELECT * FROM users WHERE active = 1;
+      \`\`\`
+  - trigger: ":gh"
+    replace: "https://github.com/ai68298100/xiaolv-common"
+  - trigger: ":md"
+    replace: "请确认 **粗体** 与 [链接](https://example.com)"
+  - trigger: ":plain"
+    replace: "纯文本短语"
+`;
+    const r = espanso.parseEspansoYaml(yaml);
+    assert.equal(r.items.length, 4);
+    assert.equal(r.items[0].itemType, "code");
+    assert.equal(r.items[0].url, "");
+
+    assert.equal(r.items[1].itemType, "url");
+    assert.equal(r.items[1].url, "https://github.com/ai68298100/xiaolv-common");
+
+    assert.equal(r.items[2].itemType, "markdown");
+    assert.equal(r.items[2].url, "");
+
+    assert.equal(r.items[3].itemType, "text");
+    assert.equal(r.items[3].url, "");
+});

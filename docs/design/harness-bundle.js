@@ -113,6 +113,266 @@
     }
   });
 
+  // src/constants.ts
+  var PROTOCOL_NAME, PROTOCOL_VERSION, ATTR_PREFIX, ATTR, LIMITS, EXPORT_SCHEMA_VERSION, EVENTS;
+  var init_constants = __esm({
+    "src/constants.ts"() {
+      "use strict";
+      PROTOCOL_NAME = "xiaolv-common";
+      PROTOCOL_VERSION = 1;
+      ATTR_PREFIX = "custom-xlc-";
+      ATTR = {
+        id: "custom-xlc-id",
+        type: "custom-xlc-type",
+        title: "custom-xlc-title",
+        alias: "custom-xlc-alias",
+        tags: "custom-xlc-tags",
+        category: "custom-xlc-category",
+        srcDoc: "custom-xlc-src-doc",
+        srcBlock: "custom-xlc-src-block",
+        srcType: "custom-xlc-src-type",
+        vars: "custom-xlc-vars",
+        url: "custom-xlc-url",
+        target: "custom-xlc-target",
+        /** 实验期有序物理块清单；只用于经归属检查的读取，不证明完整性或授权删除。 */
+        parts: "custom-xlc-parts",
+        created: "custom-xlc-created",
+        updated: "custom-xlc-updated"
+      };
+      LIMITS = {
+        title: 512,
+        alias: 256,
+        tag: 64,
+        tags: 32,
+        category: 64,
+        summary: 240,
+        contentChars: 1e5,
+        queryChars: 200,
+        maxItems: 2e3,
+        maxDocs: 200,
+        maxFavorites: 500,
+        maxRecents: 200,
+        maxProviders: 32,
+        maxImportBytes: 4 * 1024 * 1024,
+        walkDepth: 8,
+        kernelTimeoutMs: 8e3,
+        askValueChars: 2e3,
+        maxUsage: 2e3,
+        maxAskFields: 16,
+        maxCustomTransforms: 10,
+        /** 读取实验期 parts 清单的上限；不据此推断 appendBlock 返回了全部物理块。 */
+        maxItemParts: 64,
+        maxSavedDiscoveryViews: 20,
+        savedViewNameChars: 32,
+        savedViewPathChars: 256,
+        customNameChars: 20,
+        customPromptChars: 500
+      };
+      EXPORT_SCHEMA_VERSION = 1;
+      EVENTS = {
+        itemCreated: "xiaolv:common:item-created",
+        itemUpdated: "xiaolv:common:item-updated",
+        itemDeleted: "xiaolv:common:item-deleted",
+        itemInserted: "xiaolv:common:item-inserted"
+      };
+    }
+  });
+
+  // src/model/item.ts
+  function isItemType(v) {
+    return typeof v === "string" && ITEM_TYPES.includes(v);
+  }
+  function isSafeHttpUrl(v) {
+    if (typeof v !== "string") return false;
+    const value = v.trim();
+    if (!/^https?:\/\//i.test(value)) return false;
+    try {
+      const parsed = new URL(value);
+      return (parsed.protocol === "http:" || parsed.protocol === "https:") && Boolean(parsed.hostname);
+    } catch {
+      return false;
+    }
+  }
+  function isSourceType(v) {
+    return typeof v === "string" && SOURCE_TYPES.includes(v);
+  }
+  function isLogicalId(v) {
+    return typeof v === "string" && LOGICAL_ID_RE.test(v);
+  }
+  function isBlockId(v) {
+    return typeof v === "string" && BLOCK_ID_RE.test(v);
+  }
+  function resolveBlockRefTarget(item) {
+    if (item.itemType !== "blockref") return "";
+    if (isBlockId(item.targetBlockId)) return item.targetBlockId;
+    if (isBlockId(item.source.sourceBlockId)) return item.source.sourceBlockId;
+    return "";
+  }
+  function newLogicalId(now = Date.now(), random = Math.random) {
+    const time = now.toString(36);
+    const rand = Math.floor(random() * 18446744073709552e3).toString(36).slice(0, 10).padStart(10, "0");
+    return `xlc-${time}${rand}`.slice(0, 30);
+  }
+  function cleanString(v, max) {
+    if (typeof v !== "string") return "";
+    if (v.length <= max) return v;
+    const sliced = v.slice(0, max);
+    const last = sliced.charCodeAt(sliced.length - 1);
+    return last >= 55296 && last <= 57343 ? sliced.slice(0, -1) : sliced;
+  }
+  function cleanTagList(v) {
+    const raw = Array.isArray(v) ? v : typeof v === "string" ? v.split(/[,,、]/) : [];
+    const out = [];
+    for (const item of raw) {
+      if (typeof item !== "string") continue;
+      const tag = item.trim().slice(0, LIMITS.tag);
+      if (!tag) continue;
+      if (!out.includes(tag)) out.push(tag);
+      if (out.length >= LIMITS.tags) break;
+    }
+    return out;
+  }
+  function inferItemType(blockType, subtype, kramdown) {
+    if (blockType === "c" || blockType === "code_block" || subtype === "code") return "code";
+    if (blockType === "s" || blockType === "super") return "structure";
+    if (blockType === "h") return "markdown";
+    if (blockType === "i" || blockType === "html" || blockType === "m" || blockType === "query_embed" || blockType === "t") return "markdown";
+    if (/^!\[.*\]\(assets\//.test(kramdown.trimStart())) return "image";
+    if (/\]\(assets\/[^)]+\)/.test(kramdown)) return "asset";
+    return "text";
+  }
+  function normalizeCommonItem(input) {
+    var _a;
+    const blockId = typeof input.blockId === "string" && isBlockId(input.blockId) ? input.blockId : "";
+    const libraryDocId = typeof input.libraryDocId === "string" && isBlockId(input.libraryDocId) ? input.libraryDocId : "";
+    if (!blockId || !libraryDocId) return null;
+    const attrs = (_a = input.attrs) != null ? _a : {};
+    const droppedFields = [];
+    for (const key of Object.keys(attrs)) {
+      if (!key.startsWith(ATTR_PREFIX)) continue;
+      if (!Object.values(ATTR).includes(key)) droppedFields.push(key);
+    }
+    const logicalIdRaw = typeof attrs[ATTR.id] === "string" ? attrs[ATTR.id] : "";
+    if (!isLogicalId(logicalIdRaw)) return null;
+    const kramdown = typeof input.kramdown === "string" ? input.kramdown.slice(0, LIMITS.contentChars) : "";
+    const blockType = typeof input.blockType === "string" ? input.blockType : "";
+    const subtype = typeof input.subtype === "string" ? input.subtype : "";
+    const declaredType = isItemType(attrs[ATTR.type]) ? attrs[ATTR.type] : null;
+    const itemType = declaredType != null ? declaredType : inferItemType(blockType, subtype, kramdown);
+    const tags = cleanTagList(attrs[ATTR.tags]);
+    const title = cleanString(attrs[ATTR.title], LIMITS.title) || deriveTitle(kramdown, itemType, attrs);
+    const created = Number(attrs[ATTR.created]);
+    const updated = Number(attrs[ATTR.updated]);
+    const srcDoc = typeof attrs[ATTR.srcDoc] === "string" ? attrs[ATTR.srcDoc] : "";
+    const srcBlock = typeof attrs[ATTR.srcBlock] === "string" ? attrs[ATTR.srcBlock] : "";
+    const varCountRaw = Number(attrs[ATTR.vars]);
+    const varCount = Number.isInteger(varCountRaw) && varCountRaw > 0 ? Math.min(varCountRaw, LIMITS.maxAskFields) : 0;
+    const declaredSourceType = isSourceType(attrs[ATTR.srcType]) ? attrs[ATTR.srcType] : "";
+    const source = {
+      sourceDocId: isBlockId(srcDoc) ? srcDoc : "",
+      sourceBlockId: isBlockId(srcBlock) ? srcBlock : "",
+      sourceType: declaredSourceType || (srcDoc || srcBlock ? "block" : "manual")
+    };
+    const rawParts = attrs[ATTR.parts];
+    let partBlockIds;
+    let partsCorrupt = false;
+    if (typeof rawParts === "string" && rawParts.trim()) {
+      const parts = rawParts.split(",").map((part) => part.trim()).filter(Boolean);
+      const valid = parts.length >= 2 && parts.length <= LIMITS.maxItemParts && parts[0] === blockId && new Set(parts).size === parts.length && parts.every((part) => isBlockId(part));
+      if (valid) partBlockIds = parts;
+      else partsCorrupt = true;
+    }
+    return {
+      id: logicalIdRaw,
+      blockId,
+      ...partBlockIds ? { partBlockIds } : {},
+      ...partsCorrupt ? { partsCorrupt: true } : {},
+      libraryDocId,
+      itemType,
+      title,
+      alias: cleanString(attrs[ATTR.alias], LIMITS.alias),
+      tags,
+      category: cleanString(attrs[ATTR.category], LIMITS.category),
+      summary: deriveSummary(kramdown),
+      varCount,
+      source,
+      url: cleanString(attrs[ATTR.url], 2048),
+      targetBlockId: isBlockId(attrs[ATTR.target]) ? attrs[ATTR.target] : "",
+      createdAt: Number.isFinite(created) && created > 0 ? created : 0,
+      updatedAt: Number.isFinite(updated) && updated > 0 ? updated : 0,
+      droppedFields
+    };
+  }
+  function deriveTitle(kramdown, itemType, attrs) {
+    var _a;
+    const alias = cleanString(attrs[ATTR.alias], LIMITS.alias);
+    if (alias) return alias;
+    const text = kramdownToPlainText(kramdown);
+    const firstLine = (_a = text.split("\n").map((l) => l.trim()).find((l) => l.length > 0)) != null ? _a : "";
+    if (firstLine) return firstLine.slice(0, LIMITS.title);
+    if (itemType === "url") return cleanString(attrs[ATTR.url], LIMITS.title) || "URL";
+    if (itemType === "code") return "Code";
+    return itemType;
+  }
+  function kramdownToPlainText(kramdown) {
+    return kramdown.replace(/^```.*$/gm, "").replace(/\{\{.*?\}\}/g, "").replace(/!\[([^\]]*)\]\(([^)\s]+)[^)]*\)/g, "$1 $2").replace(/\[([^\]]*)\]\(([^)\s]+)[^)]*\)/g, "$1 $2").replace(/^#{1,6}\s+/gm, "").replace(/\*\*([^*]+)\*\*/g, "$1").replace(/\*([^*]+)\*/g, "$1").replace(/`([^`]+)`/g, "$1").replace(/\{\:(\s[^}]*)?\}/g, "").replace(/^%%[\s\S]*?%%$/gm, "").trim();
+  }
+  function deriveSummary(kramdown) {
+    const text = kramdownToPlainText(kramdown).replace(/\s+/g, " ").trim();
+    return text.slice(0, LIMITS.summary);
+  }
+  function getCategoryColorVariant(category) {
+    var _a;
+    const trimmed = (category != null ? category : "").trim();
+    if (!trimmed) return "business";
+    if (/商务|财务|发票|银行|采购|合同/i.test(trimmed)) return "business";
+    if (/客服|支持|售后|退换|接待|咨询/i.test(trimmed)) return "support";
+    if (/开发|代码|研发|SQL|技术|架构|编程/i.test(trimmed)) return "dev";
+    if (/写作|周报|会议|计划|日常|笔记/i.test(trimmed)) return "writing";
+    if (/提示词|AI|模型|Prompt/i.test(trimmed)) return "ai";
+    let hash = 0;
+    for (let i = 0; i < trimmed.length; i++) {
+      hash = hash * 31 + trimmed.charCodeAt(i) >>> 0;
+    }
+    const variants = [
+      "business",
+      "support",
+      "dev",
+      "writing",
+      "ai"
+    ];
+    return (_a = variants[hash % variants.length]) != null ? _a : "business";
+  }
+  var ITEM_TYPES, SOURCE_TYPES, LOGICAL_ID_RE, BLOCK_ID_RE;
+  var init_item = __esm({
+    "src/model/item.ts"() {
+      "use strict";
+      init_constants();
+      ITEM_TYPES = [
+        "text",
+        "markdown",
+        "url",
+        "code",
+        "image",
+        "asset",
+        "blockref",
+        "structure"
+      ];
+      SOURCE_TYPES = [
+        "",
+        "selection",
+        "block",
+        "doc-fragment",
+        "clipboard",
+        "manual",
+        "resource",
+        "external"
+      ];
+      LOGICAL_ID_RE = /^xlc-[0-9a-z]{10,40}$/;
+      BLOCK_ID_RE = /^\d{14}-[0-9a-z]{7}$/;
+    }
+  });
+
   // src/model/errors.ts
   function toErrorMessage(error, fallback = "Unknown error") {
     try {
@@ -2988,16 +3248,28 @@ ${exception.mark.snippet}`;
           }
         }
       }
+      const kramdown = rewriteBody(replace, dateVars, issues);
+      let itemType = "text";
+      let url = "";
+      const trimmed = kramdown.trim();
+      if (/^(`{3,}|~{3,})[a-zA-Z0-9_+.-]*\n[\s\S]*?\n\1[ \t]*$/.test(trimmed)) {
+        itemType = "code";
+      } else if (!trimmed.includes("\n") && isSafeHttpUrl(trimmed)) {
+        itemType = "url";
+        url = trimmed;
+      } else if (!trimmed.includes("\n") && /[*_~`\[\]]/.test(trimmed)) {
+        itemType = "markdown";
+      }
       items.push({
         id: espansoLogicalId(trigger),
-        itemType: "text",
+        itemType,
         title: trigger.replace(/^:+/, "").trim() || trigger,
         alias: trigger,
         tags: ["espanso"],
         category: "",
-        kramdown: rewriteBody(replace, dateVars, issues),
+        kramdown,
         source: { sourceDocId: "", sourceBlockId: "", sourceType: "external" },
-        url: "",
+        url,
         targetBlockId: "",
         createdAt: now,
         updatedAt: now
@@ -3011,6 +3283,7 @@ ${exception.mark.snippet}`;
       "use strict";
       init_js_yaml();
       init_errors();
+      init_item();
     }
   });
 
@@ -3023,257 +3296,12 @@ ${exception.mark.snippet}`;
     return (_a = root.querySelector(".b3-dialog__body")) != null ? _a : root.querySelector(".b3-dialog__content");
   }
 
-  // src/constants.ts
-  var PROTOCOL_NAME = "xiaolv-common";
-  var PROTOCOL_VERSION = 1;
-  var ATTR_PREFIX = "custom-xlc-";
-  var ATTR = {
-    id: "custom-xlc-id",
-    type: "custom-xlc-type",
-    title: "custom-xlc-title",
-    alias: "custom-xlc-alias",
-    tags: "custom-xlc-tags",
-    category: "custom-xlc-category",
-    srcDoc: "custom-xlc-src-doc",
-    srcBlock: "custom-xlc-src-block",
-    srcType: "custom-xlc-src-type",
-    vars: "custom-xlc-vars",
-    url: "custom-xlc-url",
-    target: "custom-xlc-target",
-    /** 实验期有序物理块清单；只用于经归属检查的读取，不证明完整性或授权删除。 */
-    parts: "custom-xlc-parts",
-    created: "custom-xlc-created",
-    updated: "custom-xlc-updated"
-  };
-  var LIMITS = {
-    title: 512,
-    alias: 256,
-    tag: 64,
-    tags: 32,
-    category: 64,
-    summary: 240,
-    contentChars: 1e5,
-    queryChars: 200,
-    maxItems: 2e3,
-    maxDocs: 200,
-    maxFavorites: 500,
-    maxRecents: 200,
-    maxProviders: 32,
-    maxImportBytes: 4 * 1024 * 1024,
-    walkDepth: 8,
-    kernelTimeoutMs: 8e3,
-    askValueChars: 2e3,
-    maxUsage: 2e3,
-    maxAskFields: 16,
-    maxCustomTransforms: 10,
-    /** 读取实验期 parts 清单的上限；不据此推断 appendBlock 返回了全部物理块。 */
-    maxItemParts: 64,
-    maxSavedDiscoveryViews: 20,
-    savedViewNameChars: 32,
-    savedViewPathChars: 256,
-    customNameChars: 20,
-    customPromptChars: 500
-  };
-  var EXPORT_SCHEMA_VERSION = 1;
-  var EVENTS = {
-    itemCreated: "xiaolv:common:item-created",
-    itemUpdated: "xiaolv:common:item-updated",
-    itemDeleted: "xiaolv:common:item-deleted",
-    itemInserted: "xiaolv:common:item-inserted"
-  };
-
-  // src/model/item.ts
-  var ITEM_TYPES = [
-    "text",
-    "markdown",
-    "url",
-    "code",
-    "image",
-    "asset",
-    "blockref",
-    "structure"
-  ];
-  var SOURCE_TYPES = [
-    "",
-    "selection",
-    "block",
-    "doc-fragment",
-    "clipboard",
-    "manual",
-    "resource",
-    "external"
-  ];
-  function isItemType(v) {
-    return typeof v === "string" && ITEM_TYPES.includes(v);
-  }
-  function isSafeHttpUrl(v) {
-    if (typeof v !== "string") return false;
-    const value = v.trim();
-    if (!/^https?:\/\//i.test(value)) return false;
-    try {
-      const parsed = new URL(value);
-      return (parsed.protocol === "http:" || parsed.protocol === "https:") && Boolean(parsed.hostname);
-    } catch {
-      return false;
-    }
-  }
-  function isSourceType(v) {
-    return typeof v === "string" && SOURCE_TYPES.includes(v);
-  }
-  var LOGICAL_ID_RE = /^xlc-[0-9a-z]{10,40}$/;
-  var BLOCK_ID_RE = /^\d{14}-[0-9a-z]{7}$/;
-  function isLogicalId(v) {
-    return typeof v === "string" && LOGICAL_ID_RE.test(v);
-  }
-  function isBlockId(v) {
-    return typeof v === "string" && BLOCK_ID_RE.test(v);
-  }
-  function resolveBlockRefTarget(item) {
-    if (item.itemType !== "blockref") return "";
-    if (isBlockId(item.targetBlockId)) return item.targetBlockId;
-    if (isBlockId(item.source.sourceBlockId)) return item.source.sourceBlockId;
-    return "";
-  }
-  function newLogicalId(now = Date.now(), random = Math.random) {
-    const time = now.toString(36);
-    const rand = Math.floor(random() * 18446744073709552e3).toString(36).slice(0, 10).padStart(10, "0");
-    return `xlc-${time}${rand}`.slice(0, 30);
-  }
-  function cleanString(v, max) {
-    if (typeof v !== "string") return "";
-    if (v.length <= max) return v;
-    const sliced = v.slice(0, max);
-    const last = sliced.charCodeAt(sliced.length - 1);
-    return last >= 55296 && last <= 57343 ? sliced.slice(0, -1) : sliced;
-  }
-  function cleanTagList(v) {
-    const raw = Array.isArray(v) ? v : typeof v === "string" ? v.split(/[,,、]/) : [];
-    const out = [];
-    for (const item of raw) {
-      if (typeof item !== "string") continue;
-      const tag = item.trim().slice(0, LIMITS.tag);
-      if (!tag) continue;
-      if (!out.includes(tag)) out.push(tag);
-      if (out.length >= LIMITS.tags) break;
-    }
-    return out;
-  }
-  function inferItemType(blockType, subtype, kramdown) {
-    if (blockType === "c" || blockType === "code_block" || subtype === "code") return "code";
-    if (blockType === "s" || blockType === "super") return "structure";
-    if (blockType === "h") return "markdown";
-    if (blockType === "i" || blockType === "html" || blockType === "m" || blockType === "query_embed" || blockType === "t") return "markdown";
-    if (/^!\[.*\]\(assets\//.test(kramdown.trimStart())) return "image";
-    if (/\]\(assets\/[^)]+\)/.test(kramdown)) return "asset";
-    return "text";
-  }
-  function normalizeCommonItem(input) {
-    var _a;
-    const blockId = typeof input.blockId === "string" && isBlockId(input.blockId) ? input.blockId : "";
-    const libraryDocId = typeof input.libraryDocId === "string" && isBlockId(input.libraryDocId) ? input.libraryDocId : "";
-    if (!blockId || !libraryDocId) return null;
-    const attrs = (_a = input.attrs) != null ? _a : {};
-    const droppedFields = [];
-    for (const key of Object.keys(attrs)) {
-      if (!key.startsWith(ATTR_PREFIX)) continue;
-      if (!Object.values(ATTR).includes(key)) droppedFields.push(key);
-    }
-    const logicalIdRaw = typeof attrs[ATTR.id] === "string" ? attrs[ATTR.id] : "";
-    if (!isLogicalId(logicalIdRaw)) return null;
-    const kramdown = typeof input.kramdown === "string" ? input.kramdown.slice(0, LIMITS.contentChars) : "";
-    const blockType = typeof input.blockType === "string" ? input.blockType : "";
-    const subtype = typeof input.subtype === "string" ? input.subtype : "";
-    const declaredType = isItemType(attrs[ATTR.type]) ? attrs[ATTR.type] : null;
-    const itemType = declaredType != null ? declaredType : inferItemType(blockType, subtype, kramdown);
-    const tags = cleanTagList(attrs[ATTR.tags]);
-    const title = cleanString(attrs[ATTR.title], LIMITS.title) || deriveTitle(kramdown, itemType, attrs);
-    const created = Number(attrs[ATTR.created]);
-    const updated = Number(attrs[ATTR.updated]);
-    const srcDoc = typeof attrs[ATTR.srcDoc] === "string" ? attrs[ATTR.srcDoc] : "";
-    const srcBlock = typeof attrs[ATTR.srcBlock] === "string" ? attrs[ATTR.srcBlock] : "";
-    const varCountRaw = Number(attrs[ATTR.vars]);
-    const varCount = Number.isInteger(varCountRaw) && varCountRaw > 0 ? Math.min(varCountRaw, LIMITS.maxAskFields) : 0;
-    const declaredSourceType = isSourceType(attrs[ATTR.srcType]) ? attrs[ATTR.srcType] : "";
-    const source = {
-      sourceDocId: isBlockId(srcDoc) ? srcDoc : "",
-      sourceBlockId: isBlockId(srcBlock) ? srcBlock : "",
-      sourceType: declaredSourceType || (srcDoc || srcBlock ? "block" : "manual")
-    };
-    const rawParts = attrs[ATTR.parts];
-    let partBlockIds;
-    let partsCorrupt = false;
-    if (typeof rawParts === "string" && rawParts.trim()) {
-      const parts = rawParts.split(",").map((part) => part.trim()).filter(Boolean);
-      const valid = parts.length >= 2 && parts.length <= LIMITS.maxItemParts && parts[0] === blockId && new Set(parts).size === parts.length && parts.every((part) => isBlockId(part));
-      if (valid) partBlockIds = parts;
-      else partsCorrupt = true;
-    }
-    return {
-      id: logicalIdRaw,
-      blockId,
-      ...partBlockIds ? { partBlockIds } : {},
-      ...partsCorrupt ? { partsCorrupt: true } : {},
-      libraryDocId,
-      itemType,
-      title,
-      alias: cleanString(attrs[ATTR.alias], LIMITS.alias),
-      tags,
-      category: cleanString(attrs[ATTR.category], LIMITS.category),
-      summary: deriveSummary(kramdown),
-      varCount,
-      source,
-      url: cleanString(attrs[ATTR.url], 2048),
-      targetBlockId: isBlockId(attrs[ATTR.target]) ? attrs[ATTR.target] : "",
-      createdAt: Number.isFinite(created) && created > 0 ? created : 0,
-      updatedAt: Number.isFinite(updated) && updated > 0 ? updated : 0,
-      droppedFields
-    };
-  }
-  function deriveTitle(kramdown, itemType, attrs) {
-    var _a;
-    const alias = cleanString(attrs[ATTR.alias], LIMITS.alias);
-    if (alias) return alias;
-    const text = kramdownToPlainText(kramdown);
-    const firstLine = (_a = text.split("\n").map((l) => l.trim()).find((l) => l.length > 0)) != null ? _a : "";
-    if (firstLine) return firstLine.slice(0, LIMITS.title);
-    if (itemType === "url") return cleanString(attrs[ATTR.url], LIMITS.title) || "URL";
-    if (itemType === "code") return "Code";
-    return itemType;
-  }
-  function kramdownToPlainText(kramdown) {
-    return kramdown.replace(/^```.*$/gm, "").replace(/\{\{.*?\}\}/g, "").replace(/!\[([^\]]*)\]\(([^)\s]+)[^)]*\)/g, "$1 $2").replace(/\[([^\]]*)\]\(([^)\s]+)[^)]*\)/g, "$1 $2").replace(/^#{1,6}\s+/gm, "").replace(/\*\*([^*]+)\*\*/g, "$1").replace(/\*([^*]+)\*/g, "$1").replace(/`([^`]+)`/g, "$1").replace(/\{\:(\s[^}]*)?\}/g, "").replace(/^%%[\s\S]*?%%$/gm, "").trim();
-  }
-  function deriveSummary(kramdown) {
-    const text = kramdownToPlainText(kramdown).replace(/\s+/g, " ").trim();
-    return text.slice(0, LIMITS.summary);
-  }
-  function getCategoryColorVariant(category) {
-    var _a;
-    const trimmed = (category != null ? category : "").trim();
-    if (!trimmed) return "business";
-    if (/商务|财务|发票|银行|采购|合同/i.test(trimmed)) return "business";
-    if (/客服|支持|售后|退换|接待|咨询/i.test(trimmed)) return "support";
-    if (/开发|代码|研发|SQL|技术|架构|编程/i.test(trimmed)) return "dev";
-    if (/写作|周报|会议|计划|日常|笔记/i.test(trimmed)) return "writing";
-    if (/提示词|AI|模型|Prompt/i.test(trimmed)) return "ai";
-    let hash = 0;
-    for (let i = 0; i < trimmed.length; i++) {
-      hash = hash * 31 + trimmed.charCodeAt(i) >>> 0;
-    }
-    const variants = [
-      "business",
-      "support",
-      "dev",
-      "writing",
-      "ai"
-    ];
-    return (_a = variants[hash % variants.length]) != null ? _a : "business";
-  }
-
   // src/ui/dialog.ts
+  init_item();
   init_errors();
 
   // src/model/variables.ts
+  init_constants();
   var ASK_PATTERN = /\{\{xlc:ask:([^|}]+)(?:\|([^}]*))?\}\}/g;
   function parseAskField(rawName, rawOptions) {
     var _a, _b;
@@ -6229,6 +6257,8 @@ ${exception.mark.snippet}`;
   var import_siyuan3 = __toESM(require_stub_dom());
 
   // src/model/storage.ts
+  init_constants();
+  init_item();
   var CONFIG_VERSION = 1;
   function summarizeUsage(usage) {
     let totalCount = 0;
@@ -6243,7 +6273,12 @@ ${exception.mark.snippet}`;
     return { totalCount, trackedItems, latestAt };
   }
 
+  // src/ui/settings-dialog.ts
+  init_constants();
+
   // src/model/transfer.ts
+  init_constants();
+  init_item();
   function toTimestamp(v) {
     const n = Number(v);
     return Number.isFinite(n) && n > 0 ? n : 0;
@@ -6432,6 +6467,8 @@ ${exception.mark.snippet}`;
   }
 
   // src/model/actions.ts
+  init_constants();
+  init_item();
   var ASSET_PATH_RE = /^(assets\/[^\s/][^\s]*|assets\/[^\s/])$/;
   function isValidAssetPath(path) {
     return ASSET_PATH_RE.test(path) && !path.includes("..");
@@ -6593,6 +6630,7 @@ ${exception.mark.snippet}`;
   }
 
   // src/service/export-markdown.ts
+  init_constants();
   var ExportIntegrityError = class extends Error {
     constructor(reason, itemLabel = "", detail = "") {
       super(`export-${reason}${itemLabel ? `: ${itemLabel}` : ""}${detail ? `: ${detail}` : ""}`);
@@ -6684,7 +6722,14 @@ ${exception.mark.snippet}`;
     return { entries, itemCount: items.length, assetCount, skippedAssets, varNames };
   }
 
+  // src/service/import-markdown.ts
+  init_constants();
+
+  // src/service/importer.ts
+  init_item();
+
   // src/model/kramdown.ts
+  init_constants();
   var STRUCTURED_PATTERN = /\{:|[{]{3}|[}]{3}|^ {0,3}(?:`{3,}|~{3,}|>|(?:[-*+]|\d{1,9}[.)])[ \t]|\||(?:[-*_][ \t]*){3,}$)/;
   function bodyWriteRestriction(markdown) {
     var _a;
@@ -6835,6 +6880,7 @@ ${exception.mark.snippet}`;
   init_errors();
 
   // src/service/import-markdown.ts
+  init_item();
   var ITEM_COMMENT_START = "<!-- xlc-item";
   var ITEM_COMMENT_END = "-->";
   var PACK_COMMENT_START = "<!-- xlc-pack";
@@ -6964,6 +7010,7 @@ ${exception.mark.snippet}`;
   init_errors();
 
   // src/model/search.ts
+  init_constants();
   function collectTags(entries) {
     const tags = /* @__PURE__ */ new Set();
     for (const e of entries) for (const t of e.tags) tags.add(t);
@@ -9351,7 +9398,9 @@ ${exception.mark.snippet}`;
 
   // src/ui/capture.ts
   var import_siyuan4 = __toESM(require_stub_dom());
+  init_item();
   init_errors();
+  init_constants();
   function isBlockRefTarget(blockId) {
     return /^\d{14}-[0-9a-z]{7}$/.test(blockId);
   }
@@ -10119,6 +10168,8 @@ ${exception.mark.snippet}`;
 
   // src/ui/discovery-dialog.ts
   var import_siyuan5 = __toESM(require_stub_dom());
+  init_constants();
+  init_item();
   init_errors();
 
   // src/model/discovery-facets.ts
@@ -11998,6 +12049,7 @@ ${details.join("\n")}` : ""}`;
 
   // src/service/commands.ts
   var import_siyuan6 = __toESM(require_stub_dom());
+  init_constants();
 
   // src/model/placeholders.ts
   var PLACEHOLDER_PATTERN = /\{\{xlc:(date|time|datetime|weekday|title|path|doc|random)(?:\|([^}]+))?\}\}/g;
@@ -12345,7 +12397,11 @@ ${details.join("\n")}` : ""}`;
     }
   };
 
+  // src/service/library.ts
+  init_constants();
+
   // src/kernel/client.ts
+  init_constants();
   init_errors();
   function parseChildBlocks(data) {
     if (!Array.isArray(data)) return [];
@@ -12428,6 +12484,7 @@ ${details.join("\n")}` : ""}`;
   }
 
   // src/service/library.ts
+  init_item();
   init_errors();
   function fail(reason, message) {
     return { ok: false, reason, message };

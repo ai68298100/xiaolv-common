@@ -13,6 +13,7 @@
 import {load as loadYaml} from "js-yaml";
 import {ExportedItem} from "../model/transfer";
 import {toErrorMessage} from "../model/errors";
+import {isSafeHttpUrl, ItemType} from "../model/item";
 
 export interface EspansoImportResult {
     items: ExportedItem[];
@@ -129,16 +130,29 @@ export function parseEspansoYaml(text: string, now = Date.now()): EspansoImportR
                 // 非 date 类型不在此登记：正文引用时统一记 issue 保留原样
             }
         }
+        const kramdown = rewriteBody(replace, dateVars, issues);
+        let itemType: ItemType = "text";
+        let url = "";
+        const trimmed = kramdown.trim();
+        if (/^(`{3,}|~{3,})[a-zA-Z0-9_+.-]*\n[\s\S]*?\n\1[ \t]*$/.test(trimmed)) {
+            itemType = "code";
+        } else if (!trimmed.includes("\n") && isSafeHttpUrl(trimmed)) {
+            itemType = "url";
+            url = trimmed;
+        } else if (!trimmed.includes("\n") && /[*_~`\[\]]/.test(trimmed)) {
+            itemType = "markdown";
+        }
+
         items.push({
             id: espansoLogicalId(trigger),
-            itemType: "text",
+            itemType,
             title: trigger.replace(/^:+/, "").trim() || trigger,
             alias: trigger,
             tags: ["espanso"],
             category: "",
-            kramdown: rewriteBody(replace, dateVars, issues),
+            kramdown,
             source: {sourceDocId: "", sourceBlockId: "", sourceType: "external"},
-            url: "",
+            url,
             targetBlockId: "",
             createdAt: now,
             updatedAt: now,
