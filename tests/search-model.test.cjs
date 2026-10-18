@@ -111,3 +111,52 @@ test("超长查询词被裁剪且不抛异常", () => {
     const results = search.searchEntries([entry({title: "甲"})], {text: "长".repeat(5000), scope: "all"}, CTX);
     assert.equal(results.length, 0);
 });
+
+test("dateRange 搜索时间范围筛选：闭区间过滤、createdAt/updatedAt 分野与非法参数容错", () => {
+    const entries = [
+        entry({id: "xlc-e1", title: "条目一", createdAt: 1000, updatedAt: 2000}),
+        entry({id: "xlc-e2", title: "条目二", createdAt: 3000, updatedAt: 4000}),
+        entry({id: "xlc-e3", title: "条目三", createdAt: 5000, updatedAt: 6000}),
+    ];
+
+    // 默认 updatedAt 过滤：闭区间 [2000, 4000]
+    const midUpdated = search.searchEntries(entries, {
+        text: "",
+        dateRange: {from: 2000, to: 4000},
+    }, CTX);
+    assert.deepEqual(midUpdated.map((r) => r.entry.id), ["xlc-e2", "xlc-e1"]);
+
+    // 单边 from：>= 4000
+    const fromUpdated = search.searchEntries(entries, {
+        text: "",
+        dateRange: {from: 4000},
+    }, CTX);
+    assert.deepEqual(fromUpdated.map((r) => r.entry.id), ["xlc-e3", "xlc-e2"]);
+
+    // 单边 to：<= 2000
+    const toUpdated = search.searchEntries(entries, {
+        text: "",
+        dateRange: {to: 2000},
+    }, CTX);
+    assert.deepEqual(toUpdated.map((r) => r.entry.id), ["xlc-e1"]);
+
+    // 指定 field: "createdAt"：[1000, 3000]
+    const createdFilter = search.searchEntries(entries, {
+        text: "",
+        dateRange: {from: 1000, to: 3000, field: "createdAt"},
+    }, CTX);
+    assert.deepEqual(createdFilter.map((r) => r.entry.id), ["xlc-e2", "xlc-e1"]);
+
+    // 矛盾区间 from > to：返回空
+    const contradictory = search.searchEntries(entries, {
+        text: "",
+        dateRange: {from: 5000, to: 1000},
+    }, CTX);
+    assert.equal(contradictory.length, 0);
+
+    // applyBasicFilters 也同样生效
+    const basic = search.applyBasicFilters(entries, {
+        dateRange: {from: 3500, to: 4500},
+    }, CTX);
+    assert.deepEqual(basic.map((e) => e.id), ["xlc-e2"]);
+});

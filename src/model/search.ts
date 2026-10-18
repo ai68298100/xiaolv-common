@@ -3,12 +3,22 @@ import {LIMITS} from "../constants";
 import {CommonItem, ItemType} from "./item";
 import {getPinyinAdapter} from "./pinyin";
 
+export interface DateRangeFilter {
+    /** 起始毫秒时间戳（闭区间，含此毫秒） */
+    from?: number;
+    /** 截止毫秒时间戳（闭区间，含此毫秒） */
+    to?: number;
+    /** 匹配字段：默认 "updatedAt"，可选 "createdAt" */
+    field?: "updatedAt" | "createdAt";
+}
+
 export interface SearchQuery {
     text: string;
     itemType?: "" | ItemType;
     tag?: string;
     category?: string;
     scope?: "all" | "favorites" | "recent";
+    dateRange?: DateRangeFilter;
 }
 
 export interface SearchContext {
@@ -127,12 +137,22 @@ export function passesFilters(entry: SearchEntry, query: SearchQuery, ctx: Searc
     if (query.category && entry.category !== query.category) return false;
     if (query.scope === "favorites" && !ctx.favorites.has(entry.id)) return false;
     if (query.scope === "recent" && !ctx.recents.has(entry.id)) return false;
+    if (query.dateRange) {
+        const {from, to, field = "updatedAt"} = query.dateRange;
+        const targetField = field === "createdAt" ? "createdAt" : "updatedAt";
+        const ts = entry[targetField] ?? 0;
+        const hasFrom = typeof from === "number" && Number.isFinite(from);
+        const hasTo = typeof to === "number" && Number.isFinite(to);
+        if (hasFrom && hasTo && from > to) return false;
+        if (hasFrom && ts < from) return false;
+        if (hasTo && ts > to) return false;
+    }
     return true;
 }
 
-/** 仅筛选不过滤打分（`?` 语义找的候选预过滤用——语义找忽略文本但必须尊重类型/标签/收藏范围） */
-export function applyBasicFilters(entries: readonly SearchEntry[], query: Pick<SearchQuery, "itemType" | "tag" | "category" | "scope">, ctx: SearchContext): SearchEntry[] {
-    return entries.filter((e) => passesFilters(e, {text: "", itemType: query.itemType, tag: query.tag, category: query.category, scope: query.scope}, ctx));
+/** 仅筛选不过滤打分（`?` 语义找的候选预过滤用——语义找忽略文本但必须尊重类型/标签/收藏/时间范围） */
+export function applyBasicFilters(entries: readonly SearchEntry[], query: Pick<SearchQuery, "itemType" | "tag" | "category" | "scope" | "dateRange">, ctx: SearchContext): SearchEntry[] {
+    return entries.filter((e) => passesFilters(e, {text: "", itemType: query.itemType, tag: query.tag, category: query.category, scope: query.scope, dateRange: query.dateRange}, ctx));
 }
 
 function compareResults(a: ScoredResult, b: ScoredResult, ctx: SearchContext): number {
