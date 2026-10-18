@@ -288,6 +288,7 @@ common.protocolCommands["xiaolv.common.open"]();          // 稳定命令 ID
 
 ```bash
 pnpm i
+pnpm run check:errors  # 异常回执安全门禁
 pnpm run check   # tsc --noEmit
 pnpm test        # 单元测试
 pnpm run build   # dist/ + package.zip

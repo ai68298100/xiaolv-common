@@ -10,7 +10,7 @@
 
 | 层级 | 本轮状态 | 可以声称 | 不能声称 |
 | --- | --- | --- | --- |
-| 源码/模型 | `pnpm run check` 通过；单元门禁最终 524/524 | 纯函数、服务装配和错误边界符合当前测试 | 不能代替宿主行为 |
+| 源码/模型 | `pnpm run check`、`pnpm run check:errors` 通过；单元门禁最终 525/525 | 纯函数、服务装配和错误边界符合当前测试 | 不能代替宿主行为 |
 | Chrome 离线生产 UI | `test:ui` 通过；`test:ix` 交互 74/74；0 pageerror/console；基线文件已恢复 | 原型对应的桌面、暗色、窄屏、移动、设置、首跑、捕获、发现、导入和动作菜单状态可渲染并可操作 | 不能代替思源 Electron/Android |
 | 隔离内核/历史 Electron | 复用既有 v3.8.8-alpha.1 与固定 Electron 3.8.7 证据 | 桌面核心块读写、协议入口、普通/引用动作和无编辑器复制降级已有局部证据 | B-005 使镜像整体隔离声明失效；不能外推到日常工作区或 Android |
 | 真实服务/provider/AI | provider 合同和 AI 失败边界已实现；真实模型端到端未完成 | 默认关、正文出域双开关、原文不变、失败可见 | 不能称真实 AI 已验收；第三方 provider 仍依赖兄弟插件接入 |
@@ -56,6 +56,12 @@ Chrome 离线审计上一轮暴露的搜索 `role=option` 嵌套交互和客服�
 
 - 新增无依赖的 `src/model/errors.ts`，所有源码旧的 `(err as Error).message` 和重复三元转换已迁移到 `toErrorMessage`；协议、导入、捕获、搜索、设置、启动和提供方错误均保持可见回执。
 - 新增直接边界测试，覆盖 `Error`、`null`、字符串、普通对象、循环对象和 hostile Proxy；生产包体保持约 353 KiB JS / 495 KiB ZIP。
+
+## R247 异常处理源码门禁与开发者路径
+
+- `scripts/check-error-handling.cjs` 现覆盖任意变量名、可选链、不安全对象断言和重复 `Error`/字符串三元转换，并忽略注释以避免维护文档示例误报。
+- `pnpm run check:errors` 已加入 GitHub Actions gates、README 和交付脚本索引；负向夹具注入四类违规后均能以非零退出，恢复源码后门禁通过。
+- 该门禁只约束源码静态模式，不能替代 `toErrorMessage` 的运行时 hostile Proxy 测试；真实宿主、Android、AI、B-005 和 B-006 边界保持不变。
 
 仍开放但已明确记录：B-006 的真实宿主验收、多块正文更新和旧数据边界；Android、真实 AI、B-004 根因与 B-005 隔离/影响审计。发现页标签可访问名称已经修复，不再把历史诊断写成当前缺陷；有限 axe 场景仍不等于全插件无障碍保证。
 

@@ -15,6 +15,7 @@
     "e2e:discovery": "node scripts/e2e-discovery.cjs",
     "e2e:discovery:iso": "node scripts/e2e-isolated.cjs --discovery-only",
     "scan": "node scripts/secret-scan.cjs",
+    "check:errors": "node scripts/check-error-handling.cjs",
     "check:package": "node scripts/check-package.cjs",
     "it:kernel": "node scripts/integration-kernel.cjs"
   },

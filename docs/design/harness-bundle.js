@@ -113,6 +113,44 @@
     }
   });
 
+  // src/model/errors.ts
+  function toErrorMessage(error, fallback = "Unknown error") {
+    try {
+      if (error instanceof Error) return error.message || error.name || fallback;
+      if (typeof error === "string") return error || fallback;
+      if (error && typeof error === "object") {
+        let message;
+        try {
+          message = error.message;
+        } catch {
+        }
+        if (typeof message === "string" && message) return message;
+        try {
+          const serialized = JSON.stringify(error);
+          if (serialized) return serialized;
+        } catch {
+        }
+      }
+      const text = String(error);
+      return text || fallback;
+    } catch {
+      return fallback;
+    }
+  }
+  function getErrorProperty(error, key) {
+    try {
+      if (!error || typeof error !== "object" && typeof error !== "function") return void 0;
+      return error[key];
+    } catch {
+      return void 0;
+    }
+  }
+  var init_errors = __esm({
+    "src/model/errors.ts"() {
+      "use strict";
+    }
+  });
+
   // node_modules/.pnpm/tiny-pinyin@1.3.2/node_modules/tiny-pinyin/dist/dict.js
   var require_dict = __commonJS({
     "node_modules/.pnpm/tiny-pinyin@1.3.2/node_modules/tiny-pinyin/dist/dict.js"(exports, module) {
@@ -2916,7 +2954,7 @@ ${exception.mark.snippet}`;
     try {
       doc = load(text);
     } catch (err) {
-      return { items: [], issues: [`YAML \u89E3\u6790\u5931\u8D25\uFF1A${err.message.slice(0, 120)}`] };
+      return { items: [], issues: [`YAML \u89E3\u6790\u5931\u8D25\uFF1A${toErrorMessage(err).slice(0, 120)}`] };
     }
     const root = asRecord(doc);
     const matches = root ? root.matches : null;
@@ -2972,6 +3010,7 @@ ${exception.mark.snippet}`;
     "src/service/espanso-import.ts"() {
       "use strict";
       init_js_yaml();
+      init_errors();
     }
   });
 
@@ -3230,6 +3269,9 @@ ${exception.mark.snippet}`;
     ];
     return (_a = variants[hash % variants.length]) != null ? _a : "business";
   }
+
+  // src/ui/dialog.ts
+  init_errors();
 
   // src/model/variables.ts
   var ASK_PATTERN = /\{\{xlc:ask:([^|}]+)(?:\|([^}]*))?\}\}/g;
@@ -4455,7 +4497,7 @@ ${exception.mark.snippet}`;
         this.emptyMessage = "";
         if (aiBanner) aiBanner.style.display = "none";
         if (status) {
-          status.textContent = this.deps.t("kernelError", err.message);
+          status.textContent = this.deps.t("kernelError", toErrorMessage(err));
           status.classList.add("xlc-status--error");
         }
         if (footer) {
@@ -5734,7 +5776,7 @@ ${exception.mark.snippet}`;
               if (mySeq !== seq) return;
               searchStatus.className = "xlc-pickdoc-empty xlc-status--error";
               searchStatus.setAttribute("aria-busy", "false");
-              searchStatus.textContent = this.deps.t("kernelError", err instanceof Error ? err.message : String(err));
+              searchStatus.textContent = this.deps.t("kernelError", toErrorMessage(err));
               const retry = document.createElement("button");
               retry.type = "button";
               retry.className = "b3-button xlc-btn-ghost xlc-pickdoc-retry";
@@ -5827,7 +5869,7 @@ ${exception.mark.snippet}`;
         try {
           result = await run();
         } catch (err) {
-          result = { ok: false, message: this.deps.t("kernelError", err instanceof Error ? err.message : String(err)) };
+          result = { ok: false, message: this.deps.t("kernelError", toErrorMessage(err)) };
         }
         if (gen !== this.transformSeq) return;
         const apply = menu.applyTransform;
@@ -6788,6 +6830,9 @@ ${exception.mark.snippet}`;
     return output.join("\n").trim();
   }
 
+  // src/service/importer.ts
+  init_errors();
+
   // src/service/import-markdown.ts
   var ITEM_COMMENT_START = "<!-- xlc-item";
   var ITEM_COMMENT_END = "-->";
@@ -6913,6 +6958,9 @@ ${exception.mark.snippet}`;
     if (hasUnclosed) issues.push({ index: commentStarts.length, reason: "metadata-comment-unclosed" });
     return { items, issues, pack };
   }
+
+  // src/ui/settings-dialog.ts
+  init_errors();
 
   // src/model/search.ts
   function collectTags(entries) {
@@ -7632,7 +7680,7 @@ ${exception.mark.snippet}`;
           return ctx.t("exportTooLarge", err.detail);
       }
     }
-    return ctx.t("kernelError", err instanceof Error ? err.message : String(err));
+    return ctx.t("kernelError", toErrorMessage(err));
   }
   function buildInsertSection(ctx, root) {
     const t = ctx.t;
@@ -7911,7 +7959,7 @@ ${exception.mark.snippet}`;
       }).catch((err) => {
         if (seq !== pickerSeq) return;
         pickerList.removeAttribute("aria-busy");
-        showDocPickerMessage(t("kernelError", err instanceof Error ? err.message : String(err)), () => {
+        showDocPickerMessage(t("kernelError", toErrorMessage(err)), () => {
           if (pickerInput.value.trim() === keyword) searchPickerDocs(keyword);
         });
       });
@@ -8069,7 +8117,7 @@ ${exception.mark.snippet}`;
         return true;
       } catch (err) {
         notebookDocsState = "error";
-        ctx.notify("error", t("kernelError", err instanceof Error ? err.message : String(err)));
+        ctx.notify("error", t("kernelError", toErrorMessage(err)));
         return false;
       } finally {
         notebookDocsChecking = false;
@@ -8206,7 +8254,7 @@ ${exception.mark.snippet}`;
           independentNotebookInput.disabled = false;
           createBtn.textContent = t("create");
           syncCreateState();
-          const message = mode === "new-notebook" ? t("setupIndependentCreateFailed", err.message) : t("kernelError", err.message);
+          const message = mode === "new-notebook" ? t("setupIndependentCreateFailed", toErrorMessage(err)) : t("kernelError", toErrorMessage(err));
           independentNotebookStatus.classList.toggle("xlc-form-error", mode === "new-notebook");
           independentNotebookStatus.textContent = mode === "new-notebook" ? message : "";
           ctx.notify("error", message);
@@ -8542,7 +8590,7 @@ ${exception.mark.snippet}`;
         ctx.notify("info", t("reindexDone", String(idx.entries.length)));
       }).catch((err) => {
         if (mySeq !== pinyinSeq) return;
-        ctx.notify("error", t("kernelError", err.message));
+        ctx.notify("error", t("kernelError", toErrorMessage(err)));
       }).finally(() => {
         if (pinyinInput) {
           pinyinInput.disabled = false;
@@ -8734,7 +8782,7 @@ ${exception.mark.snippet}`;
           }
         }).catch((err) => {
           var _a2, _b2;
-          const message = (_b2 = (_a2 = opts.formatError) == null ? void 0 : _a2.call(opts, err)) != null ? _b2 : t("kernelError", err instanceof Error ? err.message : String(err));
+          const message = (_b2 = (_a2 = opts.formatError) == null ? void 0 : _a2.call(opts, err)) != null ? _b2 : t("kernelError", toErrorMessage(err));
           ctx.notify("error", message);
           setOperationStatus("error", message, () => btn.click());
         }).finally(() => {
@@ -8773,7 +8821,7 @@ ${exception.mark.snippet}`;
       withFlight(auditBtn, async () => {
         const result = await runTagAudit(ctx);
         return result === "empty" ? { status: "empty", message: t("tagAuditTooFew") } : void 0;
-      }, { flightLabel: "\u2726 " + t("aiWorking"), loading: t("aiWorking"), formatError: (err) => err instanceof Error ? err.message : String(err) });
+      }, { flightLabel: "\u2726 " + t("aiWorking"), loading: t("aiWorking"), formatError: (err) => toErrorMessage(err) });
     }
     const exportBtn = mkBtn(t("exportBtn"), void 0, "settings.data.export");
     withFlight(exportBtn, async () => {
@@ -8868,7 +8916,7 @@ ${exception.mark.snippet}`;
           setOperationStatus("success", t("importPreview", String(validation.parsed.items.length), String(validation.issues.length)));
           finish();
         }).catch((err) => {
-          const message = t("importFailed", err instanceof Error ? err.message : String(err));
+          const message = t("importFailed", toErrorMessage(err));
           ctx.notify("error", message);
           setOperationStatus("error", message, () => importBtn.click());
           finish();
@@ -9010,7 +9058,7 @@ ${exception.mark.snippet}`;
       try {
         parser = await loadEspansoParser();
       } catch (err) {
-        preview.textContent = t("importFailed", err.message.slice(0, 120));
+        preview.textContent = t("importFailed", toErrorMessage(err).slice(0, 120));
         return;
       }
       if (sourceText !== ta.value || !dialog.element.isConnected) return;
@@ -9062,7 +9110,7 @@ ${exception.mark.snippet}`;
     try {
       idx = await ctx.library.ensureIndex();
     } catch (err) {
-      throw new Error(t("kernelError", err instanceof Error ? err.message : String(err)));
+      throw new Error(t("kernelError", toErrorMessage(err)));
     }
     const tags = collectTags(idx.entries);
     if (tags.length < 2) {
@@ -9188,7 +9236,7 @@ ${exception.mark.snippet}`;
         receiptHint.textContent = message;
         ctx.notify(receipt.failed > 0 ? "error" : "info", message);
       } catch (err) {
-        const message = t("importRunFailed", err instanceof Error ? err.message : String(err));
+        const message = t("importRunFailed", toErrorMessage(err));
         receiptHint.dataset.state = "error";
         receiptHint.replaceChildren();
         const error = document.createElement("span");
@@ -9245,6 +9293,7 @@ ${exception.mark.snippet}`;
 
   // src/ui/capture.ts
   var import_siyuan4 = __toESM(require_stub_dom());
+  init_errors();
   function isBlockRefTarget(blockId) {
     return /^\d{14}-[0-9a-z]{7}$/.test(blockId);
   }
@@ -9289,7 +9338,7 @@ ${exception.mark.snippet}`;
       try {
         await action();
       } catch (err) {
-        this.deps.notify("error", this.deps.t("kernelError", err instanceof Error ? err.message : String(err)));
+        this.deps.notify("error", this.deps.t("kernelError", toErrorMessage(err)));
       } finally {
         this.activeCaptures.delete(key);
       }
@@ -9307,7 +9356,7 @@ ${exception.mark.snippet}`;
       try {
         sel = this.deps.getSelectionText();
       } catch (err) {
-        this.deps.notify("error", this.deps.t("kernelError", err instanceof Error ? err.message : String(err)));
+        this.deps.notify("error", this.deps.t("kernelError", toErrorMessage(err)));
         return;
       }
       const text = sel.text.trim();
@@ -9381,7 +9430,7 @@ ${exception.mark.snippet}`;
       try {
         dup = await this.deps.findDuplicate(content);
       } catch (err) {
-        this.deps.notify("error", this.deps.t("kernelError", err instanceof Error ? err.message : String(err)));
+        this.deps.notify("error", this.deps.t("kernelError", toErrorMessage(err)));
         return;
       }
       if (dup) {
@@ -9398,7 +9447,7 @@ ${exception.mark.snippet}`;
           source: { sourceType: "clipboard" }
         }, { idempotencyKey: newWriteKey("clipboard") });
       } catch (err) {
-        this.deps.notify("error", this.deps.t("kernelError", err instanceof Error ? err.message : String(err)));
+        this.deps.notify("error", this.deps.t("kernelError", toErrorMessage(err)));
         return;
       }
       if (created.ok) {
@@ -9778,7 +9827,7 @@ ${exception.mark.snippet}`;
               tidyBtn.textContent = "\u2726 " + t("aiTidy");
               tidyBusy = false;
               syncTidyButton();
-              showTidyFailure(err instanceof Error ? err.message : t("aiTransport"));
+              showTidyFailure(toErrorMessage(err, t("aiTransport")));
             });
           };
           tidyBtn.addEventListener("click", runTidy);
@@ -9870,7 +9919,7 @@ ${exception.mark.snippet}`;
             draftBtn.textContent = "\u2726 " + t("aiDraftDesc");
             draftBusy = false;
             syncDraftButton();
-            showDraftFailure(err instanceof Error ? err.message : t("aiTransport"));
+            showDraftFailure(toErrorMessage(err, t("aiTransport")));
           });
         };
         draftBtn.addEventListener("click", runDraft);
@@ -9976,7 +10025,7 @@ ${exception.mark.snippet}`;
             saveBtn.disabled = false;
             saveBtn.textContent = t("save");
             cancelBtn.disabled = false;
-            this.deps.notify("error", t("kernelError", err instanceof Error ? err.message : String(err)));
+            this.deps.notify("error", t("kernelError", toErrorMessage(err)));
           });
         };
         void this.deps.findDuplicate(contentValue).then((dup) => {
@@ -9999,7 +10048,7 @@ ${exception.mark.snippet}`;
           saveBtn.disabled = false;
           saveBtn.textContent = t("save");
           cancelBtn.disabled = false;
-          this.deps.notify("error", t("kernelError", err instanceof Error ? err.message : String(err)));
+          this.deps.notify("error", t("kernelError", toErrorMessage(err)));
         });
       });
       actions.appendChild(cancelBtn);
@@ -10012,6 +10061,7 @@ ${exception.mark.snippet}`;
 
   // src/ui/discovery-dialog.ts
   var import_siyuan5 = __toESM(require_stub_dom());
+  init_errors();
 
   // src/model/discovery-facets.ts
   function matchesDiscoveryTag(tags, query) {
@@ -11094,7 +11144,7 @@ ${exception.mark.snippet}`;
           result = await this.deps.service.discoverCurrentDocument(this.options.docId);
         }
       } catch (error) {
-        result = { ok: false, reason: "kernel-error", message: error instanceof Error ? error.message : String(error) };
+        result = { ok: false, reason: "kernel-error", message: toErrorMessage(error) };
       }
       if (this.closed) return;
       if (seq !== this.scanSeq) return;
@@ -11797,7 +11847,7 @@ ${details.join("\n")}` : ""}`;
       return key ? this.tx(key) : this.errorMessage(result.message);
     }
     errorMessage(error) {
-      const message = error instanceof Error ? error.message : typeof error === "string" ? error : "";
+      const message = toErrorMessage(error, "");
       return /[\u3400-\u9fff]/.test(message) ? message : this.tx("discoveryKernelError");
     }
     async undoBatch(batchId) {
@@ -12238,6 +12288,7 @@ ${details.join("\n")}` : ""}`;
   };
 
   // src/kernel/client.ts
+  init_errors();
   function parseChildBlocks(data) {
     if (!Array.isArray(data)) return [];
     return data.filter((raw) => {
@@ -12319,6 +12370,7 @@ ${details.join("\n")}` : ""}`;
   }
 
   // src/service/library.ts
+  init_errors();
   function fail(reason, message) {
     return { ok: false, reason, message };
   }
@@ -12346,9 +12398,9 @@ ${details.join("\n")}` : ""}`;
     return actualKeys.length === expectedKeys.length && actualKeys.every((key, index) => key === expectedKeys[index] && actual[key] === expected[key]);
   }
   function toFailureReceipt(err) {
-    const name = err == null ? void 0 : err.name;
-    if (name === "KernelTimeoutError") return fail("timeout", err.message);
-    return fail("kernel-error", err.message);
+    const name = getErrorProperty(err, "name");
+    if (name === "KernelTimeoutError") return fail("timeout", toErrorMessage(err));
+    return fail("kernel-error", toErrorMessage(err));
   }
   function toSearchEntry(item) {
     return {
@@ -12704,7 +12756,7 @@ ${details.join("\n")}` : ""}`;
               if (typeof id === "string" && isBlockId(id)) docIds2.push(id);
             }
           } catch (err) {
-            errors2.push(`notebook ${notebookId}: ${err.message}`);
+            errors2.push(`notebook ${notebookId}: ${toErrorMessage(err)}`);
           }
         }
         return { docIds: docIds2, errors: errors2, stopped: ((_b = options.shouldStop) == null ? void 0 : _b.call(options)) === true };
@@ -12725,7 +12777,7 @@ ${details.join("\n")}` : ""}`;
           const path = typeof (info == null ? void 0 : info.path) === "string" ? info.path : "";
           if (box && path) queue.push({ box, path });
         } catch (err) {
-          errors.push(`tree ${root}: ${err.message}`);
+          errors.push(`tree ${root}: ${toErrorMessage(err)}`);
         }
       }
       const TREE_MAX_DEPTH = 3;
@@ -12751,7 +12803,7 @@ ${details.join("\n")}` : ""}`;
               }
             }
           } catch (err) {
-            errors.push(`tree ${node.path}: ${err.message}`);
+            errors.push(`tree ${node.path}: ${toErrorMessage(err)}`);
           }
         }
         depth++;
@@ -12787,7 +12839,7 @@ ${details.join("\n")}` : ""}`;
           try {
             children = parseChildBlocks(await this.kernel.request("getChildBlocks", { id: docId }));
           } catch (err) {
-            errors.push(`doc ${docId}: ${err.message}`);
+            errors.push(`doc ${docId}: ${toErrorMessage(err)}`);
             continue;
           }
           if ((_b2 = options.shouldStop) == null ? void 0 : _b2.call(options)) {
@@ -12802,7 +12854,7 @@ ${details.join("\n")}` : ""}`;
               ids: children.map((c) => c.id)
             }));
           } catch (err) {
-            errors.push(`attrs ${docId}: ${err.message}`);
+            errors.push(`attrs ${docId}: ${toErrorMessage(err)}`);
             continue;
           }
           perDoc[index] = children.map((child) => {
@@ -12829,7 +12881,7 @@ ${details.join("\n")}` : ""}`;
             const body = parseKramdown(await this.kernel.request("getBlockKramdown", { id: child.id }));
             kramdown = (_c = body == null ? void 0 : body.kramdown) != null ? _c : "";
           } catch (err) {
-            errors.push(`block ${child.id}: ${err.message}`);
+            errors.push(`block ${child.id}: ${toErrorMessage(err)}`);
           }
           if ((_d = options.shouldStop) == null ? void 0 : _d.call(options)) {
             stopped = true;
@@ -12894,7 +12946,7 @@ ${details.join("\n")}` : ""}`;
           }
           if (missing) errors.push(`blockref targets unavailable: ${missing}`);
         } catch (err) {
-          errors.push(`blockref targets: ${err.message}`);
+          errors.push(`blockref targets: ${toErrorMessage(err)}`);
         }
       }
       return { entries, items, truncated, ...stopped ? { stopped: true } : {}, docsScanned, errors, builtAt: Date.now() };
@@ -13274,7 +13326,7 @@ ${details.join("\n")}` : ""}`;
           }
         }
         if (rollbackFailed) {
-          return fail("kernel-error", `${(err == null ? void 0 : err.message) || String(err)}; rollback failed and item state may be partially updated`);
+          return fail("kernel-error", `${toErrorMessage(err)}; rollback failed and item state may be partially updated`);
         }
         return toFailureReceipt(err);
       }
@@ -13410,7 +13462,7 @@ ${details.join("\n")}` : ""}`;
             status: "failed",
             itemId: item.id,
             blockId: item.blockId,
-            message: (err == null ? void 0 : err.message) || String(err)
+            message: toErrorMessage(err)
           });
         }
       }

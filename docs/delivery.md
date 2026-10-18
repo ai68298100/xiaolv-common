@@ -37,6 +37,7 @@
 git clone https://github.com/ai68298100/xiaolv-common.git
 cd xiaolv-common
 pnpm install
+pnpm run check:errors
 pnpm run check
 pnpm test
 pnpm run build
@@ -48,6 +49,7 @@ pnpm run build
 
 | 命令 | 作用 | 宿主 |
 |---|---|---|
+| `pnpm run check:errors` | 扫描源码中的不安全 thrown value 属性读取，阻止异常回执回归 | 否 |
 | `pnpm run check` | TypeScript 严格类型检查 | 否 |
 | `pnpm test` | 模型、服务、协议、导入导出和边界测试 | 否 |
 | `pnpm run build` | webpack 生产构建并生成 `dist/`、`package.zip` | 否 |
@@ -65,7 +67,7 @@ pnpm run build
 ## 发布与部署
 
 1. 修改 `package.json` 与 `plugin.json` 版本，并更新 README 当前版本更新内容。
-2. 依次执行 `pnpm run check`、`pnpm test`、`pnpm run build`、`pnpm run test:ui`、`pnpm run test:ix`、`pnpm run scan`、`pnpm run check:package`，需要时补跑 `pnpm run e2e:iso`。
+2. 依次执行 `pnpm run check:errors`、`pnpm run check`、`pnpm test`、`pnpm run build`、`pnpm run test:ui`、`pnpm run test:ix`、`pnpm run scan`、`pnpm run check:package`，需要时补跑 `pnpm run e2e:iso`。
 3. 检查 `package.zip`：解压后目录名为 `xiaolv-common`，包含 `plugin.json`、`index.js`、`index.css` 和图标资源；不得包含 `node_modules`、测试截图或密钥。
 4. GitHub 发布上传 `package.zip` 和变更说明。手动安装时，把 zip 解压到 `<工作空间>/data/plugins/xiaolv-common/`，重启思源后在插件设置中启用。
 5. 思源集市 PR 只在用户明确授权后发起；提交前补齐集市要求的 zip、图标、版本、README 和校验结果。
