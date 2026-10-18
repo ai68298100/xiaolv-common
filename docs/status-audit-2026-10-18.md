@@ -53,6 +53,12 @@ Chrome 离线审计上一轮暴露的搜索 `role=option` 嵌套交互和客服�
 
 仍开放但已明确记录：B-006 的真实宿主验收、多块正文更新和旧数据边界；Android、真实 AI、B-004 根因与 B-005 隔离/影响审计。发现页标签可访问名称已经修复，不再把历史诊断写成当前缺陷；有限 axe 场景仍不等于全插件无障碍保证。
 
+## R241 资源示例与 Issue #1 续审
+
+- 使用帮助已拆出图片/证件示意图、PPT/PDF/DOCX、简历正文/附件三类真实资源示例；每条都说明先在思源添加真实资源，以及当前仅支持 Markdown/资源链接、打开来源和链接复制。
+- `guide.media.image`、`guide.media.attachment`、`guide.media.resume` 已纳入 Chrome 交互审计；三类示例可见，`test:ix` 仍为 74/74。该证据属于离线 harness，不代表 Android 位图剪贴板、Office 预览或跨应用文件发送已验收。
+- Issue #1 仍开放、无开放 PR。处理方案已记录在 [ADR 0059](adr/0059-issue1-independent-notebook-creation-plan.md)：新增独立笔记本模式前先补 `createNotebook` 契约、两步回执、失败补偿删除、幂等和负向测试；B-005 解除前不启动新的宿主实验。
+
 ## GitHub 状态
 
 - 最新 release：[`v0.4.2`](https://github.com/ai68298100/xiaolv-common/releases/tag/v0.4.2)，非草稿、非 prerelease，附件 `package.zip` SHA256 `9bd5251cc823ffe1ed4b306431fa7477db576e5117865c523b6847e4bfb58b4a`，manifest `xiaolv-common / 0.4.2`，13 个根资源正确。

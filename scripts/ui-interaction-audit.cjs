@@ -1181,7 +1181,16 @@ const check = (name, ok, detail = "") => {
     check("K11 使用帮助入口处于当前视口且可用", helpReachable);
     if (helpReachable) await page.locator("[data-xlc-control='footer.help']").click();
     const guideOpened = await page.locator(".xlc-guide").isVisible();
-    check("K12 使用帮助入口打开帮助内容", helpReachable && guideOpened);
+    const guideResourceExamples = await page.evaluate(() => {
+        const guide = document.querySelector(".xlc-guide");
+        const text = guide?.textContent ?? "";
+        return Boolean(guide?.querySelector("[data-xlc-control='guide.media.image']")
+            && guide?.querySelector("[data-xlc-control='guide.media.attachment']")
+            && guide?.querySelector("[data-xlc-control='guide.media.resume']")
+            && text.includes("真实资源示例")
+            && text.includes("公司介绍 PPT"));
+    });
+    check("K12 使用帮助入口打开帮助内容与真实资源示例", helpReachable && guideOpened && guideResourceExamples);
 
     await open({});
     const settingsReachable = await page.evaluate(() => {

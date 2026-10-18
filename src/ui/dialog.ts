@@ -615,6 +615,28 @@ export class CommonSearchDialog {
         media.className = "xlc-form-hint xlc-guide-vars";
         media.textContent = this.deps.t("usageGuideMedia");
         root.appendChild(media);
+        const mediaExamples = document.createElement("section");
+        mediaExamples.className = "xlc-guide-media-examples";
+        mediaExamples.setAttribute("aria-labelledby", "xlc-guide-media-title");
+        const mediaTitle = document.createElement("p");
+        mediaTitle.id = "xlc-guide-media-title";
+        mediaTitle.className = "xlc-form-label";
+        mediaTitle.textContent = this.deps.t("usageGuideMediaExamplesTitle");
+        mediaExamples.appendChild(mediaTitle);
+        const mediaList = document.createElement("ul");
+        mediaList.className = "xlc-guide-media-list";
+        for (const [control, key] of [
+            ["guide.media.image", "usageGuideMediaImageExample"],
+            ["guide.media.attachment", "usageGuideMediaAttachmentExample"],
+            ["guide.media.resume", "usageGuideMediaResumeExample"],
+        ] as const) {
+            const item = document.createElement("li");
+            item.dataset.xlcControl = control;
+            item.textContent = this.deps.t(key);
+            mediaList.appendChild(item);
+        }
+        mediaExamples.appendChild(mediaList);
+        root.appendChild(mediaExamples);
         const multiblock = document.createElement("p");
         multiblock.className = "xlc-form-hint xlc-guide-vars";
         multiblock.textContent = this.deps.t("usageGuideMultiblock");

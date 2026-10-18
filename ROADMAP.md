@@ -624,6 +624,13 @@
 - 本轮不重启或附着宿主，保留 B-005 和其他现场边界；本地 484/484 单元、74/74 交互与其他发布门禁、远端 CI 和附件逐项核验见当期账本。
 - **依据**：[ADR 0055](docs/adr/0055-v042-github-release.md)。集市未获明确授权，不发起上架 PR。
 
+## T-0094 / R241（2026-10-18 真实资源示例 UI 与 Issue #1 方案）
+
+- [x] 使用帮助增加图片/证件示意图、PPT/PDF/DOCX、简历正文/附件三类真实资源示例；每条明确“先在思源添加真实资源”、当前链接动作和未验证能力。
+- [x] 新增 `guide.media.image`、`guide.media.attachment`、`guide.media.resume` 稳定控件，Chrome 交互审计仍为 74/74，并验证三条示例同时可见。
+- [x] 新增 [ADR 0059](docs/adr/0059-issue1-independent-notebook-creation-plan.md) 与 [R241 账本](docs/dev-plan-2026-10-18-r241.md)，记录 Issue #1 的 createNotebook → library doc 两步回执、补偿删除、幂等、权限/超时和真实宿主验收边界。
+- [ ] Issue #1 尚未实现或关闭；B-005 解除前不启动新的 Electron/思源宿主实验。
+
 ## T-0086–T-0092 / R233–R239（2026-10-18 审计、示例调研与多块保护）
 
 - [x] 完成源码、原型、Chrome UI、功能边界、GitHub issue/CI/release/附件和安全状态审计；证据见 [状态审计](docs/status-audit-2026-10-18.md) 与 [UI 审计目录](docs/design/audit-2026-10-18/)。
