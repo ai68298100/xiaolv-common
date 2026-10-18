@@ -6329,6 +6329,38 @@ ${exception.mark.snippet}`;
   // src/model/transfer.ts
   init_constants();
   init_item();
+  function base64ToUtf8(b64) {
+    const binary = atob(b64);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) {
+      bytes[i] = binary.charCodeAt(i);
+    }
+    return new TextDecoder().decode(bytes);
+  }
+  var COMPACT_BUNDLE_PREFIX = "xlc-bundle:";
+  function deserializeCompactBundle(text) {
+    var _a, _b;
+    const trimmed = text.trim();
+    let b64 = "";
+    if (trimmed.startsWith(COMPACT_BUNDLE_PREFIX)) {
+      b64 = trimmed.slice(COMPACT_BUNDLE_PREFIX.length).trim();
+    } else if (trimmed.startsWith("xlc://import?")) {
+      const query = trimmed.slice("xlc://import?".length);
+      const params = new URLSearchParams(query);
+      b64 = (_b = (_a = params.get("bundle")) != null ? _a : params.get("data")) != null ? _b : "";
+    }
+    if (!b64) return null;
+    try {
+      const json = base64ToUtf8(b64);
+      const obj = JSON.parse(json);
+      if (obj && typeof obj === "object" && obj.protocol === PROTOCOL_NAME) {
+        return obj;
+      }
+    } catch {
+      return null;
+    }
+    return null;
+  }
   function toTimestamp(v) {
     const n = Number(v);
     return Number.isFinite(n) && n > 0 ? n : 0;
@@ -6338,9 +6370,17 @@ ${exception.mark.snippet}`;
     if (jsonText.length > LIMITS.maxImportBytes) {
       return { ok: false, reason: "file-too-large", issues };
     }
+    let textToParse = jsonText.trim();
+    if (textToParse.startsWith(COMPACT_BUNDLE_PREFIX) || textToParse.startsWith("xlc://import?")) {
+      const compact = deserializeCompactBundle(textToParse);
+      if (!compact) {
+        return { ok: false, reason: "compact-parse", issues };
+      }
+      textToParse = JSON.stringify(compact);
+    }
     let obj;
     try {
-      obj = JSON.parse(jsonText);
+      obj = JSON.parse(textToParse);
     } catch (e) {
       return { ok: false, reason: "json-parse", issues };
     }

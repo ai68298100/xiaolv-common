@@ -50,6 +50,56 @@ export function buildBundle(items: readonly CommonItem[], kramdownById: Readonly
     };
 }
 
+function utf8ToBase64(str: string): string {
+    const bytes = new TextEncoder().encode(str);
+    let binary = "";
+    for (let i = 0; i < bytes.length; i++) {
+        binary += String.fromCharCode(bytes[i]!);
+    }
+    return btoa(binary);
+}
+
+function base64ToUtf8(b64: string): string {
+    const binary = atob(b64);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) {
+        bytes[i] = binary.charCodeAt(i);
+    }
+    return new TextDecoder().decode(bytes);
+}
+
+export const COMPACT_BUNDLE_PREFIX = "xlc-bundle:";
+
+/** 将模板包序列化为便于剪贴板/IM快速分享的紧凑 Base64 字符串（S5）。 */
+export function serializeCompactBundle(bundle: ExportBundle): string {
+    const json = JSON.stringify(bundle);
+    return `${COMPACT_BUNDLE_PREFIX}${utf8ToBase64(json)}`;
+}
+
+/** 反序列化紧凑分享字符串（支持 xlc-bundle: 前缀与 xlc://import?bundle= 协议）。 */
+export function deserializeCompactBundle(text: string): ExportBundle | null {
+    const trimmed = text.trim();
+    let b64 = "";
+    if (trimmed.startsWith(COMPACT_BUNDLE_PREFIX)) {
+        b64 = trimmed.slice(COMPACT_BUNDLE_PREFIX.length).trim();
+    } else if (trimmed.startsWith("xlc://import?")) {
+        const query = trimmed.slice("xlc://import?".length);
+        const params = new URLSearchParams(query);
+        b64 = params.get("bundle") ?? params.get("data") ?? "";
+    }
+    if (!b64) return null;
+    try {
+        const json = base64ToUtf8(b64);
+        const obj = JSON.parse(json);
+        if (obj && typeof obj === "object" && (obj as Record<string, unknown>).protocol === PROTOCOL_NAME) {
+            return obj as ExportBundle;
+        }
+    } catch {
+        return null;
+    }
+    return null;
+}
+
 // ---- 导入 ----
 
 export type ConflictPolicy = "skip" | "overwrite" | "rename";
@@ -85,9 +135,17 @@ export function validateImport(jsonText: string): ImportValidation {
     if (jsonText.length > LIMITS.maxImportBytes) {
         return {ok: false, reason: "file-too-large", issues};
     }
+    let textToParse = jsonText.trim();
+    if (textToParse.startsWith(COMPACT_BUNDLE_PREFIX) || textToParse.startsWith("xlc://import?")) {
+        const compact = deserializeCompactBundle(textToParse);
+        if (!compact) {
+            return {ok: false, reason: "compact-parse", issues};
+        }
+        textToParse = JSON.stringify(compact);
+    }
     let obj: unknown;
     try {
-        obj = JSON.parse(jsonText);
+        obj = JSON.parse(textToParse);
     } catch (e) {
         return {ok: false, reason: "json-parse", issues};
     }

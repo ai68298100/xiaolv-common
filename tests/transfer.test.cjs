@@ -109,3 +109,44 @@ test("normalizeUnknownItem 与导出条目互认", () => {
     assert.ok(normalized);
     assert.equal(normalized.id, "xlc-unknown001");
 });
+
+test("Compact Bundle：serialize/deserialize 往返保真、URL 协议支持与非法数据容错", () => {
+    const it = makeItem("xlc-compact001", "紧凑分享正文");
+    const bundle = transfer.buildBundle([it], new Map([["xlc-compact001", "紧凑分享正文"]]), 1000);
+
+    // 1. 序列化为紧凑字符串
+    const compact = transfer.serializeCompactBundle(bundle);
+    assert.ok(compact.startsWith("xlc-bundle:"));
+
+    // 2. 反序列化往返
+    const deserialized = transfer.deserializeCompactBundle(compact);
+    assert.ok(deserialized);
+    assert.equal(deserialized.protocol, "xiaolv-common");
+    assert.equal(deserialized.items.length, 1);
+    assert.equal(deserialized.items[0].id, "xlc-compact001");
+    assert.equal(deserialized.items[0].kramdown, "紧凑分享正文");
+
+    // 3. xlc://import?bundle= 协议格式反序列化
+    const rawB64 = compact.slice("xlc-bundle:".length);
+    const urlForm = `xlc://import?bundle=${rawB64}`;
+    const fromUrl = transfer.deserializeCompactBundle(urlForm);
+    assert.ok(fromUrl);
+    assert.equal(fromUrl.items[0].id, "xlc-compact001");
+
+    // 4. validateImport 直接支持紧凑格式
+    const validFromCompact = transfer.validateImport(compact);
+    assert.ok(validFromCompact.ok);
+    assert.equal(validFromCompact.parsed.items.length, 1);
+    assert.equal(validFromCompact.parsed.items[0].id, "xlc-compact001");
+
+    // 5. validateImport 直接支持 URL 格式
+    const validFromUrl = transfer.validateImport(urlForm);
+    assert.ok(validFromUrl.ok);
+    assert.equal(validFromUrl.parsed.items.length, 1);
+
+    // 6. 畸形紧凑格式安全拒绝
+    assert.equal(transfer.deserializeCompactBundle("xlc-bundle:not-valid-base64!!!"), null);
+    const badCompact = transfer.validateImport("xlc-bundle:not-valid-base64!!!");
+    assert.equal(badCompact.ok, false);
+    assert.equal(badCompact.reason, "compact-parse");
+});
