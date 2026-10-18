@@ -2423,6 +2423,10 @@ fs.writeFileSync(path.join(OUT, "harness.html"), html);
             descs: (document.querySelector(".xlc-policy-desc")?.textContent ?? "").length > 0,
             receiptHint: (document.body.textContent ?? "").includes("逐项回执"),
             badges: (document.body.textContent ?? "").includes("18 条目"),
+            packMissingBadge: !!document.querySelector("[data-xlc-control='import.pack.missing-snippets']")
+                && (document.querySelector("[data-xlc-control='import.pack.missing-snippets']")?.textContent ?? "").includes("缺 1 个子片段"),
+            packMissingHint: !!document.querySelector("[data-xlc-control='import.pack.missing-hint']")
+                && (document.querySelector("[data-xlc-control='import.pack.missing-hint']")?.textContent ?? "").includes("联系方式"),
             formHost: (() => {
                 const host = document.querySelector(".b3-dialog__container.xlc-form-host");
                 const body = host?.querySelector(".b3-dialog__body, .b3-dialog__content");
@@ -2433,7 +2437,7 @@ fs.writeFileSync(path.join(OUT, "harness.html"), html);
     if (Object.values(importAssertions).some((v) => !v)) {
         throw new Error("import-policy smoke failed: " + JSON.stringify(importAssertions));
     }
-    console.log("  smoke ✓ import-policy: 6 assertions");
+    console.log("  smoke ✓ import-policy: 8 assertions");
     await page.screenshot({path: path.join(OUT, "production-import-policy-light.png")});
     // 设置暗色
     await page.evaluate(() => {

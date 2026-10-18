@@ -4,7 +4,7 @@
 
 > 定位：**思源笔记的内容资产层**——高频内容是有元数据、有来源、可检索、可变通、可共享的真实块资产（v3，2026-10-07 调研后修订）。三大一级场景：客服/邮件模板、AI 提示词库、研发/写作常用件。
 > 精准定位与调研证据：[docs/positioning.md](docs/positioning.md)。UI 唯一视觉事实源：[docs/design/prototype.html](docs/design/prototype.html)（v4 实现镜像）+ [docs/design/design-spec.md](docs/design/design-spec.md)；组件清单：[docs/ui-component-catalog.md](docs/ui-component-catalog.md)。生产证据：docs/design/production-*.png。
-> 状态：**[v0.4.2 已在 GitHub 发布](https://github.com/ai68298100/xiaolv-common/releases/tag/v0.4.2)（2026-10-16）**。T-0059–T-0084 的搜索/快捷工作流、标签引用和保存视图、编辑器目标修复及验收工具加固均已包含；本地 T-0086–T-0110 追加了导出保护、示例调研、写前保守限制、捕获入口/恢复保护、常用内容示例包、独立笔记本设置接线、本机使用统计摘要、导入异常回执加固、共享异常文本转换重构、异常处理源码门禁、独立笔记本两步进度/补偿凭据、B-006 单行结构标记写前防御/围栏空白清洗、Espanso 导入类型推断/URL 对齐、G4 搜索时间范围筛选模型、捕获查重排除自身/全角空白归一化、F5 片段引用解析/语法诊断工具、S1 变量填充卡默认值与预填支持、拼音前缀多音节平滑高亮、预览窗格嵌套片段语法芯片可视化以及 F6 模板包嵌套片段清单声明与导入解析双向闭环，尚未发布；R237 的 parts 完整清单假设已撤回，现仅允许单行/完整代码围栏写入，多 parts 更新及自动删除暂停。当前本地门禁单元 537/537、Chrome UI smoke、交互 74/74、构建/密钥/包检查通过；真实宿主边界仍按 B-001–B-006 分层。**Electron 临时 renderer 已有局部功能观测，镜像整体隔离声明已撤回**；Android、真实 AI、连续嵌入后选区、B-004、B-005 和 B-006 真实多块验收继续开放，后续宿主实验停止。发布说明保留这些边界，集市未获推送授权。当前状态：[docs/status-audit-2026-10-18.md](docs/status-audit-2026-10-18.md)；当期账本：[docs/dev-plan-2026-10-06.md](docs/dev-plan-2026-10-06.md)。
+> 状态：**[v0.4.2 已在 GitHub 发布](https://github.com/ai68298100/xiaolv-common/releases/tag/v0.4.2)（2026-10-16）**。T-0059–T-0084 的搜索/快捷工作流、标签引用和保存视图、编辑器目标修复及验收工具加固均已包含；本地 T-0086–T-0111 追加了导出保护、示例调研、写前保守限制、捕获入口/恢复保护、常用内容示例包、独立笔记本设置接线、本机使用统计摘要、导入异常回执加固、共享异常文本转换重构、异常处理源码门禁、独立笔记本两步进度/补偿凭据、B-006 单行结构标记写前防御/围栏空白清洗、Espanso 导入类型推断/URL 对齐、G4 搜索时间范围筛选模型、捕获查重排除自身/全角空白归一化、F5 片段引用解析/语法诊断工具、S1 变量填充卡默认值与预填支持、拼音前缀多音节平滑高亮、预览窗格嵌套片段语法芯片可视化、F6 模板包嵌套片段清单声明与导入解析双向闭环以及模板包导入依赖预检/策略弹窗分级警示，尚未发布；R237 的 parts 完整清单假设已撤回，现仅允许单行/完整代码围栏写入，多 parts 更新及自动删除暂停。当前本地门禁单元 537/537、Chrome UI smoke、交互 74/74、构建/密钥/包检查通过；真实宿主边界仍按 B-001–B-006 分层。**Electron 临时 renderer 已有局部功能观测，镜像整体隔离声明已撤回**；Android、真实 AI、连续嵌入后选区、B-004、B-005 和 B-006 真实多块验收继续开放，后续宿主实验停止。发布说明保留这些边界，集市未获推送授权。当前状态：[docs/status-audit-2026-10-18.md](docs/status-audit-2026-10-18.md)；当期账本：[docs/dev-plan-2026-10-06.md](docs/dev-plan-2026-10-06.md)。
 
 ## R2：AI 融入与原型质感（2026-10-06，用户指令立项）
 
@@ -732,6 +732,12 @@
 - [x] `src/service/export-markdown.ts` 聚合非代码条目的片段引用（`snippetNames`，上限 16 条），并在 `<!-- xlc-pack` 首部清单中声明 `snippets:` 字段。
 - [x] `src/service/import-markdown.ts` 的 `parsePackManifest` 互逆解析 `snippets:` 声明，并在 `openImportPolicyDialog` 策略卡片中展示 `packSnippetsBadge` 徽标。
 - [x] 新增 `tests/r13-export-md.test.cjs` 专项断言（单元门禁 537/537 全部通过），并通过故意跳过 `snippets` 字段解析的严格负向验证。
+
+## T-0111 / R258（2026-10-19 模板包导入依赖预检与策略弹窗分级警示）
+
+- [x] `src/service/import-markdown.ts` 的 `parseMarkdownPack` 自动比对包内条目引用的片段集合与包内条目标题，计算出缺失的子片段依赖 `missingSnippets`。
+- [x] `openImportPolicyDialog` 策略确认弹窗展示 `packMissingSnippetsBadge` 黄色警告徽标与 `packMissingSnippetsHint` 行内警示文本，列出具体缺失片段。
+- [x] 扩展 `scripts/render-production.cjs` 冒烟断言（8/8），并通过故意跳过缺失徽标渲染的严格双向负向验证。
 
 ## T-0086–T-0092 / R233–R239（2026-10-18 审计、示例调研与多块保护）
 

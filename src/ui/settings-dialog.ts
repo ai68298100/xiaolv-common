@@ -2026,7 +2026,7 @@ async function runTagAudit(ctx: SettingsUiContext): Promise<"empty" | "shown"> {
 /** 导入策略确认（导入前校验已过；策略三选 → importBundleText → 汇总回执）。导出供渲染 harness 取证。 */
 export function openImportPolicyDialog(
     ctx: SettingsUiContext,
-    parsed: {items: Array<{id: string; title: string}>; pack?: {name: string; vars: string[]; snippets?: string[]}},
+    parsed: {items: Array<{id: string; title: string}>; pack?: {name: string; vars: string[]; snippets?: string[]; missingSnippets?: string[]}},
     issues: ImportIssue[],
     source: {kind: "json"; text: string} | {kind: "markdown-pack"; items: ExportedItem[]} | {kind: "espanso"; items: ExportedItem[]},
 ): void {
@@ -2065,12 +2065,26 @@ export function openImportPolicyDialog(
         }
         metaPack.textContent = packText;
         meta.appendChild(metaPack);
+        if (parsed.pack.missingSnippets && parsed.pack.missingSnippets.length > 0) {
+            const metaMissing = document.createElement("span");
+            metaMissing.className = "xlc-badge xlc-badge--warn";
+            metaMissing.dataset.xlcControl = "import.pack.missing-snippets";
+            metaMissing.textContent = t("packMissingSnippetsBadge", String(parsed.pack.missingSnippets.length));
+            meta.appendChild(metaMissing);
+        }
     }
     wrap.appendChild(meta);
     const preview = document.createElement("p");
     preview.className = "xlc-form-hint";
     preview.textContent = t("importPreview", String(parsed.items.length), String(issues.length));
     wrap.appendChild(preview);
+    if (parsed.pack?.missingSnippets && parsed.pack.missingSnippets.length > 0) {
+        const missingHint = document.createElement("p");
+        missingHint.className = "xlc-form-hint xlc-form-error";
+        missingHint.dataset.xlcControl = "import.pack.missing-hint";
+        missingHint.textContent = t("packMissingSnippetsHint", parsed.pack.missingSnippets.join("、"));
+        wrap.appendChild(missingHint);
+    }
     const receiptHint = document.createElement("p");
     receiptHint.className = "xlc-form-hint";
     receiptHint.setAttribute("role", "status");

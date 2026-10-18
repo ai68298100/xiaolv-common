@@ -356,6 +356,8 @@
   "packExportBtn": "Export .md pack",
   "packVarsBadge": "%s with variables",
   "packSnippetsBadge": "%s with snippets",
+  "packMissingSnippetsBadge": "%s missing snippets",
+  "packMissingSnippetsHint": "Note: Referenced snippets (%s) are not included in this pack and will show placeholders if missing from your library.",
   "emptyFavorites": "No favorites yet",
   "emptyFavoritesSub": "Tap the ☆ on a row to favorite it and find it quickly under Favorites",
   "emptyRecent": "No recently used items",

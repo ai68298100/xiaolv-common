@@ -356,6 +356,8 @@
   "packExportBtn": "导出 .md 包",
   "packVarsBadge": "%s 条含变量",
   "packSnippetsBadge": "%s 条含嵌套片段",
+  "packMissingSnippetsBadge": "缺 %s 个子片段",
+  "packMissingSnippetsHint": "注意：模板包引用的片段（%s）未随包附带，若当前库中无同名条目将显示占位符。",
   "emptyFavorites": "还没有收藏的条目",
   "emptyFavoritesSub": "点击条目右侧 ☆ 收藏，可在「收藏」中快速找到",
   "emptyRecent": "暂无最近使用的条目",

@@ -109,4 +109,25 @@ test("模板包导出与解析双向闭环：聚合声明 snippets 清单并互�
     assert.equal(parseRes.pack.name, "客户沟通包");
     assert.deepEqual(parseRes.pack.vars, ["客户"]);
     assert.deepEqual(parseRes.pack.snippets, ["公司抬头", "联系方式"]);
+    // 依赖预检：引用的片段未随包打包时，精准标记为 missingSnippets
+    assert.deepEqual(parseRes.pack.missingSnippets, ["公司抬头", "联系方式"]);
+
+    // 自闭环包（引用的子片段均已在包内条目中）：missingSnippets 应不存在
+    const selfContainedItems = [
+        ...items,
+        mk("xlc-t000000003", "公司抬头", "北京小驴科技有限公司"),
+        mk("xlc-t000000004", "联系方式", "service@example.com"),
+    ];
+    const selfContainedKramdown = new Map([
+        ...kramdownById.entries(),
+        ["xlc-t000000003", "北京小驴科技有限公司"],
+        ["xlc-t000000004", "service@example.com"],
+    ]);
+    const selfContainedExport = await buildMarkdownExport(selfContainedItems, selfContainedKramdown, async () => null, {name: "完整自包含包"});
+    const selfContainedMdText = new TextDecoder().decode(selfContainedExport.entries.find((e) => e.name === "items.md").data);
+    const selfContainedParse = parseMarkdownPack(selfContainedMdText);
+    assert.equal(selfContainedParse.items.length, 4);
+    assert.ok(selfContainedParse.pack);
+    assert.deepEqual(selfContainedParse.pack.snippets, ["公司抬头", "联系方式"]);
+    assert.equal(selfContainedParse.pack.missingSnippets, undefined);
 });

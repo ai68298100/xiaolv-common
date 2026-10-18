@@ -6,6 +6,7 @@ import {LIMITS} from "../constants";
 import {LibraryService} from "./library";
 import {importBundle as importJsonBundleCore} from "./importer";
 import {isItemType, isSafeHttpUrl} from "../model/item";
+import {listSnippetRefs} from "../model/variables";
 const ITEM_COMMENT_START = "<!-- xlc-item";
 const ITEM_COMMENT_END = "-->";
 const PACK_COMMENT_START = "<!-- xlc-pack";
@@ -24,15 +25,22 @@ function parseMetadata(lines: string[]): {fields: Map<string, string>; titleHint
     return {fields, titleHint};
 }
 
+export interface MarkdownPackManifest {
+    name: string;
+    vars: string[];
+    snippets?: string[];
+    missingSnippets?: string[];
+}
+
 export interface MarkdownPackParseResult {
     items: ExportedItem[];
     issues: Array<{index: number; reason: string}>;
     /** 包清单（F6）：xlc-pack 注释中的包名与变量清单；旧包/外来 MD 无此信息 */
-    pack?: {name: string; vars: string[]; snippets?: string[]};
+    pack?: MarkdownPackManifest;
 }
 
 /** 解析首部 xlc-pack 清单（存在且位于首个条目之前才有效；字段缺失容忍）。 */
-function parsePackManifest(md: string, firstItemAt: number): {name: string; vars: string[]; snippets?: string[]} | undefined {
+function parsePackManifest(md: string, firstItemAt: number): MarkdownPackManifest | undefined {
     const start = md.indexOf(PACK_COMMENT_START);
     if (start === -1 || start > firstItemAt) return undefined;
     const end = md.indexOf(ITEM_COMMENT_END, start);
@@ -151,7 +159,28 @@ export function parseMarkdownPack(md: string): MarkdownPackParseResult {
         });
     });
     if (hasUnclosed) issues.push({index: commentStarts.length, reason: "metadata-comment-unclosed"});
-    return {items, issues, pack};
+
+    // 依赖完整性预检：收集包内条目引用到的所有子片段标题并对比包内标题
+    const packTitles = new Set(items.map((it) => it.title).filter(Boolean));
+    const allReferencedSnippets = new Set<string>();
+    for (const it of items) {
+        if (it.itemType === "code") continue;
+        for (const ref of listSnippetRefs(it.kramdown)) {
+            allReferencedSnippets.add(ref);
+        }
+    }
+    if (pack?.snippets) {
+        for (const sn of pack.snippets) allReferencedSnippets.add(sn);
+    }
+    const missingSnippets = Array.from(allReferencedSnippets).filter((snTitle) => !packTitles.has(snTitle));
+    let finalPack = pack;
+    if (missingSnippets.length > 0) {
+        finalPack = finalPack
+            ? {...finalPack, missingSnippets}
+            : {name: "", vars: [], missingSnippets};
+    }
+
+    return {items, issues, pack: finalPack};
 }
 
 /** Markdown 包逐条应用：复用 importer 的单一真源（含 R21 overwrite 更新语义与 conflict 防御），完成后重建索引。 */

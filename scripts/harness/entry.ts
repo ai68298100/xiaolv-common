@@ -188,7 +188,7 @@ const T = (key: string, ...args: string[]): string => {
         create: "创建", retry: "重试",
         useCount: "%s 次", quickNew: "＋ 新建条目", quickInsertSelected: "插入选中",
         packBtn: "导出模板包", packExportTitle: "导出 · 模板包", packCategoryLabel: "分类", allCategories: "全部分类",
-        packNameLabel: "包名称", packNameDefault: "小驴常用（内测版）模板包", packExportBtn: "导出 .md 包", packVarsBadge: "%s 条含变量", packSnippetsBadge: "%s 条含嵌套片段",
+        packNameLabel: "包名称", packNameDefault: "小驴常用（内测版）模板包", packExportBtn: "导出 .md 包", packVarsBadge: "%s 条含变量", packSnippetsBadge: "%s 条含嵌套片段", packMissingSnippetsBadge: "缺 %s 个子片段", packMissingSnippetsHint: "注意：模板包引用的片段（%s）未随包附带，若当前库中无同名条目将显示占位符。",
         packContentsHint: "· 条目 Markdown + 元数据（标题/标签/分类）\n· 变量清单（{{xlc:ask:…}} 字段与选项）\n· 资源引用（assets 原样打包）",
         packTrustHint: "他人导入后即为真实思源块，可继续编辑与再分享——分享的是「活的块」，不是文本快照。",
         emptyFavorites: "还没有收藏的条目", emptyFavoritesSub: "点击条目右侧 ☆ 一键收藏，收藏会置顶显示", emptyRecent: "暂无最近使用的条目",
@@ -659,14 +659,22 @@ function makeDeps(overrides: {aiEnabled?: boolean; missing?: boolean; mobile?: b
         capture.newManual();
     },
     openImport(): void {
-        // 导入策略卡（原型屏 8）：18 条目 / 3 条无效 / 策略三选
+        // 导入策略卡（原型屏 8）：18 条目 / 3 条无效 / 策略三选 / 模板包依赖预检
         const ctx = {
             t: T,
             notify: () => {},
             importBundleText: async () => ({total: 18, created: 12, skipped: 4, overwritten: 1, renamed: 1, failed: 0, lines: []}),
             importMarkdownItems: async () => ({total: 18, created: 12, skipped: 4, overwritten: 1, renamed: 1, failed: 0, lines: []}),
         } as unknown as SettingsUiContext;
-        const parsed = {items: Array.from({length: 18}, (_, i) => ({id: `xlc-demo${i}`, title: `条目 ${i + 1}`}))};
+        const parsed = {
+            items: Array.from({length: 18}, (_, i) => ({id: `xlc-demo${i}`, title: `条目 ${i + 1}`})),
+            pack: {
+                name: "常用模板包",
+                vars: ["客户", "日期"],
+                snippets: ["页眉", "联系方式"],
+                missingSnippets: ["联系方式"],
+            },
+        };
         const issues = [{line: 3, reason: "bad shape"}, {line: 7, reason: "bad shape"}, {line: 11, reason: "bad shape"}];
         openImportPolicyDialog(ctx, parsed, issues, {kind: "json", text: "{}"});
     },

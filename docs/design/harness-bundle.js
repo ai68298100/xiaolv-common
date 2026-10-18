@@ -7064,7 +7064,23 @@ ${exception.mark.snippet}`;
       });
     });
     if (hasUnclosed) issues.push({ index: commentStarts.length, reason: "metadata-comment-unclosed" });
-    return { items, issues, pack };
+    const packTitles = new Set(items.map((it) => it.title).filter(Boolean));
+    const allReferencedSnippets = /* @__PURE__ */ new Set();
+    for (const it of items) {
+      if (it.itemType === "code") continue;
+      for (const ref of listSnippetRefs(it.kramdown)) {
+        allReferencedSnippets.add(ref);
+      }
+    }
+    if (pack == null ? void 0 : pack.snippets) {
+      for (const sn of pack.snippets) allReferencedSnippets.add(sn);
+    }
+    const missingSnippets = Array.from(allReferencedSnippets).filter((snTitle) => !packTitles.has(snTitle));
+    let finalPack = pack;
+    if (missingSnippets.length > 0) {
+      finalPack = finalPack ? { ...finalPack, missingSnippets } : { name: "", vars: [], missingSnippets };
+    }
+    return { items, issues, pack: finalPack };
   }
 
   // src/ui/settings-dialog.ts
@@ -9334,7 +9350,7 @@ ${exception.mark.snippet}`;
     return suggestions.length === 0 ? "empty" : "shown";
   }
   function openImportPolicyDialog(ctx, parsed, issues, source) {
-    var _a;
+    var _a, _b;
     const t = ctx.t;
     const dialog = new import_siyuan3.Dialog({
       title: t("importPolicyTitle"),
@@ -9370,12 +9386,26 @@ ${exception.mark.snippet}`;
       }
       metaPack.textContent = packText;
       meta.appendChild(metaPack);
+      if (parsed.pack.missingSnippets && parsed.pack.missingSnippets.length > 0) {
+        const metaMissing = document.createElement("span");
+        metaMissing.className = "xlc-badge xlc-badge--warn";
+        metaMissing.dataset.xlcControl = "import.pack.missing-snippets";
+        metaMissing.textContent = t("packMissingSnippetsBadge", String(parsed.pack.missingSnippets.length));
+        meta.appendChild(metaMissing);
+      }
     }
     wrap.appendChild(meta);
     const preview = document.createElement("p");
     preview.className = "xlc-form-hint";
     preview.textContent = t("importPreview", String(parsed.items.length), String(issues.length));
     wrap.appendChild(preview);
+    if (((_b = parsed.pack) == null ? void 0 : _b.missingSnippets) && parsed.pack.missingSnippets.length > 0) {
+      const missingHint = document.createElement("p");
+      missingHint.className = "xlc-form-hint xlc-form-error";
+      missingHint.dataset.xlcControl = "import.pack.missing-hint";
+      missingHint.textContent = t("packMissingSnippetsHint", parsed.pack.missingSnippets.join("\u3001"));
+      wrap.appendChild(missingHint);
+    }
     const receiptHint = document.createElement("p");
     receiptHint.className = "xlc-form-hint";
     receiptHint.setAttribute("role", "status");
@@ -14073,6 +14103,8 @@ ${details.join("\n")}` : ""}`;
     packExportBtn: "\u5BFC\u51FA .md \u5305",
     packVarsBadge: "%s \u6761\u542B\u53D8\u91CF",
     packSnippetsBadge: "%s \u6761\u542B\u5D4C\u5957\u7247\u6BB5",
+    packMissingSnippetsBadge: "\u7F3A %s \u4E2A\u5B50\u7247\u6BB5",
+    packMissingSnippetsHint: "\u6CE8\u610F\uFF1A\u6A21\u677F\u5305\u5F15\u7528\u7684\u7247\u6BB5\uFF08%s\uFF09\u672A\u968F\u5305\u9644\u5E26\uFF0C\u82E5\u5F53\u524D\u5E93\u4E2D\u65E0\u540C\u540D\u6761\u76EE\u5C06\u663E\u793A\u5360\u4F4D\u7B26\u3002",
     emptyFavorites: "\u8FD8\u6CA1\u6709\u6536\u85CF\u7684\u6761\u76EE",
     emptyFavoritesSub: "\u70B9\u51FB\u6761\u76EE\u53F3\u4FA7 \u2606 \u6536\u85CF\uFF0C\u53EF\u5728\u300C\u6536\u85CF\u300D\u4E2D\u5FEB\u901F\u627E\u5230",
     emptyRecent: "\u6682\u65E0\u6700\u8FD1\u4F7F\u7528\u7684\u6761\u76EE",
@@ -14666,6 +14698,8 @@ ${details.join("\n")}` : ""}`;
       packExportBtn: "\u5BFC\u51FA .md \u5305",
       packVarsBadge: "%s \u6761\u542B\u53D8\u91CF",
       packSnippetsBadge: "%s \u6761\u542B\u5D4C\u5957\u7247\u6BB5",
+      packMissingSnippetsBadge: "\u7F3A %s \u4E2A\u5B50\u7247\u6BB5",
+      packMissingSnippetsHint: "\u6CE8\u610F\uFF1A\u6A21\u677F\u5305\u5F15\u7528\u7684\u7247\u6BB5\uFF08%s\uFF09\u672A\u968F\u5305\u9644\u5E26\uFF0C\u82E5\u5F53\u524D\u5E93\u4E2D\u65E0\u540C\u540D\u6761\u76EE\u5C06\u663E\u793A\u5360\u4F4D\u7B26\u3002",
       packContentsHint: "\xB7 \u6761\u76EE Markdown + \u5143\u6570\u636E\uFF08\u6807\u9898/\u6807\u7B7E/\u5206\u7C7B\uFF09\n\xB7 \u53D8\u91CF\u6E05\u5355\uFF08{{xlc:ask:\u2026}} \u5B57\u6BB5\u4E0E\u9009\u9879\uFF09\n\xB7 \u8D44\u6E90\u5F15\u7528\uFF08assets \u539F\u6837\u6253\u5305\uFF09",
       packTrustHint: "\u4ED6\u4EBA\u5BFC\u5165\u540E\u5373\u4E3A\u771F\u5B9E\u601D\u6E90\u5757\uFF0C\u53EF\u7EE7\u7EED\u7F16\u8F91\u4E0E\u518D\u5206\u4EAB\u2014\u2014\u5206\u4EAB\u7684\u662F\u300C\u6D3B\u7684\u5757\u300D\uFF0C\u4E0D\u662F\u6587\u672C\u5FEB\u7167\u3002",
       emptyFavorites: "\u8FD8\u6CA1\u6709\u6536\u85CF\u7684\u6761\u76EE",
@@ -15302,7 +15336,15 @@ ${details.join("\n")}` : ""}`;
         importBundleText: async () => ({ total: 18, created: 12, skipped: 4, overwritten: 1, renamed: 1, failed: 0, lines: [] }),
         importMarkdownItems: async () => ({ total: 18, created: 12, skipped: 4, overwritten: 1, renamed: 1, failed: 0, lines: [] })
       };
-      const parsed = { items: Array.from({ length: 18 }, (_, i) => ({ id: `xlc-demo${i}`, title: `\u6761\u76EE ${i + 1}` })) };
+      const parsed = {
+        items: Array.from({ length: 18 }, (_, i) => ({ id: `xlc-demo${i}`, title: `\u6761\u76EE ${i + 1}` })),
+        pack: {
+          name: "\u5E38\u7528\u6A21\u677F\u5305",
+          vars: ["\u5BA2\u6237", "\u65E5\u671F"],
+          snippets: ["\u9875\u7709", "\u8054\u7CFB\u65B9\u5F0F"],
+          missingSnippets: ["\u8054\u7CFB\u65B9\u5F0F"]
+        }
+      };
       const issues = [{ line: 3, reason: "bad shape" }, { line: 7, reason: "bad shape" }, { line: 11, reason: "bad shape" }];
       openImportPolicyDialog(ctx, parsed, issues, { kind: "json", text: "{}" });
     },
