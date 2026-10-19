@@ -2,6 +2,7 @@
 import {LIMITS} from "../constants";
 import {CommonItem, ItemType} from "./item";
 import {getPinyinAdapter} from "./pinyin";
+import {matchesHierarchicalCategory, matchesHierarchicalTag} from "./hierarchy";
 
 export interface DateRangeFilter {
     /** 起始毫秒时间戳（闭区间，含此毫秒） */
@@ -17,7 +18,7 @@ export interface SearchQuery {
     itemType?: "" | ItemType;
     tag?: string;
     category?: string;
-    scope?: "all" | "favorites" | "recent";
+    scope?: "all" | "favorites" | "recent" | "current-doc" | "all-notes";
     dateRange?: DateRangeFilter;
 }
 
@@ -51,6 +52,10 @@ export type SearchEntry = Pick<CommonItem, "id" | "blockId" | "libraryDocId" | "
     pyi?: string;
     /** ask 变量数（写入期落库属性；0/缺省=无徽标。行为以插入时现场内容为准） */
     varCount?: number;
+    /** 目标块 ID（blockref 条目或全库搜索结果的目标） */
+    targetBlockId?: string;
+    /** 链接（url 条目） */
+    url?: string;
 };
 
 export interface ScoredResult {
@@ -284,8 +289,8 @@ export function matchEntry(entry: SearchEntry, rawQuery: string): Omit<ScoredRes
 
 export function passesFilters(entry: SearchEntry, query: SearchQuery, ctx: SearchContext): boolean {
     if (query.itemType && entry.itemType !== query.itemType) return false;
-    if (query.tag && !entry.tags.includes(query.tag)) return false;
-    if (query.category && entry.category !== query.category) return false;
+    if (query.tag && !matchesHierarchicalTag(entry.tags, query.tag)) return false;
+    if (query.category && !matchesHierarchicalCategory(entry.category, query.category)) return false;
     if (query.scope === "favorites" && !ctx.favorites.has(entry.id)) return false;
     if (query.scope === "recent" && !ctx.recents.has(entry.id)) return false;
     if (query.dateRange) {

@@ -113,6 +113,17 @@
     }
   });
 
+  // src/ui/dialog-dom.ts
+  function getDialogBody(root) {
+    var _a;
+    return (_a = root.querySelector(".b3-dialog__body")) != null ? _a : root.querySelector(".b3-dialog__content");
+  }
+  var init_dialog_dom = __esm({
+    "src/ui/dialog-dom.ts"() {
+      "use strict";
+    }
+  });
+
   // src/constants.ts
   var PROTOCOL_NAME, PROTOCOL_VERSION, ATTR_PREFIX, ATTR, LIMITS, EXPORT_SCHEMA_VERSION, EVENTS;
   var init_constants = __esm({
@@ -411,6 +422,449 @@
     }
   });
 
+  // src/model/pinyin.ts
+  function createNoopPinyinAdapter() {
+    return {
+      capabilities: { initials: false, fullPinyin: false },
+      expand(query) {
+        const q = query.trim();
+        return q ? [q] : [];
+      },
+      annotate() {
+        return null;
+      }
+    };
+  }
+  function getPinyinAdapter() {
+    return active;
+  }
+  var active;
+  var init_pinyin = __esm({
+    "src/model/pinyin.ts"() {
+      "use strict";
+      active = createNoopPinyinAdapter();
+    }
+  });
+
+  // src/model/hierarchy.ts
+  function splitHierarchyPath(path) {
+    if (!path || typeof path !== "string") return [];
+    return path.split("/").map((s) => s.trim()).filter((s) => s.length > 0);
+  }
+  function buildHierarchyTree(paths, countsMap) {
+    var _a;
+    const rootNodes = [];
+    const getOrCreateChild = (parentList, name, fullPath, depth) => {
+      let found = parentList.find((n) => n.name === name);
+      if (!found) {
+        found = {
+          path: fullPath,
+          name,
+          depth,
+          count: 0,
+          directCount: 0,
+          children: []
+        };
+        parentList.push(found);
+      }
+      return found;
+    };
+    for (const rawPath of paths) {
+      const segments = splitHierarchyPath(rawPath);
+      if (segments.length === 0) continue;
+      let currentList = rootNodes;
+      let accumulatedPath = "";
+      for (let d = 0; d < segments.length; d++) {
+        const seg = segments[d];
+        accumulatedPath = accumulatedPath ? `${accumulatedPath}/${seg}` : seg;
+        const node = getOrCreateChild(currentList, seg, accumulatedPath, d);
+        if (d === segments.length - 1) {
+          const direct = (_a = countsMap == null ? void 0 : countsMap.get(rawPath)) != null ? _a : 1;
+          node.directCount += direct;
+        }
+        currentList = node.children;
+      }
+    }
+    const finalizeNode = (node) => {
+      let total = node.directCount;
+      for (const child of node.children) {
+        total += finalizeNode(child);
+      }
+      node.count = total;
+      node.children.sort((a, b) => a.name.localeCompare(b.name, "zh-Hans-CN"));
+      return total;
+    };
+    rootNodes.sort((a, b) => a.name.localeCompare(b.name, "zh-Hans-CN"));
+    for (const root of rootNodes) {
+      finalizeNode(root);
+    }
+    return rootNodes;
+  }
+  function flattenHierarchyTree(nodes, options = {}) {
+    const { includeCount = true, showPrefixBranch = true } = options;
+    const result = [];
+    const walk = (node, isLast, parentIndent) => {
+      let prefix = "";
+      if (node.depth > 0 && showPrefixBranch) {
+        prefix = parentIndent + (isLast ? "\u2514 " : "\u251C ");
+      }
+      const countSuffix = includeCount && node.count > 0 ? ` (${node.count})` : "";
+      const label = `${prefix}${node.name}${countSuffix}`;
+      result.push({
+        path: node.path,
+        label,
+        depth: node.depth,
+        count: node.count
+      });
+      const nextIndent = node.depth === 0 ? "" : parentIndent + (isLast ? "  " : "\u2502 ");
+      for (let i = 0; i < node.children.length; i++) {
+        const child = node.children[i];
+        const childIsLast = i === node.children.length - 1;
+        walk(child, childIsLast, nextIndent);
+      }
+    };
+    for (let i = 0; i < nodes.length; i++) {
+      const root = nodes[i];
+      const isLast = i === nodes.length - 1;
+      walk(root, isLast, "");
+    }
+    return result;
+  }
+  var init_hierarchy = __esm({
+    "src/model/hierarchy.ts"() {
+      "use strict";
+    }
+  });
+
+  // src/model/search.ts
+  function splitSearchTokens(query) {
+    const trimmed = query.slice(0, LIMITS.queryChars).trim();
+    if (!trimmed) return [];
+    return trimmed.split(SEARCH_TOKEN_DELIMITER).map((t) => t.trim()).filter(Boolean);
+  }
+  function collectTags(entries) {
+    const tags = /* @__PURE__ */ new Set();
+    for (const e of entries) for (const t of e.tags) tags.add(t);
+    return Array.from(tags).sort((a, b) => a.localeCompare(b, "zh-Hans-CN"));
+  }
+  var DEFAULT_RECENCY_HALF_LIFE_MS, SEARCH_TOKEN_DELIMITER;
+  var init_search = __esm({
+    "src/model/search.ts"() {
+      "use strict";
+      init_constants();
+      init_pinyin();
+      init_hierarchy();
+      DEFAULT_RECENCY_HALF_LIFE_MS = 7 * 24 * 60 * 60 * 1e3;
+      SEARCH_TOKEN_DELIMITER = /[\s,，/\\+;；|｜]+/;
+    }
+  });
+
+  // src/model/variables.ts
+  function parseAskField(rawName, rawOptions) {
+    var _a, _b;
+    let name = rawName.trim().slice(0, LIMITS.tag);
+    let defaultValue;
+    const eqIdx = name.indexOf("=");
+    if (eqIdx !== -1) {
+      defaultValue = name.slice(eqIdx + 1).trim().slice(0, LIMITS.askValueChars);
+      name = name.slice(0, eqIdx).trim().slice(0, LIMITS.tag);
+    }
+    if (!name) return null;
+    const options = (rawOptions != null ? rawOptions : "").split(/[,，、]/).map((s) => s.trim().slice(0, LIMITS.tag)).filter(Boolean).slice(0, 16);
+    if (options.length === 1 && ((_a = options[0]) == null ? void 0 : _a.toLowerCase()) === "date") return { name, kind: "date", options: [], ...defaultValue ? { defaultValue } : {} };
+    if (options.length === 1 && ((_b = options[0]) == null ? void 0 : _b.toLowerCase()) === "textarea") return { name, kind: "textarea", options: [], ...defaultValue ? { defaultValue } : {} };
+    if (options.length >= 2) return { name, kind: "select", options, ...defaultValue ? { defaultValue } : {} };
+    if (options.length === 1 && !defaultValue) {
+      defaultValue = options[0];
+    }
+    return { name, kind: "text", options: [], ...defaultValue ? { defaultValue } : {} };
+  }
+  function askFieldTag(field) {
+    const nameWithDef = field.defaultValue && field.kind === "text" && field.options.length === 0 ? `${field.name}=${field.defaultValue}` : field.name;
+    if (field.kind === "text") return field.defaultValue && field.options.length === 0 ? `{{xlc:ask:${nameWithDef}}}` : `{{xlc:ask:${field.name}}}`;
+    if (field.kind === "select") return `{{xlc:ask:${field.name}|${field.options.join(",")}}}`;
+    return `{{xlc:ask:${field.name}|${field.kind}}}`;
+  }
+  function listAskFields(text) {
+    var _a;
+    if (!text) return [];
+    const fields = [];
+    const seen = /* @__PURE__ */ new Set();
+    for (const match of text.matchAll(ASK_PATTERN)) {
+      const field = parseAskField((_a = match[1]) != null ? _a : "", match[2]);
+      if (!field || seen.has(field.name)) continue;
+      seen.add(field.name);
+      fields.push(field);
+      if (fields.length >= 16) break;
+    }
+    return fields;
+  }
+  function countAskFields(text) {
+    return listAskFields(text).length;
+  }
+  function cleanFillValue(v) {
+    return (v != null ? v : "").trim().slice(0, LIMITS.askValueChars);
+  }
+  function expandAsks(text, fills) {
+    if (!text) return text;
+    return text.replace(ASK_PATTERN, (_match, rawName, rawOptions) => {
+      var _a;
+      const field = parseAskField(rawName, rawOptions);
+      if (!field) return _match;
+      const filled = Object.prototype.hasOwnProperty.call(fills, field.name) ? cleanFillValue((_a = fills[field.name]) != null ? _a : "") : "";
+      if (filled) return filled;
+      if (field.defaultValue) return cleanFillValue(field.defaultValue);
+      return `__${field.name}__`;
+    });
+  }
+  function applyAskDefaults(text) {
+    return expandAsks(text, {});
+  }
+  function stripCursorToken(text) {
+    return text.split(CURSOR_TOKEN).join("");
+  }
+  function hasCursorToken(text) {
+    return text.includes(CURSOR_TOKEN);
+  }
+  function listSnippetRefs(text) {
+    var _a;
+    if (!text || !text.includes("{{xlc:snippet:")) return [];
+    const titles = [];
+    const seen = /* @__PURE__ */ new Set();
+    for (const match of text.matchAll(SNIPPET_PATTERN)) {
+      const title = ((_a = match[1]) != null ? _a : "").trim().slice(0, LIMITS.title);
+      if (!title || seen.has(title)) continue;
+      seen.add(title);
+      titles.push(title);
+      if (titles.length >= 16) break;
+    }
+    return titles;
+  }
+  var ASK_PATTERN, CURSOR_TOKEN, SNIPPET_PATTERN;
+  var init_variables = __esm({
+    "src/model/variables.ts"() {
+      "use strict";
+      init_constants();
+      ASK_PATTERN = /\{\{xlc:ask:([^|}]+)(?:\|([^}]*))?\}\}/g;
+      CURSOR_TOKEN = "{{xlc:cursor}}";
+      SNIPPET_PATTERN = /\{\{xlc:snippet:([^}]+)\}\}/g;
+    }
+  });
+
+  // src/ui/variable-form.ts
+  function openVariableFillCard(options) {
+    var _a, _b;
+    const t = options.t;
+    const dialog = new import_siyuan.Dialog({
+      title: t("varFormTitle"),
+      content: "",
+      width: "min(440px, 92vw)",
+      height: "auto",
+      // 所有关闭路径（Esc/scrim）统一走 onCancel：上层搜索弹窗焦点回归（R128）；
+      // 按钮确认/取消已自行结算，不在此重复触发（R138 结算语义）
+      destroyCallback: () => {
+        var _a2;
+        if (!settled) (_a2 = options.onCancel) == null ? void 0 : _a2.call(options);
+      }
+    });
+    const container = dialog.element.querySelector(".b3-dialog__container");
+    if (container) container.classList.add("xlc-varform-host");
+    const body = getDialogBody(dialog.element);
+    if (!body) return;
+    body.innerHTML = "";
+    const root = document.createElement("div");
+    root.className = "xlc-varform";
+    const head = document.createElement("div");
+    head.className = "xlc-varform-head";
+    const badge = document.createElement("span");
+    badge.className = "xlc-badge xlc-badge--markdown";
+    badge.textContent = (_a = TYPE_BADGES[options.itemType]) != null ? _a : "TXT";
+    head.appendChild(badge);
+    const title = document.createElement("span");
+    title.className = "xlc-varform-title";
+    title.textContent = options.title || t("unknownType");
+    head.appendChild(title);
+    const escHint = document.createElement("span");
+    escHint.className = "xlc-kbd";
+    escHint.textContent = "Esc " + t("cancel");
+    head.appendChild(escHint);
+    root.appendChild(head);
+    const sub = document.createElement("div");
+    sub.className = "xlc-varform-sub";
+    sub.textContent = t("varFormSub", String(options.fields.length));
+    root.appendChild(sub);
+    const inputs = [];
+    const fieldsWrap = document.createElement("div");
+    fieldsWrap.className = "xlc-varform-fields";
+    for (const [fieldIndex, field] of options.fields.entries()) {
+      const wrap = document.createElement("label");
+      wrap.className = "xlc-varform-field";
+      const label = document.createElement("span");
+      label.className = "xlc-varform-label";
+      label.textContent = field.name;
+      const tag = document.createElement("span");
+      tag.className = "xlc-varform-tag";
+      tag.textContent = askFieldTag(field);
+      label.appendChild(tag);
+      wrap.appendChild(label);
+      const input = field.kind === "textarea" ? document.createElement("textarea") : document.createElement("input");
+      input.className = "b3-text-field";
+      if (field.kind === "textarea") {
+        input.rows = 3;
+        input.setAttribute("spellcheck", "false");
+      } else {
+        input.setAttribute("enterkeyhint", "done");
+      }
+      if (field.kind === "date") input.type = "date";
+      if (field.kind === "select") {
+        input.setAttribute("list", `xlc-varform-list-${fieldIndex}`);
+        const datalist = document.createElement("datalist");
+        datalist.id = `xlc-varform-list-${fieldIndex}`;
+        for (const opt of field.options) {
+          const option = document.createElement("option");
+          option.value = opt;
+          datalist.appendChild(option);
+        }
+        wrap.appendChild(datalist);
+      }
+      input.dataset.xlcVarField = field.name;
+      if (field.defaultValue) {
+        input.value = field.defaultValue;
+      }
+      wrap.appendChild(input);
+      inputs.push(input);
+      fieldsWrap.appendChild(wrap);
+    }
+    root.appendChild(fieldsWrap);
+    const foot = document.createElement("div");
+    foot.className = "xlc-varform-foot";
+    const kbdHint = document.createElement("span");
+    kbdHint.className = "xlc-varform-hint";
+    kbdHint.textContent = options.fields.some((f) => f.kind === "textarea") ? t("varFormHintMultiline") : t("varFormHint");
+    foot.appendChild(kbdHint);
+    const cancelBtn = document.createElement("button");
+    cancelBtn.className = "b3-button";
+    cancelBtn.dataset.xlcControl = "variable.cancel";
+    cancelBtn.textContent = t("cancel");
+    foot.appendChild(cancelBtn);
+    const insertBtn = document.createElement("button");
+    insertBtn.className = "b3-button xlc-btn-primary";
+    insertBtn.textContent = t("insert");
+    foot.appendChild(insertBtn);
+    root.appendChild(foot);
+    body.appendChild(root);
+    const collect = () => {
+      var _a2;
+      const fills = {};
+      for (const input of inputs) {
+        const name = (_a2 = input.dataset.xlcVarField) != null ? _a2 : "";
+        if (name) fills[name] = input.value;
+      }
+      return fills;
+    };
+    let settled = false;
+    const confirm3 = () => {
+      if (settled) return;
+      settled = true;
+      dialog.destroy();
+      options.onConfirm(collect());
+    };
+    insertBtn.addEventListener("click", confirm3);
+    cancelBtn.addEventListener("click", () => {
+      var _a2;
+      if (settled) return;
+      settled = true;
+      dialog.destroy();
+      (_a2 = options.onCancel) == null ? void 0 : _a2.call(options);
+    });
+    root.addEventListener("keydown", (ev) => {
+      var _a2;
+      if (ev.isComposing || ev.keyCode === 229) return;
+      if (ev.key === "Enter" && !ev.altKey && !ev.ctrlKey && !ev.metaKey) {
+        if (ev.target.tagName === "BUTTON") return;
+        if (ev.target.tagName === "TEXTAREA") return;
+        const el = ev.target;
+        if (el instanceof HTMLInputElement && el.list) {
+          setTimeout(() => confirm3(), 0);
+          return;
+        }
+        ev.preventDefault();
+        confirm3();
+        return;
+      }
+      if (ev.key === "Tab") {
+        const focusables = Array.from(
+          root.querySelectorAll("input, textarea, button")
+        ).filter((el) => !el.hasAttribute("disabled"));
+        if (focusables.length === 0) return;
+        const index = focusables.indexOf(document.activeElement);
+        ev.preventDefault();
+        const next = ev.shiftKey ? (index - 1 + focusables.length) % focusables.length : (index + 1) % focusables.length;
+        (_a2 = focusables[next]) == null ? void 0 : _a2.focus();
+      }
+    });
+    (_b = inputs[0]) == null ? void 0 : _b.focus();
+  }
+  function buildVariableBar(t, getTarget) {
+    const bar = document.createElement("div");
+    bar.className = "xlc-varbar";
+    const cap = document.createElement("span");
+    cap.className = "xlc-varbar-cap";
+    cap.textContent = t("insertVariable");
+    bar.appendChild(cap);
+    const snippets = [
+      { id: "ask", text: "{{xlc:ask:\u5B57\u6BB5}}" },
+      { id: "ask.options", text: "{{xlc:ask:\u5B57\u6BB5|\u9009\u9879A,\u9009\u9879B}}" },
+      { id: "ask.textarea", text: "{{xlc:ask:\u5B57\u6BB5|textarea}}" },
+      { id: "snippet", text: "{{xlc:snippet:\u6807\u9898}}" },
+      { id: "cursor", text: "{{xlc:cursor}}" },
+      { id: "date", text: "{{xlc:date}}" },
+      { id: "date.offset", text: "{{xlc:date|+3d}}" },
+      { id: "random", text: "{{xlc:random|\u9009\u9879A,\u9009\u9879B}}" },
+      { id: "doc", text: "{{xlc:doc}}" },
+      { id: "clipboard", text: "{{xlc:clipboard}}" }
+    ];
+    for (const snippet of snippets) {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "xlc-varbtn";
+      btn.dataset.xlcControl = `capture.variable.${snippet.id}`;
+      btn.textContent = snippet.text;
+      btn.addEventListener("click", () => {
+        var _a, _b;
+        const el = getTarget();
+        const start = (_a = el.selectionStart) != null ? _a : el.value.length;
+        const end = (_b = el.selectionEnd) != null ? _b : start;
+        el.value = el.value.slice(0, start) + snippet.text + el.value.slice(end);
+        const caret = start + snippet.text.length;
+        el.focus();
+        el.setSelectionRange(caret, caret);
+        el.dispatchEvent(new Event("input", { bubbles: true }));
+      });
+      bar.appendChild(btn);
+    }
+    return bar;
+  }
+  var import_siyuan, TYPE_BADGES;
+  var init_variable_form = __esm({
+    "src/ui/variable-form.ts"() {
+      "use strict";
+      import_siyuan = __toESM(require_stub_dom());
+      init_dialog_dom();
+      init_variables();
+      TYPE_BADGES = {
+        text: "TXT",
+        markdown: "MD",
+        url: "URL",
+        code: "CODE",
+        image: "IMG",
+        asset: "FILE",
+        blockref: "REF",
+        structure: "BLK"
+      };
+    }
+  });
+
   // node_modules/.pnpm/tiny-pinyin@1.3.2/node_modules/tiny-pinyin/dist/dict.js
   var require_dict = __commonJS({
     "node_modules/.pnpm/tiny-pinyin@1.3.2/node_modules/tiny-pinyin/dist/dict.js"(exports, module) {
@@ -683,6 +1137,2646 @@
         pinyin.patchDict(patcher56L);
       }
       module.exports = pinyin;
+    }
+  });
+
+  // src/model/storage.ts
+  function summarizeUsage(usage) {
+    let totalCount = 0;
+    let trackedItems = 0;
+    let latestAt = null;
+    for (const entry of Object.values(usage)) {
+      if (!Number.isInteger(entry.count) || entry.count <= 0 || !Number.isFinite(entry.lastAt) || entry.lastAt <= 0) continue;
+      totalCount += entry.count;
+      trackedItems++;
+      latestAt = latestAt === null ? entry.lastAt : Math.max(latestAt, entry.lastAt);
+    }
+    return { totalCount, trackedItems, latestAt };
+  }
+  var CONFIG_VERSION;
+  var init_storage = __esm({
+    "src/model/storage.ts"() {
+      "use strict";
+      init_constants();
+      init_item();
+      CONFIG_VERSION = 1;
+    }
+  });
+
+  // src/model/transfer.ts
+  function base64ToUtf8(b64) {
+    const binary = atob(b64);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) {
+      bytes[i] = binary.charCodeAt(i);
+    }
+    return new TextDecoder().decode(bytes);
+  }
+  function deserializeCompactBundle(text) {
+    var _a, _b;
+    const trimmed = text.trim();
+    let b64 = "";
+    if (trimmed.startsWith(COMPACT_BUNDLE_PREFIX)) {
+      b64 = trimmed.slice(COMPACT_BUNDLE_PREFIX.length).trim();
+    } else if (trimmed.startsWith("xlc://import?")) {
+      const query = trimmed.slice("xlc://import?".length);
+      const params = new URLSearchParams(query);
+      b64 = (_b = (_a = params.get("bundle")) != null ? _a : params.get("data")) != null ? _b : "";
+    }
+    if (!b64) return null;
+    try {
+      const json = base64ToUtf8(b64);
+      const obj = JSON.parse(json);
+      if (obj && typeof obj === "object" && obj.protocol === PROTOCOL_NAME) {
+        return obj;
+      }
+    } catch {
+      return null;
+    }
+    return null;
+  }
+  function toTimestamp(v) {
+    const n = Number(v);
+    return Number.isFinite(n) && n > 0 ? n : 0;
+  }
+  function validateImport(jsonText) {
+    const issues = [];
+    if (jsonText.length > LIMITS.maxImportBytes) {
+      return { ok: false, reason: "file-too-large", issues };
+    }
+    let textToParse = jsonText.trim();
+    if (textToParse.startsWith(COMPACT_BUNDLE_PREFIX) || textToParse.startsWith("xlc://import?")) {
+      const compact = deserializeCompactBundle(textToParse);
+      if (!compact) {
+        return { ok: false, reason: "compact-parse", issues };
+      }
+      textToParse = JSON.stringify(compact);
+    }
+    let obj;
+    try {
+      obj = JSON.parse(textToParse);
+    } catch (e) {
+      return { ok: false, reason: "json-parse", issues };
+    }
+    if (!obj || typeof obj !== "object" || Array.isArray(obj)) {
+      return { ok: false, reason: "not-an-object", issues };
+    }
+    const record = obj;
+    if (record.protocol !== PROTOCOL_NAME) {
+      return { ok: false, reason: "protocol-mismatch", issues };
+    }
+    const schemaVersion = record.schemaVersion;
+    if (schemaVersion !== EXPORT_SCHEMA_VERSION) {
+      return { ok: false, reason: "schema-version-unsupported", issues };
+    }
+    if (!Array.isArray(record.items)) {
+      return { ok: false, reason: "items-not-array", issues };
+    }
+    if (record.items.length > LIMITS.maxItems) {
+      return { ok: false, reason: "too-many-items", issues };
+    }
+    const knownTop = ["protocol", "schemaVersion", "exportedAt", "items"];
+    const unknownTopFields = Object.keys(record).filter((k) => !knownTop.includes(k));
+    const items = [];
+    const seenIds = /* @__PURE__ */ new Set();
+    record.items.forEach((raw, index) => {
+      const item = normalizeExportedItem(raw);
+      if (!item) {
+        issues.push({ index, reason: "invalid-item" });
+        return;
+      }
+      if (seenIds.has(item.id)) {
+        issues.push({ index, reason: "duplicate-id" });
+        return;
+      }
+      seenIds.add(item.id);
+      items.push(item);
+    });
+    return { ok: true, parsed: { schemaVersion: EXPORT_SCHEMA_VERSION, items, unknownTopFields }, issues };
+  }
+  function normalizeExportedItem(raw) {
+    var _a;
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+    const obj = raw;
+    if (!isLogicalId(obj.id)) return null;
+    if (typeof obj.kramdown !== "string" || obj.kramdown.length > LIMITS.contentChars) return null;
+    if (!isItemType(obj.itemType)) return null;
+    const sourceRaw = (_a = obj.source) != null ? _a : {};
+    const known = ["id", "itemType", "title", "alias", "tags", "category", "kramdown", "source", "url", "targetBlockId", "createdAt", "updatedAt"];
+    const extensions = /* @__PURE__ */ Object.create(null);
+    for (const [k, v] of Object.entries(obj)) {
+      if (!known.includes(k)) extensions[k] = v;
+    }
+    const str = (v, cap) => typeof v === "string" ? v.slice(0, cap) : "";
+    const tags = Array.isArray(obj.tags) ? obj.tags.filter((t) => typeof t === "string").slice(0, LIMITS.tags) : [];
+    const url = str(obj.url, 2048);
+    if (url && !isSafeHttpUrl(url)) return null;
+    return {
+      id: obj.id,
+      itemType: obj.itemType,
+      title: str(obj.title, LIMITS.title),
+      alias: str(obj.alias, LIMITS.alias),
+      tags,
+      category: str(obj.category, LIMITS.category),
+      kramdown: obj.kramdown,
+      source: {
+        sourceDocId: str(sourceRaw.sourceDocId, 32),
+        sourceBlockId: str(sourceRaw.sourceBlockId, 32),
+        sourceType: isSourceType(sourceRaw.sourceType) ? sourceRaw.sourceType : "external"
+      },
+      url,
+      targetBlockId: str(obj.targetBlockId, 32),
+      createdAt: toTimestamp(obj.createdAt),
+      updatedAt: toTimestamp(obj.updatedAt),
+      extensions: Object.keys(extensions).length ? extensions : void 0
+    };
+  }
+  var COMPACT_BUNDLE_PREFIX;
+  var init_transfer = __esm({
+    "src/model/transfer.ts"() {
+      "use strict";
+      init_constants();
+      init_item();
+      COMPACT_BUNDLE_PREFIX = "xlc-bundle:";
+    }
+  });
+
+  // src/model/zip.ts
+  function crc32(data) {
+    var _a;
+    let c = 0 ^ -1;
+    for (const byte of data) c = c >>> 8 ^ ((_a = CRC_TABLE[(c ^ byte) & 255]) != null ? _a : 0);
+    return (c ^ -1) >>> 0;
+  }
+  function dosDateTime() {
+    const time = 0;
+    const date = 2026 - 1980 << 9 | 1 << 5 | 1;
+    return { time, date };
+  }
+  function u16(arr, value) {
+    arr.push(value & 255, value >>> 8 & 255);
+  }
+  function u32(arr, value) {
+    arr.push(value & 255, value >>> 8 & 255, value >>> 16 & 255, value >>> 24 & 255);
+  }
+  function buildZip(entries) {
+    if (entries.length === 0) throw new Error("zip: no entries");
+    if (entries.length > 65535) throw new Error("zip: too many entries");
+    const { time, date } = dosDateTime();
+    const localParts = [];
+    const centralParts = [];
+    let offset = 0;
+    for (const entry of entries) {
+      if (!entry.name || entry.name.startsWith("/") || entry.name.includes("..") || entry.name.includes("\\")) {
+        throw new Error(`zip: unsafe entry name ${entry.name}`);
+      }
+      const nameBytes = new TextEncoder().encode(entry.name);
+      const crc = crc32(entry.data);
+      const local = [];
+      u32(local, 67324752);
+      u16(local, 20);
+      u16(local, 0);
+      u16(local, 0);
+      u16(local, time);
+      u16(local, date);
+      u32(local, crc);
+      u32(local, entry.data.length);
+      u32(local, entry.data.length);
+      u16(local, nameBytes.length);
+      u16(local, 0);
+      local.push(...nameBytes);
+      const headerOffset = offset;
+      localParts.push(local, Array.from(entry.data));
+      const central = [];
+      u32(central, 33639248);
+      u16(central, 20);
+      u16(central, 20);
+      u16(central, 0);
+      u16(central, 0);
+      u16(central, time);
+      u16(central, date);
+      u32(central, crc);
+      u32(central, entry.data.length);
+      u32(central, entry.data.length);
+      u16(central, nameBytes.length);
+      u16(central, 0);
+      u16(central, 0);
+      u16(central, 0);
+      u16(central, 0);
+      u32(central, 0);
+      u32(central, headerOffset);
+      central.push(...nameBytes);
+      centralParts.push(central);
+      offset += local.length + entry.data.length;
+    }
+    const centralStart = offset;
+    let centralSize = 0;
+    const out = [];
+    for (const part of localParts) out.push(...part);
+    for (const part of centralParts) {
+      out.push(...part);
+      centralSize += part.length;
+    }
+    const eocd = [];
+    u32(eocd, 101010256);
+    u16(eocd, 0);
+    u16(eocd, 0);
+    u16(eocd, entries.length);
+    u16(eocd, entries.length);
+    u32(eocd, centralSize);
+    u32(eocd, centralStart);
+    u16(eocd, 0);
+    out.push(...eocd);
+    return new Uint8Array(out);
+  }
+  var CRC_TABLE;
+  var init_zip = __esm({
+    "src/model/zip.ts"() {
+      "use strict";
+      CRC_TABLE = (() => {
+        const table = new Uint32Array(256);
+        for (let n = 0; n < 256; n++) {
+          let c = n;
+          for (let k = 0; k < 8; k++) c = c & 1 ? 3988292384 ^ c >>> 1 : c >>> 1;
+          table[n] = c >>> 0;
+        }
+        return table;
+      })();
+    }
+  });
+
+  // src/model/actions.ts
+  function isValidAssetPath(path) {
+    return ASSET_PATH_RE.test(path) && !path.includes("..");
+  }
+  function extractAssetPath(kramdown) {
+    const m = kramdown.match(/\]\((assets\/[^)\s]+)[^)]*\)/);
+    const path = m == null ? void 0 : m[1];
+    if (!path) return null;
+    return isValidAssetPath(path) ? path : null;
+  }
+  function extractCodeFence(kramdown) {
+    var _a, _b;
+    const m = kramdown.match(/^```([\w+#.-]*)\s*\n([\s\S]*?)\n?```\s*$/);
+    if (!m) return null;
+    return { language: (_a = m[1]) != null ? _a : "", code: (_b = m[2]) != null ? _b : "" };
+  }
+  function refAnchorText(item) {
+    const base = item.alias || item.title || "ref";
+    return base.replace(/[[\]()']/g, "").slice(0, 96) || "ref";
+  }
+  function asInlineText(text) {
+    return text.slice(0, LIMITS.contentChars);
+  }
+  function buildBlockRef(blockId, anchor) {
+    if (!BLOCK_ID_RE.test(blockId)) throw new Error("invalid block id");
+    return `((${blockId} '${anchor.replace(/\\/g, "\\\\").replace(/'/g, "\\'")}'))`;
+  }
+  function buildEmbedBlock(blockId) {
+    if (!BLOCK_ID_RE.test(blockId)) throw new Error("invalid block id");
+    return `{{select * from blocks where id='${blockId}'}}`;
+  }
+  function planAction(item, mode, ctx) {
+    const base = {
+      mode,
+      clipboardKind: "text",
+      downgraded: false,
+      pendingVerification: [],
+      warnings: []
+    };
+    if (ctx.content.sourceMissing && mode !== "insert-ref" && mode !== "insert-embed" && mode !== "copy-content") {
+      if (mode === "open") {
+        return { ...base, open: void 0, downgraded: true, downgradeReason: "source-missing", warnings: ["source-missing"] };
+      }
+    }
+    if (ctx.content.assetMissing) {
+      base.pendingVerification.push("asset-missing");
+    }
+    switch (item.itemType) {
+      case "text": {
+        const text = asInlineText(ctx.content.kramdown);
+        if (mode === "copy" || mode === "copy-content") return { ...base, clipboardText: text, clipboardKind: "text" };
+        return { ...base, markdown: text };
+      }
+      case "markdown":
+      case "structure": {
+        const md = ctx.content.kramdown.slice(0, LIMITS.contentChars);
+        if (mode === "copy" || mode === "copy-content") return { ...base, clipboardText: md, clipboardKind: "markdown" };
+        return { ...base, markdown: md };
+      }
+      case "url": {
+        const url = item.url || extractFirstUrl(ctx.content.kramdown);
+        if (!url || !isSafeHttpUrl(url)) {
+          return { ...base, downgraded: true, downgradeReason: "type-unsupported", warnings: ["url-empty"] };
+        }
+        if (mode === "open") return { ...base, open: { kind: "url", url } };
+        if (mode === "copy" || mode === "copy-content") return { ...base, clipboardText: url, clipboardKind: "url" };
+        const title = item.title && item.title !== url ? item.title : url;
+        return { ...base, markdown: `[${title.replace(/[[\]]/g, "")}](${url})` };
+      }
+      case "code": {
+        const fence = extractCodeFence(ctx.content.kramdown);
+        const code = fence ? fence.code : ctx.content.kramdown;
+        const language = fence ? fence.language : "";
+        if (mode === "copy" || mode === "copy-content") return { ...base, clipboardText: code, clipboardKind: "code" };
+        return { ...base, markdown: "```" + language + "\n" + code.slice(0, LIMITS.contentChars) + "\n```" };
+      }
+      case "image":
+      case "asset": {
+        const assetPath = extractAssetPath(ctx.content.kramdown);
+        if (!assetPath) {
+          return { ...base, downgraded: true, downgradeReason: "asset-missing", warnings: ["asset-path-unresolvable"] };
+        }
+        if (ctx.content.assetMissing) {
+          if (mode === "copy" || mode === "copy-content") {
+            return {
+              ...base,
+              clipboardText: `[${item.title}](${assetPath})`,
+              clipboardKind: "markdown-link",
+              pendingVerification: ["asset-missing"]
+            };
+          }
+          return { ...base, downgraded: true, downgradeReason: "asset-missing", warnings: ["asset-missing"] };
+        }
+        if (mode === "open") {
+          return { ...base, open: { kind: "asset", assetPath } };
+        }
+        if (mode === "copy" || mode === "copy-content") {
+          return {
+            ...base,
+            clipboardText: `[${item.title}](${assetPath})`,
+            clipboardKind: "markdown-link",
+            pendingVerification: item.itemType === "image" ? ["bitmap-clipboard-unverified"] : []
+          };
+        }
+        return {
+          ...base,
+          markdown: item.itemType === "image" ? `![](${assetPath})` : `[${item.title}](${assetPath})`,
+          pendingVerification: item.itemType === "image" ? ["bitmap-clipboard-unverified"] : []
+        };
+      }
+      case "blockref": {
+        const target = resolveBlockRefTarget(item);
+        if (!BLOCK_ID_RE.test(target)) {
+          return { ...base, downgraded: true, downgradeReason: "source-missing", warnings: ["target-block-invalid"] };
+        }
+        if (mode === "copy" || mode === "copy-content") {
+          return { ...base, clipboardText: ctx.content.kramdown, clipboardKind: "markdown", mode: "copy-content" };
+        }
+        if (mode === "insert-ref") {
+          return { ...base, markdown: buildBlockRef(target, refAnchorText(item)) };
+        }
+        if (mode === "insert-embed") {
+          return { ...base, markdown: buildEmbedBlock(target) };
+        }
+        if (mode === "insert-content") {
+          return { ...base, markdown: ctx.content.kramdown.slice(0, LIMITS.contentChars) };
+        }
+        return { ...base, markdown: buildBlockRef(target, refAnchorText(item)) };
+      }
+      default: {
+        return { ...base, downgraded: true, downgradeReason: "type-unsupported", warnings: ["unknown-type"] };
+      }
+    }
+  }
+  function extractFirstUrl(text) {
+    const m = text.match(/https?:\/\/[^\s)）\]]+/);
+    return m ? m[0].slice(0, 2048) : "";
+  }
+  function planOpenSource(item, resolved) {
+    if (item.itemType === "url") {
+      const url = item.url || extractFirstUrl(resolved.kramdown);
+      return url && isSafeHttpUrl(url) ? { target: { kind: "url", url } } : { failure: "source-missing" };
+    }
+    if (item.itemType === "image" || item.itemType === "asset") {
+      const assetPath = extractAssetPath(resolved.kramdown);
+      if (!assetPath || resolved.assetMissing) return { failure: "asset-missing" };
+      return { target: { kind: "asset", assetPath } };
+    }
+    const sourceBlockId = item.itemType === "blockref" ? resolveBlockRefTarget(item) : item.source.sourceBlockId;
+    if (sourceBlockId) {
+      if (resolved.sourceMissing) return { failure: "source-missing" };
+      return { target: { kind: "block", docId: item.source.sourceDocId, blockId: sourceBlockId } };
+    }
+    if (item.source.sourceDocId) {
+      if (resolved.sourceMissing) return { failure: "source-missing" };
+      return { target: { kind: "doc", docId: item.source.sourceDocId } };
+    }
+    return { target: { kind: "doc", docId: item.libraryDocId } };
+  }
+  var ASSET_PATH_RE;
+  var init_actions = __esm({
+    "src/model/actions.ts"() {
+      "use strict";
+      init_constants();
+      init_item();
+      ASSET_PATH_RE = /^(assets\/[^\s/][^\s]*|assets\/[^\s/])$/;
+    }
+  });
+
+  // src/service/export-markdown.ts
+  async function buildMarkdownExport(items, kramdownById, fetchAssetBytes, pack) {
+    var _a, _b, _c;
+    const oneLine = (value) => value.replace(/[\r\n]+/g, " ").trim();
+    for (const item of items) {
+      if (!kramdownById.has(item.id)) {
+        throw new ExportIntegrityError("body-missing", item.title || item.id);
+      }
+    }
+    const entries = [];
+    const skippedAssets = [];
+    const assetEntries = /* @__PURE__ */ new Map();
+    const usedNames = /* @__PURE__ */ new Set(["items.md"]);
+    let assetCount = 0;
+    const varNames = [];
+    for (const item of items) {
+      if (item.itemType === "code") continue;
+      for (const field of listAskFields((_a = kramdownById.get(item.id)) != null ? _a : "")) {
+        if (!varNames.includes(field.name)) varNames.push(field.name);
+        if (varNames.length >= LIMITS.maxAskFields) break;
+      }
+      if (varNames.length >= LIMITS.maxAskFields) break;
+    }
+    const snippetNames = [];
+    for (const item of items) {
+      if (item.itemType === "code") continue;
+      for (const snippet of listSnippetRefs((_b = kramdownById.get(item.id)) != null ? _b : "")) {
+        if (!snippetNames.includes(snippet)) snippetNames.push(snippet);
+        if (snippetNames.length >= 16) break;
+      }
+      if (snippetNames.length >= 16) break;
+    }
+    const mdParts = [
+      "# \u5C0F\u9A74\u5E38\u7528\uFF08\u5185\u6D4B\u7248\uFF09 \xB7 \u6761\u76EE\u5BFC\u51FA",
+      "",
+      `> \u5BFC\u51FA\u81EA\u601D\u6E90\u63D2\u4EF6\u300C\u5C0F\u9A74\u5E38\u7528\uFF08\u5185\u6D4B\u7248\uFF09\u300D\uFF0C\u5171 ${items.length} \u6761\u3002\u8D44\u6E90\u4F4D\u4E8E assets/\uFF0C\u6761\u76EE\u5185\u94FE\u63A5\u4E3A\u76F8\u5BF9\u8DEF\u5F84\u3002`,
+      ""
+    ];
+    if (pack && pack.name.trim()) {
+      const manifest = [
+        `<!-- xlc-pack`,
+        `name: ${oneLine(pack.name).slice(0, LIMITS.title)}`,
+        `items: ${items.length}`,
+        varNames.length ? `vars: ${varNames.join(",")}` : "",
+        snippetNames.length ? `snippets: ${snippetNames.join(",")}` : "",
+        `-->`
+      ].filter(Boolean).join("\n");
+      mdParts.unshift(manifest, "");
+    }
+    let totalLen = mdParts.reduce((length, part) => length + part.length, 0) + mdParts.length - 1;
+    for (const item of items) {
+      const kramdown = (_c = kramdownById.get(item.id)) != null ? _c : "";
+      const meta = [
+        `<!-- xlc-item`,
+        `id: ${item.id}`,
+        `type: ${item.itemType}`,
+        item.alias ? `alias: ${oneLine(item.alias)}` : "",
+        item.tags.length ? `tags: ${item.tags.map(oneLine).join(",")}` : "",
+        item.category ? `category: ${oneLine(item.category)}` : "",
+        item.source.sourceDocId ? `source-doc: ${oneLine(item.source.sourceDocId)}` : "",
+        item.source.sourceBlockId ? `source-block: ${oneLine(item.source.sourceBlockId)}` : "",
+        item.source.sourceType ? `source-type: ${oneLine(item.source.sourceType)}` : "",
+        item.url ? `url: ${oneLine(item.url)}` : "",
+        item.targetBlockId ? `target: ${oneLine(item.targetBlockId)}` : "",
+        `-->`
+      ].filter(Boolean).join("\n");
+      const itemParts = [`## ${oneLine(item.title || item.id)}`, "", meta, "", kramdown, ""];
+      totalLen += itemParts.reduce((length, part) => length + part.length, 0) + itemParts.length;
+      if (totalLen > LIMITS.contentChars) {
+        throw new ExportIntegrityError("too-large", "", String(LIMITS.contentChars));
+      }
+      mdParts.push(...itemParts);
+      if (item.itemType === "image" || item.itemType === "asset") {
+        const assetPath = extractAssetPath(kramdown);
+        if (assetPath && !assetEntries.has(assetPath)) {
+          const bytes = await fetchAssetBytes(assetPath);
+          if (bytes && bytes.length > 0) {
+            const name = assetPath;
+            usedNames.add(name);
+            assetEntries.set(assetPath, { name, data: bytes });
+            assetCount++;
+          } else {
+            skippedAssets.push(assetPath);
+          }
+        }
+      }
+    }
+    const markdown = mdParts.join("\n");
+    entries.push({ name: "items.md", data: new TextEncoder().encode(markdown) });
+    entries.push(...assetEntries.values());
+    return { entries, itemCount: items.length, assetCount, skippedAssets, varNames, snippetNames };
+  }
+  var ExportIntegrityError;
+  var init_export_markdown = __esm({
+    "src/service/export-markdown.ts"() {
+      "use strict";
+      init_actions();
+      init_constants();
+      init_variables();
+      ExportIntegrityError = class extends Error {
+        constructor(reason, itemLabel = "", detail = "") {
+          super(`export-${reason}${itemLabel ? `: ${itemLabel}` : ""}${detail ? `: ${detail}` : ""}`);
+          this.reason = reason;
+          this.itemLabel = itemLabel;
+          this.detail = detail;
+          this.name = "ExportIntegrityError";
+        }
+      };
+    }
+  });
+
+  // src/model/kramdown.ts
+  function bodyWriteRestriction(markdown) {
+    var _a;
+    if (!markdown.trim()) return "body is empty";
+    if (markdown.length > LIMITS.contentChars) return "body exceeds the supported size; nothing was written";
+    if (/[\u2028\u2029]/.test(markdown)) return "multi-line body writing is unavailable pending B-006 host verification";
+    const lines = markdown.replace(/\r\n?/g, "\n").split("\n");
+    while (lines.length > 1 && lines[0].trim() === "") lines.shift();
+    while (lines.length > 1 && lines[lines.length - 1].trim() === "") lines.pop();
+    const opening = (_a = lines[0]) == null ? void 0 : _a.match(/^(`{3,}|~{3,})([a-zA-Z0-9_+.-]*)[ \t]*$/);
+    if (opening && lines.length >= 2) {
+      const fence = opening[1];
+      const close = new RegExp(`^ {0,3}${fence[0]}{${fence.length},}[ \\t]*$`);
+      const closingIndex = lines.findIndex((line, index) => index > 0 && close.test(line));
+      if (closingIndex === lines.length - 1) return void 0;
+    }
+    if (lines.length === 1 && !STRUCTURED_PATTERN.test(lines[0])) return void 0;
+    return "multi-line or structured body writing is unavailable pending B-006 host verification; use a single line or a complete code fence";
+  }
+  function normalizeIalToken(ial) {
+    const attributes = ial.slice(2, -1);
+    const safeAttributes = attributes.replace(
+      ATTRIBUTE_PATTERN,
+      (attribute, _space, name) => name === "id" || name === "updated" || name.startsWith("custom-xlc-") ? " " : attribute
+    ).trim();
+    return safeAttributes ? `{: ${safeAttributes}}` : "";
+  }
+  function findCodeLines(lines) {
+    var _a, _b;
+    const codeLines = [];
+    let fence = null;
+    for (const line of lines) {
+      if (fence) {
+        codeLines.push(true);
+        const closing = (_a = line.match(/^\s*(`+|~+)\s*$/)) == null ? void 0 : _a[1];
+        if (closing && closing.charAt(0) === fence.marker && closing.length >= fence.length) fence = null;
+        continue;
+      }
+      if (!line.trim()) {
+        codeLines.push(false);
+        continue;
+      }
+      if (/^(?: {4,}|\t)/.test(line)) {
+        codeLines.push(true);
+        continue;
+      }
+      const opening = (_b = line.match(/^\s*(`{3,}|~{3,})/)) == null ? void 0 : _b[1];
+      if (opening) {
+        fence = { marker: opening.charAt(0), length: opening.length };
+        codeLines.push(true);
+        continue;
+      }
+      codeLines.push(false);
+    }
+    return codeLines;
+  }
+  function findInlineCodeTicks(lines, codeLines) {
+    var _a, _b;
+    const pairedByLine = lines.map(() => /* @__PURE__ */ new Set());
+    let segment = [];
+    const pairSegment = () => {
+      var _a2, _b2;
+      const nextByLength = /* @__PURE__ */ new Map();
+      const nextSameLength = /* @__PURE__ */ new Map();
+      for (let index = segment.length - 1; index >= 0; index--) {
+        const tick = segment[index];
+        if (!tick) continue;
+        const next = nextByLength.get(tick.length);
+        if (next !== void 0) nextSameLength.set(index, next);
+        nextByLength.set(tick.length, index);
+      }
+      for (let index = 0; index < segment.length; index++) {
+        const tick = segment[index];
+        if (!tick) continue;
+        const closeIndex = nextSameLength.get(index);
+        if (closeIndex === void 0) continue;
+        (_a2 = pairedByLine[tick.line]) == null ? void 0 : _a2.add(tick.offset);
+        const close = segment[closeIndex];
+        if (close) (_b2 = pairedByLine[close.line]) == null ? void 0 : _b2.add(close.offset);
+        index = closeIndex;
+      }
+      segment = [];
+    };
+    for (let lineIndex = 0; lineIndex < lines.length; lineIndex++) {
+      const line = (_a = lines[lineIndex]) != null ? _a : "";
+      if (codeLines[lineIndex]) {
+        pairSegment();
+        continue;
+      }
+      IAL_TOKEN_PATTERN.lastIndex = 0;
+      for (const match of line.matchAll(IAL_TOKEN_PATTERN)) {
+        if (!match[1]) continue;
+        segment.push({ line: lineIndex, offset: (_b = match.index) != null ? _b : 0, length: match[0].length });
+      }
+    }
+    pairSegment();
+    return pairedByLine;
+  }
+  function normalizeLineIals(line, activeInlineCodeTicks, pairedInlineCodeTicks) {
+    var _a;
+    let cursor = 0;
+    let inlineCodeTicks = activeInlineCodeTicks;
+    let output = "";
+    IAL_TOKEN_PATTERN.lastIndex = 0;
+    for (const match of line.matchAll(IAL_TOKEN_PATTERN)) {
+      const token = match[0];
+      const start = (_a = match.index) != null ? _a : 0;
+      output += line.slice(cursor, start);
+      cursor = start + token.length;
+      if (match[1]) {
+        if (pairedInlineCodeTicks.has(start)) {
+          if (!inlineCodeTicks) inlineCodeTicks = token.length;
+          else if (inlineCodeTicks === token.length) inlineCodeTicks = 0;
+        }
+        output += token;
+      } else if (inlineCodeTicks) {
+        output += token;
+      } else {
+        output += normalizeIalToken(token);
+      }
+    }
+    return { line: output + line.slice(cursor), activeInlineCodeTicks: inlineCodeTicks };
+  }
+  function normalizeKramdownIal(markdown) {
+    var _a, _b;
+    const lines = markdown.replace(/\r\n?/g, "\n").split("\n");
+    const codeLines = findCodeLines(lines);
+    const pairedInlineCodeTicks = findInlineCodeTicks(lines, codeLines);
+    const output = [];
+    let inlineCodeTicks = 0;
+    for (let index = 0; index < lines.length; index++) {
+      const line = (_a = lines[index]) != null ? _a : "";
+      if (codeLines[index]) {
+        inlineCodeTicks = 0;
+        output.push(line);
+        continue;
+      }
+      const normalized = normalizeLineIals(line, inlineCodeTicks, (_b = pairedInlineCodeTicks[index]) != null ? _b : /* @__PURE__ */ new Set());
+      output.push(normalized.line);
+      inlineCodeTicks = normalized.activeInlineCodeTicks;
+    }
+    return output.join("\n").trim();
+  }
+  var STRUCTURED_PATTERN, ATTRIBUTE_PATTERN, IAL_TOKEN_PATTERN;
+  var init_kramdown = __esm({
+    "src/model/kramdown.ts"() {
+      "use strict";
+      init_constants();
+      STRUCTURED_PATTERN = /\{:|[{]{3}|[}]{3}|^ {0,3}(?:`{3,}|~{3,}|>|(?:[-*+]|\d{1,9}[.)])[ \t]|\||(?:[-*_][ \t]*){3,}$)/;
+      ATTRIBUTE_PATTERN = /(^|\s)([\w:-]+)=(?:"[^"]*"|'[^']*'|[^\s}]+)(?=\s|$)/g;
+      IAL_TOKEN_PATTERN = /(`+)|(\{:[^{}]*\})/g;
+    }
+  });
+
+  // src/service/importer.ts
+  var init_importer = __esm({
+    "src/service/importer.ts"() {
+      "use strict";
+      init_transfer();
+      init_item();
+      init_kramdown();
+      init_errors();
+    }
+  });
+
+  // src/service/import-markdown.ts
+  function parseMetadata(lines) {
+    const fields = /* @__PURE__ */ new Map();
+    let titleHint = "";
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed === ITEM_COMMENT_START || trimmed === ITEM_COMMENT_END) continue;
+      const idx = trimmed.indexOf(":");
+      if (idx <= 0) continue;
+      fields.set(trimmed.slice(0, idx).trim(), trimmed.slice(idx + 1).trim());
+    }
+    return { fields, titleHint };
+  }
+  function parsePackManifest(md, firstItemAt) {
+    var _a, _b, _c;
+    const start = md.indexOf(PACK_COMMENT_START);
+    if (start === -1 || start > firstItemAt) return void 0;
+    const end = md.indexOf(ITEM_COMMENT_END, start);
+    if (end === -1) return void 0;
+    const fields = parseMetadata(md.slice(start + PACK_COMMENT_START.length, end).split("\n")).fields;
+    const name = ((_a = fields.get("name")) != null ? _a : "").slice(0, LIMITS.title);
+    const vars = ((_b = fields.get("vars")) != null ? _b : "").split(",").map((s) => s.trim()).filter(Boolean).slice(0, LIMITS.maxAskFields);
+    const snippets = ((_c = fields.get("snippets")) != null ? _c : "").split(",").map((s) => s.trim()).filter(Boolean).slice(0, 16);
+    if (!name) return void 0;
+    return { name, vars, ...snippets.length > 0 ? { snippets } : {} };
+  }
+  function parseMarkdownPack(md) {
+    var _a, _b;
+    const items = [];
+    const issues = [];
+    const seenIds = /* @__PURE__ */ new Set();
+    if (!md || !md.includes(ITEM_COMMENT_START)) return { items, issues };
+    const firstItemAt = md.indexOf(ITEM_COMMENT_START);
+    const pack = parsePackManifest(md, firstItemAt);
+    const commentStarts = [];
+    const commentEnds = [];
+    let hasUnclosed = false;
+    let scan = 0;
+    while (true) {
+      const start = md.indexOf(ITEM_COMMENT_START, scan);
+      if (start === -1) break;
+      const end = md.indexOf(ITEM_COMMENT_END, start);
+      if (end === -1) {
+        hasUnclosed = true;
+        break;
+      }
+      commentStarts.push(start);
+      commentEnds.push(end + ITEM_COMMENT_END.length);
+      scan = start + ITEM_COMMENT_START.length;
+      if (commentStarts.length > LIMITS.maxItems) break;
+    }
+    const chunks = [];
+    for (let i = 0; i < commentStarts.length; i++) {
+      const itemStart = (_a = commentStarts[i]) != null ? _a : 0;
+      const lowerBound = i > 0 ? (_b = commentEnds[i - 1]) != null ? _b : 0 : 0;
+      const titleLineStart = md.lastIndexOf("\n## ", itemStart) + 1;
+      const chunkStart = Math.max(Math.min(titleLineStart, itemStart), lowerBound);
+      const nextCommentStart = commentStarts[i + 1];
+      const nextTitleStart = nextCommentStart === void 0 ? -1 : md.lastIndexOf("\n## ", nextCommentStart) + 1;
+      const chunkEnd = nextTitleStart > itemStart ? nextTitleStart : nextCommentStart != null ? nextCommentStart : md.length;
+      chunks.push(md.slice(chunkStart, chunkEnd));
+    }
+    chunks.forEach((chunk, index) => {
+      var _a2, _b2, _c, _d, _e, _f, _g, _h, _i, _j, _k;
+      const endIdx = chunk.indexOf(ITEM_COMMENT_END);
+      if (endIdx === -1) {
+        issues.push({ index, reason: "metadata-comment-unclosed" });
+        return;
+      }
+      const metaLines = chunk.slice(0, endIdx).split("\n");
+      const { fields } = parseMetadata(metaLines);
+      const id = (_a2 = fields.get("id")) != null ? _a2 : "";
+      if (!/^xlc-[0-9a-z]{10,40}$/.test(id)) {
+        issues.push({ index, reason: "invalid-id" });
+        return;
+      }
+      if (seenIds.has(id)) {
+        issues.push({ index, reason: "duplicate-id" });
+        return;
+      }
+      const itemType = (_b2 = fields.get("type")) != null ? _b2 : "text";
+      if (!isItemType(itemType)) {
+        issues.push({ index, reason: "invalid-item-type" });
+        return;
+      }
+      const url = (_c = fields.get("url")) != null ? _c : "";
+      if (url && !isSafeHttpUrl(url)) {
+        issues.push({ index, reason: "invalid-url" });
+        return;
+      }
+      let title = "";
+      const before = chunk.slice(0, chunk.indexOf(ITEM_COMMENT_START));
+      for (const line of before.split("\n")) {
+        const m = line.match(TITLE_RE);
+        const matched = m == null ? void 0 : m[1];
+        if (matched) title = matched.trim();
+      }
+      if (!title && fields.get("alias")) title = (_d = fields.get("alias")) != null ? _d : "";
+      const body = chunk.slice(endIdx + ITEM_COMMENT_END.length).replace(/^\s*\n/, "").replace(/\n\s*$/, "");
+      seenIds.add(id);
+      items.push({
+        id,
+        itemType,
+        title: title.slice(0, LIMITS.title),
+        alias: ((_e = fields.get("alias")) != null ? _e : "").slice(0, LIMITS.alias),
+        tags: ((_f = fields.get("tags")) != null ? _f : "").split(",").map((s) => s.trim()).filter(Boolean).slice(0, LIMITS.tags),
+        category: ((_g = fields.get("category")) != null ? _g : "").slice(0, LIMITS.category),
+        kramdown: body.slice(0, LIMITS.contentChars),
+        source: {
+          sourceDocId: (_h = fields.get("source-doc")) != null ? _h : "",
+          sourceBlockId: (_i = fields.get("source-block")) != null ? _i : "",
+          sourceType: (_j = fields.get("source-type")) != null ? _j : "external"
+        },
+        url,
+        targetBlockId: (_k = fields.get("target")) != null ? _k : "",
+        createdAt: 0,
+        updatedAt: Date.now()
+      });
+    });
+    if (hasUnclosed) issues.push({ index: commentStarts.length, reason: "metadata-comment-unclosed" });
+    const packTitles = new Set(items.map((it) => it.title).filter(Boolean));
+    const allReferencedSnippets = /* @__PURE__ */ new Set();
+    for (const it of items) {
+      if (it.itemType === "code") continue;
+      for (const ref of listSnippetRefs(it.kramdown)) {
+        allReferencedSnippets.add(ref);
+      }
+    }
+    if (pack == null ? void 0 : pack.snippets) {
+      for (const sn of pack.snippets) allReferencedSnippets.add(sn);
+    }
+    const missingSnippets = Array.from(allReferencedSnippets).filter((snTitle) => !packTitles.has(snTitle));
+    let finalPack = pack;
+    if (missingSnippets.length > 0) {
+      finalPack = finalPack ? { ...finalPack, missingSnippets } : { name: "", vars: [], missingSnippets };
+    }
+    return { items, issues, pack: finalPack };
+  }
+  var ITEM_COMMENT_START, ITEM_COMMENT_END, PACK_COMMENT_START, TITLE_RE;
+  var init_import_markdown = __esm({
+    "src/service/import-markdown.ts"() {
+      "use strict";
+      init_constants();
+      init_importer();
+      init_item();
+      init_variables();
+      ITEM_COMMENT_START = "<!-- xlc-item";
+      ITEM_COMMENT_END = "-->";
+      PACK_COMMENT_START = "<!-- xlc-pack";
+      TITLE_RE = /^##\s+(.+)$/;
+    }
+  });
+
+  // src/service/prompt-pack.ts
+  var PROMPT_PACK_NAME, PROMPT_PACK_MD;
+  var init_prompt_pack = __esm({
+    "src/service/prompt-pack.ts"() {
+      "use strict";
+      PROMPT_PACK_NAME = "\u5E38\u7528\u5185\u5BB9\u793A\u4F8B";
+      PROMPT_PACK_MD = [
+        "<!-- xlc-pack",
+        `name: ${PROMPT_PACK_NAME}`,
+        "items: 25",
+        "vars: \u5BA2\u6237\u540D\u79F0,\u8865\u507F\u6BD4\u4F8B,\u5DE5\u5355\u53F7,\u8DDF\u8FDB\u65E5\u671F,\u5BA2\u6237\u6635\u79F0,\u76EE\u6807\u8BFB\u8005,\u7F16\u7A0B\u8BED\u8A00,\u672C\u5468\u4E3B\u9898,\u4F1A\u8BAE\u4E3B\u9898,\u59D3\u540D,\u804C\u4F4D,\u516C\u53F8\u540D\u79F0,\u90AE\u7BB1,\u624B\u673A\u53F7,\u6536\u4EF6\u4EBA,\u4E3B\u9898,\u7701\u5E02\u533A,\u8BE6\u7EC6\u5730\u5740,\u90AE\u7F16,\u5907\u6CE8,\u53D1\u7968\u7C7B\u578B,\u4F01\u4E1A\u540D\u79F0,\u7EB3\u7A0E\u4EBA\u8BC6\u522B\u53F7,\u5F00\u6237\u94F6\u884C,\u94F6\u884C\u8D26\u53F7,\u9000\u6362\u7C7B\u578B,\u8BA2\u5355\u7F16\u53F7,\u5BC4\u56DE\u5730\u5740,\u50AC\u529E\u4E8B\u9879,\u539F\u5B9A\u622A\u6B62,\u54A8\u8BE2\u95EE\u9898",
+        "-->",
+        "# \u5E38\u7528\u5185\u5BB9\u793A\u4F8B",
+        "",
+        "> \u5C0F\u9A74\u5E38\u7528\uFF08\u5185\u6D4B\u7248\uFF09\u5E38\u7528\u5185\u5BB9\u793A\u4F8B\uFF1A\u4F7F\u7528\u8BF4\u660E / \u5730\u5740 / \u90AE\u7BB1 / \u8054\u7CFB\u65B9\u5F0F / \u5BA2\u670D\u56DE\u590D / AI \u63D0\u793A\u8BCD / \u7814\u53D1\u5199\u4F5C / \u5546\u52A1\u8D44\u6599 / \u8EAB\u4EFD\u5360\u4F4D / \u7F51\u5740 / JSON\u3002\u5BFC\u5165\u540E\u5373\u4E3A\u771F\u5B9E\u601D\u6E90\u5757\uFF0C\u53EF\u81EA\u7531\u4FEE\u6539\u3002\u591A\u884C\u6B63\u6587\u4E0E\u6DF7\u5408\u7ED3\u6784\u4ECD\u53D7 B-006 \u5199\u5165\u8FB9\u754C\u9650\u5236\u3002",
+        "",
+        // ---- 入门与个人信息 ----
+        "## \u4F7F\u7528\u8BF4\u660E\uFF1A\u4E09\u6B65\u5F00\u59CB",
+        "",
+        "<!-- xlc-item",
+        "id: xlc-pack00000011",
+        "type: markdown",
+        "tags: \u5165\u95E8,\u89C4\u5219",
+        "category: \u4F7F\u7528\u8BF4\u660E",
+        "source-type: external",
+        "-->",
+        "# \u5C0F\u9A74\u5E38\u7528\u600E\u4E48\u7528",
+        "",
+        "1. **\u5148\u4FDD\u5B58**\uFF1A\u5728\u7F16\u8F91\u5668\u9009\u4E2D\u6587\u672C\uFF0C\u4F7F\u7528\u53F3\u952E\u300C\u4FDD\u5B58\u4E3A\u5E38\u7528\u6761\u76EE\u300D\uFF1B\u4E5F\u53EF\u4EE5\u4ECE\u526A\u8D34\u677F\u5FEB\u901F\u6355\u83B7\uFF0C\u6216\u5728\u9762\u677F\u4E2D\u70B9\u300C\u65B0\u5EFA\u300D\u3002",
+        "2. **\u518D\u8C03\u7528**\uFF1A\u6253\u5F00\u9762\u677F\u641C\u7D22\u6807\u9898\u3001\u6B63\u6587\u3001\u6807\u7B7E\u6216\u5206\u7C7B\uFF0C\u6309 Enter \u63D2\u5165\uFF0C\u6309 Ctrl/\u2318+Enter \u590D\u5236\uFF1B\u6709 `\uFF5B\uFF5Bxlc:ask:\u5B57\u6BB5\uFF5D\uFF5D` \u7684\u6A21\u677F\u4F1A\u5728\u63D2\u5165\u524D\u8BE2\u95EE\u4E00\u6B21\u3002",
+        "3. **\u6301\u7EED\u6574\u7406**\uFF1A\u7528\u6807\u7B7E\u548C\u5206\u7C7B\u533A\u5206\u573A\u666F\uFF0C\u6536\u85CF\u9AD8\u9891\u6761\u76EE\uFF1B\u6761\u76EE\u6B63\u6587\u4ECD\u662F\u5E93\u6587\u6863\u4E2D\u7684\u771F\u5B9E\u5757\uFF0C\u53EF\u5728\u601D\u6E90\u4E2D\u76F4\u63A5\u7F16\u8F91\u3002",
+        "",
+        "**\u6A21\u677F\u89C4\u5219\u4E0E\u6CE8\u91CA\u89C4\u8303**",
+        "- `\uFF5B\uFF5Bxlc:ask:\u5B57\u6BB5\uFF5D\uFF5D` = \u63D2\u5165\u65F6\u586B\u5199\uFF1B`\uFF5B\uFF5Bxlc:ask:\u5B57\u6BB5|\u9009\u9879A,\u9009\u9879B\uFF5D\uFF5D` = \u4E0B\u62C9\u9009\u62E9\uFF08\u672C\u8BF4\u660E\u7528\u5168\u89D2\u62EC\u53F7\u5C55\u793A\u8BED\u6CD5\uFF0C\u5B9E\u9645\u6A21\u677F\u8BF7\u6539\u4E3A\u534A\u89D2\uFF09\u3002\u586B\u5199\u5185\u5BB9\u53EA\u7528\u4E8E\u672C\u6B21\u63D2\u5165\uFF0C\u4E0D\u4F1A\u56DE\u5199\u6A21\u677F\u3002",
+        "- `\uFF5B\uFF5Bxlc:date\uFF5D\uFF5D`\u3001`\uFF5B\uFF5Bxlc:clipboard\uFF5D\uFF5D` \u7B49\u52A8\u6001\u5360\u4F4D\u7B26\u53EA\u5728\u63D2\u5165/\u590D\u5236\u65F6\u5C55\u5F00\uFF0C\u6A21\u677F\u539F\u6587\u59CB\u7EC8\u4FDD\u7559\u3002",
+        "- **\u4EE3\u7801\u7C7B\u578B**\u59CB\u7EC8\u6309\u539F\u6587\u5B57\u9762\u63D2\u5165/\u590D\u5236\uFF0C\u4E0D\u5C55\u5F00\u53D8\u91CF\uFF1BSQL \u793A\u4F8B\u4E2D\u7684 `example_posts` \u9700\u624B\u52A8\u6539\u4E3A\u81EA\u5DF1\u7684\u8868\u540D\u3002",
+        "- **\u6CE8\u91CA\u4E0E\u8BF4\u660E**\uFF1A\u6761\u76EE\u522B\u540D\uFF08alias\uFF09\u4E0E\u5206\u7C7B\u5373\u4E3A\u573A\u666F\u6CE8\u91CA\uFF1B\u6A21\u677F\u6B63\u6587\u5185\u53EF\u7528\u5F15\u7528\u5757 `> \u{1F4A1} \u63D0\u793A\uFF1A...` \u8BB0\u5F55\u6CE8\u610F\u4E8B\u9879\uFF0C\u4E5F\u53EF\u4EE5\u7528 Markdown \u6CE8\u91CA\u8BED\u6CD5 `<!-- \u6CE8\u91CA -->` \u9690\u85CF\u5185\u90E8\u8BF4\u660E\u3002",
+        "- **\u952E\u76D8\u9AD8\u6548\u8C03\u7528**\uFF1A`Alt + 1-9` \u5FEB\u901F\u63D2\u5165\u524D 9 \u9879\uFF0C`Alt + Shift + 1-9` \u5FEB\u901F\u590D\u5236\u524D 9 \u9879\uFF1B\u641C\u7D22\u6846\u6309 `Tab` \u952E\u76F4\u8FBE\u53F3\u4FA7\u64CD\u4F5C\u533A\uFF1B\u914D\u5408\u300C\u5E38\u7528\u300D\u6392\u5E8F\u5B9E\u73B0\u9AD8\u9891\u6761\u76EE\u79D2\u53D1\u3002",
+        "- \u63A8\u8350\u5206\u7C7B\uFF1A\u5546\u52A1\u3001\u5BA2\u670D\u3001\u90AE\u7BB1\u3001\u5730\u5740\u3001\u8054\u7CFB\u65B9\u5F0F\u3001\u63D0\u793A\u8BCD\u3001\u5199\u4F5C\u3001\u5F00\u53D1\uFF1B\u5206\u7C7B\u540D\u79F0\u53EF\u4EE5\u6309\u81EA\u5DF1\u7684\u5DE5\u4F5C\u6D41\u4FEE\u6539\u3002",
+        "",
+        "**\u4ECE\u54EA\u91CC\u5F00\u59CB**\uFF1A\u5148\u5BFC\u5165\u672C\u5305\u4E2D\u7684\u300C\u90AE\u7BB1\u7B7E\u540D\u300D\u300C\u5F00\u7968\u8D44\u6599\u300D\u6216\u300C\u552E\u540E\u9000\u6362\u6307\u5F15\u300D\uFF0C\u628A\u793A\u4F8B\u5B57\u6BB5\u66FF\u6362\u4E3A\u81EA\u5DF1\u7684\u5B57\u6BB5\uFF0C\u518D\u590D\u5236\u6210\u4E2A\u4EBA\u6761\u76EE\u3002",
+        "## \u90AE\u7BB1\u7B7E\u540D",
+        "",
+        "<!-- xlc-item",
+        "id: xlc-pack00000012",
+        "type: text",
+        "tags: \u90AE\u7BB1,\u7B7E\u540D",
+        "category: \u90AE\u7BB1",
+        "source-type: external",
+        "-->",
+        "{{xlc:ask:\u59D3\u540D}}\uFF5C{{xlc:ask:\u804C\u4F4D}}",
+        "{{xlc:ask:\u516C\u53F8\u540D\u79F0}}",
+        "\u90AE\u7BB1\uFF1A{{xlc:ask:\u90AE\u7BB1}}",
+        "\u7535\u8BDD\uFF1A{{xlc:ask:\u624B\u673A\u53F7}}{{xlc:cursor}}",
+        "## \u90AE\u4EF6\u56DE\u590D\u5F00\u5934",
+        "",
+        "<!-- xlc-item",
+        "id: xlc-pack00000013",
+        "type: markdown",
+        "tags: \u90AE\u7BB1,\u56DE\u590D",
+        "category: \u90AE\u7BB1",
+        "source-type: external",
+        "-->",
+        "\u4E3B\u9898\uFF1A{{xlc:ask:\u4E3B\u9898}}",
+        "",
+        "{{xlc:ask:\u6536\u4EF6\u4EBA}} \u60A8\u597D\uFF1A",
+        "",
+        "\u611F\u8C22\u6765\u4FE1\u3002\u5173\u4E8E\u60A8\u63D0\u5230\u7684\u4E8B\u9879\uFF0C\u6211\u4EEC\u4F1A\u5728 __\u65F6\u95F4__ \u524D\u56DE\u590D\uFF1B\u5982\u6709\u8865\u5145\u4FE1\u606F\uFF0C\u6B22\u8FCE\u76F4\u63A5\u56DE\u590D\u672C\u90AE\u4EF6\u3002",
+        "",
+        "\u795D\u597D\uFF01{{xlc:cursor}}",
+        "## \u6536\u4EF6\u5730\u5740",
+        "",
+        "<!-- xlc-item",
+        "id: xlc-pack00000014",
+        "type: text",
+        "tags: \u5730\u5740,\u5FEB\u9012",
+        "category: \u5730\u5740",
+        "source-type: external",
+        "-->",
+        "\u6536\u4EF6\u4EBA\uFF1A{{xlc:ask:\u6536\u4EF6\u4EBA}}",
+        "\u5730\u5740\uFF1A{{xlc:ask:\u7701\u5E02\u533A}} {{xlc:ask:\u8BE6\u7EC6\u5730\u5740}}",
+        "\u90AE\u7F16\uFF1A{{xlc:ask:\u90AE\u7F16}}",
+        "\u7535\u8BDD\uFF1A{{xlc:ask:\u624B\u673A\u53F7}}{{xlc:cursor}}",
+        "## \u8054\u7CFB\u4EBA\u5361\u7247",
+        "",
+        "<!-- xlc-item",
+        "id: xlc-pack00000015",
+        "type: markdown",
+        "tags: \u8054\u7CFB\u65B9\u5F0F,\u8054\u7CFB\u4EBA",
+        "category: \u8054\u7CFB\u65B9\u5F0F",
+        "source-type: external",
+        "-->",
+        "**{{xlc:ask:\u59D3\u540D}}**",
+        "- \u624B\u673A\uFF1A{{xlc:ask:\u624B\u673A\u53F7}}",
+        "- \u90AE\u7BB1\uFF1A{{xlc:ask:\u90AE\u7BB1}}",
+        "- \u5907\u6CE8\uFF1A{{xlc:ask:\u5907\u6CE8|textarea}}{{xlc:cursor}}",
+        "## \u5730\u5740\u6807\u7B7E",
+        "",
+        "<!-- xlc-item",
+        "id: xlc-pack00000016",
+        "type: text",
+        "tags: \u5730\u5740,\u6807\u7B7E",
+        "category: \u5730\u5740",
+        "source-type: external",
+        "-->",
+        "{{xlc:ask:\u6536\u4EF6\u4EBA}} / {{xlc:ask:\u7701\u5E02\u533A}} / {{xlc:ask:\u8BE6\u7EC6\u5730\u5740}} / {{xlc:ask:\u624B\u673A\u53F7}}",
+        // ---- 场景① 客服模板 ----
+        "## \u5EF6\u671F\u81F4\u6B49\u56DE\u590D",
+        "",
+        "<!-- xlc-item",
+        "id: xlc-pack00000001",
+        "type: markdown",
+        "tags: \u5BA2\u670D,\u6A21\u677F",
+        "category: \u5BA2\u670D",
+        "source-type: external",
+        "-->",
+        "\u5C0A\u656C\u7684 {{xlc:ask:\u5BA2\u6237\u540D\u79F0}}\uFF1A",
+        "",
+        "\u5173\u4E8E\u672C\u671F\u4EA4\u4ED8\u8BA1\u5212\u7684\u8C03\u6574\uFF0C\u6211\u4EEC\u6DF1\u8868\u6B49\u610F\u3002\u4E3B\u8981\u539F\u56E0\u4E3A __\u539F\u56E0__\uFF0C\u76EE\u524D\u8FDB\u5EA6\u5DF2\u8FBE __\u767E\u5206\u6BD4__\uFF0C\u9884\u8BA1\u63A8\u8FDF __\u5929\u6570__ \u4E2A\u5DE5\u4F5C\u65E5\u3002",
+        "",
+        "\u4E3A\u5F25\u8865\u5F71\u54CD\uFF0C\u6211\u4EEC\u63D0\u4F9B\u4EE5\u4E0B\u8865\u507F\uFF1A",
+        "1. \u672C\u671F\u670D\u52A1\u8D39\u51CF\u514D {{xlc:ask:\u8865\u507F\u6BD4\u4F8B|5%,10%,\u81EA\u5B9A\u4E49}}\uFF1B",
+        "2. \u4E0A\u7EBF\u540E 48 \u5C0F\u65F6\u4E13\u5C5E\u503C\u5B88\uFF1B",
+        "3. \u4E0B\u671F\u8FED\u4EE3\u4F18\u5148\u6392\u5165\u8D35\u65B9\u9700\u6C42\u3002",
+        "",
+        "\u518D\u6B21\u611F\u8C22\u7406\u89E3\u4E0E\u652F\u6301\uFF0C\u6709\u4EFB\u4F55\u95EE\u9898\u968F\u65F6\u8054\u7CFB\u6211\u3002{{xlc:cursor}}",
+        "## \u5DE5\u5355\u8FDB\u5EA6\u8DDF\u8FDB",
+        "",
+        "<!-- xlc-item",
+        "id: xlc-pack00000002",
+        "type: markdown",
+        "tags: \u5BA2\u670D,\u8DDF\u8FDB",
+        "category: \u5BA2\u670D",
+        "source-type: external",
+        "-->",
+        "{{xlc:ask:\u5BA2\u6237\u540D\u79F0}} \u60A8\u597D\uFF1A",
+        "",
+        "\u60A8\u7684\u5DE5\u5355 {{xlc:ask:\u5DE5\u5355\u53F7}} \u5F53\u524D\u72B6\u6001\uFF1A__\u5F53\u524D\u72B6\u6001__\u3002",
+        "\u9884\u8BA1\u5B8C\u6210\u65F6\u95F4\uFF1A{{xlc:ask:\u8DDF\u8FDB\u65E5\u671F|date}}\u3002\u671F\u95F4\u6709\u4EFB\u4F55\u8865\u5145\u4FE1\u606F\u8BF7\u76F4\u63A5\u56DE\u590D\u672C\u6D88\u606F\u3002",
+        "",
+        "\u611F\u8C22\u60A8\u7684\u8010\u5FC3\u7B49\u5F85\u3002{{xlc:cursor}}",
+        "## \u597D\u8BC4\u611F\u8C22\u56DE\u590D",
+        "",
+        "<!-- xlc-item",
+        "id: xlc-pack00000003",
+        "type: text",
+        "tags: \u5BA2\u670D,\u56DE\u590D",
+        "category: \u5BA2\u670D",
+        "source-type: external",
+        "-->",
+        "\u611F\u8C22 {{xlc:ask:\u5BA2\u6237\u6635\u79F0}} \u7684\u8BA4\u53EF\u4E0E\u652F\u6301\uFF01\u60A8\u7684\u9F13\u52B1\u662F\u6211\u4EEC\u524D\u8FDB\u7684\u52A8\u529B\uFF0C\u5982\u518D\u6B21\u5149\u4E34\u6709\u4EFB\u4F55\u95EE\u9898\uFF0C\u968F\u65F6\u8054\u7CFB\u6211\u3002\u795D\u751F\u6D3B\u6109\u5FEB\uFF01{{xlc:cursor}}",
+        // ---- 场景② AI 提示词库 ----
+        "## \u6587\u7AE0\u6DA6\u8272\u63D0\u793A\u8BCD",
+        "",
+        "<!-- xlc-item",
+        "id: xlc-pack00000004",
+        "type: text",
+        "tags: AI,\u63D0\u793A\u8BCD",
+        "category: \u63D0\u793A\u8BCD",
+        "source-type: external",
+        "-->",
+        "\u4F60\u662F\u8D44\u6DF1\u7F16\u8F91\u3002\u8BF7\u6DA6\u8272\u4EE5\u4E0B\u6587\u7AE0\uFF0C\u9762\u5411 {{xlc:ask:\u76EE\u6807\u8BFB\u8005|\u666E\u901A\u8BFB\u8005,\u4E13\u4E1A\u8BFB\u8005}}\uFF1A",
+        "\u4FDD\u6301\u539F\u610F\u4E0E\u7ED3\u6784\uFF0C\u4EC5\u63D0\u5347\u6D41\u7545\u5EA6\u4E0E\u8868\u8FBE\u529B\uFF1B\u4E0D\u6539\u5199\u4E8B\u5B9E\uFF0C\u4E0D\u65B0\u589E\u5185\u5BB9\u3002",
+        "\u8F93\u51FA\u6DA6\u8272\u540E\u7684\u5168\u6587\uFF1A",
+        "",
+        "{{xlc:clipboard}}{{xlc:cursor}}",
+        "## \u4EE3\u7801\u5BA1\u67E5\u63D0\u793A\u8BCD",
+        "",
+        "<!-- xlc-item",
+        "id: xlc-pack00000005",
+        "type: text",
+        "tags: AI,\u63D0\u793A\u8BCD,\u5F00\u53D1",
+        "category: \u63D0\u793A\u8BCD",
+        "source-type: external",
+        "-->",
+        "\u4F60\u662F {{xlc:ask:\u7F16\u7A0B\u8BED\u8A00|TypeScript,Python,Go}} \u8D44\u6DF1\u5DE5\u7A0B\u5E08\uFF0C\u8BF7\u5BA1\u67E5\u4EE5\u4E0B\u4EE3\u7801\uFF0C\u6309\u4E25\u91CD\u5EA6\u8F93\u51FA\uFF1A",
+        "1. \u6B63\u786E\u6027\u95EE\u9898\uFF08\u4F1A\u51FA\u9519\u7684\u5730\u65B9\uFF09",
+        "2. \u5B89\u5168\u9690\u60A3",
+        "3. \u53EF\u8BFB\u6027\u4E0E\u7EF4\u62A4\u6027\u5EFA\u8BAE",
+        "\u4EC5\u5217\u95EE\u9898\u4E0E\u4FEE\u6539\u5EFA\u8BAE\uFF0C\u4E0D\u91CD\u5199\u5168\u6587\uFF1A",
+        "",
+        "{{xlc:clipboard}}{{xlc:cursor}}",
+        "## \u4F1A\u8BAE\u8981\u70B9\u63D0\u70BC\u63D0\u793A\u8BCD",
+        "",
+        "<!-- xlc-item",
+        "id: xlc-pack00000006",
+        "type: text",
+        "tags: AI,\u63D0\u793A\u8BCD",
+        "category: \u63D0\u793A\u8BCD",
+        "source-type: external",
+        "-->",
+        "\u8BF7\u628A\u4EE5\u4E0B\u4F1A\u8BAE\u8BB0\u5F55\u63D0\u70BC\u4E3A\u8981\u70B9\uFF1A\u7ED3\u8BBA / \u5F85\u529E\uFF08\u8D1F\u8D23\u4EBA+\u622A\u6B62\u65F6\u95F4\uFF09/ \u98CE\u9669\u4E09\u7C7B\uFF0C\u6BCF\u6761\u4E00\u884C\uFF1A",
+        "",
+        "{{xlc:clipboard}}{{xlc:cursor}}",
+        // ---- 场景③ 研发写作常用件 ----
+        "## \u5468\u62A5\u5F00\u5934",
+        "",
+        "<!-- xlc-item",
+        "id: xlc-pack00000007",
+        "type: markdown",
+        "tags: \u5199\u4F5C,\u5468\u62A5",
+        "category: \u5199\u4F5C",
+        "source-type: external",
+        "-->",
+        "\u672C\u5468\u56F4\u7ED5 {{xlc:ask:\u672C\u5468\u4E3B\u9898}} \u63A8\u8FDB\uFF0C\u5173\u952E\u8FDB\u5C55\uFF1A",
+        "",
+        "1. __\u4E8B\u9879__\uFF08\u72B6\u6001\uFF1A__\u8FDB\u5EA6__\uFF09",
+        "2. __\u4E8B\u9879__\uFF08\u72B6\u6001\uFF1A__\u8FDB\u5EA6__\uFF09",
+        "",
+        "\u98CE\u9669\u4E0E\u4F9D\u8D56\uFF1A{{xlc:cursor}}",
+        "## \u4F1A\u8BAE\u7EAA\u8981\u9AA8\u67B6",
+        "",
+        "<!-- xlc-item",
+        "id: xlc-pack00000008",
+        "type: markdown",
+        "tags: \u5199\u4F5C,\u4F1A\u8BAE",
+        "category: \u5199\u4F5C",
+        "source-type: external",
+        "-->",
+        "# {{xlc:ask:\u4F1A\u8BAE\u4E3B\u9898}} \xB7 \u4F1A\u8BAE\u7EAA\u8981\uFF08{{xlc:date}}\uFF09",
+        "",
+        "## \u7ED3\u8BBA",
+        "- {{xlc:cursor}}",
+        "## \u5F85\u529E",
+        "- [ ] __\u4E8B\u9879__\uFF08\u8D1F\u8D23\u4EBA\uFF1A__ / \u622A\u6B62\uFF1A__\uFF09",
+        "## \u98CE\u9669",
+        "- ",
+        "## \u65E5\u8BA1\u5212\u6A21\u677F",
+        "",
+        "<!-- xlc-item",
+        "id: xlc-pack00000009",
+        "type: markdown",
+        "tags: \u5199\u4F5C,\u8BA1\u5212",
+        "category: \u5199\u4F5C",
+        "source-type: external",
+        "-->",
+        "## \u4ECA\u65E5\u4E09\u4EF6\u4E8B\uFF08{{xlc:date}}\uFF09",
+        "",
+        "1. {{xlc:cursor}}",
+        "2. ",
+        "3. ",
+        "## \u7559\u767D\uFF08\u5E94\u5BF9\u7A81\u53D1\uFF09",
+        "- ",
+        "## SQL \u5206\u9875\u67E5\u8BE2",
+        "",
+        "<!-- xlc-item",
+        "id: xlc-pack00000010",
+        "type: code",
+        "tags: \u5F00\u53D1,SQL",
+        "category: \u5F00\u53D1",
+        "source-type: external",
+        "-->",
+        "```sql",
+        "SELECT * FROM example_posts",
+        "WHERE status = 'published'",
+        "ORDER BY updated_at DESC",
+        "LIMIT 20 OFFSET 40;",
+        "```",
+        "",
+        // ---- 场景④ 商务财务与售后协同 ----
+        "## \u5F00\u7968\u8D44\u6599",
+        "",
+        "<!-- xlc-item",
+        "id: xlc-pack00000017",
+        "type: markdown",
+        "tags: \u8D22\u52A1,\u53D1\u7968,\u5546\u52A1",
+        "category: \u5546\u52A1",
+        "source-type: external",
+        "-->",
+        "> \u{1F4A1} \u63D0\u793A\uFF1A\u4E13\u7968\u9700\u5B8C\u6574\u586B\u5199\u5F00\u6237\u884C\u4E0E\u94F6\u884C\u8D26\u53F7\uFF1B\u666E\u7968\u4EC5\u9700\u62AC\u5934\u4E0E\u7A0E\u53F7\u3002",
+        "",
+        "- \u53D1\u7968\u7C7B\u578B\uFF1A{{xlc:ask:\u53D1\u7968\u7C7B\u578B|\u589E\u503C\u7A0E\u4E13\u7528\u53D1\u7968,\u589E\u503C\u7A0E\u666E\u901A\u53D1\u7968}}",
+        "- \u4F01\u4E1A\u540D\u79F0\uFF1A{{xlc:ask:\u4F01\u4E1A\u540D\u79F0}}",
+        "- \u7EB3\u7A0E\u4EBA\u8BC6\u522B\u53F7\uFF1A{{xlc:ask:\u7EB3\u7A0E\u4EBA\u8BC6\u522B\u53F7}}",
+        "- \u5F00\u6237\u94F6\u884C\uFF1A{{xlc:ask:\u5F00\u6237\u94F6\u884C}}",
+        "- \u94F6\u884C\u8D26\u53F7\uFF1A{{xlc:ask:\u94F6\u884C\u8D26\u53F7}}",
+        "- \u6CE8\u518C\u5730\u5740\u4E0E\u7535\u8BDD\uFF1A{{xlc:ask:\u7701\u5E02\u533A}} {{xlc:ask:\u8BE6\u7EC6\u5730\u5740}} / {{xlc:ask:\u624B\u673A\u53F7}}{{xlc:cursor}}",
+        "",
+        "## \u552E\u540E\u9000\u6362\u6307\u5F15",
+        "",
+        "<!-- xlc-item",
+        "id: xlc-pack00000018",
+        "type: markdown",
+        "tags: \u5BA2\u670D,\u552E\u540E,\u9000\u6362",
+        "category: \u5BA2\u670D",
+        "source-type: external",
+        "-->",
+        "{{xlc:ask:\u5BA2\u6237\u540D\u79F0}} \u60A8\u597D\uFF1A",
+        "",
+        "\u60A8\u7684\u552E\u540E\u7533\u8BF7\u5DF2\u53D7\u7406\uFF08\u5DE5\u5355/\u8BA2\u5355\uFF1A{{xlc:ask:\u8BA2\u5355\u7F16\u53F7}}\uFF0C\u7C7B\u578B\uFF1A{{xlc:ask:\u9000\u6362\u7C7B\u578B|\u6362\u8D27,\u9000\u6B3E,\u8FD4\u5382\u7EF4\u4FEE}}\uFF09\u3002",
+        "",
+        "\u8BF7\u5C06\u5546\u54C1\u5BC4\u56DE\u4EE5\u4E0B\u5730\u5740\uFF1A",
+        "- \u6536\u4EF6\u4EBA\uFF1A{{xlc:ask:\u6536\u4EF6\u4EBA}}\uFF08\u7535\u8BDD\uFF1A{{xlc:ask:\u624B\u673A\u53F7}}\uFF09",
+        "- \u5BC4\u56DE\u5730\u5740\uFF1A{{xlc:ask:\u5BC4\u56DE\u5730\u5740}}",
+        "",
+        "> \u{1F4A1} \u6CE8\u610F\uFF1A\u5BC4\u56DE\u65F6\u8BF7\u4FDD\u7559\u539F\u5305\u88C5\u53CA\u914D\u4EF6\uFF0C\u5305\u88F9\u5185\u9644\u5B57\u6761\u6CE8\u660E\u60A8\u7684\u8BA2\u5355\u53F7\u4E0E\u9000\u6362\u539F\u56E0\uFF1B\u8BF7\u52FF\u5BC4\u9001\u8FD0\u8D39\u5230\u4ED8\u3002\u5BC4\u51FA\u540E\u8BF7\u5C06\u5FEB\u9012\u5355\u53F7\u56DE\u590D\u672C\u5904\uFF0C\u6211\u4EEC\u5C06\u4F18\u5148\u4E3A\u60A8\u8DDF\u8FDB\u3002{{xlc:cursor}}",
+        "",
+        "## \u4E8B\u9879\u50AC\u529E\u63D0\u9192",
+        "",
+        "<!-- xlc-item",
+        "id: xlc-pack00000019",
+        "type: markdown",
+        "tags: \u5199\u4F5C,\u534F\u540C,\u50AC\u529E",
+        "category: \u5199\u4F5C",
+        "source-type: external",
+        "-->",
+        "{{xlc:ask:\u6536\u4EF6\u4EBA}} \u60A8\u597D\uFF1A",
+        "",
+        "\u5173\u4E8E\u4E8B\u9879\u300C{{xlc:ask:\u50AC\u529E\u4E8B\u9879}}\u300D\uFF0C\u539F\u5B9A\u622A\u6B62\u65F6\u95F4\u4E3A {{xlc:ask:\u539F\u5B9A\u622A\u6B62|date}}\u3002",
+        "\u76EE\u524D\u6211\u4EEC\u5DF2\u63A8\u8FDB\u81F3\u9636\u6BB5\uFF1A__\u9636\u6BB5\u8FDB\u5EA6__\uFF1B\u4E3A\u786E\u4FDD\u540E\u7EED\u4EA4\u4ED8\u4E0D\u53D7\u5F71\u54CD\uFF0C\u9700\u8981\u8D35\u65B9\u5728 __\u4ECA\u65E5/\u672C\u5468\u4E94__ \u524D\u534F\u52A9\u786E\u8BA4\uFF1A",
+        "1. __\u5F85\u786E\u8BA4\u70B9 1__",
+        "2. __\u5F85\u786E\u8BA4\u70B9 2__",
+        "",
+        "\u5982\u6709\u4EFB\u4F55\u5361\u70B9\u6216\u9700\u6211\u4EEC\u914D\u5408\u8C03\u6574\u4E4B\u5904\uFF0C\u968F\u65F6\u6C9F\u901A\uFF0C\u611F\u8C22\uFF01{{xlc:cursor}}",
+        "",
+        "## \u5E38\u89C1\u95EE\u9898\u89E3\u7B54 FAQ",
+        "",
+        "<!-- xlc-item",
+        "id: xlc-pack00000020",
+        "type: markdown",
+        "tags: \u5BA2\u670D,\u652F\u6301,FAQ",
+        "category: \u5BA2\u670D",
+        "source-type: external",
+        "-->",
+        "### Q: {{xlc:ask:\u54A8\u8BE2\u95EE\u9898}}",
+        "",
+        "**A:** \u9488\u5BF9\u60A8\u54A8\u8BE2\u7684\u95EE\u9898\uFF0C\u5EFA\u8BAE\u6309\u4EE5\u4E0B\u6B65\u9AA4\u6392\u67E5\u4E0E\u5904\u7406\uFF1A",
+        "1. \u786E\u8BA4\u7CFB\u7EDF\u73AF\u5883\u4E0E\u7248\u672C\u662F\u5426\u7B26\u5408\u8981\u6C42\uFF1B",
+        "2. __\u5904\u7406\u6B65\u9AA4\u6216\u6838\u5FC3\u89E3\u7B54__\uFF1B",
+        "3. \u5982\u4ECD\u672A\u89E3\u51B3\uFF0C\u53EF\u53C2\u8003\u6587\u6863\uFF1A__\u94FE\u63A5__\uFF0C\u6216\u5C06\u9519\u8BEF\u622A\u56FE\u56DE\u590D\u6211\u4EEC\u3002",
+        "",
+        "> \u{1F4A1} \u63D0\u793A\uFF1A\u672C\u7B54\u590D\u9002\u7528\u4E8E\u5E38\u89C1\u6807\u51C6\u6D41\u7A0B\uFF1B\u590D\u6742\u7279\u6B8A\u60C5\u51B5\u8BF7\u8F6C\u4EBA\u5DE5\u4E13\u9879\u5DE5\u5355\u8DDF\u8FDB\u3002{{xlc:cursor}}",
+        "",
+        // ---- 场景⑤ 单行资料与代码格式示例（符合当前 B-006 写入边界） ----
+        "## \u90AE\u7BB1\u5730\u5740\uFF08\u5355\u884C\u793A\u4F8B\uFF09",
+        "",
+        "<!-- xlc-item",
+        "id: xlc-pack00000021",
+        "type: text",
+        "tags: \u90AE\u7BB1,\u5355\u884C\u793A\u4F8B",
+        "category: \u90AE\u7BB1",
+        "source-type: external",
+        "-->",
+        "\u90AE\u7BB1\uFF1A{{xlc:ask:\u90AE\u7BB1}}",
+        "",
+        "## \u6536\u4EF6\u5730\u5740\uFF08\u5355\u884C\u793A\u4F8B\uFF09",
+        "",
+        "<!-- xlc-item",
+        "id: xlc-pack00000022",
+        "type: text",
+        "tags: \u5730\u5740,\u5355\u884C\u793A\u4F8B",
+        "category: \u5730\u5740",
+        "source-type: external",
+        "-->",
+        "\u6536\u4EF6\u5730\u5740\uFF1A{{xlc:ask:\u7701\u5E02\u533A}} {{xlc:ask:\u8BE6\u7EC6\u5730\u5740}}\uFF08{{xlc:ask:\u6536\u4EF6\u4EBA}}\uFF09",
+        "",
+        "## \u8EAB\u4EFD\u8BC1\u53F7\uFF08\u65E0\u6548\u5360\u4F4D\uFF09",
+        "",
+        "<!-- xlc-item",
+        "id: xlc-pack00000023",
+        "type: text",
+        "tags: \u8EAB\u4EFD,\u5360\u4F4D,\u9690\u79C1",
+        "category: \u4E2A\u4EBA\u8D44\u6599",
+        "source-type: external",
+        "-->",
+        "\u8EAB\u4EFD\u8BC1\u53F7\uFF08\u65E0\u6548\u5360\u4F4D\uFF0C\u4EC5\u7528\u4E8E\u6392\u7248\u6D4B\u8BD5\uFF09\uFF1A000000000000000000",
+        "",
+        "## \u5E38\u7528\u7F51\u5740\uFF08\u5355\u884C\u793A\u4F8B\uFF09",
+        "",
+        "<!-- xlc-item",
+        "id: xlc-pack00000024",
+        "type: url",
+        "tags: \u7F51\u5740,\u94FE\u63A5",
+        "category: \u5F00\u53D1",
+        "source-type: external",
+        "url: https://example.com/docs",
+        "-->",
+        "https://example.com/docs",
+        "",
+        "## JSON \u914D\u7F6E\u7247\u6BB5",
+        "",
+        "<!-- xlc-item",
+        "id: xlc-pack00000025",
+        "type: code",
+        "tags: \u5F00\u53D1,JSON,\u4EE3\u7801",
+        "category: \u5F00\u53D1",
+        "source-type: external",
+        "-->",
+        "```json",
+        "{",
+        '  "name": "example",',
+        '  "enabled": true,',
+        '  "tags": ["common", "template"]',
+        "}",
+        "```"
+      ].join("\n");
+    }
+  });
+
+  // src/ui/capture.ts
+  function isBlockRefTarget(blockId) {
+    return /^\d{14}-[0-9a-z]{7}$/.test(blockId);
+  }
+  function classifyLinkTarget(href) {
+    const h = (href != null ? href : "").trim();
+    if (isSafeHttpUrl(h)) return { kind: "url", value: h };
+    if (/^assets\/[^\s]+$/.test(h)) return { kind: "asset", value: h };
+    return null;
+  }
+  function inferTypeFromText(text) {
+    const trimmed = text.trim();
+    if (/^https?:\/\/\S+$/i.test(trimmed)) return "url";
+    if (/^```[\w+#.-]*\s*\n[\s\S]*\n```\s*$/.test(trimmed)) return "code";
+    if (/^!\[[^\]]*\]\((assets\/[^)\s]+)[^)]*\)$/.test(trimmed)) return "image";
+    if (/\]\((assets\/[^)\s]+)[^)]*\)/.test(trimmed)) return "asset";
+    if (/^#{1,6}\s|^\s*[-*+]\s|^\s*\d+\.\s|^\s*>\s|\*\*/.test(trimmed) || trimmed.includes("\n")) return "markdown";
+    return "text";
+  }
+  var import_siyuan3, TOAST_TITLE_MAX, shortTitle, newWriteKey, CaptureDialog;
+  var init_capture = __esm({
+    "src/ui/capture.ts"() {
+      "use strict";
+      import_siyuan3 = __toESM(require_stub_dom());
+      init_dialog_dom();
+      init_item();
+      init_errors();
+      init_variable_form();
+      init_kramdown();
+      init_constants();
+      TOAST_TITLE_MAX = 48;
+      shortTitle = (title) => title.length > TOAST_TITLE_MAX ? `${title.slice(0, TOAST_TITLE_MAX)}\u2026` : title;
+      newWriteKey = (scope) => `xlc-${scope}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 12)}`.slice(0, 120);
+      CaptureDialog = class {
+        constructor(deps) {
+          this.deps = deps;
+          /** 命令面板入口没有可禁用的按钮，用操作锁防止重复读取和重复落库。 */
+          this.activeCaptures = /* @__PURE__ */ new Set();
+          this.formOpen = false;
+        }
+        /** 保存前的共同前置条件：没有内容库时直接回到首次设置，避免先访问宿主再报错。 */
+        ensureConfigured() {
+          var _a, _b;
+          if (!this.deps.isConfigured || this.deps.isConfigured()) return true;
+          (_b = (_a = this.deps).onNotConfigured) == null ? void 0 : _b.call(_a);
+          return false;
+        }
+        async withCaptureLock(key, action) {
+          if (this.activeCaptures.has(key)) {
+            this.deps.notify("info", this.deps.t("captureBusy"));
+            return;
+          }
+          this.activeCaptures.add(key);
+          try {
+            await action();
+          } catch (err) {
+            this.deps.notify("error", this.deps.t("kernelError", toErrorMessage(err)));
+          } finally {
+            this.activeCaptures.delete(key);
+          }
+        }
+        checkCaptureSize(text) {
+          if (text.length <= LIMITS.contentChars) return true;
+          this.deps.notify("error", this.deps.t("aiContentTooLong", String(LIMITS.contentChars)));
+          return false;
+        }
+        /** 保存当前选中内容（命令面板/正文右键入口） */
+        async saveSelection() {
+          var _a;
+          if (!this.ensureConfigured()) return;
+          let sel;
+          try {
+            sel = this.deps.getSelectionText();
+          } catch (err) {
+            this.deps.notify("error", this.deps.t("kernelError", toErrorMessage(err)));
+            return;
+          }
+          const text = sel.text.trim();
+          if (!text) {
+            this.deps.notify("error", this.deps.t("captureSelectionEmpty"));
+            return;
+          }
+          const content = text;
+          if (!this.checkCaptureSize(content)) return;
+          this.openForm(content, inferTypeFromText(content), sel.blockId, {
+            docId: (_a = this.deps.currentDocId()) != null ? _a : void 0,
+            sourceType: "selection"
+          });
+        }
+        /** 从剪贴板捕获（失败诚实回执） */
+        async captureFromClipboard() {
+          if (!this.ensureConfigured()) return;
+          await this.withCaptureLock("clipboard", async () => {
+            try {
+              const text = (await this.deps.readClipboardText()).trim();
+              if (!text) {
+                this.deps.notify("error", this.deps.t("clipboardEmpty"));
+                this.openForm("", "text", null, {
+                  sourceType: "clipboard"
+                });
+                return;
+              }
+              const content = text;
+              if (!this.checkCaptureSize(content)) return;
+              this.openForm(content, inferTypeFromText(content), null, {
+                sourceType: "clipboard"
+              });
+            } catch {
+              this.deps.notify("error", this.deps.t("clipboardReadFailed"));
+              this.openForm("", "text", null, {
+                sourceType: "clipboard"
+              });
+            }
+          });
+        }
+        /** 快速捕获剪贴板（F8）：无表单一步入库——类型推断 + 首行作标题；
+         *  同文已存在则诚实提示不重复写入（不打断）；⌥⇧V 连按防重入。 */
+        async quickCaptureFromClipboard() {
+          var _a, _b;
+          if (this.deps.isConfigured && !this.deps.isConfigured()) {
+            (_b = (_a = this.deps).onNotConfigured) == null ? void 0 : _b.call(_a);
+            return;
+          }
+          await this.withCaptureLock("clipboard", () => this.doQuickCapture());
+        }
+        async doQuickCapture() {
+          var _a;
+          let text = "";
+          let readFailed = false;
+          try {
+            text = (await this.deps.readClipboardText()).trim();
+          } catch {
+            readFailed = true;
+          }
+          if (!text) {
+            this.deps.notify("error", this.deps.t(readFailed ? "clipboardReadFailed" : "clipboardEmpty"));
+            return;
+          }
+          const content = text;
+          if (!this.checkCaptureSize(content)) return;
+          if (bodyWriteRestriction(content)) {
+            this.deps.notify("error", this.deps.t("multiBlockPendingHint"));
+            return;
+          }
+          let dup;
+          try {
+            dup = await this.deps.findDuplicate(content);
+          } catch (err) {
+            this.deps.notify("error", this.deps.t("kernelError", toErrorMessage(err)));
+            return;
+          }
+          if (dup) {
+            this.deps.notify("info", this.deps.t("quickCaptureDuplicate", shortTitle(dup.title)));
+            return;
+          }
+          const firstLine = (_a = content.split(/\r?\n/).map((line) => line.trim()).find(Boolean)) != null ? _a : content;
+          let created;
+          try {
+            created = await this.deps.createItem({
+              itemType: inferTypeFromText(content),
+              markdown: content,
+              title: firstLine.slice(0, 512),
+              source: { sourceType: "clipboard" }
+            }, { idempotencyKey: newWriteKey("clipboard") });
+          } catch (err) {
+            this.deps.notify("error", this.deps.t("kernelError", toErrorMessage(err)));
+            return;
+          }
+          if (created.ok) {
+          } else {
+            this.deps.notify("error", created.message);
+          }
+        }
+        /** 手动新建（空表单） */
+        newManual(titleCandidate) {
+          var _a;
+          if (!this.ensureConfigured()) return;
+          this.openForm("", "text", null, {
+            ...titleCandidate ? { title: titleCandidate } : {},
+            docId: (_a = this.deps.currentDocId()) != null ? _a : void 0,
+            sourceType: "manual"
+          });
+        }
+        /** 从外部文本创建草稿（拖拽放置 / 面板快捷粘贴入口，ADR 0034 / T-0061） */
+        newWithContent(content, options) {
+          var _a, _b;
+          if (!this.ensureConfigured()) return;
+          const text = (content != null ? content : "").trim();
+          if (!text) {
+            this.newManual(options == null ? void 0 : options.title);
+            return;
+          }
+          if (!this.checkCaptureSize(text)) return;
+          const safeText = text;
+          const inferredType = inferTypeFromText(safeText);
+          const derived = inferredType === "url" ? safeText : (safeText.split("\n")[0] || "").slice(0, 60).trim();
+          const title = (options == null ? void 0 : options.title) || derived || this.deps.t("unknownType");
+          this.openForm(safeText, inferredType, null, {
+            title,
+            docId: (_a = this.deps.currentDocId()) != null ? _a : void 0,
+            sourceType: (_b = options == null ? void 0 : options.sourceType) != null ? _b : "manual"
+          });
+        }
+        /** 右键块引用捕获：把被引用块存为 blockref 条目（目标块=引用目标） */
+        captureBlockRef(blockId, refText) {
+          var _a;
+          if (!this.ensureConfigured()) return;
+          if (!isBlockRefTarget(blockId)) {
+            this.deps.notify("error", this.deps.t("invalidItem"));
+            return;
+          }
+          this.openForm(`((${blockId}))`, "blockref", null, {
+            title: (refText || blockId).slice(0, 120),
+            targetBlockId: blockId,
+            docId: (_a = this.deps.currentDocId()) != null ? _a : void 0,
+            sourceType: "block"
+          });
+        }
+        /** 右键图片捕获：assets/ 图片存为图片条目（非 assets 图诚实拒绝） */
+        captureImage(assetPath, altText) {
+          var _a;
+          if (!this.ensureConfigured()) return;
+          const target = classifyLinkTarget(assetPath);
+          if (!target || target.kind !== "asset") {
+            this.deps.notify("error", this.deps.t("invalidItem"));
+            return;
+          }
+          const title = (altText || target.value.split("/").pop() || target.value).slice(0, 120);
+          this.openForm(`![](${target.value})`, "image", null, { title, docId: (_a = this.deps.currentDocId()) != null ? _a : void 0, sourceType: "resource" });
+        }
+        /** 右键链接捕获：http(s) 外链 → url 条目；assets/ → asset 条目；其余诚实拒绝 */
+        captureLink(href, text) {
+          var _a, _b;
+          if (!this.ensureConfigured()) return;
+          const target = classifyLinkTarget(href);
+          if (!target) {
+            this.deps.notify("error", this.deps.t("invalidItem"));
+            return;
+          }
+          if (target.kind === "url") {
+            this.openForm(target.value, "url", null, { title: (text || target.value).slice(0, 120), docId: (_a = this.deps.currentDocId()) != null ? _a : void 0, sourceType: "resource" });
+          } else {
+            this.openForm(`[${text || this.deps.t("resourceFallback")}](${target.value})`, "asset", null, { title: (text || target.value).slice(0, 120), docId: (_b = this.deps.currentDocId()) != null ? _b : void 0, sourceType: "resource" });
+          }
+        }
+        /** 保存当前块：光标所在块整体作为条目，独立于选区保存语义。 */
+        async captureCurrentBlock() {
+          var _a;
+          if (!this.ensureConfigured()) return;
+          const sourceDocId = (_a = this.deps.currentDocId()) != null ? _a : void 0;
+          await this.withCaptureLock("block", async () => {
+            const blockId = this.deps.getSelectionText().blockId;
+            if (!blockId) {
+              this.deps.notify("error", this.deps.t("captureBlockNone"));
+              return;
+            }
+            const kramdown = await this.deps.getBlockKramdown(blockId);
+            if (kramdown === null || !kramdown.trim()) {
+              this.deps.notify("error", this.deps.t("captureBlockFailed"));
+              return;
+            }
+            const content = kramdown;
+            if (!this.checkCaptureSize(content)) return;
+            this.openForm(content, inferTypeFromText(content), blockId, {
+              docId: sourceDocId,
+              sourceType: "block"
+            });
+          });
+        }
+        /** 保存整篇文档为单个 Markdown 条目；不等同于发现文档中的多个候选。 */
+        async captureCurrentDoc() {
+          if (!this.ensureConfigured()) return;
+          await this.withCaptureLock("document", async () => {
+            var _a;
+            const docId = this.deps.currentDocId();
+            if (!docId) {
+              this.deps.notify("error", this.deps.t("relinkNoDoc"));
+              return;
+            }
+            const doc = await this.deps.exportDocContent(docId);
+            if (!doc) {
+              this.deps.notify("error", this.deps.t("captureDocFailed"));
+              return;
+            }
+            if (!doc.content.trim()) {
+              this.deps.notify("error", this.deps.t("captureDocEmpty"));
+              return;
+            }
+            const title = (_a = doc.hPath.split("/").filter(Boolean).pop()) != null ? _a : doc.hPath;
+            const content = doc.content;
+            if (!this.checkCaptureSize(content)) return;
+            this.openForm(content, "markdown", null, { title, docId, sourceType: "doc-fragment" });
+          });
+        }
+        openForm(defaultText, defaultType, sourceBlockId, overrides) {
+          var _a, _b, _c, _d;
+          if (this.deps.isConfigured && !this.deps.isConfigured()) {
+            (_b = (_a = this.deps).onNotConfigured) == null ? void 0 : _b.call(_a);
+            return;
+          }
+          if (this.formOpen) {
+            this.deps.notify("info", this.deps.t("captureBusy"));
+            return;
+          }
+          this.formOpen = true;
+          const t = this.deps.t;
+          let closed = false;
+          let saving = false;
+          const formWriteKey = newWriteKey("form");
+          let tidySeq = 0;
+          let draftSeq = 0;
+          const dialog = new import_siyuan3.Dialog({
+            title: t("newItem"),
+            content: "",
+            width: "min(620px, 92vw)",
+            height: "min(860px, 92vh)",
+            destroyCallback: () => {
+              closed = true;
+              this.formOpen = false;
+              ++tidySeq;
+              ++draftSeq;
+            }
+          });
+          (_c = dialog.element.querySelector(".b3-dialog__container")) == null ? void 0 : _c.classList.add("xlc-form-host");
+          const body = getDialogBody(dialog.element);
+          if (!body) {
+            this.formOpen = false;
+            dialog.destroy();
+            return;
+          }
+          body.innerHTML = "";
+          const form = document.createElement("div");
+          form.className = "xlc-form xlc-capture";
+          const intro = document.createElement("p");
+          intro.className = "xlc-page-intro";
+          intro.textContent = t("captureIntro");
+          form.appendChild(intro);
+          const field = (label, value, isArea, cls, parent) => {
+            const wrap = document.createElement("label");
+            wrap.className = "xlc-form-field";
+            const cap = document.createElement("span");
+            cap.className = "xlc-form-label";
+            cap.textContent = label;
+            wrap.appendChild(cap);
+            const inputEl = isArea ? document.createElement("textarea") : document.createElement("input");
+            if (isArea) {
+              inputEl.rows = 6;
+            }
+            inputEl.className = "b3-text-field " + cls;
+            inputEl.value = value;
+            wrap.appendChild(inputEl);
+            (parent != null ? parent : form).appendChild(wrap);
+            return inputEl;
+          };
+          const metaRow = document.createElement("div");
+          metaRow.className = "xlc-form-row";
+          const typeWrap = document.createElement("label");
+          typeWrap.className = "xlc-form-field xlc-form-field--fixed";
+          const typeLabel2 = document.createElement("span");
+          typeLabel2.className = "xlc-form-label";
+          typeLabel2.textContent = t("type");
+          typeWrap.appendChild(typeLabel2);
+          const typeSelect = document.createElement("select");
+          typeSelect.className = "b3-select xlc-form-type";
+          typeSelect.dataset.xlcControl = "capture.type";
+          for (const it of ["text", "markdown", "url", "code", "image", "asset", "blockref", "structure"]) {
+            const opt = document.createElement("option");
+            opt.value = it;
+            opt.textContent = t(`type.${it}`);
+            if (it === defaultType) opt.selected = true;
+            typeSelect.appendChild(opt);
+          }
+          typeWrap.appendChild(typeSelect);
+          metaRow.appendChild(typeWrap);
+          const contentEl = field(t("contentLabel"), defaultText, true, "xlc-form-content");
+          contentEl.dataset.xlcControl = "capture.content";
+          const contentWrap = contentEl.parentElement;
+          const contentError = document.createElement("span");
+          contentError.className = "xlc-form-error";
+          contentError.id = "xlc-capture-content-error";
+          contentError.setAttribute("role", "alert");
+          contentError.hidden = true;
+          contentWrap.appendChild(contentError);
+          const multiBlockHint = document.createElement("span");
+          multiBlockHint.className = "xlc-form-hint";
+          multiBlockHint.dataset.xlcControl = "capture.body-restriction";
+          multiBlockHint.setAttribute("role", "note");
+          multiBlockHint.textContent = t("multiBlockPendingHint");
+          contentWrap.appendChild(multiBlockHint);
+          const varbar = buildVariableBar(t, () => contentEl);
+          contentEl.parentElement.after(varbar);
+          const titleEl = field(t("title"), (_d = overrides == null ? void 0 : overrides.title) != null ? _d : "", false, "xlc-form-title");
+          titleEl.dataset.xlcControl = "capture.title";
+          form.appendChild(metaRow);
+          const aliasEl = field(t("alias"), "", false, "xlc-form-alias", metaRow);
+          aliasEl.dataset.xlcControl = "capture.alias";
+          metaRow.insertBefore(aliasEl.parentElement, typeWrap);
+          const tagRow = document.createElement("div");
+          tagRow.className = "xlc-form-row";
+          const tagsEl = field(t("tags"), "", false, "xlc-form-tags", tagRow);
+          tagsEl.dataset.xlcControl = "capture.tags";
+          const tagsHint = document.createElement("span");
+          tagsHint.className = "xlc-form-hint";
+          tagsHint.textContent = t("tagsHint");
+          tagsEl.parentElement.appendChild(tagsHint);
+          const categoryEl = field(t("category"), "", false, "xlc-form-category", tagRow);
+          categoryEl.dataset.xlcControl = "capture.category";
+          categoryEl.parentElement.classList.add("xlc-form-field--fixed");
+          form.appendChild(tagRow);
+          const hint = document.createElement("div");
+          hint.className = "xlc-form-hint";
+          hint.textContent = t("captureHint");
+          form.appendChild(hint);
+          if (this.deps.getLibraryName) {
+            void this.deps.getLibraryName().then((name) => {
+              if (closed || !name) return;
+              hint.textContent = `${t("captureHint")} \xB7 ${t("captureHintLib", name)}`;
+            }).catch(() => void 0);
+          }
+          const flagContentError = (message) => {
+            contentEl.classList.add("xlc-input--error");
+            contentEl.setAttribute("aria-invalid", "true");
+            contentEl.setAttribute("aria-describedby", contentError.id);
+            contentError.textContent = message;
+            contentError.hidden = false;
+            contentEl.focus();
+          };
+          contentEl.addEventListener("input", () => {
+            contentEl.classList.remove("xlc-input--error");
+            contentEl.removeAttribute("aria-invalid");
+            contentEl.removeAttribute("aria-describedby");
+            contentError.hidden = true;
+            contentError.textContent = "";
+          });
+          const sugrow = document.createElement("div");
+          sugrow.className = "xlc-sugrow";
+          sugrow.style.display = "none";
+          const sugText = document.createElement("span");
+          sugrow.appendChild(sugText);
+          const adoptBtn = document.createElement("button");
+          adoptBtn.className = "xlc-sugrow-adopt";
+          adoptBtn.dataset.xlcControl = "capture.ai.suggestion.adopt";
+          let suggestions = {};
+          const applySuggestions = () => {
+            var _a2;
+            if (closed || Object.keys(suggestions).length === 0) return;
+            if (suggestions.title) titleEl.value = suggestions.title;
+            if (suggestions.alias) aliasEl.value = suggestions.alias;
+            if ((_a2 = suggestions.tags) == null ? void 0 : _a2.length) tagsEl.value = suggestions.tags.join(", ");
+            if (suggestions.category) categoryEl.value = suggestions.category;
+            this.deps.notify("info", t("aiApplied"));
+          };
+          adoptBtn.textContent = t("adoptAll");
+          adoptBtn.addEventListener("click", applySuggestions);
+          sugrow.appendChild(adoptBtn);
+          form.insertBefore(sugrow, titleEl.parentElement);
+          if (this.deps.aiEnabled()) {
+            const contentLabel = contentEl.parentElement.querySelector(".xlc-form-label");
+            if (contentLabel) {
+              const tidyBtn = document.createElement("button");
+              tidyBtn.className = "xlc-form-ai";
+              tidyBtn.type = "button";
+              tidyBtn.dataset.xlcControl = "capture.ai.tidy";
+              tidyBtn.textContent = "\u2726 " + t("aiTidy");
+              const tidyFailure = document.createElement("div");
+              tidyFailure.className = "xlc-ai-failure";
+              tidyFailure.hidden = true;
+              const tidyFailureMessage = document.createElement("span");
+              tidyFailureMessage.className = "xlc-form-error";
+              tidyFailureMessage.dataset.xlcControl = "capture.ai.tidy.error";
+              tidyFailureMessage.setAttribute("role", "alert");
+              tidyFailureMessage.setAttribute("aria-live", "assertive");
+              tidyFailure.appendChild(tidyFailureMessage);
+              const tidyRetryBtn = document.createElement("button");
+              tidyRetryBtn.type = "button";
+              tidyRetryBtn.className = "xlc-form-ai xlc-ai-retry";
+              tidyRetryBtn.dataset.xlcControl = "capture.ai.tidy.retry";
+              tidyRetryBtn.textContent = t("retry");
+              tidyFailure.appendChild(tidyRetryBtn);
+              contentEl.parentElement.appendChild(tidyFailure);
+              let tidyBusy = false;
+              const syncTidyButton = () => {
+                tidyBtn.disabled = tidyBusy || !contentEl.value.trim();
+              };
+              contentEl.addEventListener("input", syncTidyButton);
+              syncTidyButton();
+              const clearTidyFailure = () => {
+                tidyFailure.hidden = true;
+                tidyFailureMessage.textContent = "";
+              };
+              const showTidyFailure = (message) => {
+                tidyFailureMessage.textContent = message || t("aiTransport");
+                tidyFailure.hidden = false;
+              };
+              const runTidy = () => {
+                if (closed || tidyBusy) return;
+                const value = contentEl.value.trim();
+                if (!value) {
+                  this.deps.notify("error", t("invalidItem"));
+                  return;
+                }
+                clearTidyFailure();
+                suggestions = {};
+                sugText.textContent = "";
+                sugrow.style.display = "none";
+                const request = ++tidySeq;
+                tidyBusy = true;
+                syncTidyButton();
+                tidyBtn.textContent = t("aiWorking");
+                void this.deps.aiTidy(value).then((result) => {
+                  var _a2;
+                  if (closed || request !== tidySeq) return;
+                  tidyBtn.textContent = "\u2726 " + t("aiTidy");
+                  tidyBusy = false;
+                  syncTidyButton();
+                  if (!result.ok) {
+                    showTidyFailure(result.message);
+                    return;
+                  }
+                  suggestions = result;
+                  sugText.textContent = "";
+                  const lead = document.createElement("span");
+                  lead.textContent = "\u2726 " + t("aiSuggestion") + "\uFF1A";
+                  sugText.appendChild(lead);
+                  if (result.title) {
+                    const titleEl2 = document.createElement("b");
+                    titleEl2.textContent = result.title;
+                    sugText.appendChild(titleEl2);
+                  }
+                  const parts = [
+                    result.alias ? `${t("alias")}\uFF1A${result.alias}` : "",
+                    ((_a2 = result.tags) == null ? void 0 : _a2.length) ? `${t("tags")}\uFF1A${result.tags.join("/")}` : "",
+                    result.category ? `${t("category")}\uFF1A${result.category}` : ""
+                  ].filter(Boolean);
+                  if (parts.length) {
+                    const tail = document.createElement("span");
+                    tail.textContent = (result.title ? " \xB7 " : "") + parts.join(" \xB7 ");
+                    sugText.appendChild(tail);
+                  }
+                  sugrow.style.display = "";
+                }).catch((err) => {
+                  if (closed || request !== tidySeq) return;
+                  tidyBtn.textContent = "\u2726 " + t("aiTidy");
+                  tidyBusy = false;
+                  syncTidyButton();
+                  showTidyFailure(toErrorMessage(err, t("aiTransport")));
+                });
+              };
+              tidyBtn.addEventListener("click", runTidy);
+              tidyRetryBtn.addEventListener("click", runTidy);
+              contentLabel.appendChild(tidyBtn);
+            }
+            const draftWrap = document.createElement("div");
+            draftWrap.className = "xlc-form-field";
+            const draftLabel = document.createElement("span");
+            draftLabel.className = "xlc-form-label";
+            draftLabel.textContent = t("aiDraft");
+            draftWrap.appendChild(draftLabel);
+            const draftBtn = document.createElement("button");
+            draftBtn.type = "button";
+            draftBtn.className = "xlc-form-ai";
+            draftBtn.dataset.xlcControl = "capture.ai.draft.generate";
+            draftBtn.textContent = "\u2726 " + t("aiDraftDesc");
+            draftLabel.appendChild(draftBtn);
+            const draftInput = document.createElement("input");
+            draftInput.className = "b3-text-field";
+            draftInput.dataset.xlcControl = "capture.ai.draft.description";
+            draftInput.placeholder = t("aiDraftDesc");
+            draftWrap.appendChild(draftInput);
+            const draftFailure = document.createElement("div");
+            draftFailure.className = "xlc-ai-failure";
+            draftFailure.hidden = true;
+            const draftFailureMessage = document.createElement("span");
+            draftFailureMessage.className = "xlc-form-error";
+            draftFailureMessage.dataset.xlcControl = "capture.ai.draft.error";
+            draftFailureMessage.setAttribute("role", "alert");
+            draftFailureMessage.setAttribute("aria-live", "assertive");
+            draftFailure.appendChild(draftFailureMessage);
+            const draftRetryBtn = document.createElement("button");
+            draftRetryBtn.type = "button";
+            draftRetryBtn.className = "xlc-form-ai xlc-ai-retry";
+            draftRetryBtn.dataset.xlcControl = "capture.ai.draft.retry";
+            draftRetryBtn.textContent = t("retry");
+            draftFailure.appendChild(draftRetryBtn);
+            draftWrap.appendChild(draftFailure);
+            let draftBusy = false;
+            draftBtn.disabled = true;
+            const syncDraftButton = () => {
+              draftBtn.disabled = draftBusy || !draftInput.value.trim();
+            };
+            draftInput.addEventListener("input", syncDraftButton);
+            const clearDraftFailure = () => {
+              draftFailure.hidden = true;
+              draftFailureMessage.textContent = "";
+            };
+            const showDraftFailure = (message) => {
+              draftFailureMessage.textContent = message || t("aiTransport");
+              draftFailure.hidden = false;
+            };
+            const runDraft = () => {
+              if (closed || draftBusy) return;
+              const desc = draftInput.value.trim();
+              if (!desc) {
+                this.deps.notify("error", t("aiDraftNeedDescription"));
+                draftInput.focus();
+                return;
+              }
+              if (draftBtn.disabled) return;
+              clearDraftFailure();
+              draftBusy = true;
+              syncDraftButton();
+              const request = ++draftSeq;
+              draftBtn.textContent = t("aiWorking");
+              void this.deps.aiDraft(desc).then((result) => {
+                if (closed || request !== draftSeq) return;
+                draftBtn.textContent = "\u2726 " + t("aiDraftDesc");
+                draftBusy = false;
+                syncDraftButton();
+                if (!result.ok) {
+                  showDraftFailure(result.message);
+                  return;
+                }
+                const contentBox = contentEl;
+                if (contentBox.value.trim()) {
+                  (0, import_siyuan3.confirm)(t("aiDraft"), t("aiDraftOverwrite"), () => {
+                    contentBox.value = result.text;
+                    contentBox.dispatchEvent(new Event("input", { bubbles: true }));
+                  });
+                  return;
+                }
+                contentBox.value = result.text;
+                contentBox.dispatchEvent(new Event("input", { bubbles: true }));
+              }).catch((err) => {
+                if (closed || request !== draftSeq) return;
+                draftBtn.textContent = "\u2726 " + t("aiDraftDesc");
+                draftBusy = false;
+                syncDraftButton();
+                showDraftFailure(toErrorMessage(err, t("aiTransport")));
+              });
+            };
+            draftBtn.addEventListener("click", runDraft);
+            draftRetryBtn.addEventListener("click", runDraft);
+            form.insertBefore(draftWrap, form.firstChild);
+          }
+          const actions = document.createElement("div");
+          actions.className = "xlc-form-actions";
+          const cancelBtn = document.createElement("button");
+          cancelBtn.className = "b3-button";
+          cancelBtn.dataset.xlcControl = "capture.cancel";
+          cancelBtn.textContent = t("cancel");
+          cancelBtn.addEventListener("click", () => {
+            closed = true;
+            ++tidySeq;
+            ++draftSeq;
+            dialog.destroy();
+          });
+          const saveBtn = document.createElement("button");
+          saveBtn.className = "b3-button xlc-btn-primary";
+          saveBtn.dataset.xlcControl = "capture.save";
+          saveBtn.textContent = t("save");
+          const submitOnEnter = (el) => {
+            el.addEventListener("keydown", (ev) => {
+              if (ev.isComposing || ev.keyCode === 229) return;
+              if (ev.key === "Enter" && !ev.altKey && !ev.ctrlKey && !ev.metaKey) {
+                ev.preventDefault();
+                saveBtn.click();
+              }
+            });
+          };
+          [titleEl, aliasEl, tagsEl, categoryEl].forEach((el) => submitOnEnter(el));
+          saveBtn.addEventListener("click", () => {
+            if (closed || saving) return;
+            const contentValue = contentEl.value;
+            if (!contentValue.trim() && !(typeSelect.value === "blockref" && (overrides == null ? void 0 : overrides.targetBlockId))) {
+              flagContentError(t("captureContentRequired"));
+              this.deps.notify("error", t("captureContentRequired"));
+              return;
+            }
+            const type = typeSelect.value;
+            if (type === "blockref" && !(overrides == null ? void 0 : overrides.targetBlockId)) {
+              this.deps.notify("error", t("blockrefNeedsTarget"));
+              return;
+            }
+            let markdown = type === "blockref" && !contentValue.trim() && (overrides == null ? void 0 : overrides.targetBlockId) ? `((${overrides.targetBlockId}))` : contentValue;
+            if (type === "code" && !/^```/.test(contentValue.trim())) {
+              markdown = "```\n" + contentValue + "\n```";
+            } else if (type === "url") {
+              markdown = contentValue.trim();
+              if (!isSafeHttpUrl(markdown)) {
+                flagContentError(t("captureUrlInvalid"));
+                this.deps.notify("error", t("captureUrlInvalid"));
+                return;
+              }
+            }
+            if (bodyWriteRestriction(markdown)) {
+              const message = markdown.length > LIMITS.contentChars ? t("aiContentTooLong", String(LIMITS.contentChars)) : t("multiBlockPendingHint");
+              flagContentError(message);
+              this.deps.notify("error", message);
+              return;
+            }
+            saving = true;
+            saveBtn.disabled = true;
+            saveBtn.textContent = t("checkingDuplicate");
+            cancelBtn.disabled = true;
+            const doSave = () => {
+              var _a2;
+              if (closed) return;
+              saving = true;
+              saveBtn.disabled = true;
+              saveBtn.textContent = t("saving");
+              cancelBtn.disabled = true;
+              const docId = overrides && "docId" in overrides ? overrides.docId : (overrides == null ? void 0 : overrides.sourceType) === "clipboard" ? void 0 : this.deps.currentDocId();
+              void this.deps.createItem({
+                itemType: type,
+                markdown,
+                title: titleEl.value || void 0,
+                alias: aliasEl.value || void 0,
+                tags: tagsEl.value ? tagsEl.value.split(/[,,]/).map((s) => s.trim()).filter(Boolean) : void 0,
+                category: categoryEl.value || void 0,
+                url: type === "url" ? markdown : void 0,
+                targetBlockId: overrides == null ? void 0 : overrides.targetBlockId,
+                source: docId || sourceBlockId || (overrides == null ? void 0 : overrides.sourceType) ? {
+                  sourceDocId: docId != null ? docId : "",
+                  sourceBlockId: sourceBlockId != null ? sourceBlockId : "",
+                  sourceType: (_a2 = overrides == null ? void 0 : overrides.sourceType) != null ? _a2 : sourceBlockId ? "selection" : "manual"
+                } : void 0
+              }, { idempotencyKey: formWriteKey }).then((result) => {
+                saving = false;
+                if (result.ok) {
+                  closed = true;
+                  dialog.destroy();
+                } else {
+                  saveBtn.disabled = false;
+                  saveBtn.textContent = t("save");
+                  cancelBtn.disabled = false;
+                  this.deps.notify("error", result.message);
+                }
+              }).catch((err) => {
+                saving = false;
+                if (closed) return;
+                saveBtn.disabled = false;
+                saveBtn.textContent = t("save");
+                cancelBtn.disabled = false;
+                this.deps.notify("error", t("kernelError", toErrorMessage(err)));
+              });
+            };
+            void this.deps.findDuplicate(contentValue).then((dup) => {
+              if (closed) return;
+              if (!dup) {
+                saving = false;
+                doSave();
+                return;
+              }
+              saving = false;
+              saveBtn.disabled = false;
+              saveBtn.textContent = t("save");
+              cancelBtn.disabled = false;
+              (0, import_siyuan3.confirm)("\u26A0\uFE0F " + t("duplicateTitle"), t("duplicateConfirm", dup.title), () => {
+                if (!closed) doSave();
+              });
+            }).catch((err) => {
+              if (closed) return;
+              saving = false;
+              saveBtn.disabled = false;
+              saveBtn.textContent = t("save");
+              cancelBtn.disabled = false;
+              this.deps.notify("error", t("kernelError", toErrorMessage(err)));
+            });
+          });
+          actions.appendChild(cancelBtn);
+          actions.appendChild(saveBtn);
+          form.appendChild(actions);
+          body.appendChild(form);
+          contentEl.focus();
+        }
+      };
+    }
+  });
+
+  // src/service/csv-tsv-import.ts
+  var csv_tsv_import_exports = {};
+  __export(csv_tsv_import_exports, {
+    csvTsvLogicalId: () => csvTsvLogicalId,
+    inferColumnMapping: () => inferColumnMapping,
+    parseCsvTsvItems: () => parseCsvTsvItems,
+    parseDelimitedTable: () => parseDelimitedTable,
+    sniffDelimiter: () => sniffDelimiter
+  });
+  function sniffDelimiter(rawText) {
+    const lines = rawText.replace(/^\uFEFF/, "").split(/\r?\n/).filter((l) => l.trim().length > 0).slice(0, 10);
+    if (lines.length === 0) return ",";
+    const candidates = [",", "	", ";"];
+    let bestDelimiter = ",";
+    let bestScore = -1;
+    for (const d of candidates) {
+      let prevCount = -1;
+      let consistent = true;
+      let totalCols = 0;
+      for (const line of lines) {
+        let inQuotes = false;
+        let count = 0;
+        for (let i = 0; i < line.length; i++) {
+          const ch = line[i];
+          if (ch === '"') {
+            inQuotes = !inQuotes;
+          } else if (ch === d && !inQuotes) {
+            count++;
+          }
+        }
+        const cols = count + 1;
+        totalCols += cols;
+        if (prevCount === -1) {
+          prevCount = cols;
+        } else if (prevCount !== cols) {
+          consistent = false;
+        }
+      }
+      if (prevCount > 1) {
+        let score = totalCols;
+        if (consistent) score += 1e3;
+        if (d === "	" && consistent) score += 100;
+        if (score > bestScore) {
+          bestScore = score;
+          bestDelimiter = d;
+        }
+      }
+    }
+    return bestDelimiter;
+  }
+  function parseDelimitedTable(rawText, customDelimiter) {
+    const issues = [];
+    const text = rawText.replace(/^\uFEFF/, "");
+    const delimiter = customDelimiter || sniffDelimiter(text);
+    const grid = [];
+    let currentRow = [];
+    let currentField = "";
+    let inQuotes = false;
+    let i = 0;
+    const len = text.length;
+    while (i < len) {
+      const char = text[i];
+      if (inQuotes) {
+        if (char === '"') {
+          if (i + 1 < len && text[i + 1] === '"') {
+            currentField += '"';
+            i += 2;
+            continue;
+          } else {
+            inQuotes = false;
+            i++;
+            continue;
+          }
+        } else {
+          currentField += char;
+          i++;
+          continue;
+        }
+      } else {
+        if (char === '"') {
+          if (currentField.trim().length > 0) {
+            issues.push(`\u89E3\u6790\u63D0\u793A\uFF1A\u7B2C ${grid.length + 1} \u884C\u5B57\u6BB5\u5B58\u5728\u672A\u8F6C\u4E49\u7684\u53CC\u5F15\u53F7`);
+          }
+          inQuotes = true;
+          i++;
+          continue;
+        } else if (char === delimiter) {
+          currentRow.push(currentField);
+          currentField = "";
+          i++;
+          continue;
+        } else if (char === "\r") {
+          if (i + 1 < len && text[i + 1] === "\n") {
+            i++;
+          }
+          currentRow.push(currentField);
+          currentField = "";
+          if (currentRow.some((c) => c.trim().length > 0)) {
+            grid.push(currentRow);
+          }
+          currentRow = [];
+          i++;
+          continue;
+        } else if (char === "\n") {
+          currentRow.push(currentField);
+          currentField = "";
+          if (currentRow.some((c) => c.trim().length > 0)) {
+            grid.push(currentRow);
+          }
+          currentRow = [];
+          i++;
+          continue;
+        } else {
+          currentField += char;
+          i++;
+          continue;
+        }
+      }
+    }
+    if (inQuotes) {
+      issues.push(`\u6587\u4EF6\u672B\u5C3E\u5B58\u5728\u672A\u6B63\u5E38\u95ED\u5408\u7684\u53CC\u5F15\u53F7\uFF0C\u5DF2\u81EA\u52A8\u517C\u5BB9\u622A\u65AD`);
+    }
+    if (currentField.length > 0 || currentRow.length > 0) {
+      currentRow.push(currentField);
+      if (currentRow.some((c) => c.trim().length > 0)) {
+        grid.push(currentRow);
+      }
+    }
+    return { grid, delimiter, issues };
+  }
+  function inferColumnMapping(grid) {
+    const mapping = {
+      titleIndex: -1,
+      contentIndex: -1,
+      categoryIndex: -1,
+      tagsIndex: -1,
+      aliasIndex: -1,
+      urlIndex: -1,
+      typeIndex: -1,
+      hasHeaderRow: false
+    };
+    const firstRow = grid[0];
+    if (!firstRow) return mapping;
+    const row0 = firstRow.map((c) => c.trim().toLowerCase());
+    const TITLE_KEYS = ["title", "name", "phrase", "label", "trigger", "\u6807\u9898", "\u540D\u79F0", "\u5FEB\u6377\u8BED", "\u8BDD\u672F\u540D\u79F0", "\u5E38\u7528\u8BED", "\u77ED\u8BED", "\u95EE", "\u95EE\u9898"];
+    const CONTENT_KEYS = ["content", "text", "snippet", "body", "value", "payload", "replace", "template", "\u6B63\u6587", "\u5185\u5BB9", "\u5C55\u5F00\u6587\u672C", "\u6A21\u677F", "\u8BDD\u672F\u5185\u5BB9", "\u5FEB\u6377\u5185\u5BB9", "\u7B54", "\u56DE\u7B54", "\u8BDD\u672F"];
+    const CAT_KEYS = ["category", "group", "folder", "scene", "\u5206\u7C7B", "\u573A\u666F", "\u5206\u7EC4", "\u6587\u4EF6\u5939", "\u76EE\u5F55", "\u4E1A\u52A1\u7EBF"];
+    const TAG_KEYS = ["tags", "tag", "keywords", "keyword", "\u6807\u7B7E", "\u5173\u952E\u8BCD", "\u5173\u952E\u5B57"];
+    const ALIAS_KEYS = ["alias", "abbr", "shortcut", "key", "\u522B\u540D", "\u7F29\u5199", "\u5FEB\u6377\u952E", "\u89E6\u53D1\u8BCD", "\u7B80\u5199", "\u6307\u4EE4", "\u6309\u952E"];
+    const URL_KEYS = ["url", "link", "href", "\u7F51\u5740", "\u94FE\u63A5", "\u5916\u94FE"];
+    const TYPE_KEYS = ["type", "itemtype", "\u7C7B\u578B", "\u6761\u76EE\u7C7B\u578B"];
+    const matchesKey = (val, keys) => {
+      if (!val || val.length > 20) return false;
+      return keys.some((k) => {
+        if (val === k) return true;
+        if (k.length >= 2 && (val.startsWith(k) || val.endsWith(k) || val === k)) return true;
+        return false;
+      });
+    };
+    let matchedHeaders = 0;
+    const colCount = row0.length;
+    for (let c = 0; c < colCount; c++) {
+      const val = row0[c];
+      if (!val) continue;
+      if (matchesKey(val, TITLE_KEYS)) {
+        if (mapping.titleIndex === -1) {
+          mapping.titleIndex = c;
+          matchedHeaders++;
+        }
+      } else if (matchesKey(val, CONTENT_KEYS)) {
+        if (mapping.contentIndex === -1) {
+          mapping.contentIndex = c;
+          matchedHeaders++;
+        }
+      } else if (matchesKey(val, CAT_KEYS)) {
+        if (mapping.categoryIndex === -1) {
+          mapping.categoryIndex = c;
+          matchedHeaders++;
+        }
+      } else if (matchesKey(val, TAG_KEYS)) {
+        if (mapping.tagsIndex === -1) {
+          mapping.tagsIndex = c;
+          matchedHeaders++;
+        }
+      } else if (matchesKey(val, ALIAS_KEYS)) {
+        if (mapping.aliasIndex === -1) {
+          mapping.aliasIndex = c;
+          matchedHeaders++;
+        }
+      } else if (matchesKey(val, URL_KEYS)) {
+        if (mapping.urlIndex === -1) {
+          mapping.urlIndex = c;
+          matchedHeaders++;
+        }
+      } else if (matchesKey(val, TYPE_KEYS)) {
+        if (mapping.typeIndex === -1) {
+          mapping.typeIndex = c;
+          matchedHeaders++;
+        }
+      }
+    }
+    if (matchedHeaders >= 2 || matchedHeaders >= 1 && row0.every((c) => c.length <= 25)) {
+      mapping.hasHeaderRow = true;
+    } else {
+      mapping.hasHeaderRow = false;
+    }
+    if (!mapping.hasHeaderRow) {
+      if (colCount === 1) {
+        mapping.contentIndex = 0;
+        mapping.titleIndex = -1;
+      } else if (colCount === 2) {
+        mapping.titleIndex = 0;
+        mapping.contentIndex = 1;
+      } else if (colCount === 3) {
+        mapping.titleIndex = 0;
+        mapping.contentIndex = 1;
+        mapping.categoryIndex = 2;
+      } else if (colCount === 4) {
+        mapping.titleIndex = 0;
+        mapping.contentIndex = 1;
+        mapping.categoryIndex = 2;
+        mapping.tagsIndex = 3;
+      } else {
+        mapping.titleIndex = 0;
+        mapping.contentIndex = 1;
+        mapping.categoryIndex = 2;
+        mapping.tagsIndex = 3;
+        mapping.aliasIndex = 4;
+      }
+    } else {
+      if (mapping.contentIndex === -1 && mapping.titleIndex !== -1 && colCount >= 2) {
+        mapping.contentIndex = mapping.titleIndex === 0 ? 1 : 0;
+      } else if (mapping.titleIndex === -1 && mapping.contentIndex !== -1 && colCount >= 2) {
+        mapping.titleIndex = mapping.contentIndex === 0 ? 1 : 0;
+      }
+    }
+    return mapping;
+  }
+  function csvTsvLogicalId(title, category, alias, contentPrefix) {
+    const fnv = (text, seed) => {
+      let h = seed >>> 0;
+      for (let i = 0; i < text.length; i++) {
+        h ^= text.charCodeAt(i);
+        h = Math.imul(h, 16777619) >>> 0;
+      }
+      return h >>> 0;
+    };
+    const b36 = (n) => n.toString(36).padStart(7, "0");
+    const payload = `${title}\0${category}\0${alias}\0${contentPrefix}`;
+    const hash = (b36(fnv(payload, 2166136261)) + b36(fnv(`${payload}\0csv-tsv`, 461845907))).slice(0, 14);
+    return `xlc-t${hash}`;
+  }
+  function parseCsvTsvItems(rawText, customDelimiter, now = Date.now(), customMapping) {
+    var _a, _b, _c;
+    const issues = [];
+    const items = [];
+    if (!rawText || rawText.trim().length === 0) {
+      return {
+        items: [],
+        issues: ["\u5BFC\u5165\u5185\u5BB9\u4E3A\u7A7A"],
+        delimiter: ",",
+        headers: [],
+        totalRows: 0,
+        validRows: 0
+      };
+    }
+    const { grid, delimiter, issues: parseIssues } = parseDelimitedTable(rawText, customDelimiter);
+    issues.push(...parseIssues);
+    if (grid.length === 0) {
+      return {
+        items: [],
+        issues: issues.length > 0 ? issues : ["\u672A\u5728\u8868\u683C\u4E2D\u89E3\u6790\u51FA\u4EFB\u4F55\u6709\u6548\u884C"],
+        delimiter,
+        headers: [],
+        totalRows: 0,
+        validRows: 0
+      };
+    }
+    const mapping = inferColumnMapping(grid);
+    const hasHeader = customMapping && customMapping.hasHeaderRow !== void 0 ? customMapping.hasHeaderRow : mapping.hasHeaderRow;
+    const startIndex = hasHeader ? 1 : 0;
+    const headers = hasHeader ? (_a = grid[0]) != null ? _a : [] : [];
+    const totalDataRows = grid.length - startIndex;
+    for (let r = startIndex; r < grid.length; r++) {
+      const row = grid[r];
+      if (!row) continue;
+      const rowNum = r + 1;
+      const getCol = (idx) => {
+        var _a2, _b2;
+        return idx >= 0 && idx < row.length ? (_b2 = (_a2 = row[idx]) == null ? void 0 : _a2.trim()) != null ? _b2 : "" : "";
+      };
+      let content = customMapping && customMapping.contentIndex !== void 0 ? getCol(customMapping.contentIndex) : mapping.contentIndex >= 0 ? getCol(mapping.contentIndex) : "";
+      let title = customMapping && customMapping.titleIndex !== void 0 ? getCol(customMapping.titleIndex) : mapping.titleIndex >= 0 ? getCol(mapping.titleIndex) : "";
+      const category = customMapping && customMapping.categoryIndex !== void 0 ? getCol(customMapping.categoryIndex).slice(0, LIMITS.category) : mapping.categoryIndex >= 0 ? getCol(mapping.categoryIndex).slice(0, LIMITS.category) : "";
+      const tagsRaw = customMapping && customMapping.tagsIndex !== void 0 ? getCol(customMapping.tagsIndex) : mapping.tagsIndex >= 0 ? getCol(mapping.tagsIndex) : "";
+      const alias = customMapping && customMapping.aliasIndex !== void 0 ? getCol(customMapping.aliasIndex).slice(0, LIMITS.alias) : mapping.aliasIndex >= 0 ? getCol(mapping.aliasIndex).slice(0, LIMITS.alias) : "";
+      const urlRaw = customMapping && customMapping.urlIndex !== void 0 ? getCol(customMapping.urlIndex) : mapping.urlIndex >= 0 ? getCol(mapping.urlIndex) : "";
+      const typeRaw = mapping.typeIndex >= 0 ? getCol(mapping.typeIndex).toLowerCase() : "";
+      if (!content && !title && !urlRaw) {
+        continue;
+      }
+      if (!title && content) {
+        const firstLine = (_c = (_b = content.split(/\r?\n/)[0]) == null ? void 0 : _b.trim()) != null ? _c : "";
+        title = firstLine.slice(0, 40) || `\u5E38\u7528\u8BED ${rowNum}`;
+      }
+      title = title.slice(0, LIMITS.title);
+      if (!content && urlRaw) {
+        content = urlRaw;
+      }
+      const tags = cleanTagList(tagsRaw);
+      let url = "";
+      if (urlRaw && isSafeHttpUrl(urlRaw)) {
+        url = urlRaw.slice(0, 2048);
+      } else if (content && isSafeHttpUrl(content)) {
+        url = content.slice(0, 2048);
+      }
+      let itemType = "text";
+      if (typeRaw && isItemType(typeRaw)) {
+        itemType = typeRaw;
+      } else if (url && itemType !== "code") {
+        itemType = "url";
+      } else {
+        itemType = inferTypeFromText(content);
+      }
+      if (bodyWriteRestriction(content)) {
+        issues.push(`\u7B2C ${rowNum} \u884C\u300C${title}\u300D\uFF1A\u6B63\u6587\u5305\u542B\u591A\u884C\u6216\u590D\u6742\u7ED3\u6784\uFF0C\u5728\u5F53\u524D\u53D7\u9650\u6A21\u5F0F\u4E0B\u4FDD\u5B58\u5C06\u53D7\u5230\u5B89\u5168\u4FDD\u62A4`);
+      }
+      const id = csvTsvLogicalId(title, category, alias, content.slice(0, 60));
+      items.push({
+        id,
+        itemType,
+        title,
+        alias,
+        tags,
+        category,
+        kramdown: content,
+        source: {
+          sourceDocId: "",
+          sourceBlockId: "",
+          sourceType: "external"
+        },
+        url,
+        targetBlockId: "",
+        createdAt: now,
+        updatedAt: now
+      });
+    }
+    return {
+      items,
+      issues,
+      delimiter,
+      headers,
+      totalRows: totalDataRows,
+      validRows: items.length
+    };
+  }
+  var init_csv_tsv_import = __esm({
+    "src/service/csv-tsv-import.ts"() {
+      "use strict";
+      init_constants();
+      init_item();
+      init_capture();
+      init_kramdown();
+    }
+  });
+
+  // src/ui/csv-tsv-wizard.ts
+  function openCsvTsvImportWizard(ctx, onClose) {
+    const t = ctx.t;
+    const dialog = new import_siyuan4.Dialog({
+      title: t("csvImportTitle"),
+      content: "",
+      width: "min(800px, 96vw)",
+      height: "min(700px, 86vh)"
+    });
+    const container = dialog.element.querySelector(".b3-dialog__container");
+    if (container) container.classList.add("xlc-form-host", "xlc-settings-host");
+    const body = getDialogBody(dialog.element);
+    if (!body) {
+      onClose == null ? void 0 : onClose();
+      return;
+    }
+    body.innerHTML = "";
+    const root = document.createElement("div");
+    root.className = "xlc-form";
+    const hint = document.createElement("p");
+    hint.className = "xlc-form-hint";
+    hint.textContent = t("csvImportHint");
+    root.appendChild(hint);
+    const ta = document.createElement("textarea");
+    ta.className = "b3-text-field";
+    ta.dataset.xlcControl = "wizard.csv.text";
+    ta.rows = 8;
+    ta.placeholder = t("csvImportPlaceholder");
+    ta.setAttribute("spellcheck", "false");
+    root.appendChild(ta);
+    let state = {
+      rawText: "",
+      delimiter: ",",
+      grid: [],
+      mapping: {
+        titleIndex: -1,
+        contentIndex: -1,
+        categoryIndex: -1,
+        tagsIndex: -1,
+        aliasIndex: -1,
+        urlIndex: -1
+      },
+      previewRows: []
+    };
+    const mapRow = document.createElement("div");
+    mapRow.className = "xlc-wizard-mapping-row";
+    mapRow.style.display = "none";
+    const mapTitle = document.createElement("h4");
+    mapTitle.className = "xlc-form-title";
+    mapTitle.textContent = t("fieldMapping");
+    mapRow.appendChild(mapTitle);
+    const mappingGrid = document.createElement("div");
+    mappingGrid.className = "xlc-wizard-mapping-grid";
+    mappingGrid.style.display = "grid";
+    mappingGrid.style.gridTemplateColumns = "repeat(auto-fill, minmax(200px, 1fr))";
+    mappingGrid.style.gap = "12px";
+    mappingGrid.style.marginTop = "8px";
+    const createMappingSelect = (fieldName) => {
+      const select = document.createElement("select");
+      select.className = "b3-text-field xlc-wizard-select";
+      select.dataset.xlcControl = `wizard.field.${fieldName}`;
+      select.addEventListener("change", () => {
+        state.mapping[fieldName] = parseInt(select.value, 10);
+        updatePreview();
+      });
+      return select;
+    };
+    const fieldLabels = [
+      { key: "titleIndex" },
+      { key: "contentIndex" },
+      { key: "categoryIndex" },
+      { key: "tagsIndex" },
+      { key: "aliasIndex" },
+      { key: "urlIndex" }
+    ];
+    for (const { key } of fieldLabels) {
+      const sel = createMappingSelect(key);
+      mappingGrid.appendChild(sel);
+    }
+    const btnRow = document.createElement("div");
+    btnRow.className = "xlc-form-actions";
+    btnRow.style.justifyContent = "flex-start";
+    btnRow.style.gap = "8px";
+    const autoBtn = document.createElement("button");
+    autoBtn.className = "b3-button b3-button--secondary";
+    autoBtn.textContent = "\u2728 " + t("autoInfer");
+    autoBtn.addEventListener("click", () => {
+      const inferred = inferColumnMapping(state.grid);
+      state.mapping.titleIndex = inferred.titleIndex;
+      state.mapping.contentIndex = inferred.contentIndex;
+      state.mapping.categoryIndex = inferred.categoryIndex;
+      state.mapping.tagsIndex = inferred.tagsIndex;
+      state.mapping.aliasIndex = inferred.aliasIndex;
+      state.mapping.urlIndex = inferred.urlIndex;
+      syncMappingToUI();
+      updatePreview();
+    });
+    btnRow.appendChild(autoBtn);
+    mapRow.appendChild(mappingGrid);
+    mapRow.appendChild(btnRow);
+    root.appendChild(mapRow);
+    const preview = document.createElement("div");
+    preview.className = "xlc-form-hint";
+    preview.style.whiteSpace = "pre-wrap";
+    preview.style.maxHeight = "200px";
+    preview.style.overflowY = "auto";
+    preview.style.border = "1px solid var(--b3-border-color)";
+    preview.style.padding = "8px";
+    preview.style.borderRadius = "var(--b3-radius-md)";
+    root.appendChild(preview);
+    const foot = document.createElement("div");
+    foot.className = "xlc-form-actions";
+    foot.style.justifyContent = "flex-end";
+    foot.style.gap = "8px";
+    const cancelBtn = document.createElement("button");
+    cancelBtn.className = "b3-button";
+    cancelBtn.textContent = t("cancel");
+    cancelBtn.addEventListener("click", () => {
+      dialog.destroy();
+      release();
+    });
+    const nextBtn = document.createElement("button");
+    nextBtn.className = "b3-button xlc-btn-primary";
+    nextBtn.textContent = t("setupNext");
+    nextBtn.disabled = true;
+    nextBtn.addEventListener("click", () => {
+      if (nextBtn.disabled || !parsedItems.length || parsedText !== state.rawText) return;
+      dialog.destroy();
+      release();
+      void loadParser().then((parser) => {
+        const fullResult = parser.parseCsvTsvItems(state.rawText, state.delimiter, Date.now(), state.mapping);
+        const importIssues = fullResult.issues.map((reason, index) => ({ index, reason }));
+        void Promise.resolve().then(() => (init_settings_dialog(), settings_dialog_exports)).then((mod) => {
+          mod.openImportPolicyDialog(
+            ctx,
+            { items: fullResult.items.map((i) => ({ id: i.id, title: i.title })) },
+            importIssues,
+            { kind: "csv-tsv", items: fullResult.items }
+          );
+        });
+      });
+    });
+    foot.appendChild(cancelBtn);
+    foot.appendChild(nextBtn);
+    root.appendChild(foot);
+    body.appendChild(root);
+    let released = false;
+    const release = () => {
+      if (released) return;
+      released = true;
+      observer == null ? void 0 : observer.disconnect();
+      onClose == null ? void 0 : onClose();
+    };
+    let observer = null;
+    observer = typeof MutationObserver === "undefined" ? null : new MutationObserver(() => {
+      if (!dialog.element.isConnected) release();
+    });
+    observer == null ? void 0 : observer.observe(document.body, { childList: true, subtree: true });
+    let parsedItems = [];
+    let parsedText = null;
+    let parserPromise = null;
+    const loadParser = async () => {
+      if (!parserPromise) parserPromise = Promise.resolve().then(() => (init_csv_tsv_import(), csv_tsv_import_exports));
+      return parserPromise;
+    };
+    const updatePreview = async () => {
+      if (!state.rawText.trim()) {
+        preview.textContent = t("noData");
+        nextBtn.disabled = true;
+        return;
+      }
+      try {
+        const parser = await loadParser();
+        const { delimiter, grid } = parser.parseDelimitedTable(state.rawText, state.delimiter);
+        state.delimiter = delimiter;
+        state.grid = grid;
+        mapRow.style.display = "block";
+        syncMappingToUI();
+        const result = parser.parseCsvTsvItems(state.rawText, state.delimiter, Date.now(), state.mapping);
+        parsedItems = result.items.slice(0, 5);
+        parsedText = state.rawText;
+        const lines = [`\u89E3\u6790\u51FA ${result.validRows} \u6761\uFF08\u5206\u9694\u7B26\u300C${delimiter === "	" ? "Tab" : delimiter === ";" ? "\u5206\u53F7" : "\u9017\u53F7"}\u300D\uFF09`];
+        for (const item of parsedItems) {
+          lines.push(`\u2022 ${item.title} (${item.itemType})`);
+        }
+        if (parsedItems.length < result.validRows) {
+          lines.push(`\xB7 \u2026+${result.validRows - parsedItems.length}`);
+        }
+        preview.textContent = lines.join("\n");
+        nextBtn.disabled = parsedItems.length === 0;
+      } catch (err) {
+        preview.textContent = t("importFailed", toErrorMessage(err).slice(0, 120));
+        nextBtn.disabled = true;
+      }
+    };
+    const syncMappingToUI = () => {
+      var _a;
+      const selects = mappingGrid.querySelectorAll(".xlc-wizard-select");
+      for (const sel of Array.from(selects)) {
+        const fieldName = (_a = sel.dataset.xlcControl) == null ? void 0 : _a.replace("wizard.field.", "");
+        if (fieldName && fieldName in state.mapping) {
+          sel.value = String(state.mapping[fieldName]);
+        }
+      }
+    };
+    let parseTimer;
+    ta.addEventListener("input", () => {
+      if (parseTimer) clearTimeout(parseTimer);
+      state.rawText = ta.value;
+      mapRow.style.display = "none";
+      preview.textContent = t("loading");
+      nextBtn.disabled = true;
+      parseTimer = setTimeout(() => {
+        void updatePreview();
+      }, 400);
+    });
+    cancelBtn.addEventListener("click", () => {
+      dialog.destroy();
+      release();
+    });
+    ta.focus();
+  }
+  var import_siyuan4;
+  var init_csv_tsv_wizard = __esm({
+    "src/ui/csv-tsv-wizard.ts"() {
+      "use strict";
+      import_siyuan4 = __toESM(require_stub_dom());
+      init_dialog_dom();
+      init_csv_tsv_import();
+      init_errors();
     }
   });
 
@@ -3287,349 +6381,2094 @@ ${exception.mark.snippet}`;
     }
   });
 
-  // src/ui/dialog.ts
-  var import_siyuan2 = __toESM(require_stub_dom());
-
-  // src/ui/dialog-dom.ts
-  function getDialogBody(root) {
-    var _a;
-    return (_a = root.querySelector(".b3-dialog__body")) != null ? _a : root.querySelector(".b3-dialog__content");
+  // src/ui/settings-dialog.ts
+  var settings_dialog_exports = {};
+  __export(settings_dialog_exports, {
+    openImportPolicyDialog: () => openImportPolicyDialog,
+    openSettingsDialog: () => openSettingsDialog,
+    openSetupDialog: () => openSetupDialog
+  });
+  function loadEspansoParser() {
+    espansoParserPromise != null ? espansoParserPromise : espansoParserPromise = Promise.resolve().then(() => (init_espanso_import(), espanso_import_exports));
+    return espansoParserPromise;
   }
-
-  // src/ui/dialog.ts
-  init_item();
-  init_errors();
-
-  // src/model/search.ts
-  init_constants();
-
-  // src/model/pinyin.ts
-  function createNoopPinyinAdapter() {
-    return {
-      capabilities: { initials: false, fullPinyin: false },
-      expand(query) {
-        const q = query.trim();
-        return q ? [q] : [];
-      },
-      annotate() {
-        return null;
-      }
-    };
+  function loadCsvTsvParser() {
+    csvTsvParserPromise != null ? csvTsvParserPromise : csvTsvParserPromise = Promise.resolve().then(() => (init_csv_tsv_import(), csv_tsv_import_exports));
+    return csvTsvParserPromise;
   }
-  var active = createNoopPinyinAdapter();
-  function getPinyinAdapter() {
-    return active;
-  }
-
-  // src/model/search.ts
-  var DEFAULT_RECENCY_HALF_LIFE_MS = 7 * 24 * 60 * 60 * 1e3;
-  var SEARCH_TOKEN_DELIMITER = /[\s,，/\\+;；|｜]+/;
-  function splitSearchTokens(query) {
-    const trimmed = query.slice(0, LIMITS.queryChars).trim();
-    if (!trimmed) return [];
-    return trimmed.split(SEARCH_TOKEN_DELIMITER).map((t) => t.trim()).filter(Boolean);
-  }
-  function collectTags(entries) {
-    const tags = /* @__PURE__ */ new Set();
-    for (const e of entries) for (const t of e.tags) tags.add(t);
-    return Array.from(tags).sort((a, b) => a.localeCompare(b, "zh-Hans-CN"));
-  }
-
-  // src/model/variables.ts
-  init_constants();
-  var ASK_PATTERN = /\{\{xlc:ask:([^|}]+)(?:\|([^}]*))?\}\}/g;
-  function parseAskField(rawName, rawOptions) {
-    var _a, _b;
-    let name = rawName.trim().slice(0, LIMITS.tag);
-    let defaultValue;
-    const eqIdx = name.indexOf("=");
-    if (eqIdx !== -1) {
-      defaultValue = name.slice(eqIdx + 1).trim().slice(0, LIMITS.askValueChars);
-      name = name.slice(0, eqIdx).trim().slice(0, LIMITS.tag);
+  function buildSwitchRow(text, sub, checked, onChange) {
+    const row = document.createElement("label");
+    row.className = "xlc-setting-row";
+    const cap = document.createElement("span");
+    cap.className = "xlc-setting-text";
+    cap.textContent = text;
+    if (sub) {
+      const subEl = document.createElement("span");
+      subEl.className = "xlc-setting-sub";
+      subEl.textContent = sub;
+      cap.appendChild(subEl);
     }
-    if (!name) return null;
-    const options = (rawOptions != null ? rawOptions : "").split(/[,，、]/).map((s) => s.trim().slice(0, LIMITS.tag)).filter(Boolean).slice(0, 16);
-    if (options.length === 1 && ((_a = options[0]) == null ? void 0 : _a.toLowerCase()) === "date") return { name, kind: "date", options: [], ...defaultValue ? { defaultValue } : {} };
-    if (options.length === 1 && ((_b = options[0]) == null ? void 0 : _b.toLowerCase()) === "textarea") return { name, kind: "textarea", options: [], ...defaultValue ? { defaultValue } : {} };
-    if (options.length >= 2) return { name, kind: "select", options, ...defaultValue ? { defaultValue } : {} };
-    if (options.length === 1 && !defaultValue) {
-      defaultValue = options[0];
+    const box = document.createElement("input");
+    box.type = "checkbox";
+    box.className = "xlc-switch";
+    box.dataset.xlcControl = `settings.switch.${text}`;
+    box.checked = checked;
+    box.addEventListener("change", () => onChange(box.checked));
+    row.appendChild(cap);
+    row.appendChild(box);
+    return row;
+  }
+  function openSetupDialog(ctx, opts) {
+    var _a, _b, _c;
+    if ((_a = activeSetupDialog == null ? void 0 : activeSetupDialog.element) == null ? void 0 : _a.isConnected) {
+      (_b = activeSetupDialog.element.querySelector("input, select, button")) == null ? void 0 : _b.focus();
+      return;
     }
-    return { name, kind: "text", options: [], ...defaultValue ? { defaultValue } : {} };
-  }
-  function askFieldTag(field) {
-    const nameWithDef = field.defaultValue && field.kind === "text" && field.options.length === 0 ? `${field.name}=${field.defaultValue}` : field.name;
-    if (field.kind === "text") return field.defaultValue && field.options.length === 0 ? `{{xlc:ask:${nameWithDef}}}` : `{{xlc:ask:${field.name}}}`;
-    if (field.kind === "select") return `{{xlc:ask:${field.name}|${field.options.join(",")}}}`;
-    return `{{xlc:ask:${field.name}|${field.kind}}}`;
-  }
-  function listAskFields(text) {
-    var _a;
-    if (!text) return [];
-    const fields = [];
-    const seen = /* @__PURE__ */ new Set();
-    for (const match of text.matchAll(ASK_PATTERN)) {
-      const field = parseAskField((_a = match[1]) != null ? _a : "", match[2]);
-      if (!field || seen.has(field.name)) continue;
-      seen.add(field.name);
-      fields.push(field);
-      if (fields.length >= 16) break;
-    }
-    return fields;
-  }
-  function countAskFields(text) {
-    return listAskFields(text).length;
-  }
-  function cleanFillValue(v) {
-    return (v != null ? v : "").trim().slice(0, LIMITS.askValueChars);
-  }
-  function expandAsks(text, fills) {
-    if (!text) return text;
-    return text.replace(ASK_PATTERN, (_match, rawName, rawOptions) => {
-      var _a;
-      const field = parseAskField(rawName, rawOptions);
-      if (!field) return _match;
-      const filled = Object.prototype.hasOwnProperty.call(fills, field.name) ? cleanFillValue((_a = fills[field.name]) != null ? _a : "") : "";
-      if (filled) return filled;
-      if (field.defaultValue) return cleanFillValue(field.defaultValue);
-      return `__${field.name}__`;
-    });
-  }
-  function applyAskDefaults(text) {
-    return expandAsks(text, {});
-  }
-  var CURSOR_TOKEN = "{{xlc:cursor}}";
-  var SNIPPET_PATTERN = /\{\{xlc:snippet:([^}]+)\}\}/g;
-  function stripCursorToken(text) {
-    return text.split(CURSOR_TOKEN).join("");
-  }
-  function hasCursorToken(text) {
-    return text.includes(CURSOR_TOKEN);
-  }
-  function listSnippetRefs(text) {
-    var _a;
-    if (!text || !text.includes("{{xlc:snippet:")) return [];
-    const titles = [];
-    const seen = /* @__PURE__ */ new Set();
-    for (const match of text.matchAll(SNIPPET_PATTERN)) {
-      const title = ((_a = match[1]) != null ? _a : "").trim().slice(0, LIMITS.title);
-      if (!title || seen.has(title)) continue;
-      seen.add(title);
-      titles.push(title);
-      if (titles.length >= 16) break;
-    }
-    return titles;
-  }
-
-  // src/ui/variable-form.ts
-  var import_siyuan = __toESM(require_stub_dom());
-  var TYPE_BADGES = {
-    text: "TXT",
-    markdown: "MD",
-    url: "URL",
-    code: "CODE",
-    image: "IMG",
-    asset: "FILE",
-    blockref: "REF",
-    structure: "BLK"
-  };
-  function openVariableFillCard(options) {
-    var _a, _b;
-    const t = options.t;
-    const dialog = new import_siyuan.Dialog({
-      title: t("varFormTitle"),
+    activeSetupDialog = null;
+    const t = ctx.t;
+    const dialog = new import_siyuan5.Dialog({
+      title: t("setupTitle"),
       content: "",
-      width: "min(440px, 92vw)",
-      height: "auto",
-      // 所有关闭路径（Esc/scrim）统一走 onCancel：上层搜索弹窗焦点回归（R128）；
-      // 按钮确认/取消已自行结算，不在此重复触发（R138 结算语义）
-      destroyCallback: () => {
-        var _a2;
-        if (!settled) (_a2 = options.onCancel) == null ? void 0 : _a2.call(options);
-      }
+      width: "min(680px, 92vw)",
+      height: "min(820px, 92vh)"
+      // 首次快速开始卡需要留出阅读空间，长屏仍保持视口内滚动（R175）
     });
-    const container = dialog.element.querySelector(".b3-dialog__container");
-    if (container) container.classList.add("xlc-varform-host");
+    activeSetupDialog = dialog;
+    (_c = dialog.element.querySelector(".b3-dialog__container")) == null ? void 0 : _c.classList.add("xlc-form-host", "xlc-settings-host", "xlc-setup-root-host");
     const body = getDialogBody(dialog.element);
     if (!body) return;
     body.innerHTML = "";
     const root = document.createElement("div");
-    root.className = "xlc-varform";
-    const head = document.createElement("div");
-    head.className = "xlc-varform-head";
-    const badge = document.createElement("span");
-    badge.className = "xlc-badge xlc-badge--markdown";
-    badge.textContent = (_a = TYPE_BADGES[options.itemType]) != null ? _a : "TXT";
-    head.appendChild(badge);
-    const title = document.createElement("span");
-    title.className = "xlc-varform-title";
-    title.textContent = options.title || t("unknownType");
-    head.appendChild(title);
-    const escHint = document.createElement("span");
-    escHint.className = "xlc-kbd";
-    escHint.textContent = "Esc " + t("cancel");
-    head.appendChild(escHint);
-    root.appendChild(head);
-    const sub = document.createElement("div");
-    sub.className = "xlc-varform-sub";
-    sub.textContent = t("varFormSub", String(options.fields.length));
-    root.appendChild(sub);
-    const inputs = [];
-    const fieldsWrap = document.createElement("div");
-    fieldsWrap.className = "xlc-varform-fields";
-    for (const [fieldIndex, field] of options.fields.entries()) {
-      const wrap = document.createElement("label");
-      wrap.className = "xlc-varform-field";
-      const label = document.createElement("span");
-      label.className = "xlc-varform-label";
-      label.textContent = field.name;
-      const tag = document.createElement("span");
-      tag.className = "xlc-varform-tag";
-      tag.textContent = askFieldTag(field);
-      label.appendChild(tag);
-      wrap.appendChild(label);
-      const input = field.kind === "textarea" ? document.createElement("textarea") : document.createElement("input");
-      input.className = "b3-text-field";
-      if (field.kind === "textarea") {
-        input.rows = 3;
-        input.setAttribute("spellcheck", "false");
-      } else {
-        input.setAttribute("enterkeyhint", "done");
-      }
-      if (field.kind === "date") input.type = "date";
-      if (field.kind === "select") {
-        input.setAttribute("list", `xlc-varform-list-${fieldIndex}`);
-        const datalist = document.createElement("datalist");
-        datalist.id = `xlc-varform-list-${fieldIndex}`;
-        for (const opt of field.options) {
-          const option = document.createElement("option");
-          option.value = opt;
-          datalist.appendChild(option);
-        }
-        wrap.appendChild(datalist);
-      }
-      input.dataset.xlcVarField = field.name;
-      if (field.defaultValue) {
-        input.value = field.defaultValue;
-      }
-      wrap.appendChild(input);
-      inputs.push(input);
-      fieldsWrap.appendChild(wrap);
+    root.className = "xlc-form xlc-setup";
+    buildLibraryPickerSection(ctx, root, () => {
+      var _a2;
+      dialog.destroy();
+      (_a2 = opts == null ? void 0 : opts.onConfigured) == null ? void 0 : _a2.call(opts);
+    }, { onDismiss: () => dialog.destroy() });
+    body.appendChild(root);
+  }
+  function openSettingsDialog(ctx) {
+    var _a, _b, _c, _d;
+    if ((_a = activeSettingsDialog == null ? void 0 : activeSettingsDialog.element) == null ? void 0 : _a.isConnected) {
+      (_b = activeSettingsDialog.element.querySelector("input, select, button")) == null ? void 0 : _b.focus();
+      return;
     }
-    root.appendChild(fieldsWrap);
-    const foot = document.createElement("div");
-    foot.className = "xlc-varform-foot";
-    const kbdHint = document.createElement("span");
-    kbdHint.className = "xlc-varform-hint";
-    kbdHint.textContent = options.fields.some((f) => f.kind === "textarea") ? t("varFormHintMultiline") : t("varFormHint");
-    foot.appendChild(kbdHint);
+    activeSettingsDialog = null;
+    const t = ctx.t;
+    const dialog = new import_siyuan5.Dialog({
+      title: t("openSettings"),
+      content: "",
+      width: "min(720px, 92vw)",
+      height: "min(860px, 92vh)"
+      // 固定高：展开/收起/提示行显隐不再顶跳弹窗（R146）
+    });
+    activeSettingsDialog = dialog;
+    (_c = dialog.element.querySelector(".b3-dialog__container")) == null ? void 0 : _c.classList.add("xlc-form-host", "xlc-settings-host", "xlc-settings-root-host");
+    const body = getDialogBody(dialog.element);
+    if (!body) return;
+    body.innerHTML = "";
+    const root = document.createElement("div");
+    root.className = "xlc-form xlc-settings";
+    const intro = document.createElement("p");
+    intro.className = "xlc-page-intro";
+    intro.textContent = t("settingsIntro");
+    root.appendChild(intro);
+    const libSec = document.createElement("div");
+    libSec.className = "xlc-form-field xlc-card";
+    const libLabel = document.createElement("span");
+    libLabel.className = "xlc-form-label";
+    libLabel.textContent = t("librarySection");
+    libSec.appendChild(libLabel);
+    const libStatus = document.createElement("div");
+    libStatus.className = "xlc-form-hint";
+    const cfg = ctx.getConfig();
+    libStatus.textContent = cfg ? cfg.mode === "notebook" ? t("libModeNotebook", String(cfg.notebookIds.length)) : cfg.mode === "tree" ? t("libModeTree", String(cfg.containerDocIds.length)) : t("libModeDoc", String(cfg.containerDocIds.length)) : t("libraryNone");
+    const changeBtn = document.createElement("button");
+    changeBtn.className = "b3-button";
+    changeBtn.dataset.xlcControl = "settings.library.change";
+    changeBtn.textContent = t("openSettingsChangeLib");
+    changeBtn.setAttribute("aria-expanded", "false");
+    const libRow = document.createElement("div");
+    libRow.className = "xlc-setting-row";
+    const statusText = document.createElement("span");
+    statusText.className = "xlc-setting-text";
+    statusText.textContent = libStatus.textContent;
+    libRow.appendChild(statusText);
+    libRow.appendChild(changeBtn);
+    libSec.appendChild(libRow);
+    const pickerHost = document.createElement("div");
+    pickerHost.style.display = "none";
+    changeBtn.addEventListener("click", () => {
+      const show = pickerHost.style.display === "none";
+      pickerHost.style.display = show ? "" : "none";
+      changeBtn.setAttribute("aria-expanded", show ? "true" : "false");
+      if (show && pickerHost.childElementCount === 0) {
+        buildLibraryPickerSection(ctx, pickerHost, () => dialog.destroy());
+      }
+      if (show) requestAnimationFrame(() => {
+        var _a2;
+        try {
+          (_a2 = pickerHost.querySelector(".b3-text-field")) == null ? void 0 : _a2.focus();
+        } catch {
+        }
+      });
+    });
+    libSec.appendChild(pickerHost);
+    root.appendChild(libSec);
+    if (cfg) {
+      const modeLabel = (_d = libStatus.textContent) != null ? _d : "";
+      const setLocation = (location) => {
+        statusText.textContent = `${modeLabel} \xB7 ${location}`;
+      };
+      if (cfg.mode === "notebook") {
+        void ctx.library.listNotebooks().then((result) => {
+          if (!result.ok) return;
+          const names = cfg.notebookIds.map((id) => {
+            var _a2, _b2;
+            return (_b2 = (_a2 = result.data.find((nb) => nb.id === id)) == null ? void 0 : _a2.name) != null ? _b2 : id;
+          });
+          if (names.length) setLocation(names.join(", "));
+        });
+      } else {
+        const docId = cfg.containerDocIds[0];
+        if (docId) void ctx.library.getDocPath(docId).then((hPath) => {
+          if (hPath) setLocation(hPath);
+        });
+      }
+    }
+    buildAiSection(ctx, root);
+    buildInsertSection(ctx, root);
+    buildSearchSection(ctx, root);
+    buildSavedViewsSection(ctx, root, () => dialog.destroy());
+    buildProviderSection(ctx, root);
+    buildDataSection(ctx, root);
+    body.appendChild(root);
+  }
+  async function openPackExportDialog(ctx) {
+    var _a;
+    const t = ctx.t;
+    const idx = await ctx.library.ensureIndex();
+    if (idx.truncated || idx.stopped || idx.errors.length > 0) {
+      throw new ExportIntegrityError("index-incomplete");
+    }
+    const all = Array.from(idx.items.values());
+    const categories = Array.from(new Set(all.map((i) => i.category).filter(Boolean))).sort((a, b) => a.localeCompare(b, "zh-Hans-CN"));
+    const dialog = new import_siyuan5.Dialog({
+      title: t("packExportTitle"),
+      content: "",
+      width: "min(580px, 92vw)",
+      height: "min(680px, 90vh)"
+      // 固定高：分类切换不顶跳（R146）
+    });
+    (_a = dialog.element.querySelector(".b3-dialog__container")) == null ? void 0 : _a.classList.add("xlc-form-host", "xlc-settings-host");
+    const body = getDialogBody(dialog.element);
+    if (!body) return;
+    body.innerHTML = "";
+    const wrap = document.createElement("div");
+    wrap.className = "xlc-form";
+    const meta = document.createElement("div");
+    meta.className = "xlc-import-meta";
+    wrap.appendChild(meta);
+    const paintMeta = (count, varCount) => {
+      meta.textContent = "";
+      const countBadge = document.createElement("span");
+      countBadge.className = "xlc-badge xlc-badge--markdown";
+      countBadge.textContent = t("itemCountBadge", String(count));
+      meta.appendChild(countBadge);
+      if (varCount > 0) {
+        const varBadge = document.createElement("span");
+        varBadge.className = "xlc-badge xlc-badge--var";
+        varBadge.textContent = t("packVarsBadge", String(varCount));
+        meta.appendChild(varBadge);
+      }
+    };
+    const catWrap = document.createElement("div");
+    catWrap.className = "xlc-form-field";
+    const catLabel = document.createElement("label");
+    catLabel.className = "xlc-form-label";
+    catLabel.textContent = t("packCategoryLabel");
+    catWrap.appendChild(catLabel);
+    const catSelect = document.createElement("select");
+    catSelect.className = "b3-select";
+    catSelect.id = "xlc-pack-category";
+    catLabel.htmlFor = catSelect.id;
+    const allOpt = document.createElement("option");
+    allOpt.value = "";
+    allOpt.textContent = t("allCategories");
+    catSelect.appendChild(allOpt);
+    for (const c of categories) {
+      const opt = document.createElement("option");
+      opt.value = c;
+      opt.textContent = c;
+      catSelect.appendChild(opt);
+    }
+    catWrap.appendChild(catSelect);
+    wrap.appendChild(catWrap);
+    const nameWrap = document.createElement("div");
+    nameWrap.className = "xlc-form-field";
+    const nameLabel = document.createElement("label");
+    nameLabel.className = "xlc-form-label";
+    nameLabel.textContent = t("packNameLabel");
+    nameWrap.appendChild(nameLabel);
+    const nameInput = document.createElement("input");
+    nameInput.className = "b3-text-field";
+    nameInput.id = "xlc-pack-name";
+    nameLabel.htmlFor = nameInput.id;
+    nameInput.value = t("packNameDefault");
+    nameWrap.appendChild(nameInput);
+    wrap.appendChild(nameWrap);
+    const contents = document.createElement("div");
+    contents.className = "xlc-form-hint";
+    contents.style.lineHeight = "1.8";
+    contents.style.whiteSpace = "pre-line";
+    contents.textContent = t("packContentsHint");
+    wrap.appendChild(contents);
+    const trustHint = document.createElement("div");
+    trustHint.className = "xlc-form-hint";
+    trustHint.style.marginTop = "8px";
+    trustHint.textContent = t("packTrustHint");
+    wrap.appendChild(trustHint);
+    const actions = document.createElement("div");
+    actions.className = "xlc-form-actions";
     const cancelBtn = document.createElement("button");
     cancelBtn.className = "b3-button";
-    cancelBtn.dataset.xlcControl = "variable.cancel";
+    cancelBtn.dataset.xlcControl = "settings.pack-export.cancel";
     cancelBtn.textContent = t("cancel");
-    foot.appendChild(cancelBtn);
-    const insertBtn = document.createElement("button");
-    insertBtn.className = "b3-button xlc-btn-primary";
-    insertBtn.textContent = t("insert");
-    foot.appendChild(insertBtn);
-    root.appendChild(foot);
-    body.appendChild(root);
-    const collect = () => {
-      var _a2;
-      const fills = {};
-      for (const input of inputs) {
-        const name = (_a2 = input.dataset.xlcVarField) != null ? _a2 : "";
-        if (name) fills[name] = input.value;
-      }
-      return fills;
-    };
-    let settled = false;
-    const confirm3 = () => {
-      if (settled) return;
-      settled = true;
-      dialog.destroy();
-      options.onConfirm(collect());
-    };
-    insertBtn.addEventListener("click", confirm3);
-    cancelBtn.addEventListener("click", () => {
-      var _a2;
-      if (settled) return;
-      settled = true;
-      dialog.destroy();
-      (_a2 = options.onCancel) == null ? void 0 : _a2.call(options);
-    });
-    root.addEventListener("keydown", (ev) => {
-      var _a2;
-      if (ev.isComposing || ev.keyCode === 229) return;
-      if (ev.key === "Enter" && !ev.altKey && !ev.ctrlKey && !ev.metaKey) {
-        if (ev.target.tagName === "BUTTON") return;
-        if (ev.target.tagName === "TEXTAREA") return;
-        const el = ev.target;
-        if (el instanceof HTMLInputElement && el.list) {
-          setTimeout(() => confirm3(), 0);
-          return;
-        }
-        ev.preventDefault();
-        confirm3();
+    cancelBtn.addEventListener("click", () => dialog.destroy());
+    actions.appendChild(cancelBtn);
+    const exportBtn = document.createElement("button");
+    exportBtn.className = "b3-button xlc-btn-primary";
+    exportBtn.textContent = t("packExportBtn");
+    exportBtn.addEventListener("click", () => {
+      const packName = nameInput.value.trim() || t("packNameDefault");
+      const category = catSelect.value;
+      const items = category ? all.filter((i) => i.category === category) : all;
+      if (items.length === 0) {
+        ctx.notify("error", t("exportEmpty"));
         return;
       }
-      if (ev.key === "Tab") {
-        const focusables = Array.from(
-          root.querySelectorAll("input, textarea, button")
-        ).filter((el) => !el.hasAttribute("disabled"));
-        if (focusables.length === 0) return;
-        const index = focusables.indexOf(document.activeElement);
-        ev.preventDefault();
-        const next = ev.shiftKey ? (index - 1 + focusables.length) % focusables.length : (index + 1) % focusables.length;
-        (_a2 = focusables[next]) == null ? void 0 : _a2.focus();
-      }
+      if (exportBtn.disabled) return;
+      exportBtn.disabled = true;
+      exportBtn.textContent = t("indexing");
+      void (async () => {
+        const kramdownById = await collectKramdown(ctx, items);
+        const result = await buildMarkdownExport(items, kramdownById, (assetPath) => ctx.fetchAssetBytes(assetPath), { name: packName });
+        const zipBytes = buildZip(result.entries);
+        const blob = new Blob([zipBytes], { type: "application/zip" });
+        const a = document.createElement("a");
+        a.href = URL.createObjectURL(blob);
+        const safeName = packName.replace(/[\\/:*?"<>|\s]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40) || "pack";
+        a.download = `${safeName}-${(/* @__PURE__ */ new Date()).toISOString().slice(0, 10)}.zip`;
+        a.click();
+        setTimeout(() => URL.revokeObjectURL(a.href), 4e3);
+        dialog.destroy();
+        ctx.notify("info", t("exportMdDone", String(result.itemCount), String(result.assetCount), String(result.skippedAssets.length)));
+      })().catch((err) => {
+        exportBtn.disabled = false;
+        exportBtn.textContent = t("packExportBtn");
+        ctx.notify("error", formatExportError(ctx, err));
+      });
     });
-    (_b = inputs[0]) == null ? void 0 : _b.focus();
+    actions.appendChild(exportBtn);
+    wrap.appendChild(actions);
+    body.appendChild(wrap);
+    const repaint = () => {
+      const category = catSelect.value;
+      const items = category ? all.filter((i) => i.category === category) : all;
+      const withVars = items.filter((i) => {
+        var _a2;
+        return ((_a2 = i.varCount) != null ? _a2 : 0) > 0;
+      }).length;
+      paintMeta(items.length, withVars);
+    };
+    catSelect.addEventListener("change", repaint);
+    repaint();
   }
-  function buildVariableBar(t, getTarget) {
-    const bar = document.createElement("div");
-    bar.className = "xlc-varbar";
+  async function collectKramdown(ctx, items) {
+    const kramdownById = /* @__PURE__ */ new Map();
+    for (const item of items) {
+      const kd = await ctx.library.getStoredItemKramdown(item);
+      if (!kd.ok) throw new ExportIntegrityError("item-unreadable", item.title || item.id, kd.message);
+      kramdownById.set(item.id, kd.data);
+    }
+    return kramdownById;
+  }
+  function formatExportError(ctx, err) {
+    if (err instanceof ExportIntegrityError) {
+      switch (err.reason) {
+        case "index-incomplete":
+          return ctx.t("exportIncompleteIndex");
+        case "item-unreadable":
+          return ctx.t("exportItemReadFailed", err.itemLabel, err.detail);
+        case "body-missing":
+          return ctx.t("exportBodyMissing", err.itemLabel);
+        case "too-large":
+          return ctx.t("exportTooLarge", err.detail);
+      }
+    }
+    return ctx.t("kernelError", toErrorMessage(err));
+  }
+  function buildInsertSection(ctx, root) {
+    const t = ctx.t;
+    const sec = document.createElement("div");
+    sec.className = "xlc-form-field xlc-card";
+    const label = document.createElement("span");
+    label.className = "xlc-form-label";
+    label.textContent = t("insertSection");
+    sec.appendChild(label);
+    sec.appendChild(buildSwitchRow(
+      t("promptVariablesToggle"),
+      t("promptVariablesSub"),
+      ctx.state.insert.promptVariables,
+      (value) => {
+        ctx.state.insert.promptVariables = value;
+        ctx.persistSoon();
+      }
+    ));
+    sec.appendChild(buildSwitchRow(
+      t("recordUsageToggle"),
+      t("recordUsageSub"),
+      ctx.state.insert.recordUsage,
+      (value) => {
+        ctx.state.insert.recordUsage = value;
+        ctx.persistSoon();
+      }
+    ));
+    const foot = document.createElement("div");
+    foot.className = "xlc-setting-row";
+    const hint = document.createElement("span");
+    hint.className = "xlc-setting-text";
+    hint.textContent = t("usageStatsHint");
+    foot.appendChild(hint);
+    const clearBtn = document.createElement("button");
+    clearBtn.className = "b3-button";
+    const hasUsage = () => Object.values(ctx.state.usage).some((item) => item.count > 0);
+    const syncClearUsage = () => {
+      clearBtn.disabled = !hasUsage();
+      clearBtn.textContent = hasUsage() ? t("clearUsageBtn") : t("clearUsageEmpty");
+    };
+    syncClearUsage();
+    clearBtn.addEventListener("click", () => {
+      if (!hasUsage()) return;
+      (0, import_siyuan5.confirm)("\u26A0\uFE0F " + t("clearUsageBtn"), t("clearUsageConfirm"), () => {
+        var _a;
+        ctx.state.usage = {};
+        ctx.persistSoon();
+        (_a = ctx.refreshSearch) == null ? void 0 : _a.call(ctx);
+        syncClearUsage();
+        paintSummary();
+        ctx.notify("info", t("clearUsageDone"));
+      });
+    });
+    foot.appendChild(clearBtn);
+    sec.appendChild(foot);
+    const summary = document.createElement("div");
+    summary.className = "xlc-usage-summary";
+    summary.dataset.xlcControl = "settings.usage.summary";
+    summary.setAttribute("role", "status");
+    summary.setAttribute("aria-live", "polite");
+    const paintSummary = () => {
+      const current = summarizeUsage(ctx.state.usage);
+      summary.textContent = t("usageStatsSummary", String(current.totalCount), String(current.trackedItems));
+    };
+    paintSummary();
+    sec.appendChild(summary);
+    root.appendChild(sec);
+  }
+  function buildProviderSection(ctx, root) {
+    const t = ctx.t;
+    const provSec = document.createElement("div");
+    provSec.className = "xlc-form-field xlc-card";
+    const provLabel = document.createElement("span");
+    provLabel.className = "xlc-form-label";
+    provLabel.textContent = t("providerSection");
+    provSec.appendChild(provLabel);
+    const providers = ctx.registry.list();
+    if (providers.length === 0) {
+      const empty = document.createElement("div");
+      empty.className = "xlc-form-hint";
+      empty.textContent = t("providerNone");
+      provSec.appendChild(empty);
+    } else {
+      for (const p of providers) {
+        const row = document.createElement("div");
+        row.className = "xlc-setting-row";
+        const status = document.createElement("span");
+        status.className = "xlc-badge " + (p.runtime ? "xlc-badge--ai" : "xlc-badge--warn");
+        status.textContent = p.runtime ? t("providerExecutable") : t("providerPendingReload");
+        const cap = document.createElement("span");
+        cap.textContent = `${p.record.displayName}\uFF08v${p.record.protocolVersion}\uFF09`;
+        row.appendChild(status);
+        row.appendChild(cap);
+        provSec.appendChild(row);
+      }
+    }
+    root.appendChild(provSec);
+  }
+  function buildStepsEl(current, caption) {
+    const steps = document.createElement("div");
+    steps.className = "xlc-steps";
+    const dot1 = document.createElement("span");
+    dot1.className = "xlc-step-dot" + (current === 1 ? " xlc-step-dot--on" : "");
+    dot1.textContent = current === 1 ? "1" : "\u2713";
+    steps.appendChild(dot1);
+    const line = document.createElement("span");
+    line.className = "xlc-step-line";
+    steps.appendChild(line);
+    const dot2 = document.createElement("span");
+    dot2.className = "xlc-step-dot" + (current === 2 ? " xlc-step-dot--on" : "");
+    dot2.textContent = "2";
+    steps.appendChild(dot2);
     const cap = document.createElement("span");
-    cap.className = "xlc-varbar-cap";
-    cap.textContent = t("insertVariable");
-    bar.appendChild(cap);
-    const snippets = [
-      { id: "ask", text: "{{xlc:ask:\u5B57\u6BB5}}" },
-      { id: "ask.options", text: "{{xlc:ask:\u5B57\u6BB5|\u9009\u9879A,\u9009\u9879B}}" },
-      { id: "ask.textarea", text: "{{xlc:ask:\u5B57\u6BB5|textarea}}" },
-      { id: "snippet", text: "{{xlc:snippet:\u6807\u9898}}" },
-      { id: "cursor", text: "{{xlc:cursor}}" },
-      { id: "date", text: "{{xlc:date}}" },
-      { id: "date.offset", text: "{{xlc:date|+3d}}" },
-      { id: "random", text: "{{xlc:random|\u9009\u9879A,\u9009\u9879B}}" },
-      { id: "doc", text: "{{xlc:doc}}" },
-      { id: "clipboard", text: "{{xlc:clipboard}}" }
+    cap.className = "xlc-step-cap";
+    cap.textContent = caption;
+    steps.appendChild(cap);
+    return steps;
+  }
+  function buildLibraryPickerSection(ctx, root, onConfigured, opts) {
+    const t = ctx.t;
+    let step = 1;
+    let setupRevision = 0;
+    let pickedDoc = null;
+    const stepsEl = buildStepsEl(1, t("setupStep1"));
+    root.appendChild(stepsEl);
+    const hint = document.createElement("p");
+    hint.className = "xlc-form-hint";
+    hint.style.marginBottom = "12px";
+    hint.textContent = t("setupHint");
+    root.appendChild(hint);
+    const usageGuide = document.createElement("p");
+    usageGuide.className = "xlc-form-hint";
+    usageGuide.style.whiteSpace = "pre-line";
+    usageGuide.textContent = t("setupUsageGuide");
+    root.appendChild(usageGuide);
+    const recommendation = document.createElement("p");
+    recommendation.className = "xlc-form-hint xlc-setup-recommendation";
+    recommendation.textContent = t("setupRecommendation");
+    root.appendChild(recommendation);
+    const existingConfig = ctx.getConfig();
+    const showQuickStart = !existingConfig;
+    if (showQuickStart) usageGuide.style.display = "none";
+    const quickStart = document.createElement("section");
+    quickStart.className = "xlc-setup-quickstart";
+    quickStart.setAttribute("aria-labelledby", "xlc-setup-quickstart-title");
+    const quickStartTitle = document.createElement("h3");
+    quickStartTitle.className = "xlc-setup-quickstart-title";
+    quickStartTitle.id = "xlc-setup-quickstart-title";
+    quickStartTitle.textContent = t("setupQuickStartTitle");
+    quickStart.appendChild(quickStartTitle);
+    const quickStartItems = [
+      ["1", t("setupQuickStart1Title"), t("setupQuickStart1Desc")],
+      ["2", t("setupQuickStart2Title"), t("setupQuickStart2Desc")],
+      ["3", t("setupQuickStart3Title"), t("setupQuickStart3Desc")]
     ];
-    for (const snippet of snippets) {
+    for (const [number, title, desc] of quickStartItems) {
+      const item = document.createElement("div");
+      item.className = "xlc-setup-quickstart-item";
+      const dot = document.createElement("span");
+      dot.className = "xlc-setup-quickstart-dot";
+      dot.textContent = number;
+      dot.setAttribute("aria-hidden", "true");
+      const copy = document.createElement("span");
+      copy.className = "xlc-setup-quickstart-copy";
+      const itemTitle = document.createElement("strong");
+      itemTitle.className = "xlc-setup-quickstart-item-title";
+      itemTitle.textContent = title;
+      const itemDesc = document.createElement("span");
+      itemDesc.className = "xlc-setup-quickstart-item-desc";
+      itemDesc.textContent = desc;
+      copy.append(itemTitle, itemDesc);
+      item.append(dot, copy);
+      quickStart.appendChild(item);
+    }
+    root.appendChild(quickStart);
+    if (!showQuickStart) quickStart.style.display = "none";
+    const step1 = document.createElement("div");
+    const modeWrap = document.createElement("div");
+    modeWrap.className = "xlc-form-field";
+    const modeLabel = document.createElement("label");
+    modeLabel.className = "xlc-form-label";
+    modeLabel.textContent = t("setupModeLabel");
+    modeWrap.appendChild(modeLabel);
+    const modeSelect = document.createElement("select");
+    modeSelect.className = "b3-select";
+    modeSelect.id = "xlc-setup-mode";
+    modeSelect.dataset.xlcControl = "setup.mode";
+    modeLabel.htmlFor = modeSelect.id;
+    const modes = [
+      { v: "new-doc", label: t("setupCreateNewDoc") },
+      { v: "new-notebook", label: t("setupCreateIndependentNotebook") },
+      { v: "doc", label: t("setupPickDoc") },
+      { v: "tree", label: t("setupPickDocTree") },
+      { v: "notebook", label: t("setupNotebook") }
+    ];
+    for (const m of modes) {
+      const opt = document.createElement("option");
+      opt.value = m.v;
+      opt.textContent = m.label;
+      modeSelect.appendChild(opt);
+    }
+    if (existingConfig) modeSelect.value = existingConfig.mode;
+    modeWrap.appendChild(modeSelect);
+    step1.appendChild(modeWrap);
+    const pickerWrap = document.createElement("div");
+    pickerWrap.className = "xlc-form-field";
+    const pickerInput = document.createElement("input");
+    pickerInput.className = "b3-text-field";
+    pickerInput.placeholder = t("docPicker");
+    pickerInput.setAttribute("aria-label", t("docPicker"));
+    pickerInput.dataset.xlcControl = "setup.docs.query";
+    pickerWrap.appendChild(pickerInput);
+    const pickerList = document.createElement("div");
+    pickerList.className = "xlc-doclist";
+    pickerWrap.appendChild(pickerList);
+    step1.appendChild(pickerWrap);
+    let pickerSeq = 0;
+    const currentDocId = (existingConfig == null ? void 0 : existingConfig.mode) !== "notebook" ? existingConfig == null ? void 0 : existingConfig.containerDocIds[0] : void 0;
+    const showDocPickerMessage = (message, retry) => {
+      pickerList.textContent = "";
+      const status = document.createElement("div");
+      status.className = "xlc-doclist-empty";
+      status.setAttribute("role", "status");
+      status.setAttribute("aria-live", "polite");
+      status.textContent = message;
+      pickerList.appendChild(status);
+      if (retry) {
+        const retryBtn = document.createElement("button");
+        retryBtn.type = "button";
+        retryBtn.className = "b3-button xlc-btn-ghost xlc-doclist-retry";
+        retryBtn.dataset.xlcControl = "setup.docs.retry";
+        retryBtn.textContent = t("retry");
+        retryBtn.addEventListener("click", retry);
+        pickerList.appendChild(retryBtn);
+      }
+    };
+    const searchPickerDocs = (keyword) => {
+      const seq = ++pickerSeq;
+      pickerList.innerHTML = "";
+      pickerList.removeAttribute("aria-busy");
+      pickedDoc = null;
+      syncNextState();
+      if (!keyword) return;
+      pickerList.setAttribute("aria-busy", "true");
+      showDocPickerMessage(t("loading"));
+      void ctx.library.searchDocs(keyword).then((result) => {
+        if (seq !== pickerSeq) return;
+        pickerList.removeAttribute("aria-busy");
+        if (!result.ok || result.data.length === 0) {
+          const message = result.ok ? t("docPickerEmpty") : t("kernelError", result.message);
+          showDocPickerMessage(message, result.ok ? void 0 : () => {
+            if (pickerInput.value.trim() === keyword) searchPickerDocs(keyword);
+          });
+          return;
+        }
+        pickerList.textContent = "";
+        for (const hit of result.data.slice(0, 8)) {
+          const item = document.createElement("button");
+          item.type = "button";
+          item.className = "xlc-doclist-item";
+          item.dataset.xlcControl = "setup.doc.result";
+          item.textContent = hit.hPath || hit.name || hit.id;
+          if (hit.id === currentDocId) {
+            pickedDoc = { id: hit.id, hPath: hit.hPath };
+            item.classList.add("xlc-doclist-item--on");
+          }
+          item.addEventListener("click", () => {
+            pickedDoc = { id: hit.id, hPath: hit.hPath };
+            pickerList.querySelectorAll(".xlc-doclist-item").forEach((el) => el.classList.remove("xlc-doclist-item--on"));
+            item.classList.add("xlc-doclist-item--on");
+            syncNextState();
+          });
+          pickerList.appendChild(item);
+        }
+        syncNextState();
+      }).catch((err) => {
+        if (seq !== pickerSeq) return;
+        pickerList.removeAttribute("aria-busy");
+        showDocPickerMessage(t("kernelError", toErrorMessage(err)), () => {
+          if (pickerInput.value.trim() === keyword) searchPickerDocs(keyword);
+        });
+      });
+    };
+    pickerInput.addEventListener("input", () => searchPickerDocs(pickerInput.value.trim()));
+    const nbWrap = document.createElement("div");
+    nbWrap.className = "xlc-form-field";
+    nbWrap.style.display = "none";
+    const nbLabel = document.createElement("label");
+    nbLabel.className = "xlc-form-label";
+    nbLabel.textContent = t("setupNotebook");
+    nbWrap.appendChild(nbLabel);
+    const nbSelect = document.createElement("select");
+    nbSelect.className = "b3-select";
+    nbSelect.id = "xlc-setup-notebook";
+    nbSelect.dataset.xlcControl = "setup.notebook";
+    nbSelect.disabled = true;
+    if ((existingConfig == null ? void 0 : existingConfig.mode) === "notebook" && existingConfig.notebookIds[0]) {
+      nbSelect.dataset.currentNotebook = existingConfig.notebookIds[0];
+    }
+    nbLabel.htmlFor = nbSelect.id;
+    nbWrap.appendChild(nbSelect);
+    const nbStatus = document.createElement("p");
+    nbStatus.className = "xlc-form-hint xlc-setup-notebook-status";
+    nbStatus.textContent = t("setupNotebookLoading");
+    nbWrap.appendChild(nbStatus);
+    const retryNotebooksBtn = document.createElement("button");
+    retryNotebooksBtn.type = "button";
+    retryNotebooksBtn.className = "b3-button xlc-btn-ghost xlc-setup-notebook-retry";
+    retryNotebooksBtn.dataset.xlcControl = "setup.notebook.retry";
+    retryNotebooksBtn.textContent = t("retry");
+    retryNotebooksBtn.style.display = "none";
+    nbWrap.appendChild(retryNotebooksBtn);
+    step1.appendChild(nbWrap);
+    let notebooksLoaded = false;
+    let notebooksLoading = false;
+    let notebookDocsChecking = false;
+    let checkedNotebookId = "";
+    let notebookDocsState = "unchecked";
+    const loadNotebooks = (force = false) => {
+      if (!force && notebooksLoaded || notebooksLoading) return;
+      notebooksLoading = true;
+      notebooksLoaded = false;
+      nbSelect.disabled = true;
+      nbStatus.textContent = t("setupNotebookLoading");
+      retryNotebooksBtn.style.display = "none";
+      retryNotebookAction = () => {
+        void loadNotebooks(true);
+      };
+      void ctx.library.listNotebooks().then((result) => {
+        nbSelect.textContent = "";
+        if (!result.ok) {
+          return;
+        }
+        if (result.data.length === 0) {
+          notebooksLoaded = true;
+          return;
+        }
+        const choose = document.createElement("option");
+        choose.value = "";
+        choose.textContent = t("setupChooseNotebook");
+        choose.disabled = true;
+        nbSelect.appendChild(choose);
+        for (const nb of result.data) {
+          const opt = document.createElement("option");
+          opt.value = nb.id;
+          opt.textContent = nb.name;
+          nbSelect.appendChild(opt);
+        }
+        nbSelect.value = nbSelect.dataset.currentNotebook && result.data.some((nb) => nb.id === nbSelect.dataset.currentNotebook) ? nbSelect.dataset.currentNotebook : "";
+        notebooksLoaded = true;
+        nbSelect.disabled = false;
+      }).catch(() => {
+      }).finally(() => {
+        notebooksLoading = false;
+        renderNotebookStatus();
+        syncCreateState();
+        syncNextState();
+      });
+    };
+    let retryNotebookAction = () => {
+      void loadNotebooks(true);
+    };
+    retryNotebooksBtn.addEventListener("click", () => retryNotebookAction());
+    const renderNotebookStatus = () => {
+      const selectedId = nbSelect.value;
+      if (notebooksLoading) {
+        nbStatus.textContent = t("setupNotebookLoading");
+        retryNotebooksBtn.style.display = "none";
+        return;
+      }
+      if (!notebooksLoaded) {
+        nbStatus.textContent = t("setupNotebookLoadFailed");
+        retryNotebooksBtn.style.display = "";
+        retryNotebookAction = () => {
+          void loadNotebooks(true);
+        };
+        return;
+      }
+      if (nbSelect.options.length <= 1) {
+        nbStatus.textContent = t("setupNotebookEmpty");
+        retryNotebooksBtn.style.display = "none";
+        return;
+      }
+      if (modeSelect.value !== "notebook" || !selectedId) {
+        nbStatus.textContent = t("setupNotebookReady");
+        retryNotebooksBtn.style.display = "none";
+        return;
+      }
+      if (notebookDocsChecking) {
+        nbStatus.textContent = t("setupNotebookDocsChecking");
+        retryNotebooksBtn.style.display = "none";
+        return;
+      }
+      if (checkedNotebookId !== selectedId || notebookDocsState === "unchecked") {
+        nbStatus.textContent = t("setupNotebookNeedsDocsCheck");
+        retryNotebooksBtn.style.display = "none";
+        return;
+      }
+      if (notebookDocsState === "ready") {
+        nbStatus.textContent = t("setupNotebookDocsReady");
+        retryNotebooksBtn.style.display = "none";
+        return;
+      }
+      nbStatus.textContent = notebookDocsState === "empty" ? t("setupNotebookNoDocs") : t("setupNotebookDocsCheckFailed");
+      retryNotebooksBtn.style.display = notebookDocsState === "error" ? "" : "none";
+      retryNotebookAction = () => {
+        const notebookId = nbSelect.value;
+        const revision = setupRevision;
+        void verifyNotebookHasDocs(notebookId).then((valid) => {
+          if (valid && setupRevision === revision && modeSelect.value === "notebook" && nbSelect.value === notebookId) gotoStep(2);
+        });
+      };
+    };
+    async function verifyNotebookHasDocs(notebookId) {
+      if (notebookDocsChecking || !notebookId) return false;
+      notebookDocsChecking = true;
+      checkedNotebookId = notebookId;
+      notebookDocsState = "unchecked";
+      nbSelect.disabled = true;
+      renderNotebookStatus();
+      try {
+        const result = await ctx.library.listNotebookDocs(notebookId);
+        if (!result.ok) {
+          notebookDocsState = "error";
+          ctx.notify("error", t("kernelError", result.message));
+          return false;
+        }
+        if (result.data.length === 0) {
+          notebookDocsState = "empty";
+          ctx.notify("error", t("setupNotebookNoDocs"));
+          return false;
+        }
+        notebookDocsState = "ready";
+        return true;
+      } catch (err) {
+        notebookDocsState = "error";
+        ctx.notify("error", t("kernelError", toErrorMessage(err)));
+        return false;
+      } finally {
+        notebookDocsChecking = false;
+        nbSelect.disabled = !notebooksLoaded || nbSelect.options.length <= 1;
+        renderNotebookStatus();
+        syncCreateState();
+        syncNextState();
+      }
+    }
+    const independentNotebookWrap = document.createElement("div");
+    independentNotebookWrap.className = "xlc-form-field xlc-setup-independent-notebook";
+    independentNotebookWrap.style.display = "none";
+    const independentNotebookLabel = document.createElement("label");
+    independentNotebookLabel.className = "xlc-form-label";
+    independentNotebookLabel.textContent = t("setupIndependentNotebookName");
+    independentNotebookWrap.appendChild(independentNotebookLabel);
+    const independentNotebookInput = document.createElement("input");
+    independentNotebookInput.className = "b3-text-field";
+    independentNotebookInput.id = "xlc-setup-independent-notebook";
+    independentNotebookInput.placeholder = t("setupIndependentNotebookNamePlaceholder");
+    independentNotebookInput.setAttribute("aria-label", t("setupIndependentNotebookName"));
+    independentNotebookInput.dataset.xlcControl = "setup.new-notebook.name";
+    independentNotebookLabel.htmlFor = independentNotebookInput.id;
+    independentNotebookWrap.appendChild(independentNotebookInput);
+    const independentNotebookHint = document.createElement("p");
+    independentNotebookHint.className = "xlc-form-hint";
+    independentNotebookHint.textContent = t("setupIndependentNotebookHint");
+    independentNotebookWrap.appendChild(independentNotebookHint);
+    const independentNotebookStatus = document.createElement("p");
+    independentNotebookStatus.className = "xlc-form-hint xlc-setup-create-status";
+    independentNotebookStatus.setAttribute("role", "status");
+    independentNotebookStatus.setAttribute("aria-live", "polite");
+    independentNotebookWrap.appendChild(independentNotebookStatus);
+    let orphanReceiptEl = null;
+    const clearOrphanReceipt = () => {
+      if (orphanReceiptEl) {
+        orphanReceiptEl.remove();
+        orphanReceiptEl = null;
+      }
+    };
+    step1.appendChild(independentNotebookWrap);
+    const syncModeUi = () => {
+      clearOrphanReceipt();
+      const mode = modeSelect.value;
+      const needsNotebook = mode === "notebook" || mode === "new-doc";
+      pickerWrap.style.display = mode === "doc" || mode === "tree" ? "" : "none";
+      nbWrap.style.display = needsNotebook ? "" : "none";
+      independentNotebookWrap.style.display = mode === "new-notebook" ? "" : "none";
+      nameWrap.style.display = mode === "new-doc" || mode === "new-notebook" ? "" : "none";
+      nbLabel.textContent = mode === "new-doc" ? t("setupCreateNotebook") : t("setupNotebook");
+      createBtn.dataset.xlcControl = mode === "new-notebook" ? "setup.new-notebook.create" : "setup.newdoc.create";
+      if (needsNotebook) loadNotebooks();
+      renderNotebookStatus();
+      syncCreateState();
+      syncNextState();
+    };
+    modeSelect.addEventListener("change", () => {
+      setupRevision++;
+      syncModeUi();
+    });
+    const nameWrap = document.createElement("div");
+    nameWrap.className = "xlc-form-field";
+    const nameLabel = document.createElement("label");
+    nameLabel.className = "xlc-form-label";
+    nameLabel.textContent = t("setupNewDoc");
+    nameWrap.appendChild(nameLabel);
+    const nameRow = document.createElement("div");
+    nameRow.className = "xlc-form-row";
+    const nameInput = document.createElement("input");
+    nameInput.className = "b3-text-field";
+    nameInput.id = "xlc-setup-newdoc";
+    nameInput.dataset.xlcControl = "setup.newdoc.title";
+    nameLabel.htmlFor = nameInput.id;
+    nameInput.value = t("setupNewDocName");
+    nameRow.appendChild(nameInput);
+    const createBtn = document.createElement("button");
+    createBtn.className = "b3-button";
+    createBtn.dataset.xlcControl = "setup.newdoc.create";
+    createBtn.style.whiteSpace = "nowrap";
+    createBtn.textContent = t("create");
+    createBtn.disabled = true;
+    let creatingLibrary = false;
+    createBtn.addEventListener("click", () => {
+      const mode = modeSelect.value;
+      const notebookId = mode === "new-doc" ? nbSelect.value : "";
+      const notebookName = independentNotebookInput.value.trim();
+      const title = nameInput.value.trim();
+      if (mode === "new-doc" && !notebookId || mode === "new-notebook" && !notebookName || !title) {
+        ctx.notify("error", t("invalidItem"));
+        return;
+      }
+      const revision = setupRevision;
+      const confirmText = mode === "new-notebook" ? t("setupIndependentConfirmCreate", notebookName, title) : t("setupConfirmCreate", title);
+      (0, import_siyuan5.confirm)("\u26A0\uFE0F " + t("setupTitle"), confirmText, () => {
+        if (creatingLibrary || setupRevision !== revision || modeSelect.value !== mode || mode === "new-doc" && nbSelect.value !== notebookId || mode === "new-notebook" && independentNotebookInput.value.trim() !== notebookName || nameInput.value.trim() !== title) return;
+        creatingLibrary = true;
+        clearOrphanReceipt();
+        modeSelect.disabled = true;
+        nbSelect.disabled = true;
+        nameInput.disabled = true;
+        independentNotebookInput.disabled = true;
+        createBtn.textContent = t("saving");
+        independentNotebookStatus.textContent = mode === "new-notebook" ? t("setupIndependentStepNotebook") : "";
+        independentNotebookStatus.classList.remove("xlc-form-error");
+        syncCreateState();
+        const createTask = mode === "new-notebook" ? ctx.library.createIndependentLibrary(notebookName, title, {
+          onProgress: (step3) => {
+            if (setupRevision !== revision || !creatingLibrary) return;
+            if (step3 === "creating-notebook") {
+              independentNotebookStatus.textContent = t("setupIndependentStepNotebook");
+            } else if (step3 === "creating-doc") {
+              independentNotebookStatus.textContent = t("setupIndependentStepDoc");
+            } else if (step3 === "rolling-back") {
+              independentNotebookStatus.textContent = t("setupIndependentStepRollback");
+            }
+          }
+        }) : ctx.library.createLibraryDoc(notebookId, title);
+        void createTask.then((result) => {
+          creatingLibrary = false;
+          modeSelect.disabled = false;
+          nbSelect.disabled = !notebooksLoaded || nbSelect.options.length <= 1;
+          nameInput.disabled = false;
+          independentNotebookInput.disabled = false;
+          createBtn.textContent = t("create");
+          syncCreateState();
+          if (!result.ok) {
+            const message = mode === "new-notebook" ? t("setupIndependentCreateFailed", result.message) : t("kernelError", result.message);
+            independentNotebookStatus.classList.toggle("xlc-form-error", mode === "new-notebook");
+            independentNotebookStatus.textContent = mode === "new-notebook" ? message : "";
+            nbStatus.textContent = mode === "new-notebook" ? message : t("kernelError", result.message);
+            if (mode === "new-notebook" && result.compensation === "failed" && result.notebookId) {
+              clearOrphanReceipt();
+              const orphanBox = document.createElement("div");
+              orphanBox.className = "xlc-form-field";
+              orphanBox.dataset.xlcControl = "setup.independent.orphan-notebook";
+              orphanBox.style.marginTop = "8px";
+              const warnP = document.createElement("p");
+              warnP.className = "xlc-form-hint xlc-form-error";
+              warnP.textContent = t("setupIndependentOrphanWarning", result.notebookId);
+              orphanBox.appendChild(warnP);
+              const copyBtn = document.createElement("button");
+              copyBtn.type = "button";
+              copyBtn.className = "b3-button";
+              copyBtn.dataset.xlcControl = "setup.independent.copy-orphan-id";
+              copyBtn.textContent = t("setupIndependentCopyOrphanId");
+              const orphanId = result.notebookId;
+              copyBtn.addEventListener("click", () => {
+                var _a;
+                try {
+                  if ((_a = navigator.clipboard) == null ? void 0 : _a.writeText) {
+                    void navigator.clipboard.writeText(orphanId);
+                  }
+                } catch {
+                }
+                copyBtn.textContent = t("setupIndependentOrphanCopied");
+                ctx.notify("info", t("setupIndependentOrphanCopied"));
+              });
+              orphanBox.appendChild(copyBtn);
+              independentNotebookWrap.appendChild(orphanBox);
+              orphanReceiptEl = orphanBox;
+            }
+            ctx.notify("error", message);
+            return;
+          }
+          const docId = result.data.docId;
+          const createdNotebookId = mode === "new-notebook" && "notebookId" in result.data && typeof result.data.notebookId === "string" ? result.data.notebookId : "";
+          ctx.applyConfig({
+            configVersion: CONFIG_VERSION,
+            mode: "doc",
+            notebookIds: [],
+            containerDocIds: [docId],
+            createdDocIds: [docId],
+            ...createdNotebookId ? { createdNotebookIds: [createdNotebookId] } : {},
+            configuredAt: Date.now()
+          });
+          independentNotebookStatus.textContent = "";
+          independentNotebookStatus.classList.remove("xlc-form-error");
+          ctx.notify("info", t("libDocCreated", title));
+          onConfigured();
+        }).catch((err) => {
+          creatingLibrary = false;
+          modeSelect.disabled = false;
+          nbSelect.disabled = !notebooksLoaded || nbSelect.options.length <= 1;
+          nameInput.disabled = false;
+          independentNotebookInput.disabled = false;
+          createBtn.textContent = t("create");
+          syncCreateState();
+          const message = mode === "new-notebook" ? t("setupIndependentCreateFailed", toErrorMessage(err)) : t("kernelError", toErrorMessage(err));
+          independentNotebookStatus.classList.toggle("xlc-form-error", mode === "new-notebook");
+          independentNotebookStatus.textContent = mode === "new-notebook" ? message : "";
+          ctx.notify("error", message);
+        });
+      });
+    });
+    nameRow.appendChild(createBtn);
+    nameWrap.appendChild(nameRow);
+    step1.appendChild(nameWrap);
+    function syncCreateState() {
+      const mode = modeSelect.value;
+      createBtn.disabled = creatingLibrary || mode === "new-doc" && (!notebooksLoaded || !nbSelect.value) || mode !== "new-doc" && mode !== "new-notebook" || mode === "new-notebook" && !independentNotebookInput.value.trim() || !nameInput.value.trim();
+    }
+    nbSelect.addEventListener("change", () => {
+      setupRevision++;
+      checkedNotebookId = "";
+      notebookDocsState = "unchecked";
+      renderNotebookStatus();
+      syncCreateState();
+      syncNextState();
+    });
+    nameInput.addEventListener("input", () => {
+      clearOrphanReceipt();
+      syncCreateState();
+    });
+    independentNotebookInput.addEventListener("input", () => {
+      clearOrphanReceipt();
+      syncCreateState();
+    });
+    const step1Actions = document.createElement("div");
+    step1Actions.className = "xlc-form-actions";
+    if (opts == null ? void 0 : opts.onDismiss) {
+      const dismissBtn = document.createElement("button");
+      dismissBtn.className = "b3-button xlc-btn-ghost";
+      dismissBtn.dataset.xlcControl = "setup.later";
+      dismissBtn.textContent = t("setupLater");
+      dismissBtn.addEventListener("click", () => {
+        var _a;
+        return (_a = opts.onDismiss) == null ? void 0 : _a.call(opts);
+      });
+      step1Actions.appendChild(dismissBtn);
+    }
+    const nextBtn = document.createElement("button");
+    nextBtn.className = "b3-button xlc-btn-primary";
+    nextBtn.dataset.xlcControl = "setup.next";
+    nextBtn.textContent = t("setupNext");
+    nextBtn.disabled = true;
+    nextBtn.addEventListener("click", () => {
+      const mode = modeSelect.value;
+      if (mode === "notebook" && !nbSelect.value) {
+        ctx.notify("error", nbSelect.disabled ? t("setupNotebookNotReady") : t("pickNotebookFirst"));
+        return;
+      }
+      if (mode !== "notebook" && !pickedDoc) {
+        ctx.notify("error", t("pickDocFirst"));
+        return;
+      }
+      if (mode === "notebook") {
+        const notebookId = nbSelect.value;
+        const revision = setupRevision;
+        nextBtn.disabled = true;
+        void verifyNotebookHasDocs(notebookId).then((valid) => {
+          if (valid && setupRevision === revision && modeSelect.value === "notebook" && nbSelect.value === notebookId) gotoStep(2);
+        }).finally(() => syncNextState());
+        return;
+      }
+      gotoStep(2);
+    });
+    step1Actions.appendChild(nextBtn);
+    step1.appendChild(step1Actions);
+    function syncNextState() {
+      const mode = modeSelect.value;
+      const rootCheckFailed = checkedNotebookId === nbSelect.value && (notebookDocsState === "empty" || notebookDocsState === "error");
+      nextBtn.style.display = mode === "new-doc" || mode === "new-notebook" ? "none" : "";
+      nextBtn.disabled = mode === "notebook" ? !notebooksLoaded || !nbSelect.value || notebookDocsChecking || rootCheckFailed : mode === "new-doc" || mode === "new-notebook" || !pickedDoc;
+    }
+    syncModeUi();
+    root.appendChild(step1);
+    const step2 = document.createElement("div");
+    step2.style.display = "none";
+    const summaryWrap = document.createElement("div");
+    summaryWrap.className = "xlc-policy-list";
+    step2.appendChild(summaryWrap);
+    const summaryHint = document.createElement("p");
+    summaryHint.className = "xlc-form-hint";
+    summaryHint.style.marginTop = "12px";
+    summaryHint.textContent = t("setupConfirmHint");
+    step2.appendChild(summaryHint);
+    const step2Actions = document.createElement("div");
+    step2Actions.className = "xlc-form-actions";
+    const backBtn = document.createElement("button");
+    backBtn.className = "b3-button xlc-btn-ghost";
+    backBtn.dataset.xlcControl = "setup.back";
+    backBtn.textContent = t("setupBack");
+    backBtn.addEventListener("click", () => gotoStep(1));
+    step2Actions.appendChild(backBtn);
+    const finishBtn = document.createElement("button");
+    finishBtn.className = "b3-button xlc-btn-primary";
+    finishBtn.dataset.xlcControl = "setup.finish";
+    finishBtn.textContent = t("setupFinish");
+    finishBtn.addEventListener("click", () => {
+      const mode = modeSelect.value;
+      if (mode === "notebook") {
+        const notebookId = nbSelect.value;
+        if (!notebookId) {
+          ctx.notify("error", t("invalidItem"));
+          return;
+        }
+        const revision = setupRevision;
+        finishBtn.disabled = true;
+        void verifyNotebookHasDocs(notebookId).then((valid) => {
+          if (setupRevision !== revision || step !== 2 || modeSelect.value !== "notebook" || nbSelect.value !== notebookId) return;
+          if (!valid) {
+            gotoStep(1);
+            return;
+          }
+          ctx.applyConfig({
+            configVersion: CONFIG_VERSION,
+            mode: "notebook",
+            notebookIds: [notebookId],
+            containerDocIds: [],
+            createdDocIds: [],
+            configuredAt: Date.now()
+          });
+          onConfigured();
+        }).finally(() => {
+          finishBtn.disabled = false;
+          syncNextState();
+        });
+        return;
+      }
+      if (!pickedDoc) {
+        ctx.notify("error", t("pickDocFirst"));
+        return;
+      }
+      ctx.applyConfig({
+        configVersion: CONFIG_VERSION,
+        mode,
+        notebookIds: [],
+        containerDocIds: [pickedDoc.id],
+        createdDocIds: [],
+        configuredAt: Date.now()
+      });
+      onConfigured();
+    });
+    step2Actions.appendChild(finishBtn);
+    step2.appendChild(step2Actions);
+    root.appendChild(step2);
+    function paintSummary() {
+      var _a, _b;
+      summaryWrap.textContent = "";
+      const mode = modeSelect.value;
+      const card = document.createElement("div");
+      card.className = "xlc-policy xlc-policy--recommended";
+      const icon = document.createElement("span");
+      icon.className = "xlc-policy-ic";
+      icon.textContent = "\u2713";
+      card.appendChild(icon);
+      const text = document.createElement("span");
+      const titleEl = document.createElement("span");
+      titleEl.className = "xlc-policy-title";
+      titleEl.textContent = mode === "notebook" ? `${t("setupNotebook")} \xB7 ${(_b = (_a = nbSelect.selectedOptions[0]) == null ? void 0 : _a.textContent) != null ? _b : nbSelect.value}` : (pickedDoc == null ? void 0 : pickedDoc.hPath) || (pickedDoc == null ? void 0 : pickedDoc.id) || "-";
+      text.appendChild(titleEl);
+      const desc = document.createElement("span");
+      desc.className = "xlc-policy-desc";
+      desc.textContent = mode === "notebook" ? t("setupSummaryNotebook") : mode === "tree" ? t("setupSummaryTree") : t("setupSummaryDoc");
+      text.appendChild(desc);
+      card.appendChild(text);
+      summaryWrap.appendChild(card);
+    }
+    function gotoStep(next) {
+      setupRevision++;
+      step = next;
+      stepsEl.remove();
+      root.insertBefore(buildStepsEl(step, step === 1 ? t("setupStep1") : t("setupStep2")), root.firstChild);
+      step1.style.display = step === 1 ? "" : "none";
+      hint.style.display = step === 1 ? "" : "none";
+      usageGuide.style.display = step === 1 && !showQuickStart ? "" : "none";
+      recommendation.style.display = step === 1 ? "" : "none";
+      quickStart.style.display = step === 1 && showQuickStart ? "" : "none";
+      step2.style.display = step === 2 ? "" : "none";
+      if (step === 2) paintSummary();
+    }
+    if (existingConfig && existingConfig.mode !== "notebook") {
+      const currentDoc = existingConfig.containerDocIds[0];
+      if (currentDoc) {
+        void ctx.library.getDocPath(currentDoc).then((hPath) => {
+          var _a;
+          if (!hPath || pickerInput.value) return;
+          const pathParts = hPath.split("/").filter(Boolean);
+          pickerInput.value = (_a = pathParts[pathParts.length - 1]) != null ? _a : hPath;
+          pickerInput.dispatchEvent(new Event("input"));
+        });
+      }
+    }
+  }
+  function buildAiSection(ctx, root) {
+    const t = ctx.t;
+    const aiSec = document.createElement("div");
+    aiSec.className = "xlc-form-field xlc-card";
+    const aiLabel = document.createElement("span");
+    aiLabel.className = "xlc-form-label";
+    aiLabel.textContent = t("aiSection");
+    aiSec.appendChild(aiLabel);
+    const aiRow = (key, text, sub) => {
+      const row = buildSwitchRow(text, sub, ctx.state.ai[key], (value) => {
+        ctx.state.ai[key] = value;
+        if (key === "enabled" && !value) ctx.state.ai.shareContent = false;
+        ctx.ai.updateSettings(ctx.state.ai);
+        ctx.persistSoon();
+      });
+      aiSec.appendChild(row);
+      return row.querySelector(".xlc-switch");
+    };
+    const aiEnabledBox = aiRow("enabled", t("aiEnabled"), t("aiEnabledSub"));
+    const aiShareBox = aiRow("shareContent", t("aiShareContent"), t("aiShareContentSub"));
+    const syncAiShare = () => {
+      aiShareBox.disabled = !aiEnabledBox.checked;
+      if (!aiEnabledBox.checked) {
+        aiShareBox.checked = false;
+        ctx.state.ai.shareContent = false;
+      }
+    };
+    const dirtyShare = !aiEnabledBox.checked && ctx.state.ai.shareContent;
+    syncAiShare();
+    aiEnabledBox.addEventListener("change", syncAiShare);
+    if (dirtyShare) ctx.persistSoon();
+    const ctLabel = document.createElement("span");
+    ctLabel.className = "xlc-form-label";
+    ctLabel.style.marginTop = "6px";
+    ctLabel.textContent = t("customTransformSection");
+    aiSec.appendChild(ctLabel);
+    const ctList = document.createElement("div");
+    ctList.className = "xlc-ct-list";
+    aiSec.appendChild(ctList);
+    const persistCt = () => {
+      ctx.ai.updateSettings(ctx.state.ai);
+      ctx.persistSoon();
+    };
+    let addCtBtn = null;
+    const repaintCt = () => {
+      ctList.textContent = "";
+      for (const ct of ctx.state.ai.customTransforms) {
+        const row = document.createElement("div");
+        row.className = "xlc-ct-row";
+        const nameInput = document.createElement("input");
+        nameInput.className = "b3-text-field xlc-ct-name";
+        nameInput.dataset.xlcControl = `settings.ai.custom-transform.name.${ct.id}`;
+        nameInput.placeholder = t("customTransformName");
+        nameInput.setAttribute("aria-label", t("customTransformName"));
+        nameInput.value = ct.name;
+        nameInput.maxLength = 20;
+        nameInput.addEventListener("change", () => {
+          ct.name = nameInput.value.trim().slice(0, 20);
+          persistCt();
+        });
+        row.appendChild(nameInput);
+        const promptInput = document.createElement("input");
+        promptInput.className = "b3-text-field xlc-ct-prompt";
+        promptInput.dataset.xlcControl = `settings.ai.custom-transform.prompt.${ct.id}`;
+        promptInput.placeholder = t("customTransformPrompt");
+        promptInput.setAttribute("aria-label", t("customTransformPrompt"));
+        promptInput.value = ct.prompt;
+        promptInput.maxLength = 500;
+        promptInput.addEventListener("change", () => {
+          ct.prompt = promptInput.value.trim().slice(0, 500);
+          persistCt();
+        });
+        row.appendChild(promptInput);
+        const delBtn = document.createElement("button");
+        delBtn.type = "button";
+        delBtn.className = "b3-button xlc-btn-ghost xlc-ct-del";
+        delBtn.dataset.xlcControl = `settings.ai.custom-transform.delete.${ct.id}`;
+        delBtn.textContent = t("delete");
+        delBtn.addEventListener("click", () => {
+          (0, import_siyuan5.confirm)(t("delete") + " \xB7 " + t("customTransformSection"), t("ctDeleteConfirm", ct.name), () => {
+            ctx.state.ai.customTransforms = ctx.state.ai.customTransforms.filter((c) => c.id !== ct.id);
+            persistCt();
+            repaintCt();
+            ctx.notify("info", t("ctDeleted", ct.name));
+          });
+        });
+        row.appendChild(delBtn);
+        ctList.appendChild(row);
+      }
+      if (ctx.state.ai.customTransforms.length === 0) {
+        const empty = document.createElement("div");
+        empty.className = "xlc-form-hint";
+        empty.textContent = t("customTransformEmpty");
+        ctList.appendChild(empty);
+      }
+      if (addCtBtn) addCtBtn.disabled = ctx.state.ai.customTransforms.length >= 10;
+    };
+    repaintCt();
+    addCtBtn = document.createElement("button");
+    addCtBtn.type = "button";
+    addCtBtn.className = "b3-button";
+    addCtBtn.dataset.xlcControl = "settings.ai.custom-transform.add";
+    addCtBtn.style.alignSelf = "flex-start";
+    addCtBtn.textContent = t("customTransformAdd");
+    addCtBtn.addEventListener("click", () => {
+      var _a;
+      if (ctx.state.ai.customTransforms.length >= 10) return;
+      const id = `xltf-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
+      ctx.state.ai.customTransforms = [...ctx.state.ai.customTransforms, { id, name: t("customTransformNewName"), prompt: "" }];
+      persistCt();
+      repaintCt();
+      (_a = ctList.querySelector(".xlc-ct-row:last-child .xlc-ct-name")) == null ? void 0 : _a.focus();
+    });
+    aiSec.appendChild(addCtBtn);
+    const ctHint = document.createElement("span");
+    ctHint.className = "xlc-form-hint";
+    ctHint.textContent = t("customTransformHint");
+    aiSec.appendChild(ctHint);
+    root.appendChild(aiSec);
+  }
+  function buildSearchSection(ctx, root) {
+    const t = ctx.t;
+    let pinyinSeq = 0;
+    const searchSec = document.createElement("div");
+    searchSec.className = "xlc-form-field xlc-card";
+    const searchLabel = document.createElement("span");
+    searchLabel.className = "xlc-form-label";
+    searchLabel.textContent = t("searchSection");
+    searchSec.appendChild(searchLabel);
+    const pinyinRow = buildSwitchRow(t("pinyinToggle"), t("pinyinToggleSub"), ctx.state.search.pinyin, (value) => {
+      const mySeq = ++pinyinSeq;
+      ctx.state.search.pinyin = value;
+      ctx.applyPinyinAdapter();
+      ctx.persistSoon();
+      const pinyinInput = pinyinRow.querySelector("input");
+      pinyinInput == null ? void 0 : pinyinInput.setAttribute("aria-busy", "true");
+      if (pinyinInput) pinyinInput.disabled = true;
+      pinyinRow.setAttribute("aria-busy", "true");
+      void ctx.library.reindex().then((idx) => {
+        var _a;
+        if (mySeq !== pinyinSeq) return;
+        (_a = ctx.refreshSearch) == null ? void 0 : _a.call(ctx);
+        ctx.notify("info", t("reindexDone", String(idx.entries.length)));
+      }).catch((err) => {
+        if (mySeq !== pinyinSeq) return;
+        ctx.notify("error", t("kernelError", toErrorMessage(err)));
+      }).finally(() => {
+        if (pinyinInput) {
+          pinyinInput.disabled = false;
+          pinyinInput.removeAttribute("aria-busy");
+        }
+        pinyinRow.removeAttribute("aria-busy");
+      });
+    });
+    searchSec.appendChild(pinyinRow);
+    const phRow = buildSwitchRow(t("placeholdersToggle"), t("placeholdersToggleSub"), ctx.state.search.placeholders, (value) => {
+      ctx.state.search.placeholders = value;
+      ctx.persistSoon();
+    });
+    searchSec.appendChild(phRow);
+    root.appendChild(searchSec);
+  }
+  function buildSavedViewsSection(ctx, root, beforeOpen) {
+    const t = ctx.t;
+    const sec = document.createElement("div");
+    sec.className = "xlc-form-field xlc-card xlc-saved-views";
+    sec.dataset.xlcControl = "settings.saved-views";
+    const label = document.createElement("span");
+    label.className = "xlc-form-label";
+    label.textContent = t("savedViewsSection");
+    sec.appendChild(label);
+    const list = document.createElement("div");
+    list.className = "xlc-saved-view-list";
+    list.setAttribute("role", "list");
+    list.setAttribute("aria-label", t("savedViewsSection"));
+    sec.appendChild(list);
+    const readViews = () => {
+      var _a, _b;
+      const fromContext = (_a = ctx.getSavedDiscoveryViews) == null ? void 0 : _a.call(ctx);
+      return (_b = fromContext != null ? fromContext : ctx.state.search.savedDiscoveryViews) != null ? _b : [];
+    };
+    const scopeLabel = (scope) => {
+      switch (scope) {
+        case "document":
+          return t("discoveryScopeDocument");
+        case "notebook":
+          return t("discoveryScopeNotebook");
+        case "tree":
+          return t("discoveryScopeTree");
+        case "selected-notebook":
+          return t("discoveryScopeSelectedNotebook");
+        case "all-notebooks":
+          return t("discoveryScopeAllNotebooks");
+      }
+    };
+    const render = () => {
+      list.replaceChildren();
+      const views = readViews();
+      if (views.length === 0) {
+        const empty = document.createElement("span");
+        empty.className = "xlc-form-hint xlc-saved-view-empty";
+        empty.textContent = t("savedViewsEmpty");
+        list.appendChild(empty);
+        return;
+      }
+      for (const view of views) {
+        const row = document.createElement("div");
+        row.className = "xlc-setting-row xlc-saved-view-row";
+        row.dataset.xlcSavedViewId = view.id;
+        row.setAttribute("role", "listitem");
+        const text = document.createElement("span");
+        text.className = "xlc-setting-text";
+        const name = document.createElement("strong");
+        name.className = "xlc-saved-view-name";
+        name.textContent = view.name;
+        text.appendChild(name);
+        const meta = document.createElement("span");
+        meta.className = "xlc-setting-sub xlc-saved-view-meta";
+        const pieces = [`#${view.tag}`, scopeLabel(view.scope)];
+        if (view.pathLabel) pieces.push(view.pathLabel);
+        meta.textContent = pieces.join(" \xB7 ");
+        text.appendChild(meta);
+        row.appendChild(text);
+        const actions = document.createElement("span");
+        actions.className = "xlc-setting-actions";
+        const open = document.createElement("button");
+        open.type = "button";
+        open.className = "b3-button xlc-btn-ghost";
+        open.dataset.xlcControl = "settings.saved-view.open";
+        open.textContent = t("savedViewsOpen");
+        open.disabled = !ctx.openSavedDiscoveryView;
+        open.addEventListener("click", () => {
+          if (!ctx.openSavedDiscoveryView) return;
+          beforeOpen == null ? void 0 : beforeOpen();
+          ctx.openSavedDiscoveryView(view);
+        });
+        actions.appendChild(open);
+        const remove = document.createElement("button");
+        remove.type = "button";
+        remove.className = "b3-button xlc-btn-ghost";
+        remove.dataset.xlcControl = "settings.saved-view.delete";
+        remove.textContent = t("savedViewsDelete");
+        remove.addEventListener("click", () => {
+          (0, import_siyuan5.confirm)("\u26A0\uFE0F " + t("savedViewsDelete"), t("savedViewsDeleteConfirm", view.name), () => {
+            var _a;
+            if (ctx.deleteSavedDiscoveryView) {
+              ctx.deleteSavedDiscoveryView(view.id);
+            } else {
+              ctx.state.search.savedDiscoveryViews = ((_a = ctx.state.search.savedDiscoveryViews) != null ? _a : []).filter((entry) => entry.id !== view.id);
+              ctx.persistSoon();
+            }
+            ctx.notify("info", `${t("savedViewsDelete")}: ${view.name}`);
+            render();
+          });
+        });
+        actions.appendChild(remove);
+        row.appendChild(actions);
+        list.appendChild(row);
+      }
+    };
+    render();
+    root.appendChild(sec);
+  }
+  function buildDataSection(ctx, root) {
+    const t = ctx.t;
+    const dataSec = document.createElement("div");
+    dataSec.className = "xlc-form-field xlc-card";
+    const dataLabel = document.createElement("span");
+    dataLabel.className = "xlc-form-label";
+    dataLabel.textContent = t("dataSection");
+    dataSec.appendChild(dataLabel);
+    const libRow = document.createElement("div");
+    libRow.className = "xlc-form-hint";
+    const cfg = ctx.getConfig();
+    libRow.textContent = `${t("librarySection")}\uFF1A${cfg ? cfg.mode === "notebook" ? t("libModeNotebook", String(cfg.notebookIds.length)) : cfg.mode === "tree" ? t("libModeTree", String(cfg.containerDocIds.length)) : t("libModeDoc", String(cfg.containerDocIds.length)) : t("libraryNone")}`;
+    dataSec.appendChild(libRow);
+    const operationStatus = document.createElement("div");
+    operationStatus.className = "xlc-operation-status";
+    operationStatus.hidden = true;
+    operationStatus.setAttribute("role", "status");
+    operationStatus.setAttribute("aria-live", "polite");
+    dataSec.appendChild(operationStatus);
+    const setOperationStatus = (state, message = "", retry) => {
+      operationStatus.dataset.state = state;
+      operationStatus.hidden = state === "idle";
+      operationStatus.replaceChildren();
+      if (message) {
+        const text = document.createElement("span");
+        text.className = state === "error" ? "xlc-form-error" : "xlc-form-hint";
+        text.textContent = message;
+        operationStatus.appendChild(text);
+      }
+      if (retry && state === "error") {
+        const retryBtn = document.createElement("button");
+        retryBtn.type = "button";
+        retryBtn.className = "b3-button xlc-btn-ghost xlc-operation-retry";
+        retryBtn.dataset.xlcControl = "settings.data.retry";
+        retryBtn.textContent = t("retry");
+        retryBtn.addEventListener("click", retry);
+        operationStatus.appendChild(retryBtn);
+      }
+    };
+    const dataBtns = document.createElement("div");
+    dataBtns.style.display = "flex";
+    dataBtns.style.gap = "8px";
+    dataBtns.style.flexWrap = "wrap";
+    const mkBtn = (label, onClick, control) => {
       const btn = document.createElement("button");
       btn.type = "button";
-      btn.className = "xlc-varbtn";
-      btn.dataset.xlcControl = `capture.variable.${snippet.id}`;
-      btn.textContent = snippet.text;
+      btn.className = "b3-button";
+      btn.textContent = label;
+      if (control) btn.dataset.xlcControl = control;
+      if (onClick) btn.addEventListener("click", onClick);
+      dataBtns.appendChild(btn);
+      return btn;
+    };
+    const withFlight = (btn, run, opts = {}) => {
       btn.addEventListener("click", () => {
         var _a, _b;
-        const el = getTarget();
-        const start = (_a = el.selectionStart) != null ? _a : el.value.length;
-        const end = (_b = el.selectionEnd) != null ? _b : start;
-        el.value = el.value.slice(0, start) + snippet.text + el.value.slice(end);
-        const caret = start + snippet.text.length;
-        el.focus();
-        el.setSelectionRange(caret, caret);
-        el.dispatchEvent(new Event("input", { bubbles: true }));
+        if (btn.disabled) return;
+        btn.disabled = true;
+        const original = (_a = btn.textContent) != null ? _a : "";
+        btn.setAttribute("aria-busy", "true");
+        if (opts.flightLabel) btn.textContent = opts.flightLabel;
+        setOperationStatus("loading", (_b = opts.loading) != null ? _b : t("loading"));
+        void Promise.resolve().then(run).then((result) => {
+          var _a2, _b2, _c, _d;
+          const value = result != null ? result : {};
+          if (value.status === "empty") {
+            setOperationStatus("empty", (_b2 = (_a2 = value.message) != null ? _a2 : opts.empty) != null ? _b2 : t("empty"));
+          } else if (value.message || opts.success) {
+            setOperationStatus("success", (_d = (_c = value.message) != null ? _c : opts.success) != null ? _d : "");
+          } else {
+            setOperationStatus("idle");
+          }
+        }).catch((err) => {
+          var _a2, _b2;
+          const message = (_b2 = (_a2 = opts.formatError) == null ? void 0 : _a2.call(opts, err)) != null ? _b2 : t("kernelError", toErrorMessage(err));
+          ctx.notify("error", message);
+          setOperationStatus("error", message, () => btn.click());
+        }).finally(() => {
+          btn.disabled = false;
+          btn.removeAttribute("aria-busy");
+          if (opts.flightLabel) btn.textContent = original;
+        });
       });
-      bar.appendChild(btn);
+    };
+    const reindexBtn = mkBtn(t("reindexBtn"), void 0, "settings.data.reindex");
+    withFlight(reindexBtn, async () => {
+      var _a;
+      const idx = await ctx.library.reindex();
+      const message = idx.truncated ? t("reindexTruncated", String(LIMITS.maxItems)) : t("reindexDone", String(idx.entries.length));
+      (_a = ctx.refreshSearch) == null ? void 0 : _a.call(ctx);
+      ctx.notify("info", message);
+      return { message };
+    }, { flightLabel: t("indexing"), loading: t("indexing") });
+    const clearRecentsBtn = mkBtn(ctx.state.recents.length ? t("clearRecents") : t("clearRecentsEmpty"), void 0, "settings.data.clearRecents");
+    clearRecentsBtn.addEventListener("click", () => {
+      if (ctx.state.recents.length === 0 || clearRecentsBtn.disabled) return;
+      (0, import_siyuan5.confirm)("\u26A0\uFE0F " + t("clearRecents"), t("clearRecentsConfirm"), () => {
+        var _a;
+        ctx.state.recents = [];
+        ctx.persistSoon();
+        (_a = ctx.refreshSearch) == null ? void 0 : _a.call(ctx);
+        clearRecentsBtn.textContent = t("clearRecentsEmpty");
+        clearRecentsBtn.disabled = true;
+        ctx.notify("info", t("clearRecentsDone"));
+        setOperationStatus("success", t("clearRecentsDone"));
+      });
+    });
+    clearRecentsBtn.disabled = ctx.state.recents.length === 0;
+    if (ctx.state.ai.enabled) {
+      const auditBtn = mkBtn("\u2726 " + t("tagAuditBtn"), void 0, "settings.data.tagAudit");
+      withFlight(auditBtn, async () => {
+        const result = await runTagAudit(ctx);
+        return result === "empty" ? { status: "empty", message: t("tagAuditTooFew") } : void 0;
+      }, { flightLabel: "\u2726 " + t("aiWorking"), loading: t("aiWorking"), formatError: (err) => toErrorMessage(err) });
     }
-    return bar;
+    const exportBtn = mkBtn(t("exportBtn"), void 0, "settings.data.export");
+    withFlight(exportBtn, async () => {
+      const json = await ctx.exportBundle();
+      const count = JSON.parse(json).items.length;
+      if (count === 0) {
+        return { status: "empty", message: t("exportEmpty") };
+      }
+      const blob = new Blob([json], { type: "application/json" });
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = `xiaolv-common-export-${(/* @__PURE__ */ new Date()).toISOString().slice(0, 10)}.json`;
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(a.href), 4e3);
+      const message = t("exportDone", String(count));
+      ctx.notify("info", message);
+      return { message };
+    }, { flightLabel: t("indexing"), loading: t("indexing"), formatError: (err) => formatExportError(ctx, err) });
+    const packBtn = mkBtn(t("packBtn"), void 0, "settings.data.packExport");
+    withFlight(packBtn, async () => {
+      await openPackExportDialog(ctx);
+      return { message: t("packExportTitle") };
+    }, { flightLabel: t("loading"), loading: t("loading"), formatError: (err) => formatExportError(ctx, err) });
+    const importBtn = mkBtn(t("importBtn"), () => {
+      var _a;
+      if (importBtn.disabled) return;
+      const originalLabel = (_a = importBtn.textContent) != null ? _a : "";
+      let finished = false;
+      let focusTimer = null;
+      let onFocus;
+      const finish = () => {
+        if (finished) return;
+        finished = true;
+        importBtn.disabled = false;
+        importBtn.textContent = originalLabel;
+        importBtn.removeAttribute("aria-busy");
+        window.removeEventListener("focus", onFocus);
+        if (focusTimer !== null) window.clearTimeout(focusTimer);
+      };
+      onFocus = () => {
+        focusTimer = window.setTimeout(finish, 350);
+      };
+      importBtn.disabled = true;
+      importBtn.setAttribute("aria-busy", "true");
+      importBtn.textContent = t("loading");
+      setOperationStatus("loading", t("loading"));
+      window.addEventListener("focus", onFocus, { once: true });
+      const fileInput = document.createElement("input");
+      fileInput.type = "file";
+      fileInput.dataset.xlcControl = "settings.import.file";
+      fileInput.accept = ".json,application/json,.md,text/markdown,.csv,text/csv,.tsv,text/tab-separated-values";
+      fileInput.addEventListener("change", () => {
+        var _a2;
+        const file = (_a2 = fileInput.files) == null ? void 0 : _a2[0];
+        if (!file) {
+          finish();
+          return;
+        }
+        if (file.size > LIMITS.maxImportBytes) {
+          const message = t("importFailed", t("importReasonTooLarge"));
+          ctx.notify("error", message);
+          setOperationStatus("error", message, () => importBtn.click());
+          finish();
+          return;
+        }
+        void file.text().then((text) => {
+          var _a3;
+          const isMd = /\.md$/i.test(file.name);
+          const isCsvTsv = /\.(csv|tsv)$/i.test(file.name);
+          if (isMd) {
+            const parsed = parseMarkdownPack(text);
+            if (parsed.items.length === 0) {
+              const message = t("importFailed", t("importReasonNoMeta"));
+              ctx.notify("error", message);
+              setOperationStatus("error", message, () => importBtn.click());
+              finish();
+              return;
+            }
+            openImportPolicyDialog(ctx, { items: parsed.items, pack: parsed.pack }, parsed.issues, { kind: "markdown-pack", items: parsed.items });
+            setOperationStatus("success", t("importPreview", String(parsed.items.length), String(parsed.issues.length)));
+            finish();
+            return;
+          }
+          if (isCsvTsv) {
+            void loadCsvTsvParser().then((parser) => {
+              var _a4;
+              const parsed = parser.parseCsvTsvItems(text);
+              if (parsed.items.length === 0) {
+                const message = t("importFailed", (_a4 = parsed.issues[0]) != null ? _a4 : t("importReasonNoMeta"));
+                ctx.notify("error", message);
+                setOperationStatus("error", message, () => importBtn.click());
+                finish();
+                return;
+              }
+              const importIssues = parsed.issues.map((reason, index) => ({ index, reason }));
+              openImportPolicyDialog(ctx, { items: parsed.items }, importIssues, { kind: "csv-tsv", items: parsed.items });
+              setOperationStatus("success", t("importPreview", String(parsed.items.length), String(parsed.issues.length)));
+              finish();
+            }).catch((err) => {
+              const message = t("importFailed", toErrorMessage(err));
+              ctx.notify("error", message);
+              setOperationStatus("error", message, () => importBtn.click());
+              finish();
+            });
+            return;
+          }
+          const validation = validateImport(text);
+          if (!validation.ok || !validation.parsed) {
+            const message = t("importFailed", (_a3 = validation.reason) != null ? _a3 : t("importReasonUnknown"));
+            ctx.notify("error", message);
+            setOperationStatus("error", message, () => importBtn.click());
+            finish();
+            return;
+          }
+          openImportPolicyDialog(ctx, validation.parsed, validation.issues, { kind: "json", text });
+          setOperationStatus("success", t("importPreview", String(validation.parsed.items.length), String(validation.issues.length)));
+          finish();
+        }).catch((err) => {
+          const message = t("importFailed", toErrorMessage(err));
+          ctx.notify("error", message);
+          setOperationStatus("error", message, () => importBtn.click());
+          finish();
+        });
+      });
+      fileInput.addEventListener("cancel", () => {
+        finish();
+        setOperationStatus("idle");
+      });
+      fileInput.click();
+    });
+    importBtn.dataset.xlcControl = "settings.data.import";
+    const espansoBtn = mkBtn(t("espansoImportBtn"), void 0, "settings.data.espansoImport");
+    let espansoOpen = false;
+    espansoBtn.addEventListener("click", () => {
+      if (espansoOpen || espansoBtn.disabled) return;
+      espansoOpen = true;
+      espansoBtn.disabled = true;
+      espansoBtn.setAttribute("aria-busy", "true");
+      setOperationStatus("loading", t("loading"));
+      openEspansoImportDialog(ctx, () => {
+        espansoOpen = false;
+        espansoBtn.disabled = false;
+        espansoBtn.removeAttribute("aria-busy");
+        setOperationStatus("idle");
+      });
+    });
+    const csvImportBtn = mkBtn(t("csvImportBtn"), void 0, "settings.data.csvImport");
+    let csvOpen = false;
+    csvImportBtn.addEventListener("click", () => {
+      if (csvOpen || csvImportBtn.disabled) return;
+      csvOpen = true;
+      csvImportBtn.disabled = true;
+      csvImportBtn.setAttribute("aria-busy", "true");
+      setOperationStatus("loading", t("loading"));
+      openCsvTsvImportWizard(ctx, () => {
+        csvOpen = false;
+        csvImportBtn.disabled = false;
+        csvImportBtn.removeAttribute("aria-busy");
+        setOperationStatus("idle");
+      });
+    });
+    dataBtns.appendChild(csvImportBtn);
+    dataSec.appendChild(dataBtns);
+    const templateRow = document.createElement("div");
+    templateRow.className = "xlc-setting-row xlc-template-import-row";
+    const templateText = document.createElement("span");
+    templateText.className = "xlc-setting-text";
+    templateText.textContent = t("promptPackHint");
+    templateRow.appendChild(templateText);
+    const templateBtn = document.createElement("button");
+    templateBtn.type = "button";
+    templateBtn.className = "b3-button";
+    templateBtn.textContent = t("promptPackBtn");
+    templateBtn.dataset.xlcControl = "settings.data.templateImport";
+    templateBtn.addEventListener("click", () => {
+      var _a;
+      if (templateBtn.disabled) return;
+      templateBtn.disabled = true;
+      templateBtn.setAttribute("aria-busy", "true");
+      const originalLabel = (_a = templateBtn.textContent) != null ? _a : "";
+      templateBtn.textContent = t("loading");
+      setOperationStatus("loading", t("loading"));
+      const parsed = parseMarkdownPack(PROMPT_PACK_MD);
+      if (parsed.items.length === 0) {
+        const message = t("importFailed", t("importReasonPackEmpty"));
+        ctx.notify("error", message);
+        setOperationStatus("error", message, () => templateBtn.click());
+        templateBtn.disabled = false;
+        templateBtn.removeAttribute("aria-busy");
+        templateBtn.textContent = originalLabel;
+        return;
+      }
+      openImportPolicyDialog(ctx, { items: parsed.items, pack: parsed.pack }, parsed.issues, { kind: "markdown-pack", items: parsed.items });
+      setOperationStatus("success", t("importPreview", String(parsed.items.length), String(parsed.issues.length)));
+      templateBtn.disabled = false;
+      templateBtn.removeAttribute("aria-busy");
+      templateBtn.textContent = originalLabel;
+    });
+    templateRow.appendChild(templateBtn);
+    dataSec.appendChild(templateRow);
+    root.appendChild(dataSec);
   }
+  function openEspansoImportDialog(ctx, onClose) {
+    const t = ctx.t;
+    const dialog = new import_siyuan5.Dialog({
+      title: t("espansoTitle"),
+      content: "",
+      width: "min(680px, 92vw)",
+      height: "min(680px, 86vh)"
+    });
+    const container = dialog.element.querySelector(".b3-dialog__container");
+    if (container) container.classList.add("xlc-form-host", "xlc-settings-host");
+    const body = getDialogBody(dialog.element);
+    if (!body) {
+      onClose == null ? void 0 : onClose();
+      return;
+    }
+    body.innerHTML = "";
+    const root = document.createElement("div");
+    root.className = "xlc-form";
+    const hint = document.createElement("p");
+    hint.className = "xlc-form-hint";
+    hint.textContent = t("espansoHint");
+    root.appendChild(hint);
+    const ta = document.createElement("textarea");
+    ta.className = "b3-text-field";
+    ta.dataset.xlcControl = "settings.espanso.text";
+    ta.rows = 10;
+    ta.placeholder = t("espansoPlaceholder");
+    ta.setAttribute("spellcheck", "false");
+    root.appendChild(ta);
+    const preview = document.createElement("div");
+    preview.className = "xlc-form-hint";
+    preview.style.whiteSpace = "pre-wrap";
+    root.appendChild(preview);
+    const foot = document.createElement("div");
+    foot.className = "xlc-form-row";
+    foot.style.justifyContent = "flex-end";
+    foot.style.gap = "8px";
+    const cancelBtn = document.createElement("button");
+    cancelBtn.className = "b3-button";
+    cancelBtn.dataset.xlcControl = "settings.espanso.cancel";
+    cancelBtn.textContent = t("cancel");
+    foot.appendChild(cancelBtn);
+    const nextBtn = document.createElement("button");
+    nextBtn.className = "b3-button xlc-btn-primary";
+    nextBtn.dataset.xlcControl = "settings.espanso.next";
+    nextBtn.textContent = t("setupNext");
+    nextBtn.disabled = true;
+    foot.appendChild(nextBtn);
+    root.appendChild(foot);
+    body.appendChild(root);
+    let released = false;
+    const release = () => {
+      if (released) return;
+      released = true;
+      observer == null ? void 0 : observer.disconnect();
+      onClose == null ? void 0 : onClose();
+    };
+    let observer = null;
+    observer = typeof MutationObserver === "undefined" ? null : new MutationObserver(() => {
+      if (!dialog.element.isConnected) release();
+    });
+    observer == null ? void 0 : observer.observe(document.body, { childList: true, subtree: true });
+    let parsedItems = [];
+    let parsedText = null;
+    const runParse = async () => {
+      const sourceText = ta.value;
+      parsedItems = [];
+      parsedText = null;
+      nextBtn.disabled = true;
+      preview.textContent = "";
+      let parser;
+      try {
+        parser = await loadEspansoParser();
+      } catch (err) {
+        preview.textContent = t("importFailed", toErrorMessage(err).slice(0, 120));
+        return;
+      }
+      if (sourceText !== ta.value || !dialog.element.isConnected) return;
+      const result = parser.parseEspansoYaml(sourceText);
+      if (result.items.length === 0) {
+        preview.textContent = result.issues.length ? result.issues.slice(0, 5).join("\n") : t("espansoNone");
+        return;
+      }
+      parsedItems = result.items;
+      parsedText = sourceText;
+      const lines = [t("espansoParsed", String(result.items.length))];
+      for (const issue of result.issues.slice(0, 5)) lines.push(`\xB7 ${issue}`);
+      if (result.issues.length > 5) lines.push(`\xB7 \u2026+${result.issues.length - 5}`);
+      preview.textContent = lines.join("\n");
+      nextBtn.disabled = false;
+    };
+    let parseTimer;
+    ta.addEventListener("input", () => {
+      if (parseTimer) clearTimeout(parseTimer);
+      parsedItems = [];
+      parsedText = null;
+      nextBtn.disabled = true;
+      preview.textContent = "";
+      parseTimer = setTimeout(() => {
+        void runParse();
+      }, 400);
+    });
+    cancelBtn.addEventListener("click", () => {
+      dialog.destroy();
+      release();
+    });
+    nextBtn.addEventListener("click", () => {
+      if (nextBtn.disabled || parsedItems.length === 0 || parsedText !== ta.value) return;
+      dialog.destroy();
+      release();
+      openImportPolicyDialog(
+        ctx,
+        { items: parsedItems.map((i) => ({ id: i.id, title: i.title })) },
+        [],
+        { kind: "espanso", items: parsedItems }
+      );
+    });
+    ta.focus();
+  }
+  async function runTagAudit(ctx) {
+    var _a;
+    const t = ctx.t;
+    let idx;
+    try {
+      idx = await ctx.library.ensureIndex();
+    } catch (err) {
+      throw new Error(t("kernelError", toErrorMessage(err)));
+    }
+    const tags = collectTags(idx.entries);
+    if (tags.length < 2) {
+      ctx.notify("info", t("tagAuditTooFew"));
+      return "empty";
+    }
+    let suggestions;
+    try {
+      suggestions = await ctx.ai.tagAudit(tags);
+    } catch (err) {
+      throw new Error(ctx.aiErrorText(err));
+    }
+    const dialog = new import_siyuan5.Dialog({
+      title: t("tagAuditTitle"),
+      content: "",
+      width: "min(620px, 92vw)",
+      height: "min(600px, 84vh)"
+      // 固定高：建议清单增长不顶跳（R146）
+    });
+    (_a = dialog.element.querySelector(".b3-dialog__container")) == null ? void 0 : _a.classList.add("xlc-form-host", "xlc-settings-host");
+    const body = getDialogBody(dialog.element);
+    if (!body) throw new Error(t("kernelError", "\u65E0\u6CD5\u6253\u5F00\u4F53\u68C0\u7ED3\u679C"));
+    body.innerHTML = "";
+    const wrap = document.createElement("div");
+    wrap.className = "xlc-form";
+    if (suggestions.length === 0) {
+      const empty = document.createElement("p");
+      empty.className = "xlc-form-hint";
+      empty.textContent = t("tagAuditEmpty");
+      wrap.appendChild(empty);
+    } else {
+      for (const s of suggestions) {
+        const row = document.createElement("div");
+        row.className = "xlc-sugrow";
+        const label = document.createElement("span");
+        label.textContent = `\u2726 ${t(s.type === "merge" ? "tagAuditMerge" : "tagAuditRename")}\uFF1A${s.tags.join(" + ")} \u2192 ${s.suggestion}${s.reason ? `\uFF08${s.reason}\uFF09` : ""}`;
+        row.appendChild(label);
+        wrap.appendChild(row);
+      }
+      const hint = document.createElement("span");
+      hint.className = "xlc-form-hint";
+      hint.textContent = t("aiOriginalPreserved");
+      wrap.appendChild(hint);
+    }
+    const actions = document.createElement("div");
+    actions.className = "xlc-form-actions";
+    const close = document.createElement("button");
+    close.className = "b3-button";
+    close.dataset.xlcControl = "settings.tag-audit.close";
+    close.textContent = t("close");
+    close.addEventListener("click", () => dialog.destroy());
+    actions.appendChild(close);
+    wrap.appendChild(actions);
+    body.appendChild(wrap);
+    return suggestions.length === 0 ? "empty" : "shown";
+  }
+  function openImportPolicyDialog(ctx, parsed, issues, source) {
+    var _a, _b;
+    const t = ctx.t;
+    const dialog = new import_siyuan5.Dialog({
+      title: t("importPolicyTitle"),
+      content: "",
+      width: "min(540px, 92vw)",
+      height: "min(640px, 86vh)"
+      // 固定高：策略卡片高度稳定（R146）
+    });
+    (_a = dialog.element.querySelector(".b3-dialog__container")) == null ? void 0 : _a.classList.add("xlc-form-host", "xlc-settings-host");
+    const body = getDialogBody(dialog.element);
+    if (!body) return;
+    body.innerHTML = "";
+    const wrap = document.createElement("div");
+    wrap.className = "xlc-form";
+    const meta = document.createElement("div");
+    meta.className = "xlc-import-meta";
+    const metaCount = document.createElement("span");
+    metaCount.className = "xlc-badge xlc-badge--markdown";
+    metaCount.textContent = t("itemCountBadge", String(parsed.items.length));
+    meta.appendChild(metaCount);
+    if (issues.length > 0) {
+      const metaInvalid = document.createElement("span");
+      metaInvalid.className = "xlc-badge xlc-badge--warn";
+      metaInvalid.textContent = t("invalidSkipBadge", String(issues.length));
+      meta.appendChild(metaInvalid);
+    }
+    if (parsed.pack) {
+      const metaPack = document.createElement("span");
+      metaPack.className = "xlc-badge xlc-badge--var";
+      let packText = `${parsed.pack.name} \xB7 ${t("packVarsBadge", String(parsed.pack.vars.length))}`;
+      if (parsed.pack.snippets && parsed.pack.snippets.length > 0) {
+        packText += ` \xB7 ${t("packSnippetsBadge", String(parsed.pack.snippets.length))}`;
+      }
+      metaPack.textContent = packText;
+      meta.appendChild(metaPack);
+      if (parsed.pack.missingSnippets && parsed.pack.missingSnippets.length > 0) {
+        const metaMissing = document.createElement("span");
+        metaMissing.className = "xlc-badge xlc-badge--warn";
+        metaMissing.dataset.xlcControl = "import.pack.missing-snippets";
+        metaMissing.textContent = t("packMissingSnippetsBadge", String(parsed.pack.missingSnippets.length));
+        meta.appendChild(metaMissing);
+      }
+    }
+    wrap.appendChild(meta);
+    const preview = document.createElement("p");
+    preview.className = "xlc-form-hint";
+    preview.textContent = t("importPreview", String(parsed.items.length), String(issues.length));
+    wrap.appendChild(preview);
+    if (((_b = parsed.pack) == null ? void 0 : _b.missingSnippets) && parsed.pack.missingSnippets.length > 0) {
+      const missingHint = document.createElement("p");
+      missingHint.className = "xlc-form-hint xlc-form-error";
+      missingHint.dataset.xlcControl = "import.pack.missing-hint";
+      missingHint.textContent = t("packMissingSnippetsHint", parsed.pack.missingSnippets.join("\u3001"));
+      wrap.appendChild(missingHint);
+    }
+    const receiptHint = document.createElement("p");
+    receiptHint.className = "xlc-form-hint";
+    receiptHint.setAttribute("role", "status");
+    receiptHint.setAttribute("aria-live", "polite");
+    receiptHint.textContent = t("importReceiptHint");
+    const policyCards = [];
+    const run = async (policy) => {
+      var _a2;
+      if (policyCards.some((card) => card.disabled)) return;
+      policyCards.forEach((card) => {
+        card.disabled = true;
+        card.setAttribute("aria-busy", "true");
+      });
+      receiptHint.dataset.state = "loading";
+      receiptHint.textContent = t("loading");
+      try {
+        const receipt = source.kind === "json" ? await ctx.importBundleText(source.text, policy) : await ctx.importMarkdownItems(source.items, policy);
+        (_a2 = ctx.refreshSearch) == null ? void 0 : _a2.call(ctx);
+        const message = t(
+          "importDone",
+          String(receipt.created),
+          String(receipt.skipped),
+          String(receipt.overwritten),
+          String(receipt.renamed),
+          String(receipt.failed)
+        );
+        receiptHint.dataset.state = receipt.failed > 0 ? "error" : "success";
+        receiptHint.textContent = message;
+        ctx.notify(receipt.failed > 0 ? "error" : "info", message);
+      } catch (err) {
+        const message = t("importRunFailed", toErrorMessage(err));
+        receiptHint.dataset.state = "error";
+        receiptHint.replaceChildren();
+        const error = document.createElement("span");
+        error.className = "xlc-form-error";
+        error.textContent = message;
+        receiptHint.appendChild(error);
+        const retryBtn = document.createElement("button");
+        retryBtn.type = "button";
+        retryBtn.className = "b3-button xlc-btn-ghost xlc-operation-retry";
+        retryBtn.dataset.xlcControl = "settings.import.retry";
+        retryBtn.textContent = t("retry");
+        retryBtn.addEventListener("click", () => void run(policy));
+        receiptHint.appendChild(retryBtn);
+        ctx.notify("error", message);
+        policyCards.forEach((card) => {
+          card.disabled = false;
+          card.removeAttribute("aria-busy");
+        });
+      }
+    };
+    const policyList = document.createElement("div");
+    policyList.className = "xlc-policy-list";
+    for (const [policy, title, desc, recommended] of [
+      ["skip", t("importPolicySkip"), t("importPolicySkipDesc"), false],
+      ["overwrite", t("importPolicyOverwrite"), t("importPolicyOverwriteDesc"), false],
+      ["rename", t("importPolicyRename"), t("importPolicyRenameDesc"), true]
+    ]) {
+      const card = document.createElement("button");
+      card.type = "button";
+      card.className = "xlc-policy" + (recommended ? " xlc-policy--recommended" : "");
+      const icon = document.createElement("span");
+      icon.className = "xlc-policy-ic";
+      icon.textContent = policy === "skip" ? "\u25CB" : policy === "overwrite" ? "\u21C4" : "\uFF0B";
+      card.appendChild(icon);
+      const text = document.createElement("span");
+      const titleEl = document.createElement("span");
+      titleEl.className = "xlc-policy-title";
+      titleEl.textContent = title + (recommended ? `\uFF08${t("recommended")}\uFF09` : "");
+      text.appendChild(titleEl);
+      const descEl = document.createElement("span");
+      descEl.className = "xlc-policy-desc";
+      descEl.textContent = desc;
+      text.appendChild(descEl);
+      card.appendChild(text);
+      card.dataset.xlcControl = `settings.import.policy.${policy}`;
+      card.addEventListener("click", () => void run(policy));
+      policyCards.push(card);
+      policyList.appendChild(card);
+    }
+    wrap.appendChild(policyList);
+    wrap.appendChild(receiptHint);
+    body.appendChild(wrap);
+  }
+  var import_siyuan5, activeSetupDialog, activeSettingsDialog, espansoParserPromise, csvTsvParserPromise;
+  var init_settings_dialog = __esm({
+    "src/ui/settings-dialog.ts"() {
+      "use strict";
+      import_siyuan5 = __toESM(require_stub_dom());
+      init_dialog_dom();
+      init_storage();
+      init_constants();
+      init_transfer();
+      init_zip();
+      init_export_markdown();
+      init_import_markdown();
+      init_errors();
+      init_search();
+      init_prompt_pack();
+      init_csv_tsv_wizard();
+      activeSetupDialog = null;
+      activeSettingsDialog = null;
+      espansoParserPromise = null;
+      csvTsvParserPromise = null;
+    }
+  });
+
+  // src/ui/dialog.ts
+  var import_siyuan2 = __toESM(require_stub_dom());
+  init_dialog_dom();
+  init_item();
+  init_errors();
+  init_search();
+  init_variables();
+  init_variable_form();
 
   // src/ui/empty-state.ts
   function shouldShowScopeFallback(query, scope) {
-    return Boolean(query.trim()) && scope !== "all";
+    return Boolean(query.trim()) && (scope === "favorites" || scope === "recent");
+  }
+  function shouldShowOmniSearchFallback(query, scope) {
+    return Boolean(query.trim()) && (scope === "all" || scope === "favorites" || scope === "recent");
   }
   function formatScopeFallbackQuery(query, maxCharacters = 20) {
     const limit = Math.max(0, Math.floor(maxCharacters));
@@ -3643,6 +8482,7 @@ ${exception.mark.snippet}`;
 
   // src/model/pinyin-tiny.ts
   var import_tiny_pinyin = __toESM(require_dist());
+  init_pinyin();
   var POLYPHONE_PHRASES = {
     "\u5F00\u6237\u884C": ["kai", "hu", "hang"],
     "\u5F00\u6237\u94F6\u884C": ["kai", "hu", "yin", "hang"],
@@ -3767,7 +8607,480 @@ ${exception.mark.snippet}`;
     return intervals;
   }
 
+  // src/ui/preview-renderer.ts
+  var KEYWORDS = /* @__PURE__ */ new Set([
+    // JS/TS
+    "const",
+    "let",
+    "var",
+    "function",
+    "return",
+    "if",
+    "else",
+    "for",
+    "while",
+    "class",
+    "import",
+    "export",
+    "from",
+    "as",
+    "async",
+    "await",
+    "try",
+    "catch",
+    "finally",
+    "throw",
+    "new",
+    "typeof",
+    "interface",
+    "type",
+    "extends",
+    "implements",
+    "public",
+    "private",
+    "protected",
+    "readonly",
+    "static",
+    "true",
+    "false",
+    "null",
+    "undefined",
+    // Python
+    "def",
+    "elif",
+    "except",
+    "lambda",
+    "pass",
+    "raise",
+    "with",
+    "yield",
+    "none",
+    "is",
+    "not",
+    // Go / Rust / Shell
+    "func",
+    "package",
+    "struct",
+    "go",
+    "defer",
+    "fn",
+    "mut",
+    "impl",
+    "match",
+    "echo",
+    // SQL (大写/小写兼容在匹配时处理)
+    "select",
+    "from",
+    "where",
+    "insert",
+    "into",
+    "update",
+    "delete",
+    "join",
+    "left",
+    "right",
+    "inner",
+    "outer",
+    "group",
+    "by",
+    "order",
+    "having",
+    "limit",
+    "create",
+    "table",
+    "alter",
+    "drop"
+  ]);
+  function tokenizeCodeLine(line, _lang = "") {
+    var _a, _b, _c;
+    const tokens = [];
+    let i = 0;
+    const len = line.length;
+    while (i < len) {
+      if (line.slice(i).startsWith("{{xlc:")) {
+        const endIdx = line.indexOf("}}", i);
+        if (endIdx !== -1) {
+          tokens.push({ type: "variable", text: line.slice(i, endIdx + 2) });
+          i = endIdx + 2;
+          continue;
+        }
+      }
+      const sub2 = line.slice(i, i + 2);
+      if (sub2 === "//" || sub2 === "--" || line[i] === "#") {
+        tokens.push({ type: "comment", text: line.slice(i) });
+        break;
+      }
+      const char = line[i];
+      if (!char) {
+        i++;
+        continue;
+      }
+      if (char === '"' || char === "'" || char === "`") {
+        const quote = char;
+        let strVal = quote;
+        i++;
+        while (i < len) {
+          const c = line[i];
+          strVal += c;
+          if (c === "\\") {
+            if (i + 1 < len) {
+              i++;
+              strVal += line[i];
+            }
+          } else if (c === quote) {
+            i++;
+            break;
+          }
+          i++;
+        }
+        if (strVal.includes("{{xlc:")) {
+          let sIdx = 0;
+          while (sIdx < strVal.length) {
+            const varStart = strVal.indexOf("{{xlc:", sIdx);
+            if (varStart === -1) {
+              tokens.push({ type: "string", text: strVal.slice(sIdx) });
+              break;
+            }
+            if (varStart > sIdx) {
+              tokens.push({ type: "string", text: strVal.slice(sIdx, varStart) });
+            }
+            const varEnd = strVal.indexOf("}}", varStart);
+            if (varEnd === -1) {
+              tokens.push({ type: "string", text: strVal.slice(varStart) });
+              break;
+            }
+            tokens.push({ type: "variable", text: strVal.slice(varStart, varEnd + 2) });
+            sIdx = varEnd + 2;
+          }
+        } else {
+          tokens.push({ type: "string", text: strVal });
+        }
+        continue;
+      }
+      if (/\d/.test(char) && (i === 0 || !/[a-zA-Z0-9_$]/.test((_a = line[i - 1]) != null ? _a : ""))) {
+        let numStr = "";
+        while (i < len && /[0-9.xXabcdefABCDEF]/.test((_b = line[i]) != null ? _b : "")) {
+          numStr += line[i];
+          i++;
+        }
+        tokens.push({ type: "number", text: numStr });
+        continue;
+      }
+      if (/[a-zA-Z_$]/.test(char)) {
+        let word = "";
+        while (i < len && /[a-zA-Z0-9_$]/.test((_c = line[i]) != null ? _c : "")) {
+          word += line[i];
+          i++;
+        }
+        if (KEYWORDS.has(word.toLowerCase())) {
+          tokens.push({ type: "keyword", text: word });
+        } else {
+          tokens.push({ type: "plain", text: word });
+        }
+        continue;
+      }
+      tokens.push({ type: "plain", text: char });
+      i++;
+    }
+    return tokens;
+  }
+  function tokenizeMarkdownInlines(text) {
+    const tokens = [];
+    let i = 0;
+    const len = text.length;
+    while (i < len) {
+      if (text.slice(i).startsWith("{{xlc:")) {
+        const endIdx = text.indexOf("}}", i);
+        if (endIdx !== -1) {
+          tokens.push({ type: "variable", text: text.slice(i, endIdx + 2) });
+          i = endIdx + 2;
+          continue;
+        }
+      }
+      if (text[i] === "`") {
+        const endIdx = text.indexOf("`", i + 1);
+        if (endIdx !== -1) {
+          tokens.push({ type: "code", text: text.slice(i + 1, endIdx) });
+          i = endIdx + 1;
+          continue;
+        }
+      }
+      if (text.slice(i, i + 2) === "**") {
+        const endIdx = text.indexOf("**", i + 2);
+        if (endIdx !== -1) {
+          tokens.push({ type: "bold", text: text.slice(i + 2, endIdx) });
+          i = endIdx + 2;
+          continue;
+        }
+      }
+      if (text[i] === "[") {
+        const closeBracket = text.indexOf("]", i);
+        if (closeBracket !== -1 && text[closeBracket + 1] === "(") {
+          const closeParen = text.indexOf(")", closeBracket + 2);
+          if (closeParen !== -1) {
+            const title = text.slice(i + 1, closeBracket);
+            const url = text.slice(closeBracket + 2, closeParen);
+            tokens.push({ type: "link", text: title, url });
+            i = closeParen + 1;
+            continue;
+          }
+        }
+      }
+      let plain = "";
+      while (i < len) {
+        if (text.slice(i).startsWith("{{xlc:") || text[i] === "`" || text.slice(i, i + 2) === "**" || text[i] === "[") {
+          break;
+        }
+        plain += text[i];
+        i++;
+      }
+      if (plain) {
+        tokens.push({ type: "text", text: plain });
+      }
+    }
+    return tokens;
+  }
+  function parseMarkdownBlocks(text) {
+    var _a;
+    const lines = text.split(/\r?\n/);
+    const blocks = [];
+    let inCodeFence = false;
+    let codeLang = "";
+    let codeLines = [];
+    for (let l = 0; l < lines.length; l++) {
+      const line = (_a = lines[l]) != null ? _a : "";
+      const trimmed = line.trim();
+      if (trimmed.startsWith("```")) {
+        if (!inCodeFence) {
+          inCodeFence = true;
+          codeLang = trimmed.slice(3).trim();
+          codeLines = [];
+          continue;
+        } else {
+          inCodeFence = false;
+          blocks.push({
+            type: "code-fence",
+            rawText: codeLines.join("\n"),
+            inlines: [],
+            lang: codeLang
+          });
+          continue;
+        }
+      }
+      if (inCodeFence) {
+        codeLines.push(line);
+        continue;
+      }
+      if (/^[-*_]{3,}$/.test(trimmed)) {
+        blocks.push({ type: "hr", rawText: line, inlines: [] });
+        continue;
+      }
+      if (/^#\s+/.test(trimmed)) {
+        const content = trimmed.replace(/^#\s+/, "");
+        blocks.push({ type: "h1", rawText: content, inlines: tokenizeMarkdownInlines(content) });
+        continue;
+      }
+      if (/^##\s+/.test(trimmed)) {
+        const content = trimmed.replace(/^##\s+/, "");
+        blocks.push({ type: "h2", rawText: content, inlines: tokenizeMarkdownInlines(content) });
+        continue;
+      }
+      if (/^###\s+/.test(trimmed)) {
+        const content = trimmed.replace(/^###\s+/, "");
+        blocks.push({ type: "h3", rawText: content, inlines: tokenizeMarkdownInlines(content) });
+        continue;
+      }
+      if (/^>\s?/.test(trimmed)) {
+        const content = trimmed.replace(/^>\s?/, "");
+        blocks.push({ type: "quote", rawText: content, inlines: tokenizeMarkdownInlines(content) });
+        continue;
+      }
+      if (/^[-*+]\s+/.test(trimmed)) {
+        const content = trimmed.replace(/^[-*+]\s+/, "");
+        blocks.push({ type: "list-bullet", rawText: content, inlines: tokenizeMarkdownInlines(content) });
+        continue;
+      }
+      if (/^\d+\.\s+/.test(trimmed)) {
+        const content = trimmed.replace(/^\d+\.\s+/, "");
+        blocks.push({ type: "list-ordered", rawText: content, inlines: tokenizeMarkdownInlines(content) });
+        continue;
+      }
+      blocks.push({ type: "p", rawText: line, inlines: tokenizeMarkdownInlines(line) });
+    }
+    if (inCodeFence && codeLines.length > 0) {
+      blocks.push({
+        type: "code-fence",
+        rawText: codeLines.join("\n"),
+        inlines: [],
+        lang: codeLang
+      });
+    }
+    return blocks;
+  }
+  function renderSafePreview(container, text, itemType, doc = typeof document !== "undefined" ? document : null) {
+    var _a;
+    if (!doc) return;
+    container.textContent = "";
+    if (!text || text.trim().length === 0) {
+      return;
+    }
+    const trimmed = text.trim();
+    const isCodeItem = itemType === "code" || /^```[\w+#.-]*\s*\n[\s\S]*\n```\s*$/.test(trimmed);
+    if (isCodeItem) {
+      let codeBody = text;
+      let lang = "";
+      if (trimmed.startsWith("```")) {
+        const firstNl = text.indexOf("\n");
+        if (firstNl !== -1) {
+          lang = text.slice(0, firstNl).replace(/^```/, "").trim();
+          const lastFence = text.lastIndexOf("```");
+          codeBody = lastFence > firstNl ? text.slice(firstNl + 1, lastFence) : text.slice(firstNl + 1);
+        }
+      }
+      const lines = codeBody.split(/\r?\n/);
+      const banner = doc.createElement("div");
+      banner.className = "xlc-code-banner";
+      const langBadge = doc.createElement("span");
+      langBadge.className = "xlc-badge xlc-badge--code";
+      langBadge.textContent = (lang || "code").toUpperCase();
+      banner.appendChild(langBadge);
+      const countBadge = doc.createElement("span");
+      countBadge.className = "xlc-code-lines";
+      countBadge.textContent = `${lines.length} \u884C`;
+      banner.appendChild(countBadge);
+      container.appendChild(banner);
+      const pre = doc.createElement("pre");
+      pre.className = "xlc-preview-code";
+      const codeEl = doc.createElement("code");
+      for (let idx = 0; idx < lines.length; idx++) {
+        const lineStr = (_a = lines[idx]) != null ? _a : "";
+        const lineDiv = doc.createElement("div");
+        lineDiv.className = "xlc-code-line";
+        const numSpan = doc.createElement("span");
+        numSpan.className = "xlc-line-num";
+        numSpan.textContent = String(idx + 1);
+        lineDiv.appendChild(numSpan);
+        const tokens = tokenizeCodeLine(lineStr, lang);
+        const contentSpan = doc.createElement("span");
+        contentSpan.className = "xlc-code-content";
+        for (const token of tokens) {
+          if (token.type === "plain") {
+            contentSpan.appendChild(doc.createTextNode(token.text));
+          } else {
+            const tokSpan = doc.createElement("span");
+            tokSpan.className = `xlc-tok xlc-tok--${token.type}`;
+            tokSpan.textContent = token.text;
+            contentSpan.appendChild(tokSpan);
+          }
+        }
+        lineDiv.appendChild(contentSpan);
+        codeEl.appendChild(lineDiv);
+      }
+      pre.appendChild(codeEl);
+      container.appendChild(pre);
+      return;
+    }
+    const blocks = parseMarkdownBlocks(text);
+    for (const block of blocks) {
+      if (block.type === "hr") {
+        const hr = doc.createElement("hr");
+        hr.className = "xlc-md-hr";
+        container.appendChild(hr);
+        continue;
+      }
+      if (block.type === "code-fence") {
+        const pre = doc.createElement("pre");
+        pre.className = "xlc-preview-code xlc-preview-code--inline";
+        const codeEl = doc.createElement("code");
+        const cLines = block.rawText.split(/\r?\n/);
+        for (const cl of cLines) {
+          const lineDiv = doc.createElement("div");
+          lineDiv.className = "xlc-code-line";
+          const tokens = tokenizeCodeLine(cl, block.lang || "");
+          for (const token of tokens) {
+            if (token.type === "plain") {
+              lineDiv.appendChild(doc.createTextNode(token.text));
+            } else {
+              const tokSpan = doc.createElement("span");
+              tokSpan.className = `xlc-tok xlc-tok--${token.type}`;
+              tokSpan.textContent = token.text;
+              lineDiv.appendChild(tokSpan);
+            }
+          }
+          codeEl.appendChild(lineDiv);
+        }
+        pre.appendChild(codeEl);
+        container.appendChild(pre);
+        continue;
+      }
+      let el;
+      if (block.type === "h1") {
+        el = doc.createElement("div");
+        el.className = "xlc-md-h xlc-md-h1";
+      } else if (block.type === "h2") {
+        el = doc.createElement("div");
+        el.className = "xlc-md-h xlc-md-h2";
+      } else if (block.type === "h3") {
+        el = doc.createElement("div");
+        el.className = "xlc-md-h xlc-md-h3";
+      } else if (block.type === "quote") {
+        el = doc.createElement("blockquote");
+        el.className = "xlc-md-quote";
+      } else if (block.type === "list-bullet") {
+        el = doc.createElement("div");
+        el.className = "xlc-md-list-item";
+        const bullet = doc.createElement("span");
+        bullet.className = "xlc-md-bullet";
+        bullet.textContent = "\u2022";
+        el.appendChild(bullet);
+      } else if (block.type === "list-ordered") {
+        el = doc.createElement("div");
+        el.className = "xlc-md-list-item";
+        const num = doc.createElement("span");
+        num.className = "xlc-md-ordered-num";
+        num.textContent = "\u203A";
+        el.appendChild(num);
+      } else {
+        el = doc.createElement("p");
+        el.className = "xlc-md-p";
+      }
+      for (const inline of block.inlines) {
+        if (inline.type === "text") {
+          el.appendChild(doc.createTextNode(inline.text));
+        } else if (inline.type === "bold") {
+          const strong = doc.createElement("strong");
+          strong.className = "xlc-md-bold";
+          strong.textContent = inline.text;
+          el.appendChild(strong);
+        } else if (inline.type === "code") {
+          const code = doc.createElement("code");
+          code.className = "xlc-md-inline-code";
+          code.textContent = inline.text;
+          el.appendChild(code);
+        } else if (inline.type === "variable") {
+          const varSpan = doc.createElement("span");
+          varSpan.className = "xlc-tok xlc-tok--variable";
+          varSpan.textContent = inline.text;
+          el.appendChild(varSpan);
+        } else if (inline.type === "link") {
+          const linkSpan = doc.createElement("span");
+          linkSpan.className = "xlc-md-link";
+          linkSpan.textContent = inline.text;
+          if (inline.url) {
+            linkSpan.title = inline.url;
+          }
+          el.appendChild(linkSpan);
+        }
+      }
+      if (block.inlines.length === 0 && block.rawText.length === 0) {
+        el.appendChild(doc.createTextNode("\xA0"));
+      }
+      container.appendChild(el);
+    }
+  }
+
   // src/ui/dialog.ts
+  init_hierarchy();
   var TYPE_BADGES2 = {
     text: "TXT",
     markdown: "MD",
@@ -4048,12 +9361,18 @@ ${exception.mark.snippet}`;
         void this.refresh();
       });
       filters.appendChild(categorySelect);
-      for (const scope of ["favorites", "recent"]) {
+      const scopes = ["favorites", "recent", "current-doc", "all-notes"];
+      for (const scope of scopes) {
         const chip = document.createElement("button");
         chip.className = "xlc-chip xlc-scope-chip";
         chip.dataset.scope = scope;
         chip.dataset.xlcControl = `filter.scope.${scope}`;
-        chip.textContent = (scope === "favorites" ? "\u2605 " : "\u{1F550} ") + this.deps.t(`filter${scope === "favorites" ? "Favorites" : "Recent"}`);
+        let text = "";
+        if (scope === "favorites") text = "\u2605 " + this.deps.t("filterFavorites");
+        else if (scope === "recent") text = "\u{1F550} " + this.deps.t("filterRecent");
+        else if (scope === "current-doc") text = "\u2635 " + this.deps.t("scopeCurrentDoc");
+        else if (scope === "all-notes") text = "\u{1F50D} " + this.deps.t("scopeAllNotes");
+        chip.textContent = text;
         chip.addEventListener("click", () => {
           this.currentScope = this.currentScope === scope ? "all" : scope;
           this.syncScopeChips();
@@ -4390,12 +9709,34 @@ ${exception.mark.snippet}`;
         const entry = this.results[this.activeIndex];
         if (entry) void this.deps.editItem(entry.id);
       });
+      const saveOmni = document.createElement("button");
+      saveOmni.className = "b3-button b3-button--text xlc-btn-ghost";
+      saveOmni.textContent = "\u2726 " + this.deps.t("saveToCommon");
+      saveOmni.dataset.xlcPaneAct = "save-omni";
+      saveOmni.dataset.xlcControl = "preview.save-omni";
+      saveOmni.style.display = "none";
+      saveOmni.addEventListener("click", () => {
+        const entry = this.results[this.activeIndex];
+        if (entry && this.deps.createFromOmni) {
+          saveOmni.disabled = true;
+          saveOmni.textContent = this.deps.t("loading");
+          void this.deps.createFromOmni(entry).then((ok2) => {
+            if (ok2) {
+              saveOmni.textContent = "\u2713 " + this.deps.t("saveToCommon");
+            } else {
+              saveOmni.disabled = false;
+              saveOmni.textContent = "\u2726 " + this.deps.t("saveToCommon");
+            }
+          });
+        }
+      });
       foot.appendChild(insert);
       foot.appendChild(aiBtn);
       foot.appendChild(copy);
       foot.appendChild(spacer);
       foot.appendChild(source);
       foot.appendChild(edit);
+      foot.appendChild(saveOmni);
       return foot;
     }
     /** 重新加载标签/分类选项；成功时清理已经不存在的持久化筛选，失败时保留当前筛选并给出提示。 */
@@ -4424,16 +9765,20 @@ ${exception.mark.snippet}`;
       if (seq !== this.filterOptionsSeq || !this.dialog) return false;
       const tags = tagsResult.status === "fulfilled" ? Array.from(new Set(tagsResult.value.filter(Boolean))) : [];
       const categories = categoriesResult.status === "fulfilled" ? Array.from(new Set(categoriesResult.value.filter(Boolean))) : [];
-      for (const tag of tags) {
+      const tagTree = buildHierarchyTree(tags);
+      const flatTags = flattenHierarchyTree(tagTree, { includeCount: false, showPrefixBranch: true });
+      for (const item of flatTags) {
         const option = document.createElement("option");
-        option.value = tag;
-        option.textContent = tag;
+        option.value = item.path;
+        option.textContent = item.label;
         tagSelect.appendChild(option);
       }
-      for (const category of categories) {
+      const catTree = buildHierarchyTree(categories);
+      const flatCats = flattenHierarchyTree(catTree, { includeCount: false, showPrefixBranch: true });
+      for (const item of flatCats) {
         const option = document.createElement("option");
-        option.value = category;
-        option.textContent = category;
+        option.value = item.path;
+        option.textContent = item.label;
         categorySelect.appendChild(option);
       }
       if (tagsResult.status === "rejected") {
@@ -4454,8 +9799,10 @@ ${exception.mark.snippet}`;
           categorySelect.appendChild(option);
         }
       }
-      const nextTag = tagsResult.status === "fulfilled" ? current.tag && tags.includes(current.tag) ? current.tag : "" : current.tag;
-      const nextCategory = categoriesResult.status === "fulfilled" ? current.category && categories.includes(current.category) ? current.category : "" : current.category;
+      const validTagPaths = new Set(flatTags.map((t) => t.path).concat(tags));
+      const validCatPaths = new Set(flatCats.map((c) => c.path).concat(categories));
+      const nextTag = tagsResult.status === "fulfilled" ? current.tag && validTagPaths.has(current.tag) ? current.tag : "" : current.tag;
+      const nextCategory = categoriesResult.status === "fulfilled" ? current.category && validCatPaths.has(current.category) ? current.category : "" : current.category;
       tagSelect.value = nextTag;
       categorySelect.value = nextCategory;
       tagSelect.disabled = false;
@@ -4550,7 +9897,8 @@ ${exception.mark.snippet}`;
       try {
         const text = query.text.trim();
         if (text.startsWith("?") && text.length > 1) {
-          const aiResult = await this.deps.aiSemantic(text.slice(1), { itemType: (_g = query.itemType) != null ? _g : "", tag: (_h = query.tag) != null ? _h : "", category: (_i = query.category) != null ? _i : "", scope: this.currentScope });
+          const aiScope = this.currentScope === "favorites" || this.currentScope === "recent" ? this.currentScope : "all";
+          const aiResult = await this.deps.aiSemantic(text.slice(1), { itemType: (_g = query.itemType) != null ? _g : "", tag: (_h = query.tag) != null ? _h : "", category: (_i = query.category) != null ? _i : "", scope: aiScope });
           if (seq !== this.searchSeq) return;
           if (aiResult.ok) {
             this.results = aiResult.entries;
@@ -4565,6 +9913,24 @@ ${exception.mark.snippet}`;
           if (aiBanner && this.aiResults) {
             aiBanner.textContent = `\u2726 ${this.deps.t("aiResultCount", String(this.results.length))}`;
           }
+        } else if (this.currentScope === "current-doc" && this.deps.searchCurrentDoc) {
+          const entries = await this.deps.searchCurrentDoc(query.text);
+          if (seq !== this.searchSeq) return;
+          this.results = entries;
+          total = entries.length;
+          truncated = false;
+          loading = false;
+          this.aiResults = false;
+          if (aiBanner) aiBanner.style.display = "none";
+        } else if (this.currentScope === "all-notes" && this.deps.searchAllNotes) {
+          const entries = await this.deps.searchAllNotes(query.text);
+          if (seq !== this.searchSeq) return;
+          this.results = entries;
+          total = entries.length;
+          truncated = false;
+          loading = false;
+          this.aiResults = false;
+          if (aiBanner) aiBanner.style.display = "none";
         } else {
           const result = await this.deps.search(query);
           if (seq !== this.searchSeq) return;
@@ -4614,7 +9980,11 @@ ${exception.mark.snippet}`;
           status.textContent = this.deps.t("indexing");
         } else {
           status.textContent = "";
-          if (!query.text.trim() && this.currentScope === "favorites") {
+          if (this.currentScope === "current-doc") {
+            this.emptyMessage = this.deps.t("emptyCurrentDoc");
+          } else if (this.currentScope === "all-notes") {
+            this.emptyMessage = this.deps.t("emptyAllNotes");
+          } else if (!query.text.trim() && this.currentScope === "favorites") {
             this.emptyMessage = this.deps.t("emptyFavorites");
           } else if (!query.text.trim() && this.currentScope === "recent") {
             this.emptyMessage = this.deps.t("emptyRecent");
@@ -4959,6 +10329,42 @@ ${exception.mark.snippet}`;
           });
           empty.appendChild(scopeFallback);
         }
+        if (this.currentScope === "all" && query && shouldShowOmniSearchFallback(query, this.currentScope)) {
+          if (this.deps.searchCurrentDoc) {
+            const currentDocBtn = document.createElement("button");
+            currentDocBtn.type = "button";
+            currentDocBtn.className = "b3-button xlc-btn-primary xlc-empty-action";
+            currentDocBtn.dataset.xlcControl = "empty.omni-current-doc";
+            const shortQ = formatScopeFallbackQuery(query);
+            const label = this.deps.t("searchCurrentDocAction", shortQ);
+            currentDocBtn.textContent = "\u2635 " + label;
+            currentDocBtn.setAttribute("aria-label", label);
+            currentDocBtn.title = label;
+            currentDocBtn.addEventListener("click", () => {
+              this.currentScope = "current-doc";
+              this.syncScopeChips();
+              void this.refresh().then(() => this.restoreFocusToSearch());
+            });
+            empty.appendChild(currentDocBtn);
+          }
+          if (this.deps.searchAllNotes) {
+            const allNotesBtn = document.createElement("button");
+            allNotesBtn.type = "button";
+            allNotesBtn.className = "b3-button xlc-btn-primary xlc-empty-action";
+            allNotesBtn.dataset.xlcControl = "empty.omni-all-notes";
+            const shortQ = formatScopeFallbackQuery(query);
+            const label = this.deps.t("searchAllNotesAction", shortQ);
+            allNotesBtn.textContent = "\u{1F50D} " + label;
+            allNotesBtn.setAttribute("aria-label", label);
+            allNotesBtn.title = label;
+            allNotesBtn.addEventListener("click", () => {
+              this.currentScope = "all-notes";
+              this.syncScopeChips();
+              void this.refresh().then(() => this.restoreFocusToSearch());
+            });
+            empty.appendChild(allNotesBtn);
+          }
+        }
         if (this.emptyMessage === this.deps.t("emptyLibrary") || this.emptyMessage === this.deps.t("emptyFiltered") || query) {
           const create = document.createElement("button");
           create.type = "button";
@@ -5167,7 +10573,10 @@ ${exception.mark.snippet}`;
         }
         const entry = this.results[this.activeIndex];
         const act = (_b2 = btn.dataset.xlcPaneAct) != null ? _b2 : "";
-        const unavailable = !entry || act === "ai" && !this.deps.aiEnabled() || act === "source" && this.deps.isSourceMissing(entry);
+        const isOmniScope = this.currentScope === "current-doc" || this.currentScope === "all-notes";
+        const unavailable = !entry || act === "ai" && !this.deps.aiEnabled() || act === "source" && (this.deps.isSourceMissing(entry) || isOmniScope && !this.deps.createFromOmni) || act === "edit" && isOmniScope;
+        const showOmniSave = act === "save-omni" && isOmniScope && Boolean(this.deps.createFromOmni);
+        btn.style.display = showOmniSave ? "" : act === "save-omni" ? "none" : "";
         btn.disabled = !actionable || unavailable || this.primaryBusy || this.varFormOpen;
         btn.removeAttribute("title");
         if (act === "ai" && !this.deps.aiEnabled()) btn.title = this.deps.t("aiDisabled");
@@ -5569,7 +10978,11 @@ ${exception.mark.snippet}`;
           this.paintPaneMeta(void 0);
           paneBody.classList.remove("xlc-pane-body--muted", "xlc-pane-body--code");
           this.paintPaneVars(null, "provider");
-          paneBody.textContent = row.payload;
+          try {
+            renderSafePreview(paneBody, row.payload, "provider");
+          } catch {
+            paneBody.textContent = row.payload;
+          }
           return;
         }
         this.activeProvider = -1;
@@ -5609,7 +11022,15 @@ ${exception.mark.snippet}`;
         if (seq !== this.previewSeq) return;
         const finalText = text || this.deps.t("previewUnavailable");
         paneBody.classList.toggle("xlc-pane-body--muted", finalText === this.deps.t("previewUnavailable"));
-        paneBody.textContent = finalText;
+        if (text) {
+          try {
+            renderSafePreview(paneBody, text, entry == null ? void 0 : entry.itemType);
+          } catch {
+            paneBody.textContent = finalText;
+          }
+        } else {
+          paneBody.textContent = finalText;
+        }
         paneBody.scrollTop = 0;
         paneBody.classList.toggle("xlc-pane-body--code", (entry == null ? void 0 : entry.itemType) === "code");
         this.paintPaneVars(text, entry == null ? void 0 : entry.itemType);
@@ -6365,3999 +11786,14 @@ ${exception.mark.snippet}`;
   _CommonSearchDialog.VIRTUAL_OVERSCAN = 8;
   var CommonSearchDialog = _CommonSearchDialog;
 
-  // src/ui/settings-dialog.ts
-  var import_siyuan3 = __toESM(require_stub_dom());
-
-  // src/model/storage.ts
-  init_constants();
-  init_item();
-  var CONFIG_VERSION = 1;
-  function summarizeUsage(usage) {
-    let totalCount = 0;
-    let trackedItems = 0;
-    let latestAt = null;
-    for (const entry of Object.values(usage)) {
-      if (!Number.isInteger(entry.count) || entry.count <= 0 || !Number.isFinite(entry.lastAt) || entry.lastAt <= 0) continue;
-      totalCount += entry.count;
-      trackedItems++;
-      latestAt = latestAt === null ? entry.lastAt : Math.max(latestAt, entry.lastAt);
-    }
-    return { totalCount, trackedItems, latestAt };
-  }
-
-  // src/ui/settings-dialog.ts
-  init_constants();
-
-  // src/model/transfer.ts
-  init_constants();
-  init_item();
-  function base64ToUtf8(b64) {
-    const binary = atob(b64);
-    const bytes = new Uint8Array(binary.length);
-    for (let i = 0; i < binary.length; i++) {
-      bytes[i] = binary.charCodeAt(i);
-    }
-    return new TextDecoder().decode(bytes);
-  }
-  var COMPACT_BUNDLE_PREFIX = "xlc-bundle:";
-  function deserializeCompactBundle(text) {
-    var _a, _b;
-    const trimmed = text.trim();
-    let b64 = "";
-    if (trimmed.startsWith(COMPACT_BUNDLE_PREFIX)) {
-      b64 = trimmed.slice(COMPACT_BUNDLE_PREFIX.length).trim();
-    } else if (trimmed.startsWith("xlc://import?")) {
-      const query = trimmed.slice("xlc://import?".length);
-      const params = new URLSearchParams(query);
-      b64 = (_b = (_a = params.get("bundle")) != null ? _a : params.get("data")) != null ? _b : "";
-    }
-    if (!b64) return null;
-    try {
-      const json = base64ToUtf8(b64);
-      const obj = JSON.parse(json);
-      if (obj && typeof obj === "object" && obj.protocol === PROTOCOL_NAME) {
-        return obj;
-      }
-    } catch {
-      return null;
-    }
-    return null;
-  }
-  function toTimestamp(v) {
-    const n = Number(v);
-    return Number.isFinite(n) && n > 0 ? n : 0;
-  }
-  function validateImport(jsonText) {
-    const issues = [];
-    if (jsonText.length > LIMITS.maxImportBytes) {
-      return { ok: false, reason: "file-too-large", issues };
-    }
-    let textToParse = jsonText.trim();
-    if (textToParse.startsWith(COMPACT_BUNDLE_PREFIX) || textToParse.startsWith("xlc://import?")) {
-      const compact = deserializeCompactBundle(textToParse);
-      if (!compact) {
-        return { ok: false, reason: "compact-parse", issues };
-      }
-      textToParse = JSON.stringify(compact);
-    }
-    let obj;
-    try {
-      obj = JSON.parse(textToParse);
-    } catch (e) {
-      return { ok: false, reason: "json-parse", issues };
-    }
-    if (!obj || typeof obj !== "object" || Array.isArray(obj)) {
-      return { ok: false, reason: "not-an-object", issues };
-    }
-    const record = obj;
-    if (record.protocol !== PROTOCOL_NAME) {
-      return { ok: false, reason: "protocol-mismatch", issues };
-    }
-    const schemaVersion = record.schemaVersion;
-    if (schemaVersion !== EXPORT_SCHEMA_VERSION) {
-      return { ok: false, reason: "schema-version-unsupported", issues };
-    }
-    if (!Array.isArray(record.items)) {
-      return { ok: false, reason: "items-not-array", issues };
-    }
-    if (record.items.length > LIMITS.maxItems) {
-      return { ok: false, reason: "too-many-items", issues };
-    }
-    const knownTop = ["protocol", "schemaVersion", "exportedAt", "items"];
-    const unknownTopFields = Object.keys(record).filter((k) => !knownTop.includes(k));
-    const items = [];
-    const seenIds = /* @__PURE__ */ new Set();
-    record.items.forEach((raw, index) => {
-      const item = normalizeExportedItem(raw);
-      if (!item) {
-        issues.push({ index, reason: "invalid-item" });
-        return;
-      }
-      if (seenIds.has(item.id)) {
-        issues.push({ index, reason: "duplicate-id" });
-        return;
-      }
-      seenIds.add(item.id);
-      items.push(item);
-    });
-    return { ok: true, parsed: { schemaVersion: EXPORT_SCHEMA_VERSION, items, unknownTopFields }, issues };
-  }
-  function normalizeExportedItem(raw) {
-    var _a;
-    if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
-    const obj = raw;
-    if (!isLogicalId(obj.id)) return null;
-    if (typeof obj.kramdown !== "string" || obj.kramdown.length > LIMITS.contentChars) return null;
-    if (!isItemType(obj.itemType)) return null;
-    const sourceRaw = (_a = obj.source) != null ? _a : {};
-    const known = ["id", "itemType", "title", "alias", "tags", "category", "kramdown", "source", "url", "targetBlockId", "createdAt", "updatedAt"];
-    const extensions = /* @__PURE__ */ Object.create(null);
-    for (const [k, v] of Object.entries(obj)) {
-      if (!known.includes(k)) extensions[k] = v;
-    }
-    const str = (v, cap) => typeof v === "string" ? v.slice(0, cap) : "";
-    const tags = Array.isArray(obj.tags) ? obj.tags.filter((t) => typeof t === "string").slice(0, LIMITS.tags) : [];
-    const url = str(obj.url, 2048);
-    if (url && !isSafeHttpUrl(url)) return null;
-    return {
-      id: obj.id,
-      itemType: obj.itemType,
-      title: str(obj.title, LIMITS.title),
-      alias: str(obj.alias, LIMITS.alias),
-      tags,
-      category: str(obj.category, LIMITS.category),
-      kramdown: obj.kramdown,
-      source: {
-        sourceDocId: str(sourceRaw.sourceDocId, 32),
-        sourceBlockId: str(sourceRaw.sourceBlockId, 32),
-        sourceType: isSourceType(sourceRaw.sourceType) ? sourceRaw.sourceType : "external"
-      },
-      url,
-      targetBlockId: str(obj.targetBlockId, 32),
-      createdAt: toTimestamp(obj.createdAt),
-      updatedAt: toTimestamp(obj.updatedAt),
-      extensions: Object.keys(extensions).length ? extensions : void 0
-    };
-  }
-
-  // src/model/zip.ts
-  var CRC_TABLE = (() => {
-    const table = new Uint32Array(256);
-    for (let n = 0; n < 256; n++) {
-      let c = n;
-      for (let k = 0; k < 8; k++) c = c & 1 ? 3988292384 ^ c >>> 1 : c >>> 1;
-      table[n] = c >>> 0;
-    }
-    return table;
-  })();
-  function crc32(data) {
-    var _a;
-    let c = 0 ^ -1;
-    for (const byte of data) c = c >>> 8 ^ ((_a = CRC_TABLE[(c ^ byte) & 255]) != null ? _a : 0);
-    return (c ^ -1) >>> 0;
-  }
-  function dosDateTime() {
-    const time = 0;
-    const date = 2026 - 1980 << 9 | 1 << 5 | 1;
-    return { time, date };
-  }
-  function u16(arr, value) {
-    arr.push(value & 255, value >>> 8 & 255);
-  }
-  function u32(arr, value) {
-    arr.push(value & 255, value >>> 8 & 255, value >>> 16 & 255, value >>> 24 & 255);
-  }
-  function buildZip(entries) {
-    if (entries.length === 0) throw new Error("zip: no entries");
-    if (entries.length > 65535) throw new Error("zip: too many entries");
-    const { time, date } = dosDateTime();
-    const localParts = [];
-    const centralParts = [];
-    let offset = 0;
-    for (const entry of entries) {
-      if (!entry.name || entry.name.startsWith("/") || entry.name.includes("..") || entry.name.includes("\\")) {
-        throw new Error(`zip: unsafe entry name ${entry.name}`);
-      }
-      const nameBytes = new TextEncoder().encode(entry.name);
-      const crc = crc32(entry.data);
-      const local = [];
-      u32(local, 67324752);
-      u16(local, 20);
-      u16(local, 0);
-      u16(local, 0);
-      u16(local, time);
-      u16(local, date);
-      u32(local, crc);
-      u32(local, entry.data.length);
-      u32(local, entry.data.length);
-      u16(local, nameBytes.length);
-      u16(local, 0);
-      local.push(...nameBytes);
-      const headerOffset = offset;
-      localParts.push(local, Array.from(entry.data));
-      const central = [];
-      u32(central, 33639248);
-      u16(central, 20);
-      u16(central, 20);
-      u16(central, 0);
-      u16(central, 0);
-      u16(central, time);
-      u16(central, date);
-      u32(central, crc);
-      u32(central, entry.data.length);
-      u32(central, entry.data.length);
-      u16(central, nameBytes.length);
-      u16(central, 0);
-      u16(central, 0);
-      u16(central, 0);
-      u16(central, 0);
-      u32(central, 0);
-      u32(central, headerOffset);
-      central.push(...nameBytes);
-      centralParts.push(central);
-      offset += local.length + entry.data.length;
-    }
-    const centralStart = offset;
-    let centralSize = 0;
-    const out = [];
-    for (const part of localParts) out.push(...part);
-    for (const part of centralParts) {
-      out.push(...part);
-      centralSize += part.length;
-    }
-    const eocd = [];
-    u32(eocd, 101010256);
-    u16(eocd, 0);
-    u16(eocd, 0);
-    u16(eocd, entries.length);
-    u16(eocd, entries.length);
-    u32(eocd, centralSize);
-    u32(eocd, centralStart);
-    u16(eocd, 0);
-    out.push(...eocd);
-    return new Uint8Array(out);
-  }
-
-  // src/model/actions.ts
-  init_constants();
-  init_item();
-  var ASSET_PATH_RE = /^(assets\/[^\s/][^\s]*|assets\/[^\s/])$/;
-  function isValidAssetPath(path) {
-    return ASSET_PATH_RE.test(path) && !path.includes("..");
-  }
-  function extractAssetPath(kramdown) {
-    const m = kramdown.match(/\]\((assets\/[^)\s]+)[^)]*\)/);
-    const path = m == null ? void 0 : m[1];
-    if (!path) return null;
-    return isValidAssetPath(path) ? path : null;
-  }
-  function extractCodeFence(kramdown) {
-    var _a, _b;
-    const m = kramdown.match(/^```([\w+#.-]*)\s*\n([\s\S]*?)\n?```\s*$/);
-    if (!m) return null;
-    return { language: (_a = m[1]) != null ? _a : "", code: (_b = m[2]) != null ? _b : "" };
-  }
-  function refAnchorText(item) {
-    const base = item.alias || item.title || "ref";
-    return base.replace(/[[\]()']/g, "").slice(0, 96) || "ref";
-  }
-  function asInlineText(text) {
-    return text.slice(0, LIMITS.contentChars);
-  }
-  function buildBlockRef(blockId, anchor) {
-    if (!BLOCK_ID_RE.test(blockId)) throw new Error("invalid block id");
-    return `((${blockId} '${anchor.replace(/\\/g, "\\\\").replace(/'/g, "\\'")}'))`;
-  }
-  function buildEmbedBlock(blockId) {
-    if (!BLOCK_ID_RE.test(blockId)) throw new Error("invalid block id");
-    return `{{select * from blocks where id='${blockId}'}}`;
-  }
-  function planAction(item, mode, ctx) {
-    const base = {
-      mode,
-      clipboardKind: "text",
-      downgraded: false,
-      pendingVerification: [],
-      warnings: []
-    };
-    if (ctx.content.sourceMissing && mode !== "insert-ref" && mode !== "insert-embed" && mode !== "copy-content") {
-      if (mode === "open") {
-        return { ...base, open: void 0, downgraded: true, downgradeReason: "source-missing", warnings: ["source-missing"] };
-      }
-    }
-    if (ctx.content.assetMissing) {
-      base.pendingVerification.push("asset-missing");
-    }
-    switch (item.itemType) {
-      case "text": {
-        const text = asInlineText(ctx.content.kramdown);
-        if (mode === "copy" || mode === "copy-content") return { ...base, clipboardText: text, clipboardKind: "text" };
-        return { ...base, markdown: text };
-      }
-      case "markdown":
-      case "structure": {
-        const md = ctx.content.kramdown.slice(0, LIMITS.contentChars);
-        if (mode === "copy" || mode === "copy-content") return { ...base, clipboardText: md, clipboardKind: "markdown" };
-        return { ...base, markdown: md };
-      }
-      case "url": {
-        const url = item.url || extractFirstUrl(ctx.content.kramdown);
-        if (!url || !isSafeHttpUrl(url)) {
-          return { ...base, downgraded: true, downgradeReason: "type-unsupported", warnings: ["url-empty"] };
-        }
-        if (mode === "open") return { ...base, open: { kind: "url", url } };
-        if (mode === "copy" || mode === "copy-content") return { ...base, clipboardText: url, clipboardKind: "url" };
-        const title = item.title && item.title !== url ? item.title : url;
-        return { ...base, markdown: `[${title.replace(/[[\]]/g, "")}](${url})` };
-      }
-      case "code": {
-        const fence = extractCodeFence(ctx.content.kramdown);
-        const code = fence ? fence.code : ctx.content.kramdown;
-        const language = fence ? fence.language : "";
-        if (mode === "copy" || mode === "copy-content") return { ...base, clipboardText: code, clipboardKind: "code" };
-        return { ...base, markdown: "```" + language + "\n" + code.slice(0, LIMITS.contentChars) + "\n```" };
-      }
-      case "image":
-      case "asset": {
-        const assetPath = extractAssetPath(ctx.content.kramdown);
-        if (!assetPath) {
-          return { ...base, downgraded: true, downgradeReason: "asset-missing", warnings: ["asset-path-unresolvable"] };
-        }
-        if (ctx.content.assetMissing) {
-          if (mode === "copy" || mode === "copy-content") {
-            return {
-              ...base,
-              clipboardText: `[${item.title}](${assetPath})`,
-              clipboardKind: "markdown-link",
-              pendingVerification: ["asset-missing"]
-            };
-          }
-          return { ...base, downgraded: true, downgradeReason: "asset-missing", warnings: ["asset-missing"] };
-        }
-        if (mode === "open") {
-          return { ...base, open: { kind: "asset", assetPath } };
-        }
-        if (mode === "copy" || mode === "copy-content") {
-          return {
-            ...base,
-            clipboardText: `[${item.title}](${assetPath})`,
-            clipboardKind: "markdown-link",
-            pendingVerification: item.itemType === "image" ? ["bitmap-clipboard-unverified"] : []
-          };
-        }
-        return {
-          ...base,
-          markdown: item.itemType === "image" ? `![](${assetPath})` : `[${item.title}](${assetPath})`,
-          pendingVerification: item.itemType === "image" ? ["bitmap-clipboard-unverified"] : []
-        };
-      }
-      case "blockref": {
-        const target = resolveBlockRefTarget(item);
-        if (!BLOCK_ID_RE.test(target)) {
-          return { ...base, downgraded: true, downgradeReason: "source-missing", warnings: ["target-block-invalid"] };
-        }
-        if (mode === "copy" || mode === "copy-content") {
-          return { ...base, clipboardText: ctx.content.kramdown, clipboardKind: "markdown", mode: "copy-content" };
-        }
-        if (mode === "insert-ref") {
-          return { ...base, markdown: buildBlockRef(target, refAnchorText(item)) };
-        }
-        if (mode === "insert-embed") {
-          return { ...base, markdown: buildEmbedBlock(target) };
-        }
-        if (mode === "insert-content") {
-          return { ...base, markdown: ctx.content.kramdown.slice(0, LIMITS.contentChars) };
-        }
-        return { ...base, markdown: buildBlockRef(target, refAnchorText(item)) };
-      }
-      default: {
-        return { ...base, downgraded: true, downgradeReason: "type-unsupported", warnings: ["unknown-type"] };
-      }
-    }
-  }
-  function extractFirstUrl(text) {
-    const m = text.match(/https?:\/\/[^\s)）\]]+/);
-    return m ? m[0].slice(0, 2048) : "";
-  }
-  function planOpenSource(item, resolved) {
-    if (item.itemType === "url") {
-      const url = item.url || extractFirstUrl(resolved.kramdown);
-      return url && isSafeHttpUrl(url) ? { target: { kind: "url", url } } : { failure: "source-missing" };
-    }
-    if (item.itemType === "image" || item.itemType === "asset") {
-      const assetPath = extractAssetPath(resolved.kramdown);
-      if (!assetPath || resolved.assetMissing) return { failure: "asset-missing" };
-      return { target: { kind: "asset", assetPath } };
-    }
-    const sourceBlockId = item.itemType === "blockref" ? resolveBlockRefTarget(item) : item.source.sourceBlockId;
-    if (sourceBlockId) {
-      if (resolved.sourceMissing) return { failure: "source-missing" };
-      return { target: { kind: "block", docId: item.source.sourceDocId, blockId: sourceBlockId } };
-    }
-    if (item.source.sourceDocId) {
-      if (resolved.sourceMissing) return { failure: "source-missing" };
-      return { target: { kind: "doc", docId: item.source.sourceDocId } };
-    }
-    return { target: { kind: "doc", docId: item.libraryDocId } };
-  }
-
-  // src/service/export-markdown.ts
-  init_constants();
-  var ExportIntegrityError = class extends Error {
-    constructor(reason, itemLabel = "", detail = "") {
-      super(`export-${reason}${itemLabel ? `: ${itemLabel}` : ""}${detail ? `: ${detail}` : ""}`);
-      this.reason = reason;
-      this.itemLabel = itemLabel;
-      this.detail = detail;
-      this.name = "ExportIntegrityError";
-    }
-  };
-  async function buildMarkdownExport(items, kramdownById, fetchAssetBytes, pack) {
-    var _a, _b, _c;
-    const oneLine = (value) => value.replace(/[\r\n]+/g, " ").trim();
-    for (const item of items) {
-      if (!kramdownById.has(item.id)) {
-        throw new ExportIntegrityError("body-missing", item.title || item.id);
-      }
-    }
-    const entries = [];
-    const skippedAssets = [];
-    const assetEntries = /* @__PURE__ */ new Map();
-    const usedNames = /* @__PURE__ */ new Set(["items.md"]);
-    let assetCount = 0;
-    const varNames = [];
-    for (const item of items) {
-      if (item.itemType === "code") continue;
-      for (const field of listAskFields((_a = kramdownById.get(item.id)) != null ? _a : "")) {
-        if (!varNames.includes(field.name)) varNames.push(field.name);
-        if (varNames.length >= LIMITS.maxAskFields) break;
-      }
-      if (varNames.length >= LIMITS.maxAskFields) break;
-    }
-    const snippetNames = [];
-    for (const item of items) {
-      if (item.itemType === "code") continue;
-      for (const snippet of listSnippetRefs((_b = kramdownById.get(item.id)) != null ? _b : "")) {
-        if (!snippetNames.includes(snippet)) snippetNames.push(snippet);
-        if (snippetNames.length >= 16) break;
-      }
-      if (snippetNames.length >= 16) break;
-    }
-    const mdParts = [
-      "# \u5C0F\u9A74\u5E38\u7528\uFF08\u5185\u6D4B\u7248\uFF09 \xB7 \u6761\u76EE\u5BFC\u51FA",
-      "",
-      `> \u5BFC\u51FA\u81EA\u601D\u6E90\u63D2\u4EF6\u300C\u5C0F\u9A74\u5E38\u7528\uFF08\u5185\u6D4B\u7248\uFF09\u300D\uFF0C\u5171 ${items.length} \u6761\u3002\u8D44\u6E90\u4F4D\u4E8E assets/\uFF0C\u6761\u76EE\u5185\u94FE\u63A5\u4E3A\u76F8\u5BF9\u8DEF\u5F84\u3002`,
-      ""
-    ];
-    if (pack && pack.name.trim()) {
-      const manifest = [
-        `<!-- xlc-pack`,
-        `name: ${oneLine(pack.name).slice(0, LIMITS.title)}`,
-        `items: ${items.length}`,
-        varNames.length ? `vars: ${varNames.join(",")}` : "",
-        snippetNames.length ? `snippets: ${snippetNames.join(",")}` : "",
-        `-->`
-      ].filter(Boolean).join("\n");
-      mdParts.unshift(manifest, "");
-    }
-    let totalLen = mdParts.reduce((length, part) => length + part.length, 0) + mdParts.length - 1;
-    for (const item of items) {
-      const kramdown = (_c = kramdownById.get(item.id)) != null ? _c : "";
-      const meta = [
-        `<!-- xlc-item`,
-        `id: ${item.id}`,
-        `type: ${item.itemType}`,
-        item.alias ? `alias: ${oneLine(item.alias)}` : "",
-        item.tags.length ? `tags: ${item.tags.map(oneLine).join(",")}` : "",
-        item.category ? `category: ${oneLine(item.category)}` : "",
-        item.source.sourceDocId ? `source-doc: ${oneLine(item.source.sourceDocId)}` : "",
-        item.source.sourceBlockId ? `source-block: ${oneLine(item.source.sourceBlockId)}` : "",
-        item.source.sourceType ? `source-type: ${oneLine(item.source.sourceType)}` : "",
-        item.url ? `url: ${oneLine(item.url)}` : "",
-        item.targetBlockId ? `target: ${oneLine(item.targetBlockId)}` : "",
-        `-->`
-      ].filter(Boolean).join("\n");
-      const itemParts = [`## ${oneLine(item.title || item.id)}`, "", meta, "", kramdown, ""];
-      totalLen += itemParts.reduce((length, part) => length + part.length, 0) + itemParts.length;
-      if (totalLen > LIMITS.contentChars) {
-        throw new ExportIntegrityError("too-large", "", String(LIMITS.contentChars));
-      }
-      mdParts.push(...itemParts);
-      if (item.itemType === "image" || item.itemType === "asset") {
-        const assetPath = extractAssetPath(kramdown);
-        if (assetPath && !assetEntries.has(assetPath)) {
-          const bytes = await fetchAssetBytes(assetPath);
-          if (bytes && bytes.length > 0) {
-            const name = assetPath;
-            usedNames.add(name);
-            assetEntries.set(assetPath, { name, data: bytes });
-            assetCount++;
-          } else {
-            skippedAssets.push(assetPath);
-          }
-        }
-      }
-    }
-    const markdown = mdParts.join("\n");
-    entries.push({ name: "items.md", data: new TextEncoder().encode(markdown) });
-    entries.push(...assetEntries.values());
-    return { entries, itemCount: items.length, assetCount, skippedAssets, varNames, snippetNames };
-  }
-
-  // src/service/import-markdown.ts
-  init_constants();
-
-  // src/service/importer.ts
-  init_item();
-
-  // src/model/kramdown.ts
-  init_constants();
-  var STRUCTURED_PATTERN = /\{:|[{]{3}|[}]{3}|^ {0,3}(?:`{3,}|~{3,}|>|(?:[-*+]|\d{1,9}[.)])[ \t]|\||(?:[-*_][ \t]*){3,}$)/;
-  function bodyWriteRestriction(markdown) {
-    var _a;
-    if (!markdown.trim()) return "body is empty";
-    if (markdown.length > LIMITS.contentChars) return "body exceeds the supported size; nothing was written";
-    if (/[\u2028\u2029]/.test(markdown)) return "multi-line body writing is unavailable pending B-006 host verification";
-    const lines = markdown.replace(/\r\n?/g, "\n").split("\n");
-    while (lines.length > 1 && lines[0].trim() === "") lines.shift();
-    while (lines.length > 1 && lines[lines.length - 1].trim() === "") lines.pop();
-    const opening = (_a = lines[0]) == null ? void 0 : _a.match(/^(`{3,}|~{3,})([a-zA-Z0-9_+.-]*)[ \t]*$/);
-    if (opening && lines.length >= 2) {
-      const fence = opening[1];
-      const close = new RegExp(`^ {0,3}${fence[0]}{${fence.length},}[ \\t]*$`);
-      const closingIndex = lines.findIndex((line, index) => index > 0 && close.test(line));
-      if (closingIndex === lines.length - 1) return void 0;
-    }
-    if (lines.length === 1 && !STRUCTURED_PATTERN.test(lines[0])) return void 0;
-    return "multi-line or structured body writing is unavailable pending B-006 host verification; use a single line or a complete code fence";
-  }
-  var ATTRIBUTE_PATTERN = /(^|\s)([\w:-]+)=(?:"[^"]*"|'[^']*'|[^\s}]+)(?=\s|$)/g;
-  var IAL_TOKEN_PATTERN = /(`+)|(\{:[^{}]*\})/g;
-  function normalizeIalToken(ial) {
-    const attributes = ial.slice(2, -1);
-    const safeAttributes = attributes.replace(
-      ATTRIBUTE_PATTERN,
-      (attribute, _space, name) => name === "id" || name === "updated" || name.startsWith("custom-xlc-") ? " " : attribute
-    ).trim();
-    return safeAttributes ? `{: ${safeAttributes}}` : "";
-  }
-  function findCodeLines(lines) {
-    var _a, _b;
-    const codeLines = [];
-    let fence = null;
-    for (const line of lines) {
-      if (fence) {
-        codeLines.push(true);
-        const closing = (_a = line.match(/^\s*(`+|~+)\s*$/)) == null ? void 0 : _a[1];
-        if (closing && closing.charAt(0) === fence.marker && closing.length >= fence.length) fence = null;
-        continue;
-      }
-      if (!line.trim()) {
-        codeLines.push(false);
-        continue;
-      }
-      if (/^(?: {4,}|\t)/.test(line)) {
-        codeLines.push(true);
-        continue;
-      }
-      const opening = (_b = line.match(/^\s*(`{3,}|~{3,})/)) == null ? void 0 : _b[1];
-      if (opening) {
-        fence = { marker: opening.charAt(0), length: opening.length };
-        codeLines.push(true);
-        continue;
-      }
-      codeLines.push(false);
-    }
-    return codeLines;
-  }
-  function findInlineCodeTicks(lines, codeLines) {
-    var _a, _b;
-    const pairedByLine = lines.map(() => /* @__PURE__ */ new Set());
-    let segment = [];
-    const pairSegment = () => {
-      var _a2, _b2;
-      const nextByLength = /* @__PURE__ */ new Map();
-      const nextSameLength = /* @__PURE__ */ new Map();
-      for (let index = segment.length - 1; index >= 0; index--) {
-        const tick = segment[index];
-        if (!tick) continue;
-        const next = nextByLength.get(tick.length);
-        if (next !== void 0) nextSameLength.set(index, next);
-        nextByLength.set(tick.length, index);
-      }
-      for (let index = 0; index < segment.length; index++) {
-        const tick = segment[index];
-        if (!tick) continue;
-        const closeIndex = nextSameLength.get(index);
-        if (closeIndex === void 0) continue;
-        (_a2 = pairedByLine[tick.line]) == null ? void 0 : _a2.add(tick.offset);
-        const close = segment[closeIndex];
-        if (close) (_b2 = pairedByLine[close.line]) == null ? void 0 : _b2.add(close.offset);
-        index = closeIndex;
-      }
-      segment = [];
-    };
-    for (let lineIndex = 0; lineIndex < lines.length; lineIndex++) {
-      const line = (_a = lines[lineIndex]) != null ? _a : "";
-      if (codeLines[lineIndex]) {
-        pairSegment();
-        continue;
-      }
-      IAL_TOKEN_PATTERN.lastIndex = 0;
-      for (const match of line.matchAll(IAL_TOKEN_PATTERN)) {
-        if (!match[1]) continue;
-        segment.push({ line: lineIndex, offset: (_b = match.index) != null ? _b : 0, length: match[0].length });
-      }
-    }
-    pairSegment();
-    return pairedByLine;
-  }
-  function normalizeLineIals(line, activeInlineCodeTicks, pairedInlineCodeTicks) {
-    var _a;
-    let cursor = 0;
-    let inlineCodeTicks = activeInlineCodeTicks;
-    let output = "";
-    IAL_TOKEN_PATTERN.lastIndex = 0;
-    for (const match of line.matchAll(IAL_TOKEN_PATTERN)) {
-      const token = match[0];
-      const start = (_a = match.index) != null ? _a : 0;
-      output += line.slice(cursor, start);
-      cursor = start + token.length;
-      if (match[1]) {
-        if (pairedInlineCodeTicks.has(start)) {
-          if (!inlineCodeTicks) inlineCodeTicks = token.length;
-          else if (inlineCodeTicks === token.length) inlineCodeTicks = 0;
-        }
-        output += token;
-      } else if (inlineCodeTicks) {
-        output += token;
-      } else {
-        output += normalizeIalToken(token);
-      }
-    }
-    return { line: output + line.slice(cursor), activeInlineCodeTicks: inlineCodeTicks };
-  }
-  function normalizeKramdownIal(markdown) {
-    var _a, _b;
-    const lines = markdown.replace(/\r\n?/g, "\n").split("\n");
-    const codeLines = findCodeLines(lines);
-    const pairedInlineCodeTicks = findInlineCodeTicks(lines, codeLines);
-    const output = [];
-    let inlineCodeTicks = 0;
-    for (let index = 0; index < lines.length; index++) {
-      const line = (_a = lines[index]) != null ? _a : "";
-      if (codeLines[index]) {
-        inlineCodeTicks = 0;
-        output.push(line);
-        continue;
-      }
-      const normalized = normalizeLineIals(line, inlineCodeTicks, (_b = pairedInlineCodeTicks[index]) != null ? _b : /* @__PURE__ */ new Set());
-      output.push(normalized.line);
-      inlineCodeTicks = normalized.activeInlineCodeTicks;
-    }
-    return output.join("\n").trim();
-  }
-
-  // src/service/importer.ts
-  init_errors();
-
-  // src/service/import-markdown.ts
-  init_item();
-  var ITEM_COMMENT_START = "<!-- xlc-item";
-  var ITEM_COMMENT_END = "-->";
-  var PACK_COMMENT_START = "<!-- xlc-pack";
-  var TITLE_RE = /^##\s+(.+)$/;
-  function parseMetadata(lines) {
-    const fields = /* @__PURE__ */ new Map();
-    let titleHint = "";
-    for (const line of lines) {
-      const trimmed = line.trim();
-      if (!trimmed || trimmed === ITEM_COMMENT_START || trimmed === ITEM_COMMENT_END) continue;
-      const idx = trimmed.indexOf(":");
-      if (idx <= 0) continue;
-      fields.set(trimmed.slice(0, idx).trim(), trimmed.slice(idx + 1).trim());
-    }
-    return { fields, titleHint };
-  }
-  function parsePackManifest(md, firstItemAt) {
-    var _a, _b, _c;
-    const start = md.indexOf(PACK_COMMENT_START);
-    if (start === -1 || start > firstItemAt) return void 0;
-    const end = md.indexOf(ITEM_COMMENT_END, start);
-    if (end === -1) return void 0;
-    const fields = parseMetadata(md.slice(start + PACK_COMMENT_START.length, end).split("\n")).fields;
-    const name = ((_a = fields.get("name")) != null ? _a : "").slice(0, LIMITS.title);
-    const vars = ((_b = fields.get("vars")) != null ? _b : "").split(",").map((s) => s.trim()).filter(Boolean).slice(0, LIMITS.maxAskFields);
-    const snippets = ((_c = fields.get("snippets")) != null ? _c : "").split(",").map((s) => s.trim()).filter(Boolean).slice(0, 16);
-    if (!name) return void 0;
-    return { name, vars, ...snippets.length > 0 ? { snippets } : {} };
-  }
-  function parseMarkdownPack(md) {
-    var _a, _b;
-    const items = [];
-    const issues = [];
-    const seenIds = /* @__PURE__ */ new Set();
-    if (!md || !md.includes(ITEM_COMMENT_START)) return { items, issues };
-    const firstItemAt = md.indexOf(ITEM_COMMENT_START);
-    const pack = parsePackManifest(md, firstItemAt);
-    const commentStarts = [];
-    const commentEnds = [];
-    let hasUnclosed = false;
-    let scan = 0;
-    while (true) {
-      const start = md.indexOf(ITEM_COMMENT_START, scan);
-      if (start === -1) break;
-      const end = md.indexOf(ITEM_COMMENT_END, start);
-      if (end === -1) {
-        hasUnclosed = true;
-        break;
-      }
-      commentStarts.push(start);
-      commentEnds.push(end + ITEM_COMMENT_END.length);
-      scan = start + ITEM_COMMENT_START.length;
-      if (commentStarts.length > LIMITS.maxItems) break;
-    }
-    const chunks = [];
-    for (let i = 0; i < commentStarts.length; i++) {
-      const itemStart = (_a = commentStarts[i]) != null ? _a : 0;
-      const lowerBound = i > 0 ? (_b = commentEnds[i - 1]) != null ? _b : 0 : 0;
-      const titleLineStart = md.lastIndexOf("\n## ", itemStart) + 1;
-      const chunkStart = Math.max(Math.min(titleLineStart, itemStart), lowerBound);
-      const nextCommentStart = commentStarts[i + 1];
-      const nextTitleStart = nextCommentStart === void 0 ? -1 : md.lastIndexOf("\n## ", nextCommentStart) + 1;
-      const chunkEnd = nextTitleStart > itemStart ? nextTitleStart : nextCommentStart != null ? nextCommentStart : md.length;
-      chunks.push(md.slice(chunkStart, chunkEnd));
-    }
-    chunks.forEach((chunk, index) => {
-      var _a2, _b2, _c, _d, _e, _f, _g, _h, _i, _j, _k;
-      const endIdx = chunk.indexOf(ITEM_COMMENT_END);
-      if (endIdx === -1) {
-        issues.push({ index, reason: "metadata-comment-unclosed" });
-        return;
-      }
-      const metaLines = chunk.slice(0, endIdx).split("\n");
-      const { fields } = parseMetadata(metaLines);
-      const id = (_a2 = fields.get("id")) != null ? _a2 : "";
-      if (!/^xlc-[0-9a-z]{10,40}$/.test(id)) {
-        issues.push({ index, reason: "invalid-id" });
-        return;
-      }
-      if (seenIds.has(id)) {
-        issues.push({ index, reason: "duplicate-id" });
-        return;
-      }
-      const itemType = (_b2 = fields.get("type")) != null ? _b2 : "text";
-      if (!isItemType(itemType)) {
-        issues.push({ index, reason: "invalid-item-type" });
-        return;
-      }
-      const url = (_c = fields.get("url")) != null ? _c : "";
-      if (url && !isSafeHttpUrl(url)) {
-        issues.push({ index, reason: "invalid-url" });
-        return;
-      }
-      let title = "";
-      const before = chunk.slice(0, chunk.indexOf(ITEM_COMMENT_START));
-      for (const line of before.split("\n")) {
-        const m = line.match(TITLE_RE);
-        const matched = m == null ? void 0 : m[1];
-        if (matched) title = matched.trim();
-      }
-      if (!title && fields.get("alias")) title = (_d = fields.get("alias")) != null ? _d : "";
-      const body = chunk.slice(endIdx + ITEM_COMMENT_END.length).replace(/^\s*\n/, "").replace(/\n\s*$/, "");
-      seenIds.add(id);
-      items.push({
-        id,
-        itemType,
-        title: title.slice(0, LIMITS.title),
-        alias: ((_e = fields.get("alias")) != null ? _e : "").slice(0, LIMITS.alias),
-        tags: ((_f = fields.get("tags")) != null ? _f : "").split(",").map((s) => s.trim()).filter(Boolean).slice(0, LIMITS.tags),
-        category: ((_g = fields.get("category")) != null ? _g : "").slice(0, LIMITS.category),
-        kramdown: body.slice(0, LIMITS.contentChars),
-        source: {
-          sourceDocId: (_h = fields.get("source-doc")) != null ? _h : "",
-          sourceBlockId: (_i = fields.get("source-block")) != null ? _i : "",
-          sourceType: (_j = fields.get("source-type")) != null ? _j : "external"
-        },
-        url,
-        targetBlockId: (_k = fields.get("target")) != null ? _k : "",
-        createdAt: 0,
-        updatedAt: Date.now()
-      });
-    });
-    if (hasUnclosed) issues.push({ index: commentStarts.length, reason: "metadata-comment-unclosed" });
-    const packTitles = new Set(items.map((it) => it.title).filter(Boolean));
-    const allReferencedSnippets = /* @__PURE__ */ new Set();
-    for (const it of items) {
-      if (it.itemType === "code") continue;
-      for (const ref of listSnippetRefs(it.kramdown)) {
-        allReferencedSnippets.add(ref);
-      }
-    }
-    if (pack == null ? void 0 : pack.snippets) {
-      for (const sn of pack.snippets) allReferencedSnippets.add(sn);
-    }
-    const missingSnippets = Array.from(allReferencedSnippets).filter((snTitle) => !packTitles.has(snTitle));
-    let finalPack = pack;
-    if (missingSnippets.length > 0) {
-      finalPack = finalPack ? { ...finalPack, missingSnippets } : { name: "", vars: [], missingSnippets };
-    }
-    return { items, issues, pack: finalPack };
-  }
-
-  // src/ui/settings-dialog.ts
-  init_errors();
-
-  // src/service/prompt-pack.ts
-  var PROMPT_PACK_NAME = "\u5E38\u7528\u5185\u5BB9\u793A\u4F8B";
-  var PROMPT_PACK_MD = [
-    "<!-- xlc-pack",
-    `name: ${PROMPT_PACK_NAME}`,
-    "items: 25",
-    "vars: \u5BA2\u6237\u540D\u79F0,\u8865\u507F\u6BD4\u4F8B,\u5DE5\u5355\u53F7,\u8DDF\u8FDB\u65E5\u671F,\u5BA2\u6237\u6635\u79F0,\u76EE\u6807\u8BFB\u8005,\u7F16\u7A0B\u8BED\u8A00,\u672C\u5468\u4E3B\u9898,\u4F1A\u8BAE\u4E3B\u9898,\u59D3\u540D,\u804C\u4F4D,\u516C\u53F8\u540D\u79F0,\u90AE\u7BB1,\u624B\u673A\u53F7,\u6536\u4EF6\u4EBA,\u4E3B\u9898,\u7701\u5E02\u533A,\u8BE6\u7EC6\u5730\u5740,\u90AE\u7F16,\u5907\u6CE8,\u53D1\u7968\u7C7B\u578B,\u4F01\u4E1A\u540D\u79F0,\u7EB3\u7A0E\u4EBA\u8BC6\u522B\u53F7,\u5F00\u6237\u94F6\u884C,\u94F6\u884C\u8D26\u53F7,\u9000\u6362\u7C7B\u578B,\u8BA2\u5355\u7F16\u53F7,\u5BC4\u56DE\u5730\u5740,\u50AC\u529E\u4E8B\u9879,\u539F\u5B9A\u622A\u6B62,\u54A8\u8BE2\u95EE\u9898",
-    "-->",
-    "# \u5E38\u7528\u5185\u5BB9\u793A\u4F8B",
-    "",
-    "> \u5C0F\u9A74\u5E38\u7528\uFF08\u5185\u6D4B\u7248\uFF09\u5E38\u7528\u5185\u5BB9\u793A\u4F8B\uFF1A\u4F7F\u7528\u8BF4\u660E / \u5730\u5740 / \u90AE\u7BB1 / \u8054\u7CFB\u65B9\u5F0F / \u5BA2\u670D\u56DE\u590D / AI \u63D0\u793A\u8BCD / \u7814\u53D1\u5199\u4F5C / \u5546\u52A1\u8D44\u6599 / \u8EAB\u4EFD\u5360\u4F4D / \u7F51\u5740 / JSON\u3002\u5BFC\u5165\u540E\u5373\u4E3A\u771F\u5B9E\u601D\u6E90\u5757\uFF0C\u53EF\u81EA\u7531\u4FEE\u6539\u3002\u591A\u884C\u6B63\u6587\u4E0E\u6DF7\u5408\u7ED3\u6784\u4ECD\u53D7 B-006 \u5199\u5165\u8FB9\u754C\u9650\u5236\u3002",
-    "",
-    // ---- 入门与个人信息 ----
-    "## \u4F7F\u7528\u8BF4\u660E\uFF1A\u4E09\u6B65\u5F00\u59CB",
-    "",
-    "<!-- xlc-item",
-    "id: xlc-pack00000011",
-    "type: markdown",
-    "tags: \u5165\u95E8,\u89C4\u5219",
-    "category: \u4F7F\u7528\u8BF4\u660E",
-    "source-type: external",
-    "-->",
-    "# \u5C0F\u9A74\u5E38\u7528\u600E\u4E48\u7528",
-    "",
-    "1. **\u5148\u4FDD\u5B58**\uFF1A\u5728\u7F16\u8F91\u5668\u9009\u4E2D\u6587\u672C\uFF0C\u4F7F\u7528\u53F3\u952E\u300C\u4FDD\u5B58\u4E3A\u5E38\u7528\u6761\u76EE\u300D\uFF1B\u4E5F\u53EF\u4EE5\u4ECE\u526A\u8D34\u677F\u5FEB\u901F\u6355\u83B7\uFF0C\u6216\u5728\u9762\u677F\u4E2D\u70B9\u300C\u65B0\u5EFA\u300D\u3002",
-    "2. **\u518D\u8C03\u7528**\uFF1A\u6253\u5F00\u9762\u677F\u641C\u7D22\u6807\u9898\u3001\u6B63\u6587\u3001\u6807\u7B7E\u6216\u5206\u7C7B\uFF0C\u6309 Enter \u63D2\u5165\uFF0C\u6309 Ctrl/\u2318+Enter \u590D\u5236\uFF1B\u6709 `\uFF5B\uFF5Bxlc:ask:\u5B57\u6BB5\uFF5D\uFF5D` \u7684\u6A21\u677F\u4F1A\u5728\u63D2\u5165\u524D\u8BE2\u95EE\u4E00\u6B21\u3002",
-    "3. **\u6301\u7EED\u6574\u7406**\uFF1A\u7528\u6807\u7B7E\u548C\u5206\u7C7B\u533A\u5206\u573A\u666F\uFF0C\u6536\u85CF\u9AD8\u9891\u6761\u76EE\uFF1B\u6761\u76EE\u6B63\u6587\u4ECD\u662F\u5E93\u6587\u6863\u4E2D\u7684\u771F\u5B9E\u5757\uFF0C\u53EF\u5728\u601D\u6E90\u4E2D\u76F4\u63A5\u7F16\u8F91\u3002",
-    "",
-    "**\u6A21\u677F\u89C4\u5219\u4E0E\u6CE8\u91CA\u89C4\u8303**",
-    "- `\uFF5B\uFF5Bxlc:ask:\u5B57\u6BB5\uFF5D\uFF5D` = \u63D2\u5165\u65F6\u586B\u5199\uFF1B`\uFF5B\uFF5Bxlc:ask:\u5B57\u6BB5|\u9009\u9879A,\u9009\u9879B\uFF5D\uFF5D` = \u4E0B\u62C9\u9009\u62E9\uFF08\u672C\u8BF4\u660E\u7528\u5168\u89D2\u62EC\u53F7\u5C55\u793A\u8BED\u6CD5\uFF0C\u5B9E\u9645\u6A21\u677F\u8BF7\u6539\u4E3A\u534A\u89D2\uFF09\u3002\u586B\u5199\u5185\u5BB9\u53EA\u7528\u4E8E\u672C\u6B21\u63D2\u5165\uFF0C\u4E0D\u4F1A\u56DE\u5199\u6A21\u677F\u3002",
-    "- `\uFF5B\uFF5Bxlc:date\uFF5D\uFF5D`\u3001`\uFF5B\uFF5Bxlc:clipboard\uFF5D\uFF5D` \u7B49\u52A8\u6001\u5360\u4F4D\u7B26\u53EA\u5728\u63D2\u5165/\u590D\u5236\u65F6\u5C55\u5F00\uFF0C\u6A21\u677F\u539F\u6587\u59CB\u7EC8\u4FDD\u7559\u3002",
-    "- **\u4EE3\u7801\u7C7B\u578B**\u59CB\u7EC8\u6309\u539F\u6587\u5B57\u9762\u63D2\u5165/\u590D\u5236\uFF0C\u4E0D\u5C55\u5F00\u53D8\u91CF\uFF1BSQL \u793A\u4F8B\u4E2D\u7684 `example_posts` \u9700\u624B\u52A8\u6539\u4E3A\u81EA\u5DF1\u7684\u8868\u540D\u3002",
-    "- **\u6CE8\u91CA\u4E0E\u8BF4\u660E**\uFF1A\u6761\u76EE\u522B\u540D\uFF08alias\uFF09\u4E0E\u5206\u7C7B\u5373\u4E3A\u573A\u666F\u6CE8\u91CA\uFF1B\u6A21\u677F\u6B63\u6587\u5185\u53EF\u7528\u5F15\u7528\u5757 `> \u{1F4A1} \u63D0\u793A\uFF1A...` \u8BB0\u5F55\u6CE8\u610F\u4E8B\u9879\uFF0C\u4E5F\u53EF\u4EE5\u7528 Markdown \u6CE8\u91CA\u8BED\u6CD5 `<!-- \u6CE8\u91CA -->` \u9690\u85CF\u5185\u90E8\u8BF4\u660E\u3002",
-    "- **\u952E\u76D8\u9AD8\u6548\u8C03\u7528**\uFF1A`Alt + 1-9` \u5FEB\u901F\u63D2\u5165\u524D 9 \u9879\uFF0C`Alt + Shift + 1-9` \u5FEB\u901F\u590D\u5236\u524D 9 \u9879\uFF1B\u641C\u7D22\u6846\u6309 `Tab` \u952E\u76F4\u8FBE\u53F3\u4FA7\u64CD\u4F5C\u533A\uFF1B\u914D\u5408\u300C\u5E38\u7528\u300D\u6392\u5E8F\u5B9E\u73B0\u9AD8\u9891\u6761\u76EE\u79D2\u53D1\u3002",
-    "- \u63A8\u8350\u5206\u7C7B\uFF1A\u5546\u52A1\u3001\u5BA2\u670D\u3001\u90AE\u7BB1\u3001\u5730\u5740\u3001\u8054\u7CFB\u65B9\u5F0F\u3001\u63D0\u793A\u8BCD\u3001\u5199\u4F5C\u3001\u5F00\u53D1\uFF1B\u5206\u7C7B\u540D\u79F0\u53EF\u4EE5\u6309\u81EA\u5DF1\u7684\u5DE5\u4F5C\u6D41\u4FEE\u6539\u3002",
-    "",
-    "**\u4ECE\u54EA\u91CC\u5F00\u59CB**\uFF1A\u5148\u5BFC\u5165\u672C\u5305\u4E2D\u7684\u300C\u90AE\u7BB1\u7B7E\u540D\u300D\u300C\u5F00\u7968\u8D44\u6599\u300D\u6216\u300C\u552E\u540E\u9000\u6362\u6307\u5F15\u300D\uFF0C\u628A\u793A\u4F8B\u5B57\u6BB5\u66FF\u6362\u4E3A\u81EA\u5DF1\u7684\u5B57\u6BB5\uFF0C\u518D\u590D\u5236\u6210\u4E2A\u4EBA\u6761\u76EE\u3002",
-    "## \u90AE\u7BB1\u7B7E\u540D",
-    "",
-    "<!-- xlc-item",
-    "id: xlc-pack00000012",
-    "type: text",
-    "tags: \u90AE\u7BB1,\u7B7E\u540D",
-    "category: \u90AE\u7BB1",
-    "source-type: external",
-    "-->",
-    "{{xlc:ask:\u59D3\u540D}}\uFF5C{{xlc:ask:\u804C\u4F4D}}",
-    "{{xlc:ask:\u516C\u53F8\u540D\u79F0}}",
-    "\u90AE\u7BB1\uFF1A{{xlc:ask:\u90AE\u7BB1}}",
-    "\u7535\u8BDD\uFF1A{{xlc:ask:\u624B\u673A\u53F7}}{{xlc:cursor}}",
-    "## \u90AE\u4EF6\u56DE\u590D\u5F00\u5934",
-    "",
-    "<!-- xlc-item",
-    "id: xlc-pack00000013",
-    "type: markdown",
-    "tags: \u90AE\u7BB1,\u56DE\u590D",
-    "category: \u90AE\u7BB1",
-    "source-type: external",
-    "-->",
-    "\u4E3B\u9898\uFF1A{{xlc:ask:\u4E3B\u9898}}",
-    "",
-    "{{xlc:ask:\u6536\u4EF6\u4EBA}} \u60A8\u597D\uFF1A",
-    "",
-    "\u611F\u8C22\u6765\u4FE1\u3002\u5173\u4E8E\u60A8\u63D0\u5230\u7684\u4E8B\u9879\uFF0C\u6211\u4EEC\u4F1A\u5728 __\u65F6\u95F4__ \u524D\u56DE\u590D\uFF1B\u5982\u6709\u8865\u5145\u4FE1\u606F\uFF0C\u6B22\u8FCE\u76F4\u63A5\u56DE\u590D\u672C\u90AE\u4EF6\u3002",
-    "",
-    "\u795D\u597D\uFF01{{xlc:cursor}}",
-    "## \u6536\u4EF6\u5730\u5740",
-    "",
-    "<!-- xlc-item",
-    "id: xlc-pack00000014",
-    "type: text",
-    "tags: \u5730\u5740,\u5FEB\u9012",
-    "category: \u5730\u5740",
-    "source-type: external",
-    "-->",
-    "\u6536\u4EF6\u4EBA\uFF1A{{xlc:ask:\u6536\u4EF6\u4EBA}}",
-    "\u5730\u5740\uFF1A{{xlc:ask:\u7701\u5E02\u533A}} {{xlc:ask:\u8BE6\u7EC6\u5730\u5740}}",
-    "\u90AE\u7F16\uFF1A{{xlc:ask:\u90AE\u7F16}}",
-    "\u7535\u8BDD\uFF1A{{xlc:ask:\u624B\u673A\u53F7}}{{xlc:cursor}}",
-    "## \u8054\u7CFB\u4EBA\u5361\u7247",
-    "",
-    "<!-- xlc-item",
-    "id: xlc-pack00000015",
-    "type: markdown",
-    "tags: \u8054\u7CFB\u65B9\u5F0F,\u8054\u7CFB\u4EBA",
-    "category: \u8054\u7CFB\u65B9\u5F0F",
-    "source-type: external",
-    "-->",
-    "**{{xlc:ask:\u59D3\u540D}}**",
-    "- \u624B\u673A\uFF1A{{xlc:ask:\u624B\u673A\u53F7}}",
-    "- \u90AE\u7BB1\uFF1A{{xlc:ask:\u90AE\u7BB1}}",
-    "- \u5907\u6CE8\uFF1A{{xlc:ask:\u5907\u6CE8|textarea}}{{xlc:cursor}}",
-    "## \u5730\u5740\u6807\u7B7E",
-    "",
-    "<!-- xlc-item",
-    "id: xlc-pack00000016",
-    "type: text",
-    "tags: \u5730\u5740,\u6807\u7B7E",
-    "category: \u5730\u5740",
-    "source-type: external",
-    "-->",
-    "{{xlc:ask:\u6536\u4EF6\u4EBA}} / {{xlc:ask:\u7701\u5E02\u533A}} / {{xlc:ask:\u8BE6\u7EC6\u5730\u5740}} / {{xlc:ask:\u624B\u673A\u53F7}}",
-    // ---- 场景① 客服模板 ----
-    "## \u5EF6\u671F\u81F4\u6B49\u56DE\u590D",
-    "",
-    "<!-- xlc-item",
-    "id: xlc-pack00000001",
-    "type: markdown",
-    "tags: \u5BA2\u670D,\u6A21\u677F",
-    "category: \u5BA2\u670D",
-    "source-type: external",
-    "-->",
-    "\u5C0A\u656C\u7684 {{xlc:ask:\u5BA2\u6237\u540D\u79F0}}\uFF1A",
-    "",
-    "\u5173\u4E8E\u672C\u671F\u4EA4\u4ED8\u8BA1\u5212\u7684\u8C03\u6574\uFF0C\u6211\u4EEC\u6DF1\u8868\u6B49\u610F\u3002\u4E3B\u8981\u539F\u56E0\u4E3A __\u539F\u56E0__\uFF0C\u76EE\u524D\u8FDB\u5EA6\u5DF2\u8FBE __\u767E\u5206\u6BD4__\uFF0C\u9884\u8BA1\u63A8\u8FDF __\u5929\u6570__ \u4E2A\u5DE5\u4F5C\u65E5\u3002",
-    "",
-    "\u4E3A\u5F25\u8865\u5F71\u54CD\uFF0C\u6211\u4EEC\u63D0\u4F9B\u4EE5\u4E0B\u8865\u507F\uFF1A",
-    "1. \u672C\u671F\u670D\u52A1\u8D39\u51CF\u514D {{xlc:ask:\u8865\u507F\u6BD4\u4F8B|5%,10%,\u81EA\u5B9A\u4E49}}\uFF1B",
-    "2. \u4E0A\u7EBF\u540E 48 \u5C0F\u65F6\u4E13\u5C5E\u503C\u5B88\uFF1B",
-    "3. \u4E0B\u671F\u8FED\u4EE3\u4F18\u5148\u6392\u5165\u8D35\u65B9\u9700\u6C42\u3002",
-    "",
-    "\u518D\u6B21\u611F\u8C22\u7406\u89E3\u4E0E\u652F\u6301\uFF0C\u6709\u4EFB\u4F55\u95EE\u9898\u968F\u65F6\u8054\u7CFB\u6211\u3002{{xlc:cursor}}",
-    "## \u5DE5\u5355\u8FDB\u5EA6\u8DDF\u8FDB",
-    "",
-    "<!-- xlc-item",
-    "id: xlc-pack00000002",
-    "type: markdown",
-    "tags: \u5BA2\u670D,\u8DDF\u8FDB",
-    "category: \u5BA2\u670D",
-    "source-type: external",
-    "-->",
-    "{{xlc:ask:\u5BA2\u6237\u540D\u79F0}} \u60A8\u597D\uFF1A",
-    "",
-    "\u60A8\u7684\u5DE5\u5355 {{xlc:ask:\u5DE5\u5355\u53F7}} \u5F53\u524D\u72B6\u6001\uFF1A__\u5F53\u524D\u72B6\u6001__\u3002",
-    "\u9884\u8BA1\u5B8C\u6210\u65F6\u95F4\uFF1A{{xlc:ask:\u8DDF\u8FDB\u65E5\u671F|date}}\u3002\u671F\u95F4\u6709\u4EFB\u4F55\u8865\u5145\u4FE1\u606F\u8BF7\u76F4\u63A5\u56DE\u590D\u672C\u6D88\u606F\u3002",
-    "",
-    "\u611F\u8C22\u60A8\u7684\u8010\u5FC3\u7B49\u5F85\u3002{{xlc:cursor}}",
-    "## \u597D\u8BC4\u611F\u8C22\u56DE\u590D",
-    "",
-    "<!-- xlc-item",
-    "id: xlc-pack00000003",
-    "type: text",
-    "tags: \u5BA2\u670D,\u56DE\u590D",
-    "category: \u5BA2\u670D",
-    "source-type: external",
-    "-->",
-    "\u611F\u8C22 {{xlc:ask:\u5BA2\u6237\u6635\u79F0}} \u7684\u8BA4\u53EF\u4E0E\u652F\u6301\uFF01\u60A8\u7684\u9F13\u52B1\u662F\u6211\u4EEC\u524D\u8FDB\u7684\u52A8\u529B\uFF0C\u5982\u518D\u6B21\u5149\u4E34\u6709\u4EFB\u4F55\u95EE\u9898\uFF0C\u968F\u65F6\u8054\u7CFB\u6211\u3002\u795D\u751F\u6D3B\u6109\u5FEB\uFF01{{xlc:cursor}}",
-    // ---- 场景② AI 提示词库 ----
-    "## \u6587\u7AE0\u6DA6\u8272\u63D0\u793A\u8BCD",
-    "",
-    "<!-- xlc-item",
-    "id: xlc-pack00000004",
-    "type: text",
-    "tags: AI,\u63D0\u793A\u8BCD",
-    "category: \u63D0\u793A\u8BCD",
-    "source-type: external",
-    "-->",
-    "\u4F60\u662F\u8D44\u6DF1\u7F16\u8F91\u3002\u8BF7\u6DA6\u8272\u4EE5\u4E0B\u6587\u7AE0\uFF0C\u9762\u5411 {{xlc:ask:\u76EE\u6807\u8BFB\u8005|\u666E\u901A\u8BFB\u8005,\u4E13\u4E1A\u8BFB\u8005}}\uFF1A",
-    "\u4FDD\u6301\u539F\u610F\u4E0E\u7ED3\u6784\uFF0C\u4EC5\u63D0\u5347\u6D41\u7545\u5EA6\u4E0E\u8868\u8FBE\u529B\uFF1B\u4E0D\u6539\u5199\u4E8B\u5B9E\uFF0C\u4E0D\u65B0\u589E\u5185\u5BB9\u3002",
-    "\u8F93\u51FA\u6DA6\u8272\u540E\u7684\u5168\u6587\uFF1A",
-    "",
-    "{{xlc:clipboard}}{{xlc:cursor}}",
-    "## \u4EE3\u7801\u5BA1\u67E5\u63D0\u793A\u8BCD",
-    "",
-    "<!-- xlc-item",
-    "id: xlc-pack00000005",
-    "type: text",
-    "tags: AI,\u63D0\u793A\u8BCD,\u5F00\u53D1",
-    "category: \u63D0\u793A\u8BCD",
-    "source-type: external",
-    "-->",
-    "\u4F60\u662F {{xlc:ask:\u7F16\u7A0B\u8BED\u8A00|TypeScript,Python,Go}} \u8D44\u6DF1\u5DE5\u7A0B\u5E08\uFF0C\u8BF7\u5BA1\u67E5\u4EE5\u4E0B\u4EE3\u7801\uFF0C\u6309\u4E25\u91CD\u5EA6\u8F93\u51FA\uFF1A",
-    "1. \u6B63\u786E\u6027\u95EE\u9898\uFF08\u4F1A\u51FA\u9519\u7684\u5730\u65B9\uFF09",
-    "2. \u5B89\u5168\u9690\u60A3",
-    "3. \u53EF\u8BFB\u6027\u4E0E\u7EF4\u62A4\u6027\u5EFA\u8BAE",
-    "\u4EC5\u5217\u95EE\u9898\u4E0E\u4FEE\u6539\u5EFA\u8BAE\uFF0C\u4E0D\u91CD\u5199\u5168\u6587\uFF1A",
-    "",
-    "{{xlc:clipboard}}{{xlc:cursor}}",
-    "## \u4F1A\u8BAE\u8981\u70B9\u63D0\u70BC\u63D0\u793A\u8BCD",
-    "",
-    "<!-- xlc-item",
-    "id: xlc-pack00000006",
-    "type: text",
-    "tags: AI,\u63D0\u793A\u8BCD",
-    "category: \u63D0\u793A\u8BCD",
-    "source-type: external",
-    "-->",
-    "\u8BF7\u628A\u4EE5\u4E0B\u4F1A\u8BAE\u8BB0\u5F55\u63D0\u70BC\u4E3A\u8981\u70B9\uFF1A\u7ED3\u8BBA / \u5F85\u529E\uFF08\u8D1F\u8D23\u4EBA+\u622A\u6B62\u65F6\u95F4\uFF09/ \u98CE\u9669\u4E09\u7C7B\uFF0C\u6BCF\u6761\u4E00\u884C\uFF1A",
-    "",
-    "{{xlc:clipboard}}{{xlc:cursor}}",
-    // ---- 场景③ 研发写作常用件 ----
-    "## \u5468\u62A5\u5F00\u5934",
-    "",
-    "<!-- xlc-item",
-    "id: xlc-pack00000007",
-    "type: markdown",
-    "tags: \u5199\u4F5C,\u5468\u62A5",
-    "category: \u5199\u4F5C",
-    "source-type: external",
-    "-->",
-    "\u672C\u5468\u56F4\u7ED5 {{xlc:ask:\u672C\u5468\u4E3B\u9898}} \u63A8\u8FDB\uFF0C\u5173\u952E\u8FDB\u5C55\uFF1A",
-    "",
-    "1. __\u4E8B\u9879__\uFF08\u72B6\u6001\uFF1A__\u8FDB\u5EA6__\uFF09",
-    "2. __\u4E8B\u9879__\uFF08\u72B6\u6001\uFF1A__\u8FDB\u5EA6__\uFF09",
-    "",
-    "\u98CE\u9669\u4E0E\u4F9D\u8D56\uFF1A{{xlc:cursor}}",
-    "## \u4F1A\u8BAE\u7EAA\u8981\u9AA8\u67B6",
-    "",
-    "<!-- xlc-item",
-    "id: xlc-pack00000008",
-    "type: markdown",
-    "tags: \u5199\u4F5C,\u4F1A\u8BAE",
-    "category: \u5199\u4F5C",
-    "source-type: external",
-    "-->",
-    "# {{xlc:ask:\u4F1A\u8BAE\u4E3B\u9898}} \xB7 \u4F1A\u8BAE\u7EAA\u8981\uFF08{{xlc:date}}\uFF09",
-    "",
-    "## \u7ED3\u8BBA",
-    "- {{xlc:cursor}}",
-    "## \u5F85\u529E",
-    "- [ ] __\u4E8B\u9879__\uFF08\u8D1F\u8D23\u4EBA\uFF1A__ / \u622A\u6B62\uFF1A__\uFF09",
-    "## \u98CE\u9669",
-    "- ",
-    "## \u65E5\u8BA1\u5212\u6A21\u677F",
-    "",
-    "<!-- xlc-item",
-    "id: xlc-pack00000009",
-    "type: markdown",
-    "tags: \u5199\u4F5C,\u8BA1\u5212",
-    "category: \u5199\u4F5C",
-    "source-type: external",
-    "-->",
-    "## \u4ECA\u65E5\u4E09\u4EF6\u4E8B\uFF08{{xlc:date}}\uFF09",
-    "",
-    "1. {{xlc:cursor}}",
-    "2. ",
-    "3. ",
-    "## \u7559\u767D\uFF08\u5E94\u5BF9\u7A81\u53D1\uFF09",
-    "- ",
-    "## SQL \u5206\u9875\u67E5\u8BE2",
-    "",
-    "<!-- xlc-item",
-    "id: xlc-pack00000010",
-    "type: code",
-    "tags: \u5F00\u53D1,SQL",
-    "category: \u5F00\u53D1",
-    "source-type: external",
-    "-->",
-    "```sql",
-    "SELECT * FROM example_posts",
-    "WHERE status = 'published'",
-    "ORDER BY updated_at DESC",
-    "LIMIT 20 OFFSET 40;",
-    "```",
-    "",
-    // ---- 场景④ 商务财务与售后协同 ----
-    "## \u5F00\u7968\u8D44\u6599",
-    "",
-    "<!-- xlc-item",
-    "id: xlc-pack00000017",
-    "type: markdown",
-    "tags: \u8D22\u52A1,\u53D1\u7968,\u5546\u52A1",
-    "category: \u5546\u52A1",
-    "source-type: external",
-    "-->",
-    "> \u{1F4A1} \u63D0\u793A\uFF1A\u4E13\u7968\u9700\u5B8C\u6574\u586B\u5199\u5F00\u6237\u884C\u4E0E\u94F6\u884C\u8D26\u53F7\uFF1B\u666E\u7968\u4EC5\u9700\u62AC\u5934\u4E0E\u7A0E\u53F7\u3002",
-    "",
-    "- \u53D1\u7968\u7C7B\u578B\uFF1A{{xlc:ask:\u53D1\u7968\u7C7B\u578B|\u589E\u503C\u7A0E\u4E13\u7528\u53D1\u7968,\u589E\u503C\u7A0E\u666E\u901A\u53D1\u7968}}",
-    "- \u4F01\u4E1A\u540D\u79F0\uFF1A{{xlc:ask:\u4F01\u4E1A\u540D\u79F0}}",
-    "- \u7EB3\u7A0E\u4EBA\u8BC6\u522B\u53F7\uFF1A{{xlc:ask:\u7EB3\u7A0E\u4EBA\u8BC6\u522B\u53F7}}",
-    "- \u5F00\u6237\u94F6\u884C\uFF1A{{xlc:ask:\u5F00\u6237\u94F6\u884C}}",
-    "- \u94F6\u884C\u8D26\u53F7\uFF1A{{xlc:ask:\u94F6\u884C\u8D26\u53F7}}",
-    "- \u6CE8\u518C\u5730\u5740\u4E0E\u7535\u8BDD\uFF1A{{xlc:ask:\u7701\u5E02\u533A}} {{xlc:ask:\u8BE6\u7EC6\u5730\u5740}} / {{xlc:ask:\u624B\u673A\u53F7}}{{xlc:cursor}}",
-    "",
-    "## \u552E\u540E\u9000\u6362\u6307\u5F15",
-    "",
-    "<!-- xlc-item",
-    "id: xlc-pack00000018",
-    "type: markdown",
-    "tags: \u5BA2\u670D,\u552E\u540E,\u9000\u6362",
-    "category: \u5BA2\u670D",
-    "source-type: external",
-    "-->",
-    "{{xlc:ask:\u5BA2\u6237\u540D\u79F0}} \u60A8\u597D\uFF1A",
-    "",
-    "\u60A8\u7684\u552E\u540E\u7533\u8BF7\u5DF2\u53D7\u7406\uFF08\u5DE5\u5355/\u8BA2\u5355\uFF1A{{xlc:ask:\u8BA2\u5355\u7F16\u53F7}}\uFF0C\u7C7B\u578B\uFF1A{{xlc:ask:\u9000\u6362\u7C7B\u578B|\u6362\u8D27,\u9000\u6B3E,\u8FD4\u5382\u7EF4\u4FEE}}\uFF09\u3002",
-    "",
-    "\u8BF7\u5C06\u5546\u54C1\u5BC4\u56DE\u4EE5\u4E0B\u5730\u5740\uFF1A",
-    "- \u6536\u4EF6\u4EBA\uFF1A{{xlc:ask:\u6536\u4EF6\u4EBA}}\uFF08\u7535\u8BDD\uFF1A{{xlc:ask:\u624B\u673A\u53F7}}\uFF09",
-    "- \u5BC4\u56DE\u5730\u5740\uFF1A{{xlc:ask:\u5BC4\u56DE\u5730\u5740}}",
-    "",
-    "> \u{1F4A1} \u6CE8\u610F\uFF1A\u5BC4\u56DE\u65F6\u8BF7\u4FDD\u7559\u539F\u5305\u88C5\u53CA\u914D\u4EF6\uFF0C\u5305\u88F9\u5185\u9644\u5B57\u6761\u6CE8\u660E\u60A8\u7684\u8BA2\u5355\u53F7\u4E0E\u9000\u6362\u539F\u56E0\uFF1B\u8BF7\u52FF\u5BC4\u9001\u8FD0\u8D39\u5230\u4ED8\u3002\u5BC4\u51FA\u540E\u8BF7\u5C06\u5FEB\u9012\u5355\u53F7\u56DE\u590D\u672C\u5904\uFF0C\u6211\u4EEC\u5C06\u4F18\u5148\u4E3A\u60A8\u8DDF\u8FDB\u3002{{xlc:cursor}}",
-    "",
-    "## \u4E8B\u9879\u50AC\u529E\u63D0\u9192",
-    "",
-    "<!-- xlc-item",
-    "id: xlc-pack00000019",
-    "type: markdown",
-    "tags: \u5199\u4F5C,\u534F\u540C,\u50AC\u529E",
-    "category: \u5199\u4F5C",
-    "source-type: external",
-    "-->",
-    "{{xlc:ask:\u6536\u4EF6\u4EBA}} \u60A8\u597D\uFF1A",
-    "",
-    "\u5173\u4E8E\u4E8B\u9879\u300C{{xlc:ask:\u50AC\u529E\u4E8B\u9879}}\u300D\uFF0C\u539F\u5B9A\u622A\u6B62\u65F6\u95F4\u4E3A {{xlc:ask:\u539F\u5B9A\u622A\u6B62|date}}\u3002",
-    "\u76EE\u524D\u6211\u4EEC\u5DF2\u63A8\u8FDB\u81F3\u9636\u6BB5\uFF1A__\u9636\u6BB5\u8FDB\u5EA6__\uFF1B\u4E3A\u786E\u4FDD\u540E\u7EED\u4EA4\u4ED8\u4E0D\u53D7\u5F71\u54CD\uFF0C\u9700\u8981\u8D35\u65B9\u5728 __\u4ECA\u65E5/\u672C\u5468\u4E94__ \u524D\u534F\u52A9\u786E\u8BA4\uFF1A",
-    "1. __\u5F85\u786E\u8BA4\u70B9 1__",
-    "2. __\u5F85\u786E\u8BA4\u70B9 2__",
-    "",
-    "\u5982\u6709\u4EFB\u4F55\u5361\u70B9\u6216\u9700\u6211\u4EEC\u914D\u5408\u8C03\u6574\u4E4B\u5904\uFF0C\u968F\u65F6\u6C9F\u901A\uFF0C\u611F\u8C22\uFF01{{xlc:cursor}}",
-    "",
-    "## \u5E38\u89C1\u95EE\u9898\u89E3\u7B54 FAQ",
-    "",
-    "<!-- xlc-item",
-    "id: xlc-pack00000020",
-    "type: markdown",
-    "tags: \u5BA2\u670D,\u652F\u6301,FAQ",
-    "category: \u5BA2\u670D",
-    "source-type: external",
-    "-->",
-    "### Q: {{xlc:ask:\u54A8\u8BE2\u95EE\u9898}}",
-    "",
-    "**A:** \u9488\u5BF9\u60A8\u54A8\u8BE2\u7684\u95EE\u9898\uFF0C\u5EFA\u8BAE\u6309\u4EE5\u4E0B\u6B65\u9AA4\u6392\u67E5\u4E0E\u5904\u7406\uFF1A",
-    "1. \u786E\u8BA4\u7CFB\u7EDF\u73AF\u5883\u4E0E\u7248\u672C\u662F\u5426\u7B26\u5408\u8981\u6C42\uFF1B",
-    "2. __\u5904\u7406\u6B65\u9AA4\u6216\u6838\u5FC3\u89E3\u7B54__\uFF1B",
-    "3. \u5982\u4ECD\u672A\u89E3\u51B3\uFF0C\u53EF\u53C2\u8003\u6587\u6863\uFF1A__\u94FE\u63A5__\uFF0C\u6216\u5C06\u9519\u8BEF\u622A\u56FE\u56DE\u590D\u6211\u4EEC\u3002",
-    "",
-    "> \u{1F4A1} \u63D0\u793A\uFF1A\u672C\u7B54\u590D\u9002\u7528\u4E8E\u5E38\u89C1\u6807\u51C6\u6D41\u7A0B\uFF1B\u590D\u6742\u7279\u6B8A\u60C5\u51B5\u8BF7\u8F6C\u4EBA\u5DE5\u4E13\u9879\u5DE5\u5355\u8DDF\u8FDB\u3002{{xlc:cursor}}",
-    "",
-    // ---- 场景⑤ 单行资料与代码格式示例（符合当前 B-006 写入边界） ----
-    "## \u90AE\u7BB1\u5730\u5740\uFF08\u5355\u884C\u793A\u4F8B\uFF09",
-    "",
-    "<!-- xlc-item",
-    "id: xlc-pack00000021",
-    "type: text",
-    "tags: \u90AE\u7BB1,\u5355\u884C\u793A\u4F8B",
-    "category: \u90AE\u7BB1",
-    "source-type: external",
-    "-->",
-    "\u90AE\u7BB1\uFF1A{{xlc:ask:\u90AE\u7BB1}}",
-    "",
-    "## \u6536\u4EF6\u5730\u5740\uFF08\u5355\u884C\u793A\u4F8B\uFF09",
-    "",
-    "<!-- xlc-item",
-    "id: xlc-pack00000022",
-    "type: text",
-    "tags: \u5730\u5740,\u5355\u884C\u793A\u4F8B",
-    "category: \u5730\u5740",
-    "source-type: external",
-    "-->",
-    "\u6536\u4EF6\u5730\u5740\uFF1A{{xlc:ask:\u7701\u5E02\u533A}} {{xlc:ask:\u8BE6\u7EC6\u5730\u5740}}\uFF08{{xlc:ask:\u6536\u4EF6\u4EBA}}\uFF09",
-    "",
-    "## \u8EAB\u4EFD\u8BC1\u53F7\uFF08\u65E0\u6548\u5360\u4F4D\uFF09",
-    "",
-    "<!-- xlc-item",
-    "id: xlc-pack00000023",
-    "type: text",
-    "tags: \u8EAB\u4EFD,\u5360\u4F4D,\u9690\u79C1",
-    "category: \u4E2A\u4EBA\u8D44\u6599",
-    "source-type: external",
-    "-->",
-    "\u8EAB\u4EFD\u8BC1\u53F7\uFF08\u65E0\u6548\u5360\u4F4D\uFF0C\u4EC5\u7528\u4E8E\u6392\u7248\u6D4B\u8BD5\uFF09\uFF1A000000000000000000",
-    "",
-    "## \u5E38\u7528\u7F51\u5740\uFF08\u5355\u884C\u793A\u4F8B\uFF09",
-    "",
-    "<!-- xlc-item",
-    "id: xlc-pack00000024",
-    "type: url",
-    "tags: \u7F51\u5740,\u94FE\u63A5",
-    "category: \u5F00\u53D1",
-    "source-type: external",
-    "url: https://example.com/docs",
-    "-->",
-    "https://example.com/docs",
-    "",
-    "## JSON \u914D\u7F6E\u7247\u6BB5",
-    "",
-    "<!-- xlc-item",
-    "id: xlc-pack00000025",
-    "type: code",
-    "tags: \u5F00\u53D1,JSON,\u4EE3\u7801",
-    "category: \u5F00\u53D1",
-    "source-type: external",
-    "-->",
-    "```json",
-    "{",
-    '  "name": "example",',
-    '  "enabled": true,',
-    '  "tags": ["common", "template"]',
-    "}",
-    "```"
-  ].join("\n");
-
-  // src/ui/settings-dialog.ts
-  var activeSetupDialog = null;
-  var activeSettingsDialog = null;
-  var espansoParserPromise = null;
-  function loadEspansoParser() {
-    espansoParserPromise != null ? espansoParserPromise : espansoParserPromise = Promise.resolve().then(() => (init_espanso_import(), espanso_import_exports));
-    return espansoParserPromise;
-  }
-  function buildSwitchRow(text, sub, checked, onChange) {
-    const row = document.createElement("label");
-    row.className = "xlc-setting-row";
-    const cap = document.createElement("span");
-    cap.className = "xlc-setting-text";
-    cap.textContent = text;
-    if (sub) {
-      const subEl = document.createElement("span");
-      subEl.className = "xlc-setting-sub";
-      subEl.textContent = sub;
-      cap.appendChild(subEl);
-    }
-    const box = document.createElement("input");
-    box.type = "checkbox";
-    box.className = "xlc-switch";
-    box.dataset.xlcControl = `settings.switch.${text}`;
-    box.checked = checked;
-    box.addEventListener("change", () => onChange(box.checked));
-    row.appendChild(cap);
-    row.appendChild(box);
-    return row;
-  }
-  function openSetupDialog(ctx, opts) {
-    var _a, _b, _c;
-    if ((_a = activeSetupDialog == null ? void 0 : activeSetupDialog.element) == null ? void 0 : _a.isConnected) {
-      (_b = activeSetupDialog.element.querySelector("input, select, button")) == null ? void 0 : _b.focus();
-      return;
-    }
-    activeSetupDialog = null;
-    const t = ctx.t;
-    const dialog = new import_siyuan3.Dialog({
-      title: t("setupTitle"),
-      content: "",
-      width: "min(680px, 92vw)",
-      height: "min(820px, 92vh)"
-      // 首次快速开始卡需要留出阅读空间，长屏仍保持视口内滚动（R175）
-    });
-    activeSetupDialog = dialog;
-    (_c = dialog.element.querySelector(".b3-dialog__container")) == null ? void 0 : _c.classList.add("xlc-form-host", "xlc-settings-host", "xlc-setup-root-host");
-    const body = getDialogBody(dialog.element);
-    if (!body) return;
-    body.innerHTML = "";
-    const root = document.createElement("div");
-    root.className = "xlc-form xlc-setup";
-    buildLibraryPickerSection(ctx, root, () => {
-      var _a2;
-      dialog.destroy();
-      (_a2 = opts == null ? void 0 : opts.onConfigured) == null ? void 0 : _a2.call(opts);
-    }, { onDismiss: () => dialog.destroy() });
-    body.appendChild(root);
-  }
-  function openSettingsDialog(ctx) {
-    var _a, _b, _c, _d;
-    if ((_a = activeSettingsDialog == null ? void 0 : activeSettingsDialog.element) == null ? void 0 : _a.isConnected) {
-      (_b = activeSettingsDialog.element.querySelector("input, select, button")) == null ? void 0 : _b.focus();
-      return;
-    }
-    activeSettingsDialog = null;
-    const t = ctx.t;
-    const dialog = new import_siyuan3.Dialog({
-      title: t("openSettings"),
-      content: "",
-      width: "min(720px, 92vw)",
-      height: "min(860px, 92vh)"
-      // 固定高：展开/收起/提示行显隐不再顶跳弹窗（R146）
-    });
-    activeSettingsDialog = dialog;
-    (_c = dialog.element.querySelector(".b3-dialog__container")) == null ? void 0 : _c.classList.add("xlc-form-host", "xlc-settings-host", "xlc-settings-root-host");
-    const body = getDialogBody(dialog.element);
-    if (!body) return;
-    body.innerHTML = "";
-    const root = document.createElement("div");
-    root.className = "xlc-form xlc-settings";
-    const intro = document.createElement("p");
-    intro.className = "xlc-page-intro";
-    intro.textContent = t("settingsIntro");
-    root.appendChild(intro);
-    const libSec = document.createElement("div");
-    libSec.className = "xlc-form-field xlc-card";
-    const libLabel = document.createElement("span");
-    libLabel.className = "xlc-form-label";
-    libLabel.textContent = t("librarySection");
-    libSec.appendChild(libLabel);
-    const libStatus = document.createElement("div");
-    libStatus.className = "xlc-form-hint";
-    const cfg = ctx.getConfig();
-    libStatus.textContent = cfg ? cfg.mode === "notebook" ? t("libModeNotebook", String(cfg.notebookIds.length)) : cfg.mode === "tree" ? t("libModeTree", String(cfg.containerDocIds.length)) : t("libModeDoc", String(cfg.containerDocIds.length)) : t("libraryNone");
-    const changeBtn = document.createElement("button");
-    changeBtn.className = "b3-button";
-    changeBtn.dataset.xlcControl = "settings.library.change";
-    changeBtn.textContent = t("openSettingsChangeLib");
-    changeBtn.setAttribute("aria-expanded", "false");
-    const libRow = document.createElement("div");
-    libRow.className = "xlc-setting-row";
-    const statusText = document.createElement("span");
-    statusText.className = "xlc-setting-text";
-    statusText.textContent = libStatus.textContent;
-    libRow.appendChild(statusText);
-    libRow.appendChild(changeBtn);
-    libSec.appendChild(libRow);
-    const pickerHost = document.createElement("div");
-    pickerHost.style.display = "none";
-    changeBtn.addEventListener("click", () => {
-      const show = pickerHost.style.display === "none";
-      pickerHost.style.display = show ? "" : "none";
-      changeBtn.setAttribute("aria-expanded", show ? "true" : "false");
-      if (show && pickerHost.childElementCount === 0) {
-        buildLibraryPickerSection(ctx, pickerHost, () => dialog.destroy());
-      }
-      if (show) requestAnimationFrame(() => {
-        var _a2;
-        try {
-          (_a2 = pickerHost.querySelector(".b3-text-field")) == null ? void 0 : _a2.focus();
-        } catch {
-        }
-      });
-    });
-    libSec.appendChild(pickerHost);
-    root.appendChild(libSec);
-    if (cfg) {
-      const modeLabel = (_d = libStatus.textContent) != null ? _d : "";
-      const setLocation = (location) => {
-        statusText.textContent = `${modeLabel} \xB7 ${location}`;
-      };
-      if (cfg.mode === "notebook") {
-        void ctx.library.listNotebooks().then((result) => {
-          if (!result.ok) return;
-          const names = cfg.notebookIds.map((id) => {
-            var _a2, _b2;
-            return (_b2 = (_a2 = result.data.find((nb) => nb.id === id)) == null ? void 0 : _a2.name) != null ? _b2 : id;
-          });
-          if (names.length) setLocation(names.join(", "));
-        });
-      } else {
-        const docId = cfg.containerDocIds[0];
-        if (docId) void ctx.library.getDocPath(docId).then((hPath) => {
-          if (hPath) setLocation(hPath);
-        });
-      }
-    }
-    buildAiSection(ctx, root);
-    buildInsertSection(ctx, root);
-    buildSearchSection(ctx, root);
-    buildSavedViewsSection(ctx, root, () => dialog.destroy());
-    buildProviderSection(ctx, root);
-    buildDataSection(ctx, root);
-    body.appendChild(root);
-  }
-  async function openPackExportDialog(ctx) {
-    var _a;
-    const t = ctx.t;
-    const idx = await ctx.library.ensureIndex();
-    if (idx.truncated || idx.stopped || idx.errors.length > 0) {
-      throw new ExportIntegrityError("index-incomplete");
-    }
-    const all = Array.from(idx.items.values());
-    const categories = Array.from(new Set(all.map((i) => i.category).filter(Boolean))).sort((a, b) => a.localeCompare(b, "zh-Hans-CN"));
-    const dialog = new import_siyuan3.Dialog({
-      title: t("packExportTitle"),
-      content: "",
-      width: "min(580px, 92vw)",
-      height: "min(680px, 90vh)"
-      // 固定高：分类切换不顶跳（R146）
-    });
-    (_a = dialog.element.querySelector(".b3-dialog__container")) == null ? void 0 : _a.classList.add("xlc-form-host", "xlc-settings-host");
-    const body = getDialogBody(dialog.element);
-    if (!body) return;
-    body.innerHTML = "";
-    const wrap = document.createElement("div");
-    wrap.className = "xlc-form";
-    const meta = document.createElement("div");
-    meta.className = "xlc-import-meta";
-    wrap.appendChild(meta);
-    const paintMeta = (count, varCount) => {
-      meta.textContent = "";
-      const countBadge = document.createElement("span");
-      countBadge.className = "xlc-badge xlc-badge--markdown";
-      countBadge.textContent = t("itemCountBadge", String(count));
-      meta.appendChild(countBadge);
-      if (varCount > 0) {
-        const varBadge = document.createElement("span");
-        varBadge.className = "xlc-badge xlc-badge--var";
-        varBadge.textContent = t("packVarsBadge", String(varCount));
-        meta.appendChild(varBadge);
-      }
-    };
-    const catWrap = document.createElement("div");
-    catWrap.className = "xlc-form-field";
-    const catLabel = document.createElement("label");
-    catLabel.className = "xlc-form-label";
-    catLabel.textContent = t("packCategoryLabel");
-    catWrap.appendChild(catLabel);
-    const catSelect = document.createElement("select");
-    catSelect.className = "b3-select";
-    catSelect.id = "xlc-pack-category";
-    catLabel.htmlFor = catSelect.id;
-    const allOpt = document.createElement("option");
-    allOpt.value = "";
-    allOpt.textContent = t("allCategories");
-    catSelect.appendChild(allOpt);
-    for (const c of categories) {
-      const opt = document.createElement("option");
-      opt.value = c;
-      opt.textContent = c;
-      catSelect.appendChild(opt);
-    }
-    catWrap.appendChild(catSelect);
-    wrap.appendChild(catWrap);
-    const nameWrap = document.createElement("div");
-    nameWrap.className = "xlc-form-field";
-    const nameLabel = document.createElement("label");
-    nameLabel.className = "xlc-form-label";
-    nameLabel.textContent = t("packNameLabel");
-    nameWrap.appendChild(nameLabel);
-    const nameInput = document.createElement("input");
-    nameInput.className = "b3-text-field";
-    nameInput.id = "xlc-pack-name";
-    nameLabel.htmlFor = nameInput.id;
-    nameInput.value = t("packNameDefault");
-    nameWrap.appendChild(nameInput);
-    wrap.appendChild(nameWrap);
-    const contents = document.createElement("div");
-    contents.className = "xlc-form-hint";
-    contents.style.lineHeight = "1.8";
-    contents.style.whiteSpace = "pre-line";
-    contents.textContent = t("packContentsHint");
-    wrap.appendChild(contents);
-    const trustHint = document.createElement("div");
-    trustHint.className = "xlc-form-hint";
-    trustHint.style.marginTop = "8px";
-    trustHint.textContent = t("packTrustHint");
-    wrap.appendChild(trustHint);
-    const actions = document.createElement("div");
-    actions.className = "xlc-form-actions";
-    const cancelBtn = document.createElement("button");
-    cancelBtn.className = "b3-button";
-    cancelBtn.dataset.xlcControl = "settings.pack-export.cancel";
-    cancelBtn.textContent = t("cancel");
-    cancelBtn.addEventListener("click", () => dialog.destroy());
-    actions.appendChild(cancelBtn);
-    const exportBtn = document.createElement("button");
-    exportBtn.className = "b3-button xlc-btn-primary";
-    exportBtn.textContent = t("packExportBtn");
-    exportBtn.addEventListener("click", () => {
-      const packName = nameInput.value.trim() || t("packNameDefault");
-      const category = catSelect.value;
-      const items = category ? all.filter((i) => i.category === category) : all;
-      if (items.length === 0) {
-        ctx.notify("error", t("exportEmpty"));
-        return;
-      }
-      if (exportBtn.disabled) return;
-      exportBtn.disabled = true;
-      exportBtn.textContent = t("indexing");
-      void (async () => {
-        const kramdownById = await collectKramdown(ctx, items);
-        const result = await buildMarkdownExport(items, kramdownById, (assetPath) => ctx.fetchAssetBytes(assetPath), { name: packName });
-        const zipBytes = buildZip(result.entries);
-        const blob = new Blob([zipBytes], { type: "application/zip" });
-        const a = document.createElement("a");
-        a.href = URL.createObjectURL(blob);
-        const safeName = packName.replace(/[\\/:*?"<>|\s]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40) || "pack";
-        a.download = `${safeName}-${(/* @__PURE__ */ new Date()).toISOString().slice(0, 10)}.zip`;
-        a.click();
-        setTimeout(() => URL.revokeObjectURL(a.href), 4e3);
-        dialog.destroy();
-        ctx.notify("info", t("exportMdDone", String(result.itemCount), String(result.assetCount), String(result.skippedAssets.length)));
-      })().catch((err) => {
-        exportBtn.disabled = false;
-        exportBtn.textContent = t("packExportBtn");
-        ctx.notify("error", formatExportError(ctx, err));
-      });
-    });
-    actions.appendChild(exportBtn);
-    wrap.appendChild(actions);
-    body.appendChild(wrap);
-    const repaint = () => {
-      const category = catSelect.value;
-      const items = category ? all.filter((i) => i.category === category) : all;
-      const withVars = items.filter((i) => {
-        var _a2;
-        return ((_a2 = i.varCount) != null ? _a2 : 0) > 0;
-      }).length;
-      paintMeta(items.length, withVars);
-    };
-    catSelect.addEventListener("change", repaint);
-    repaint();
-  }
-  async function collectKramdown(ctx, items) {
-    const kramdownById = /* @__PURE__ */ new Map();
-    for (const item of items) {
-      const kd = await ctx.library.getStoredItemKramdown(item);
-      if (!kd.ok) throw new ExportIntegrityError("item-unreadable", item.title || item.id, kd.message);
-      kramdownById.set(item.id, kd.data);
-    }
-    return kramdownById;
-  }
-  function formatExportError(ctx, err) {
-    if (err instanceof ExportIntegrityError) {
-      switch (err.reason) {
-        case "index-incomplete":
-          return ctx.t("exportIncompleteIndex");
-        case "item-unreadable":
-          return ctx.t("exportItemReadFailed", err.itemLabel, err.detail);
-        case "body-missing":
-          return ctx.t("exportBodyMissing", err.itemLabel);
-        case "too-large":
-          return ctx.t("exportTooLarge", err.detail);
-      }
-    }
-    return ctx.t("kernelError", toErrorMessage(err));
-  }
-  function buildInsertSection(ctx, root) {
-    const t = ctx.t;
-    const sec = document.createElement("div");
-    sec.className = "xlc-form-field xlc-card";
-    const label = document.createElement("span");
-    label.className = "xlc-form-label";
-    label.textContent = t("insertSection");
-    sec.appendChild(label);
-    sec.appendChild(buildSwitchRow(
-      t("promptVariablesToggle"),
-      t("promptVariablesSub"),
-      ctx.state.insert.promptVariables,
-      (value) => {
-        ctx.state.insert.promptVariables = value;
-        ctx.persistSoon();
-      }
-    ));
-    sec.appendChild(buildSwitchRow(
-      t("recordUsageToggle"),
-      t("recordUsageSub"),
-      ctx.state.insert.recordUsage,
-      (value) => {
-        ctx.state.insert.recordUsage = value;
-        ctx.persistSoon();
-      }
-    ));
-    const foot = document.createElement("div");
-    foot.className = "xlc-setting-row";
-    const hint = document.createElement("span");
-    hint.className = "xlc-setting-text";
-    hint.textContent = t("usageStatsHint");
-    foot.appendChild(hint);
-    const clearBtn = document.createElement("button");
-    clearBtn.className = "b3-button";
-    const hasUsage = () => Object.values(ctx.state.usage).some((item) => item.count > 0);
-    const syncClearUsage = () => {
-      clearBtn.disabled = !hasUsage();
-      clearBtn.textContent = hasUsage() ? t("clearUsageBtn") : t("clearUsageEmpty");
-    };
-    syncClearUsage();
-    clearBtn.addEventListener("click", () => {
-      if (!hasUsage()) return;
-      (0, import_siyuan3.confirm)("\u26A0\uFE0F " + t("clearUsageBtn"), t("clearUsageConfirm"), () => {
-        var _a;
-        ctx.state.usage = {};
-        ctx.persistSoon();
-        (_a = ctx.refreshSearch) == null ? void 0 : _a.call(ctx);
-        syncClearUsage();
-        paintSummary();
-        ctx.notify("info", t("clearUsageDone"));
-      });
-    });
-    foot.appendChild(clearBtn);
-    sec.appendChild(foot);
-    const summary = document.createElement("div");
-    summary.className = "xlc-usage-summary";
-    summary.dataset.xlcControl = "settings.usage.summary";
-    summary.setAttribute("role", "status");
-    summary.setAttribute("aria-live", "polite");
-    const paintSummary = () => {
-      const current = summarizeUsage(ctx.state.usage);
-      summary.textContent = t("usageStatsSummary", String(current.totalCount), String(current.trackedItems));
-    };
-    paintSummary();
-    sec.appendChild(summary);
-    root.appendChild(sec);
-  }
-  function buildProviderSection(ctx, root) {
-    const t = ctx.t;
-    const provSec = document.createElement("div");
-    provSec.className = "xlc-form-field xlc-card";
-    const provLabel = document.createElement("span");
-    provLabel.className = "xlc-form-label";
-    provLabel.textContent = t("providerSection");
-    provSec.appendChild(provLabel);
-    const providers = ctx.registry.list();
-    if (providers.length === 0) {
-      const empty = document.createElement("div");
-      empty.className = "xlc-form-hint";
-      empty.textContent = t("providerNone");
-      provSec.appendChild(empty);
-    } else {
-      for (const p of providers) {
-        const row = document.createElement("div");
-        row.className = "xlc-setting-row";
-        const status = document.createElement("span");
-        status.className = "xlc-badge " + (p.runtime ? "xlc-badge--ai" : "xlc-badge--warn");
-        status.textContent = p.runtime ? t("providerExecutable") : t("providerPendingReload");
-        const cap = document.createElement("span");
-        cap.textContent = `${p.record.displayName}\uFF08v${p.record.protocolVersion}\uFF09`;
-        row.appendChild(status);
-        row.appendChild(cap);
-        provSec.appendChild(row);
-      }
-    }
-    root.appendChild(provSec);
-  }
-  function buildStepsEl(current, caption) {
-    const steps = document.createElement("div");
-    steps.className = "xlc-steps";
-    const dot1 = document.createElement("span");
-    dot1.className = "xlc-step-dot" + (current === 1 ? " xlc-step-dot--on" : "");
-    dot1.textContent = current === 1 ? "1" : "\u2713";
-    steps.appendChild(dot1);
-    const line = document.createElement("span");
-    line.className = "xlc-step-line";
-    steps.appendChild(line);
-    const dot2 = document.createElement("span");
-    dot2.className = "xlc-step-dot" + (current === 2 ? " xlc-step-dot--on" : "");
-    dot2.textContent = "2";
-    steps.appendChild(dot2);
-    const cap = document.createElement("span");
-    cap.className = "xlc-step-cap";
-    cap.textContent = caption;
-    steps.appendChild(cap);
-    return steps;
-  }
-  function buildLibraryPickerSection(ctx, root, onConfigured, opts) {
-    const t = ctx.t;
-    let step = 1;
-    let setupRevision = 0;
-    let pickedDoc = null;
-    const stepsEl = buildStepsEl(1, t("setupStep1"));
-    root.appendChild(stepsEl);
-    const hint = document.createElement("p");
-    hint.className = "xlc-form-hint";
-    hint.style.marginBottom = "12px";
-    hint.textContent = t("setupHint");
-    root.appendChild(hint);
-    const usageGuide = document.createElement("p");
-    usageGuide.className = "xlc-form-hint";
-    usageGuide.style.whiteSpace = "pre-line";
-    usageGuide.textContent = t("setupUsageGuide");
-    root.appendChild(usageGuide);
-    const recommendation = document.createElement("p");
-    recommendation.className = "xlc-form-hint xlc-setup-recommendation";
-    recommendation.textContent = t("setupRecommendation");
-    root.appendChild(recommendation);
-    const existingConfig = ctx.getConfig();
-    const showQuickStart = !existingConfig;
-    if (showQuickStart) usageGuide.style.display = "none";
-    const quickStart = document.createElement("section");
-    quickStart.className = "xlc-setup-quickstart";
-    quickStart.setAttribute("aria-labelledby", "xlc-setup-quickstart-title");
-    const quickStartTitle = document.createElement("h3");
-    quickStartTitle.className = "xlc-setup-quickstart-title";
-    quickStartTitle.id = "xlc-setup-quickstart-title";
-    quickStartTitle.textContent = t("setupQuickStartTitle");
-    quickStart.appendChild(quickStartTitle);
-    const quickStartItems = [
-      ["1", t("setupQuickStart1Title"), t("setupQuickStart1Desc")],
-      ["2", t("setupQuickStart2Title"), t("setupQuickStart2Desc")],
-      ["3", t("setupQuickStart3Title"), t("setupQuickStart3Desc")]
-    ];
-    for (const [number, title, desc] of quickStartItems) {
-      const item = document.createElement("div");
-      item.className = "xlc-setup-quickstart-item";
-      const dot = document.createElement("span");
-      dot.className = "xlc-setup-quickstart-dot";
-      dot.textContent = number;
-      dot.setAttribute("aria-hidden", "true");
-      const copy = document.createElement("span");
-      copy.className = "xlc-setup-quickstart-copy";
-      const itemTitle = document.createElement("strong");
-      itemTitle.className = "xlc-setup-quickstart-item-title";
-      itemTitle.textContent = title;
-      const itemDesc = document.createElement("span");
-      itemDesc.className = "xlc-setup-quickstart-item-desc";
-      itemDesc.textContent = desc;
-      copy.append(itemTitle, itemDesc);
-      item.append(dot, copy);
-      quickStart.appendChild(item);
-    }
-    root.appendChild(quickStart);
-    if (!showQuickStart) quickStart.style.display = "none";
-    const step1 = document.createElement("div");
-    const modeWrap = document.createElement("div");
-    modeWrap.className = "xlc-form-field";
-    const modeLabel = document.createElement("label");
-    modeLabel.className = "xlc-form-label";
-    modeLabel.textContent = t("setupModeLabel");
-    modeWrap.appendChild(modeLabel);
-    const modeSelect = document.createElement("select");
-    modeSelect.className = "b3-select";
-    modeSelect.id = "xlc-setup-mode";
-    modeSelect.dataset.xlcControl = "setup.mode";
-    modeLabel.htmlFor = modeSelect.id;
-    const modes = [
-      { v: "new-doc", label: t("setupCreateNewDoc") },
-      { v: "new-notebook", label: t("setupCreateIndependentNotebook") },
-      { v: "doc", label: t("setupPickDoc") },
-      { v: "tree", label: t("setupPickDocTree") },
-      { v: "notebook", label: t("setupNotebook") }
-    ];
-    for (const m of modes) {
-      const opt = document.createElement("option");
-      opt.value = m.v;
-      opt.textContent = m.label;
-      modeSelect.appendChild(opt);
-    }
-    if (existingConfig) modeSelect.value = existingConfig.mode;
-    modeWrap.appendChild(modeSelect);
-    step1.appendChild(modeWrap);
-    const pickerWrap = document.createElement("div");
-    pickerWrap.className = "xlc-form-field";
-    const pickerInput = document.createElement("input");
-    pickerInput.className = "b3-text-field";
-    pickerInput.placeholder = t("docPicker");
-    pickerInput.setAttribute("aria-label", t("docPicker"));
-    pickerInput.dataset.xlcControl = "setup.docs.query";
-    pickerWrap.appendChild(pickerInput);
-    const pickerList = document.createElement("div");
-    pickerList.className = "xlc-doclist";
-    pickerWrap.appendChild(pickerList);
-    step1.appendChild(pickerWrap);
-    let pickerSeq = 0;
-    const currentDocId = (existingConfig == null ? void 0 : existingConfig.mode) !== "notebook" ? existingConfig == null ? void 0 : existingConfig.containerDocIds[0] : void 0;
-    const showDocPickerMessage = (message, retry) => {
-      pickerList.textContent = "";
-      const status = document.createElement("div");
-      status.className = "xlc-doclist-empty";
-      status.setAttribute("role", "status");
-      status.setAttribute("aria-live", "polite");
-      status.textContent = message;
-      pickerList.appendChild(status);
-      if (retry) {
-        const retryBtn = document.createElement("button");
-        retryBtn.type = "button";
-        retryBtn.className = "b3-button xlc-btn-ghost xlc-doclist-retry";
-        retryBtn.dataset.xlcControl = "setup.docs.retry";
-        retryBtn.textContent = t("retry");
-        retryBtn.addEventListener("click", retry);
-        pickerList.appendChild(retryBtn);
-      }
-    };
-    const searchPickerDocs = (keyword) => {
-      const seq = ++pickerSeq;
-      pickerList.innerHTML = "";
-      pickerList.removeAttribute("aria-busy");
-      pickedDoc = null;
-      syncNextState();
-      if (!keyword) return;
-      pickerList.setAttribute("aria-busy", "true");
-      showDocPickerMessage(t("loading"));
-      void ctx.library.searchDocs(keyword).then((result) => {
-        if (seq !== pickerSeq) return;
-        pickerList.removeAttribute("aria-busy");
-        if (!result.ok || result.data.length === 0) {
-          const message = result.ok ? t("docPickerEmpty") : t("kernelError", result.message);
-          showDocPickerMessage(message, result.ok ? void 0 : () => {
-            if (pickerInput.value.trim() === keyword) searchPickerDocs(keyword);
-          });
-          return;
-        }
-        pickerList.textContent = "";
-        for (const hit of result.data.slice(0, 8)) {
-          const item = document.createElement("button");
-          item.type = "button";
-          item.className = "xlc-doclist-item";
-          item.dataset.xlcControl = "setup.doc.result";
-          item.textContent = hit.hPath || hit.name || hit.id;
-          if (hit.id === currentDocId) {
-            pickedDoc = { id: hit.id, hPath: hit.hPath };
-            item.classList.add("xlc-doclist-item--on");
-          }
-          item.addEventListener("click", () => {
-            pickedDoc = { id: hit.id, hPath: hit.hPath };
-            pickerList.querySelectorAll(".xlc-doclist-item").forEach((el) => el.classList.remove("xlc-doclist-item--on"));
-            item.classList.add("xlc-doclist-item--on");
-            syncNextState();
-          });
-          pickerList.appendChild(item);
-        }
-        syncNextState();
-      }).catch((err) => {
-        if (seq !== pickerSeq) return;
-        pickerList.removeAttribute("aria-busy");
-        showDocPickerMessage(t("kernelError", toErrorMessage(err)), () => {
-          if (pickerInput.value.trim() === keyword) searchPickerDocs(keyword);
-        });
-      });
-    };
-    pickerInput.addEventListener("input", () => searchPickerDocs(pickerInput.value.trim()));
-    const nbWrap = document.createElement("div");
-    nbWrap.className = "xlc-form-field";
-    nbWrap.style.display = "none";
-    const nbLabel = document.createElement("label");
-    nbLabel.className = "xlc-form-label";
-    nbLabel.textContent = t("setupNotebook");
-    nbWrap.appendChild(nbLabel);
-    const nbSelect = document.createElement("select");
-    nbSelect.className = "b3-select";
-    nbSelect.id = "xlc-setup-notebook";
-    nbSelect.dataset.xlcControl = "setup.notebook";
-    nbSelect.disabled = true;
-    if ((existingConfig == null ? void 0 : existingConfig.mode) === "notebook" && existingConfig.notebookIds[0]) {
-      nbSelect.dataset.currentNotebook = existingConfig.notebookIds[0];
-    }
-    nbLabel.htmlFor = nbSelect.id;
-    nbWrap.appendChild(nbSelect);
-    const nbStatus = document.createElement("p");
-    nbStatus.className = "xlc-form-hint xlc-setup-notebook-status";
-    nbStatus.textContent = t("setupNotebookLoading");
-    nbWrap.appendChild(nbStatus);
-    const retryNotebooksBtn = document.createElement("button");
-    retryNotebooksBtn.type = "button";
-    retryNotebooksBtn.className = "b3-button xlc-btn-ghost xlc-setup-notebook-retry";
-    retryNotebooksBtn.dataset.xlcControl = "setup.notebook.retry";
-    retryNotebooksBtn.textContent = t("retry");
-    retryNotebooksBtn.style.display = "none";
-    nbWrap.appendChild(retryNotebooksBtn);
-    step1.appendChild(nbWrap);
-    let notebooksLoaded = false;
-    let notebooksLoading = false;
-    let notebookDocsChecking = false;
-    let checkedNotebookId = "";
-    let notebookDocsState = "unchecked";
-    const loadNotebooks = (force = false) => {
-      if (!force && notebooksLoaded || notebooksLoading) return;
-      notebooksLoading = true;
-      notebooksLoaded = false;
-      nbSelect.disabled = true;
-      nbStatus.textContent = t("setupNotebookLoading");
-      retryNotebooksBtn.style.display = "none";
-      retryNotebookAction = () => {
-        void loadNotebooks(true);
-      };
-      void ctx.library.listNotebooks().then((result) => {
-        nbSelect.textContent = "";
-        if (!result.ok) {
-          return;
-        }
-        if (result.data.length === 0) {
-          notebooksLoaded = true;
-          return;
-        }
-        const choose = document.createElement("option");
-        choose.value = "";
-        choose.textContent = t("setupChooseNotebook");
-        choose.disabled = true;
-        nbSelect.appendChild(choose);
-        for (const nb of result.data) {
-          const opt = document.createElement("option");
-          opt.value = nb.id;
-          opt.textContent = nb.name;
-          nbSelect.appendChild(opt);
-        }
-        nbSelect.value = nbSelect.dataset.currentNotebook && result.data.some((nb) => nb.id === nbSelect.dataset.currentNotebook) ? nbSelect.dataset.currentNotebook : "";
-        notebooksLoaded = true;
-        nbSelect.disabled = false;
-      }).catch(() => {
-      }).finally(() => {
-        notebooksLoading = false;
-        renderNotebookStatus();
-        syncCreateState();
-        syncNextState();
-      });
-    };
-    let retryNotebookAction = () => {
-      void loadNotebooks(true);
-    };
-    retryNotebooksBtn.addEventListener("click", () => retryNotebookAction());
-    const renderNotebookStatus = () => {
-      const selectedId = nbSelect.value;
-      if (notebooksLoading) {
-        nbStatus.textContent = t("setupNotebookLoading");
-        retryNotebooksBtn.style.display = "none";
-        return;
-      }
-      if (!notebooksLoaded) {
-        nbStatus.textContent = t("setupNotebookLoadFailed");
-        retryNotebooksBtn.style.display = "";
-        retryNotebookAction = () => {
-          void loadNotebooks(true);
-        };
-        return;
-      }
-      if (nbSelect.options.length <= 1) {
-        nbStatus.textContent = t("setupNotebookEmpty");
-        retryNotebooksBtn.style.display = "none";
-        return;
-      }
-      if (modeSelect.value !== "notebook" || !selectedId) {
-        nbStatus.textContent = t("setupNotebookReady");
-        retryNotebooksBtn.style.display = "none";
-        return;
-      }
-      if (notebookDocsChecking) {
-        nbStatus.textContent = t("setupNotebookDocsChecking");
-        retryNotebooksBtn.style.display = "none";
-        return;
-      }
-      if (checkedNotebookId !== selectedId || notebookDocsState === "unchecked") {
-        nbStatus.textContent = t("setupNotebookNeedsDocsCheck");
-        retryNotebooksBtn.style.display = "none";
-        return;
-      }
-      if (notebookDocsState === "ready") {
-        nbStatus.textContent = t("setupNotebookDocsReady");
-        retryNotebooksBtn.style.display = "none";
-        return;
-      }
-      nbStatus.textContent = notebookDocsState === "empty" ? t("setupNotebookNoDocs") : t("setupNotebookDocsCheckFailed");
-      retryNotebooksBtn.style.display = notebookDocsState === "error" ? "" : "none";
-      retryNotebookAction = () => {
-        const notebookId = nbSelect.value;
-        const revision = setupRevision;
-        void verifyNotebookHasDocs(notebookId).then((valid) => {
-          if (valid && setupRevision === revision && modeSelect.value === "notebook" && nbSelect.value === notebookId) gotoStep(2);
-        });
-      };
-    };
-    async function verifyNotebookHasDocs(notebookId) {
-      if (notebookDocsChecking || !notebookId) return false;
-      notebookDocsChecking = true;
-      checkedNotebookId = notebookId;
-      notebookDocsState = "unchecked";
-      nbSelect.disabled = true;
-      renderNotebookStatus();
-      try {
-        const result = await ctx.library.listNotebookDocs(notebookId);
-        if (!result.ok) {
-          notebookDocsState = "error";
-          ctx.notify("error", t("kernelError", result.message));
-          return false;
-        }
-        if (result.data.length === 0) {
-          notebookDocsState = "empty";
-          ctx.notify("error", t("setupNotebookNoDocs"));
-          return false;
-        }
-        notebookDocsState = "ready";
-        return true;
-      } catch (err) {
-        notebookDocsState = "error";
-        ctx.notify("error", t("kernelError", toErrorMessage(err)));
-        return false;
-      } finally {
-        notebookDocsChecking = false;
-        nbSelect.disabled = !notebooksLoaded || nbSelect.options.length <= 1;
-        renderNotebookStatus();
-        syncCreateState();
-        syncNextState();
-      }
-    }
-    const independentNotebookWrap = document.createElement("div");
-    independentNotebookWrap.className = "xlc-form-field xlc-setup-independent-notebook";
-    independentNotebookWrap.style.display = "none";
-    const independentNotebookLabel = document.createElement("label");
-    independentNotebookLabel.className = "xlc-form-label";
-    independentNotebookLabel.textContent = t("setupIndependentNotebookName");
-    independentNotebookWrap.appendChild(independentNotebookLabel);
-    const independentNotebookInput = document.createElement("input");
-    independentNotebookInput.className = "b3-text-field";
-    independentNotebookInput.id = "xlc-setup-independent-notebook";
-    independentNotebookInput.placeholder = t("setupIndependentNotebookNamePlaceholder");
-    independentNotebookInput.setAttribute("aria-label", t("setupIndependentNotebookName"));
-    independentNotebookInput.dataset.xlcControl = "setup.new-notebook.name";
-    independentNotebookLabel.htmlFor = independentNotebookInput.id;
-    independentNotebookWrap.appendChild(independentNotebookInput);
-    const independentNotebookHint = document.createElement("p");
-    independentNotebookHint.className = "xlc-form-hint";
-    independentNotebookHint.textContent = t("setupIndependentNotebookHint");
-    independentNotebookWrap.appendChild(independentNotebookHint);
-    const independentNotebookStatus = document.createElement("p");
-    independentNotebookStatus.className = "xlc-form-hint xlc-setup-create-status";
-    independentNotebookStatus.setAttribute("role", "status");
-    independentNotebookStatus.setAttribute("aria-live", "polite");
-    independentNotebookWrap.appendChild(independentNotebookStatus);
-    let orphanReceiptEl = null;
-    const clearOrphanReceipt = () => {
-      if (orphanReceiptEl) {
-        orphanReceiptEl.remove();
-        orphanReceiptEl = null;
-      }
-    };
-    step1.appendChild(independentNotebookWrap);
-    const syncModeUi = () => {
-      clearOrphanReceipt();
-      const mode = modeSelect.value;
-      const needsNotebook = mode === "notebook" || mode === "new-doc";
-      pickerWrap.style.display = mode === "doc" || mode === "tree" ? "" : "none";
-      nbWrap.style.display = needsNotebook ? "" : "none";
-      independentNotebookWrap.style.display = mode === "new-notebook" ? "" : "none";
-      nameWrap.style.display = mode === "new-doc" || mode === "new-notebook" ? "" : "none";
-      nbLabel.textContent = mode === "new-doc" ? t("setupCreateNotebook") : t("setupNotebook");
-      createBtn.dataset.xlcControl = mode === "new-notebook" ? "setup.new-notebook.create" : "setup.newdoc.create";
-      if (needsNotebook) loadNotebooks();
-      renderNotebookStatus();
-      syncCreateState();
-      syncNextState();
-    };
-    modeSelect.addEventListener("change", () => {
-      setupRevision++;
-      syncModeUi();
-    });
-    const nameWrap = document.createElement("div");
-    nameWrap.className = "xlc-form-field";
-    const nameLabel = document.createElement("label");
-    nameLabel.className = "xlc-form-label";
-    nameLabel.textContent = t("setupNewDoc");
-    nameWrap.appendChild(nameLabel);
-    const nameRow = document.createElement("div");
-    nameRow.className = "xlc-form-row";
-    const nameInput = document.createElement("input");
-    nameInput.className = "b3-text-field";
-    nameInput.id = "xlc-setup-newdoc";
-    nameInput.dataset.xlcControl = "setup.newdoc.title";
-    nameLabel.htmlFor = nameInput.id;
-    nameInput.value = t("setupNewDocName");
-    nameRow.appendChild(nameInput);
-    const createBtn = document.createElement("button");
-    createBtn.className = "b3-button";
-    createBtn.dataset.xlcControl = "setup.newdoc.create";
-    createBtn.style.whiteSpace = "nowrap";
-    createBtn.textContent = t("create");
-    createBtn.disabled = true;
-    let creatingLibrary = false;
-    createBtn.addEventListener("click", () => {
-      const mode = modeSelect.value;
-      const notebookId = mode === "new-doc" ? nbSelect.value : "";
-      const notebookName = independentNotebookInput.value.trim();
-      const title = nameInput.value.trim();
-      if (mode === "new-doc" && !notebookId || mode === "new-notebook" && !notebookName || !title) {
-        ctx.notify("error", t("invalidItem"));
-        return;
-      }
-      const revision = setupRevision;
-      const confirmText = mode === "new-notebook" ? t("setupIndependentConfirmCreate", notebookName, title) : t("setupConfirmCreate", title);
-      (0, import_siyuan3.confirm)("\u26A0\uFE0F " + t("setupTitle"), confirmText, () => {
-        if (creatingLibrary || setupRevision !== revision || modeSelect.value !== mode || mode === "new-doc" && nbSelect.value !== notebookId || mode === "new-notebook" && independentNotebookInput.value.trim() !== notebookName || nameInput.value.trim() !== title) return;
-        creatingLibrary = true;
-        clearOrphanReceipt();
-        modeSelect.disabled = true;
-        nbSelect.disabled = true;
-        nameInput.disabled = true;
-        independentNotebookInput.disabled = true;
-        createBtn.textContent = t("saving");
-        independentNotebookStatus.textContent = mode === "new-notebook" ? t("setupIndependentStepNotebook") : "";
-        independentNotebookStatus.classList.remove("xlc-form-error");
-        syncCreateState();
-        const createTask = mode === "new-notebook" ? ctx.library.createIndependentLibrary(notebookName, title, {
-          onProgress: (step3) => {
-            if (setupRevision !== revision || !creatingLibrary) return;
-            if (step3 === "creating-notebook") {
-              independentNotebookStatus.textContent = t("setupIndependentStepNotebook");
-            } else if (step3 === "creating-doc") {
-              independentNotebookStatus.textContent = t("setupIndependentStepDoc");
-            } else if (step3 === "rolling-back") {
-              independentNotebookStatus.textContent = t("setupIndependentStepRollback");
-            }
-          }
-        }) : ctx.library.createLibraryDoc(notebookId, title);
-        void createTask.then((result) => {
-          creatingLibrary = false;
-          modeSelect.disabled = false;
-          nbSelect.disabled = !notebooksLoaded || nbSelect.options.length <= 1;
-          nameInput.disabled = false;
-          independentNotebookInput.disabled = false;
-          createBtn.textContent = t("create");
-          syncCreateState();
-          if (!result.ok) {
-            const message = mode === "new-notebook" ? t("setupIndependentCreateFailed", result.message) : t("kernelError", result.message);
-            independentNotebookStatus.classList.toggle("xlc-form-error", mode === "new-notebook");
-            independentNotebookStatus.textContent = mode === "new-notebook" ? message : "";
-            nbStatus.textContent = mode === "new-notebook" ? message : t("kernelError", result.message);
-            if (mode === "new-notebook" && result.compensation === "failed" && result.notebookId) {
-              clearOrphanReceipt();
-              const orphanBox = document.createElement("div");
-              orphanBox.className = "xlc-form-field";
-              orphanBox.dataset.xlcControl = "setup.independent.orphan-notebook";
-              orphanBox.style.marginTop = "8px";
-              const warnP = document.createElement("p");
-              warnP.className = "xlc-form-hint xlc-form-error";
-              warnP.textContent = t("setupIndependentOrphanWarning", result.notebookId);
-              orphanBox.appendChild(warnP);
-              const copyBtn = document.createElement("button");
-              copyBtn.type = "button";
-              copyBtn.className = "b3-button";
-              copyBtn.dataset.xlcControl = "setup.independent.copy-orphan-id";
-              copyBtn.textContent = t("setupIndependentCopyOrphanId");
-              const orphanId = result.notebookId;
-              copyBtn.addEventListener("click", () => {
-                var _a;
-                try {
-                  if ((_a = navigator.clipboard) == null ? void 0 : _a.writeText) {
-                    void navigator.clipboard.writeText(orphanId);
-                  }
-                } catch {
-                }
-                copyBtn.textContent = t("setupIndependentOrphanCopied");
-                ctx.notify("info", t("setupIndependentOrphanCopied"));
-              });
-              orphanBox.appendChild(copyBtn);
-              independentNotebookWrap.appendChild(orphanBox);
-              orphanReceiptEl = orphanBox;
-            }
-            ctx.notify("error", message);
-            return;
-          }
-          const docId = result.data.docId;
-          const createdNotebookId = mode === "new-notebook" && "notebookId" in result.data && typeof result.data.notebookId === "string" ? result.data.notebookId : "";
-          ctx.applyConfig({
-            configVersion: CONFIG_VERSION,
-            mode: "doc",
-            notebookIds: [],
-            containerDocIds: [docId],
-            createdDocIds: [docId],
-            ...createdNotebookId ? { createdNotebookIds: [createdNotebookId] } : {},
-            configuredAt: Date.now()
-          });
-          independentNotebookStatus.textContent = "";
-          independentNotebookStatus.classList.remove("xlc-form-error");
-          ctx.notify("info", t("libDocCreated", title));
-          onConfigured();
-        }).catch((err) => {
-          creatingLibrary = false;
-          modeSelect.disabled = false;
-          nbSelect.disabled = !notebooksLoaded || nbSelect.options.length <= 1;
-          nameInput.disabled = false;
-          independentNotebookInput.disabled = false;
-          createBtn.textContent = t("create");
-          syncCreateState();
-          const message = mode === "new-notebook" ? t("setupIndependentCreateFailed", toErrorMessage(err)) : t("kernelError", toErrorMessage(err));
-          independentNotebookStatus.classList.toggle("xlc-form-error", mode === "new-notebook");
-          independentNotebookStatus.textContent = mode === "new-notebook" ? message : "";
-          ctx.notify("error", message);
-        });
-      });
-    });
-    nameRow.appendChild(createBtn);
-    nameWrap.appendChild(nameRow);
-    step1.appendChild(nameWrap);
-    function syncCreateState() {
-      const mode = modeSelect.value;
-      createBtn.disabled = creatingLibrary || mode === "new-doc" && (!notebooksLoaded || !nbSelect.value) || mode !== "new-doc" && mode !== "new-notebook" || mode === "new-notebook" && !independentNotebookInput.value.trim() || !nameInput.value.trim();
-    }
-    nbSelect.addEventListener("change", () => {
-      setupRevision++;
-      checkedNotebookId = "";
-      notebookDocsState = "unchecked";
-      renderNotebookStatus();
-      syncCreateState();
-      syncNextState();
-    });
-    nameInput.addEventListener("input", () => {
-      clearOrphanReceipt();
-      syncCreateState();
-    });
-    independentNotebookInput.addEventListener("input", () => {
-      clearOrphanReceipt();
-      syncCreateState();
-    });
-    const step1Actions = document.createElement("div");
-    step1Actions.className = "xlc-form-actions";
-    if (opts == null ? void 0 : opts.onDismiss) {
-      const dismissBtn = document.createElement("button");
-      dismissBtn.className = "b3-button xlc-btn-ghost";
-      dismissBtn.dataset.xlcControl = "setup.later";
-      dismissBtn.textContent = t("setupLater");
-      dismissBtn.addEventListener("click", () => {
-        var _a;
-        return (_a = opts.onDismiss) == null ? void 0 : _a.call(opts);
-      });
-      step1Actions.appendChild(dismissBtn);
-    }
-    const nextBtn = document.createElement("button");
-    nextBtn.className = "b3-button xlc-btn-primary";
-    nextBtn.dataset.xlcControl = "setup.next";
-    nextBtn.textContent = t("setupNext");
-    nextBtn.disabled = true;
-    nextBtn.addEventListener("click", () => {
-      const mode = modeSelect.value;
-      if (mode === "notebook" && !nbSelect.value) {
-        ctx.notify("error", nbSelect.disabled ? t("setupNotebookNotReady") : t("pickNotebookFirst"));
-        return;
-      }
-      if (mode !== "notebook" && !pickedDoc) {
-        ctx.notify("error", t("pickDocFirst"));
-        return;
-      }
-      if (mode === "notebook") {
-        const notebookId = nbSelect.value;
-        const revision = setupRevision;
-        nextBtn.disabled = true;
-        void verifyNotebookHasDocs(notebookId).then((valid) => {
-          if (valid && setupRevision === revision && modeSelect.value === "notebook" && nbSelect.value === notebookId) gotoStep(2);
-        }).finally(() => syncNextState());
-        return;
-      }
-      gotoStep(2);
-    });
-    step1Actions.appendChild(nextBtn);
-    step1.appendChild(step1Actions);
-    function syncNextState() {
-      const mode = modeSelect.value;
-      const rootCheckFailed = checkedNotebookId === nbSelect.value && (notebookDocsState === "empty" || notebookDocsState === "error");
-      nextBtn.style.display = mode === "new-doc" || mode === "new-notebook" ? "none" : "";
-      nextBtn.disabled = mode === "notebook" ? !notebooksLoaded || !nbSelect.value || notebookDocsChecking || rootCheckFailed : mode === "new-doc" || mode === "new-notebook" || !pickedDoc;
-    }
-    syncModeUi();
-    root.appendChild(step1);
-    const step2 = document.createElement("div");
-    step2.style.display = "none";
-    const summaryWrap = document.createElement("div");
-    summaryWrap.className = "xlc-policy-list";
-    step2.appendChild(summaryWrap);
-    const summaryHint = document.createElement("p");
-    summaryHint.className = "xlc-form-hint";
-    summaryHint.style.marginTop = "12px";
-    summaryHint.textContent = t("setupConfirmHint");
-    step2.appendChild(summaryHint);
-    const step2Actions = document.createElement("div");
-    step2Actions.className = "xlc-form-actions";
-    const backBtn = document.createElement("button");
-    backBtn.className = "b3-button xlc-btn-ghost";
-    backBtn.dataset.xlcControl = "setup.back";
-    backBtn.textContent = t("setupBack");
-    backBtn.addEventListener("click", () => gotoStep(1));
-    step2Actions.appendChild(backBtn);
-    const finishBtn = document.createElement("button");
-    finishBtn.className = "b3-button xlc-btn-primary";
-    finishBtn.dataset.xlcControl = "setup.finish";
-    finishBtn.textContent = t("setupFinish");
-    finishBtn.addEventListener("click", () => {
-      const mode = modeSelect.value;
-      if (mode === "notebook") {
-        const notebookId = nbSelect.value;
-        if (!notebookId) {
-          ctx.notify("error", t("invalidItem"));
-          return;
-        }
-        const revision = setupRevision;
-        finishBtn.disabled = true;
-        void verifyNotebookHasDocs(notebookId).then((valid) => {
-          if (setupRevision !== revision || step !== 2 || modeSelect.value !== "notebook" || nbSelect.value !== notebookId) return;
-          if (!valid) {
-            gotoStep(1);
-            return;
-          }
-          ctx.applyConfig({
-            configVersion: CONFIG_VERSION,
-            mode: "notebook",
-            notebookIds: [notebookId],
-            containerDocIds: [],
-            createdDocIds: [],
-            configuredAt: Date.now()
-          });
-          onConfigured();
-        }).finally(() => {
-          finishBtn.disabled = false;
-          syncNextState();
-        });
-        return;
-      }
-      if (!pickedDoc) {
-        ctx.notify("error", t("pickDocFirst"));
-        return;
-      }
-      ctx.applyConfig({
-        configVersion: CONFIG_VERSION,
-        mode,
-        notebookIds: [],
-        containerDocIds: [pickedDoc.id],
-        createdDocIds: [],
-        configuredAt: Date.now()
-      });
-      onConfigured();
-    });
-    step2Actions.appendChild(finishBtn);
-    step2.appendChild(step2Actions);
-    root.appendChild(step2);
-    function paintSummary() {
-      var _a, _b;
-      summaryWrap.textContent = "";
-      const mode = modeSelect.value;
-      const card = document.createElement("div");
-      card.className = "xlc-policy xlc-policy--recommended";
-      const icon = document.createElement("span");
-      icon.className = "xlc-policy-ic";
-      icon.textContent = "\u2713";
-      card.appendChild(icon);
-      const text = document.createElement("span");
-      const titleEl = document.createElement("span");
-      titleEl.className = "xlc-policy-title";
-      titleEl.textContent = mode === "notebook" ? `${t("setupNotebook")} \xB7 ${(_b = (_a = nbSelect.selectedOptions[0]) == null ? void 0 : _a.textContent) != null ? _b : nbSelect.value}` : (pickedDoc == null ? void 0 : pickedDoc.hPath) || (pickedDoc == null ? void 0 : pickedDoc.id) || "-";
-      text.appendChild(titleEl);
-      const desc = document.createElement("span");
-      desc.className = "xlc-policy-desc";
-      desc.textContent = mode === "notebook" ? t("setupSummaryNotebook") : mode === "tree" ? t("setupSummaryTree") : t("setupSummaryDoc");
-      text.appendChild(desc);
-      card.appendChild(text);
-      summaryWrap.appendChild(card);
-    }
-    function gotoStep(next) {
-      setupRevision++;
-      step = next;
-      stepsEl.remove();
-      root.insertBefore(buildStepsEl(step, step === 1 ? t("setupStep1") : t("setupStep2")), root.firstChild);
-      step1.style.display = step === 1 ? "" : "none";
-      hint.style.display = step === 1 ? "" : "none";
-      usageGuide.style.display = step === 1 && !showQuickStart ? "" : "none";
-      recommendation.style.display = step === 1 ? "" : "none";
-      quickStart.style.display = step === 1 && showQuickStart ? "" : "none";
-      step2.style.display = step === 2 ? "" : "none";
-      if (step === 2) paintSummary();
-    }
-    if (existingConfig && existingConfig.mode !== "notebook") {
-      const currentDoc = existingConfig.containerDocIds[0];
-      if (currentDoc) {
-        void ctx.library.getDocPath(currentDoc).then((hPath) => {
-          var _a;
-          if (!hPath || pickerInput.value) return;
-          const pathParts = hPath.split("/").filter(Boolean);
-          pickerInput.value = (_a = pathParts[pathParts.length - 1]) != null ? _a : hPath;
-          pickerInput.dispatchEvent(new Event("input"));
-        });
-      }
-    }
-  }
-  function buildAiSection(ctx, root) {
-    const t = ctx.t;
-    const aiSec = document.createElement("div");
-    aiSec.className = "xlc-form-field xlc-card";
-    const aiLabel = document.createElement("span");
-    aiLabel.className = "xlc-form-label";
-    aiLabel.textContent = t("aiSection");
-    aiSec.appendChild(aiLabel);
-    const aiRow = (key, text, sub) => {
-      const row = buildSwitchRow(text, sub, ctx.state.ai[key], (value) => {
-        ctx.state.ai[key] = value;
-        if (key === "enabled" && !value) ctx.state.ai.shareContent = false;
-        ctx.ai.updateSettings(ctx.state.ai);
-        ctx.persistSoon();
-      });
-      aiSec.appendChild(row);
-      return row.querySelector(".xlc-switch");
-    };
-    const aiEnabledBox = aiRow("enabled", t("aiEnabled"), t("aiEnabledSub"));
-    const aiShareBox = aiRow("shareContent", t("aiShareContent"), t("aiShareContentSub"));
-    const syncAiShare = () => {
-      aiShareBox.disabled = !aiEnabledBox.checked;
-      if (!aiEnabledBox.checked) {
-        aiShareBox.checked = false;
-        ctx.state.ai.shareContent = false;
-      }
-    };
-    const dirtyShare = !aiEnabledBox.checked && ctx.state.ai.shareContent;
-    syncAiShare();
-    aiEnabledBox.addEventListener("change", syncAiShare);
-    if (dirtyShare) ctx.persistSoon();
-    const ctLabel = document.createElement("span");
-    ctLabel.className = "xlc-form-label";
-    ctLabel.style.marginTop = "6px";
-    ctLabel.textContent = t("customTransformSection");
-    aiSec.appendChild(ctLabel);
-    const ctList = document.createElement("div");
-    ctList.className = "xlc-ct-list";
-    aiSec.appendChild(ctList);
-    const persistCt = () => {
-      ctx.ai.updateSettings(ctx.state.ai);
-      ctx.persistSoon();
-    };
-    let addCtBtn = null;
-    const repaintCt = () => {
-      ctList.textContent = "";
-      for (const ct of ctx.state.ai.customTransforms) {
-        const row = document.createElement("div");
-        row.className = "xlc-ct-row";
-        const nameInput = document.createElement("input");
-        nameInput.className = "b3-text-field xlc-ct-name";
-        nameInput.dataset.xlcControl = `settings.ai.custom-transform.name.${ct.id}`;
-        nameInput.placeholder = t("customTransformName");
-        nameInput.setAttribute("aria-label", t("customTransformName"));
-        nameInput.value = ct.name;
-        nameInput.maxLength = 20;
-        nameInput.addEventListener("change", () => {
-          ct.name = nameInput.value.trim().slice(0, 20);
-          persistCt();
-        });
-        row.appendChild(nameInput);
-        const promptInput = document.createElement("input");
-        promptInput.className = "b3-text-field xlc-ct-prompt";
-        promptInput.dataset.xlcControl = `settings.ai.custom-transform.prompt.${ct.id}`;
-        promptInput.placeholder = t("customTransformPrompt");
-        promptInput.setAttribute("aria-label", t("customTransformPrompt"));
-        promptInput.value = ct.prompt;
-        promptInput.maxLength = 500;
-        promptInput.addEventListener("change", () => {
-          ct.prompt = promptInput.value.trim().slice(0, 500);
-          persistCt();
-        });
-        row.appendChild(promptInput);
-        const delBtn = document.createElement("button");
-        delBtn.type = "button";
-        delBtn.className = "b3-button xlc-btn-ghost xlc-ct-del";
-        delBtn.dataset.xlcControl = `settings.ai.custom-transform.delete.${ct.id}`;
-        delBtn.textContent = t("delete");
-        delBtn.addEventListener("click", () => {
-          (0, import_siyuan3.confirm)(t("delete") + " \xB7 " + t("customTransformSection"), t("ctDeleteConfirm", ct.name), () => {
-            ctx.state.ai.customTransforms = ctx.state.ai.customTransforms.filter((c) => c.id !== ct.id);
-            persistCt();
-            repaintCt();
-            ctx.notify("info", t("ctDeleted", ct.name));
-          });
-        });
-        row.appendChild(delBtn);
-        ctList.appendChild(row);
-      }
-      if (ctx.state.ai.customTransforms.length === 0) {
-        const empty = document.createElement("div");
-        empty.className = "xlc-form-hint";
-        empty.textContent = t("customTransformEmpty");
-        ctList.appendChild(empty);
-      }
-      if (addCtBtn) addCtBtn.disabled = ctx.state.ai.customTransforms.length >= 10;
-    };
-    repaintCt();
-    addCtBtn = document.createElement("button");
-    addCtBtn.type = "button";
-    addCtBtn.className = "b3-button";
-    addCtBtn.dataset.xlcControl = "settings.ai.custom-transform.add";
-    addCtBtn.style.alignSelf = "flex-start";
-    addCtBtn.textContent = t("customTransformAdd");
-    addCtBtn.addEventListener("click", () => {
-      var _a;
-      if (ctx.state.ai.customTransforms.length >= 10) return;
-      const id = `xltf-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
-      ctx.state.ai.customTransforms = [...ctx.state.ai.customTransforms, { id, name: t("customTransformNewName"), prompt: "" }];
-      persistCt();
-      repaintCt();
-      (_a = ctList.querySelector(".xlc-ct-row:last-child .xlc-ct-name")) == null ? void 0 : _a.focus();
-    });
-    aiSec.appendChild(addCtBtn);
-    const ctHint = document.createElement("span");
-    ctHint.className = "xlc-form-hint";
-    ctHint.textContent = t("customTransformHint");
-    aiSec.appendChild(ctHint);
-    root.appendChild(aiSec);
-  }
-  function buildSearchSection(ctx, root) {
-    const t = ctx.t;
-    let pinyinSeq = 0;
-    const searchSec = document.createElement("div");
-    searchSec.className = "xlc-form-field xlc-card";
-    const searchLabel = document.createElement("span");
-    searchLabel.className = "xlc-form-label";
-    searchLabel.textContent = t("searchSection");
-    searchSec.appendChild(searchLabel);
-    const pinyinRow = buildSwitchRow(t("pinyinToggle"), t("pinyinToggleSub"), ctx.state.search.pinyin, (value) => {
-      const mySeq = ++pinyinSeq;
-      ctx.state.search.pinyin = value;
-      ctx.applyPinyinAdapter();
-      ctx.persistSoon();
-      const pinyinInput = pinyinRow.querySelector("input");
-      pinyinInput == null ? void 0 : pinyinInput.setAttribute("aria-busy", "true");
-      if (pinyinInput) pinyinInput.disabled = true;
-      pinyinRow.setAttribute("aria-busy", "true");
-      void ctx.library.reindex().then((idx) => {
-        var _a;
-        if (mySeq !== pinyinSeq) return;
-        (_a = ctx.refreshSearch) == null ? void 0 : _a.call(ctx);
-        ctx.notify("info", t("reindexDone", String(idx.entries.length)));
-      }).catch((err) => {
-        if (mySeq !== pinyinSeq) return;
-        ctx.notify("error", t("kernelError", toErrorMessage(err)));
-      }).finally(() => {
-        if (pinyinInput) {
-          pinyinInput.disabled = false;
-          pinyinInput.removeAttribute("aria-busy");
-        }
-        pinyinRow.removeAttribute("aria-busy");
-      });
-    });
-    searchSec.appendChild(pinyinRow);
-    const phRow = buildSwitchRow(t("placeholdersToggle"), t("placeholdersToggleSub"), ctx.state.search.placeholders, (value) => {
-      ctx.state.search.placeholders = value;
-      ctx.persistSoon();
-    });
-    searchSec.appendChild(phRow);
-    root.appendChild(searchSec);
-  }
-  function buildSavedViewsSection(ctx, root, beforeOpen) {
-    const t = ctx.t;
-    const sec = document.createElement("div");
-    sec.className = "xlc-form-field xlc-card xlc-saved-views";
-    sec.dataset.xlcControl = "settings.saved-views";
-    const label = document.createElement("span");
-    label.className = "xlc-form-label";
-    label.textContent = t("savedViewsSection");
-    sec.appendChild(label);
-    const list = document.createElement("div");
-    list.className = "xlc-saved-view-list";
-    list.setAttribute("role", "list");
-    list.setAttribute("aria-label", t("savedViewsSection"));
-    sec.appendChild(list);
-    const readViews = () => {
-      var _a, _b;
-      const fromContext = (_a = ctx.getSavedDiscoveryViews) == null ? void 0 : _a.call(ctx);
-      return (_b = fromContext != null ? fromContext : ctx.state.search.savedDiscoveryViews) != null ? _b : [];
-    };
-    const scopeLabel = (scope) => {
-      switch (scope) {
-        case "document":
-          return t("discoveryScopeDocument");
-        case "notebook":
-          return t("discoveryScopeNotebook");
-        case "tree":
-          return t("discoveryScopeTree");
-        case "selected-notebook":
-          return t("discoveryScopeSelectedNotebook");
-        case "all-notebooks":
-          return t("discoveryScopeAllNotebooks");
-      }
-    };
-    const render = () => {
-      list.replaceChildren();
-      const views = readViews();
-      if (views.length === 0) {
-        const empty = document.createElement("span");
-        empty.className = "xlc-form-hint xlc-saved-view-empty";
-        empty.textContent = t("savedViewsEmpty");
-        list.appendChild(empty);
-        return;
-      }
-      for (const view of views) {
-        const row = document.createElement("div");
-        row.className = "xlc-setting-row xlc-saved-view-row";
-        row.dataset.xlcSavedViewId = view.id;
-        row.setAttribute("role", "listitem");
-        const text = document.createElement("span");
-        text.className = "xlc-setting-text";
-        const name = document.createElement("strong");
-        name.className = "xlc-saved-view-name";
-        name.textContent = view.name;
-        text.appendChild(name);
-        const meta = document.createElement("span");
-        meta.className = "xlc-setting-sub xlc-saved-view-meta";
-        const pieces = [`#${view.tag}`, scopeLabel(view.scope)];
-        if (view.pathLabel) pieces.push(view.pathLabel);
-        meta.textContent = pieces.join(" \xB7 ");
-        text.appendChild(meta);
-        row.appendChild(text);
-        const actions = document.createElement("span");
-        actions.className = "xlc-setting-actions";
-        const open = document.createElement("button");
-        open.type = "button";
-        open.className = "b3-button xlc-btn-ghost";
-        open.dataset.xlcControl = "settings.saved-view.open";
-        open.textContent = t("savedViewsOpen");
-        open.disabled = !ctx.openSavedDiscoveryView;
-        open.addEventListener("click", () => {
-          if (!ctx.openSavedDiscoveryView) return;
-          beforeOpen == null ? void 0 : beforeOpen();
-          ctx.openSavedDiscoveryView(view);
-        });
-        actions.appendChild(open);
-        const remove = document.createElement("button");
-        remove.type = "button";
-        remove.className = "b3-button xlc-btn-ghost";
-        remove.dataset.xlcControl = "settings.saved-view.delete";
-        remove.textContent = t("savedViewsDelete");
-        remove.addEventListener("click", () => {
-          (0, import_siyuan3.confirm)("\u26A0\uFE0F " + t("savedViewsDelete"), t("savedViewsDeleteConfirm", view.name), () => {
-            var _a;
-            if (ctx.deleteSavedDiscoveryView) {
-              ctx.deleteSavedDiscoveryView(view.id);
-            } else {
-              ctx.state.search.savedDiscoveryViews = ((_a = ctx.state.search.savedDiscoveryViews) != null ? _a : []).filter((entry) => entry.id !== view.id);
-              ctx.persistSoon();
-            }
-            ctx.notify("info", `${t("savedViewsDelete")}: ${view.name}`);
-            render();
-          });
-        });
-        actions.appendChild(remove);
-        row.appendChild(actions);
-        list.appendChild(row);
-      }
-    };
-    render();
-    root.appendChild(sec);
-  }
-  function buildDataSection(ctx, root) {
-    const t = ctx.t;
-    const dataSec = document.createElement("div");
-    dataSec.className = "xlc-form-field xlc-card";
-    const dataLabel = document.createElement("span");
-    dataLabel.className = "xlc-form-label";
-    dataLabel.textContent = t("dataSection");
-    dataSec.appendChild(dataLabel);
-    const libRow = document.createElement("div");
-    libRow.className = "xlc-form-hint";
-    const cfg = ctx.getConfig();
-    libRow.textContent = `${t("librarySection")}\uFF1A${cfg ? cfg.mode === "notebook" ? t("libModeNotebook", String(cfg.notebookIds.length)) : cfg.mode === "tree" ? t("libModeTree", String(cfg.containerDocIds.length)) : t("libModeDoc", String(cfg.containerDocIds.length)) : t("libraryNone")}`;
-    dataSec.appendChild(libRow);
-    const operationStatus = document.createElement("div");
-    operationStatus.className = "xlc-operation-status";
-    operationStatus.hidden = true;
-    operationStatus.setAttribute("role", "status");
-    operationStatus.setAttribute("aria-live", "polite");
-    dataSec.appendChild(operationStatus);
-    const setOperationStatus = (state, message = "", retry) => {
-      operationStatus.dataset.state = state;
-      operationStatus.hidden = state === "idle";
-      operationStatus.replaceChildren();
-      if (message) {
-        const text = document.createElement("span");
-        text.className = state === "error" ? "xlc-form-error" : "xlc-form-hint";
-        text.textContent = message;
-        operationStatus.appendChild(text);
-      }
-      if (retry && state === "error") {
-        const retryBtn = document.createElement("button");
-        retryBtn.type = "button";
-        retryBtn.className = "b3-button xlc-btn-ghost xlc-operation-retry";
-        retryBtn.dataset.xlcControl = "settings.data.retry";
-        retryBtn.textContent = t("retry");
-        retryBtn.addEventListener("click", retry);
-        operationStatus.appendChild(retryBtn);
-      }
-    };
-    const dataBtns = document.createElement("div");
-    dataBtns.style.display = "flex";
-    dataBtns.style.gap = "8px";
-    dataBtns.style.flexWrap = "wrap";
-    const mkBtn = (label, onClick, control) => {
-      const btn = document.createElement("button");
-      btn.type = "button";
-      btn.className = "b3-button";
-      btn.textContent = label;
-      if (control) btn.dataset.xlcControl = control;
-      if (onClick) btn.addEventListener("click", onClick);
-      dataBtns.appendChild(btn);
-      return btn;
-    };
-    const withFlight = (btn, run, opts = {}) => {
-      btn.addEventListener("click", () => {
-        var _a, _b;
-        if (btn.disabled) return;
-        btn.disabled = true;
-        const original = (_a = btn.textContent) != null ? _a : "";
-        btn.setAttribute("aria-busy", "true");
-        if (opts.flightLabel) btn.textContent = opts.flightLabel;
-        setOperationStatus("loading", (_b = opts.loading) != null ? _b : t("loading"));
-        void Promise.resolve().then(run).then((result) => {
-          var _a2, _b2, _c, _d;
-          const value = result != null ? result : {};
-          if (value.status === "empty") {
-            setOperationStatus("empty", (_b2 = (_a2 = value.message) != null ? _a2 : opts.empty) != null ? _b2 : t("empty"));
-          } else if (value.message || opts.success) {
-            setOperationStatus("success", (_d = (_c = value.message) != null ? _c : opts.success) != null ? _d : "");
-          } else {
-            setOperationStatus("idle");
-          }
-        }).catch((err) => {
-          var _a2, _b2;
-          const message = (_b2 = (_a2 = opts.formatError) == null ? void 0 : _a2.call(opts, err)) != null ? _b2 : t("kernelError", toErrorMessage(err));
-          ctx.notify("error", message);
-          setOperationStatus("error", message, () => btn.click());
-        }).finally(() => {
-          btn.disabled = false;
-          btn.removeAttribute("aria-busy");
-          if (opts.flightLabel) btn.textContent = original;
-        });
-      });
-    };
-    const reindexBtn = mkBtn(t("reindexBtn"), void 0, "settings.data.reindex");
-    withFlight(reindexBtn, async () => {
-      var _a;
-      const idx = await ctx.library.reindex();
-      const message = idx.truncated ? t("reindexTruncated", String(LIMITS.maxItems)) : t("reindexDone", String(idx.entries.length));
-      (_a = ctx.refreshSearch) == null ? void 0 : _a.call(ctx);
-      ctx.notify("info", message);
-      return { message };
-    }, { flightLabel: t("indexing"), loading: t("indexing") });
-    const clearRecentsBtn = mkBtn(ctx.state.recents.length ? t("clearRecents") : t("clearRecentsEmpty"), void 0, "settings.data.clearRecents");
-    clearRecentsBtn.addEventListener("click", () => {
-      if (ctx.state.recents.length === 0 || clearRecentsBtn.disabled) return;
-      (0, import_siyuan3.confirm)("\u26A0\uFE0F " + t("clearRecents"), t("clearRecentsConfirm"), () => {
-        var _a;
-        ctx.state.recents = [];
-        ctx.persistSoon();
-        (_a = ctx.refreshSearch) == null ? void 0 : _a.call(ctx);
-        clearRecentsBtn.textContent = t("clearRecentsEmpty");
-        clearRecentsBtn.disabled = true;
-        ctx.notify("info", t("clearRecentsDone"));
-        setOperationStatus("success", t("clearRecentsDone"));
-      });
-    });
-    clearRecentsBtn.disabled = ctx.state.recents.length === 0;
-    if (ctx.state.ai.enabled) {
-      const auditBtn = mkBtn("\u2726 " + t("tagAuditBtn"), void 0, "settings.data.tagAudit");
-      withFlight(auditBtn, async () => {
-        const result = await runTagAudit(ctx);
-        return result === "empty" ? { status: "empty", message: t("tagAuditTooFew") } : void 0;
-      }, { flightLabel: "\u2726 " + t("aiWorking"), loading: t("aiWorking"), formatError: (err) => toErrorMessage(err) });
-    }
-    const exportBtn = mkBtn(t("exportBtn"), void 0, "settings.data.export");
-    withFlight(exportBtn, async () => {
-      const json = await ctx.exportBundle();
-      const count = JSON.parse(json).items.length;
-      if (count === 0) {
-        return { status: "empty", message: t("exportEmpty") };
-      }
-      const blob = new Blob([json], { type: "application/json" });
-      const a = document.createElement("a");
-      a.href = URL.createObjectURL(blob);
-      a.download = `xiaolv-common-export-${(/* @__PURE__ */ new Date()).toISOString().slice(0, 10)}.json`;
-      a.click();
-      setTimeout(() => URL.revokeObjectURL(a.href), 4e3);
-      const message = t("exportDone", String(count));
-      ctx.notify("info", message);
-      return { message };
-    }, { flightLabel: t("indexing"), loading: t("indexing"), formatError: (err) => formatExportError(ctx, err) });
-    const packBtn = mkBtn(t("packBtn"), void 0, "settings.data.packExport");
-    withFlight(packBtn, async () => {
-      await openPackExportDialog(ctx);
-      return { message: t("packExportTitle") };
-    }, { flightLabel: t("loading"), loading: t("loading"), formatError: (err) => formatExportError(ctx, err) });
-    const importBtn = mkBtn(t("importBtn"), () => {
-      var _a;
-      if (importBtn.disabled) return;
-      const originalLabel = (_a = importBtn.textContent) != null ? _a : "";
-      let finished = false;
-      let focusTimer = null;
-      let onFocus;
-      const finish = () => {
-        if (finished) return;
-        finished = true;
-        importBtn.disabled = false;
-        importBtn.textContent = originalLabel;
-        importBtn.removeAttribute("aria-busy");
-        window.removeEventListener("focus", onFocus);
-        if (focusTimer !== null) window.clearTimeout(focusTimer);
-      };
-      onFocus = () => {
-        focusTimer = window.setTimeout(finish, 350);
-      };
-      importBtn.disabled = true;
-      importBtn.setAttribute("aria-busy", "true");
-      importBtn.textContent = t("loading");
-      setOperationStatus("loading", t("loading"));
-      window.addEventListener("focus", onFocus, { once: true });
-      const fileInput = document.createElement("input");
-      fileInput.type = "file";
-      fileInput.dataset.xlcControl = "settings.import.file";
-      fileInput.accept = ".json,application/json,.md,text/markdown";
-      fileInput.addEventListener("change", () => {
-        var _a2;
-        const file = (_a2 = fileInput.files) == null ? void 0 : _a2[0];
-        if (!file) {
-          finish();
-          return;
-        }
-        if (file.size > LIMITS.maxImportBytes) {
-          const message = t("importFailed", t("importReasonTooLarge"));
-          ctx.notify("error", message);
-          setOperationStatus("error", message, () => importBtn.click());
-          finish();
-          return;
-        }
-        void file.text().then((text) => {
-          var _a3;
-          const isMd = /\.md$/i.test(file.name);
-          if (isMd) {
-            const parsed = parseMarkdownPack(text);
-            if (parsed.items.length === 0) {
-              const message = t("importFailed", t("importReasonNoMeta"));
-              ctx.notify("error", message);
-              setOperationStatus("error", message, () => importBtn.click());
-              finish();
-              return;
-            }
-            openImportPolicyDialog(ctx, { items: parsed.items, pack: parsed.pack }, parsed.issues, { kind: "markdown-pack", items: parsed.items });
-            setOperationStatus("success", t("importPreview", String(parsed.items.length), String(parsed.issues.length)));
-            finish();
-            return;
-          }
-          const validation = validateImport(text);
-          if (!validation.ok || !validation.parsed) {
-            const message = t("importFailed", (_a3 = validation.reason) != null ? _a3 : t("importReasonUnknown"));
-            ctx.notify("error", message);
-            setOperationStatus("error", message, () => importBtn.click());
-            finish();
-            return;
-          }
-          openImportPolicyDialog(ctx, validation.parsed, validation.issues, { kind: "json", text });
-          setOperationStatus("success", t("importPreview", String(validation.parsed.items.length), String(validation.issues.length)));
-          finish();
-        }).catch((err) => {
-          const message = t("importFailed", toErrorMessage(err));
-          ctx.notify("error", message);
-          setOperationStatus("error", message, () => importBtn.click());
-          finish();
-        });
-      });
-      fileInput.addEventListener("cancel", () => {
-        finish();
-        setOperationStatus("idle");
-      });
-      fileInput.click();
-    });
-    importBtn.dataset.xlcControl = "settings.data.import";
-    const espansoBtn = mkBtn(t("espansoImportBtn"), void 0, "settings.data.espansoImport");
-    let espansoOpen = false;
-    espansoBtn.addEventListener("click", () => {
-      if (espansoOpen || espansoBtn.disabled) return;
-      espansoOpen = true;
-      espansoBtn.disabled = true;
-      espansoBtn.setAttribute("aria-busy", "true");
-      setOperationStatus("loading", t("loading"));
-      openEspansoImportDialog(ctx, () => {
-        espansoOpen = false;
-        espansoBtn.disabled = false;
-        espansoBtn.removeAttribute("aria-busy");
-        setOperationStatus("idle");
-      });
-    });
-    dataSec.appendChild(dataBtns);
-    const templateRow = document.createElement("div");
-    templateRow.className = "xlc-setting-row xlc-template-import-row";
-    const templateText = document.createElement("span");
-    templateText.className = "xlc-setting-text";
-    templateText.textContent = t("promptPackHint");
-    templateRow.appendChild(templateText);
-    const templateBtn = document.createElement("button");
-    templateBtn.type = "button";
-    templateBtn.className = "b3-button";
-    templateBtn.textContent = t("promptPackBtn");
-    templateBtn.dataset.xlcControl = "settings.data.templateImport";
-    templateBtn.addEventListener("click", () => {
-      var _a;
-      if (templateBtn.disabled) return;
-      templateBtn.disabled = true;
-      templateBtn.setAttribute("aria-busy", "true");
-      const originalLabel = (_a = templateBtn.textContent) != null ? _a : "";
-      templateBtn.textContent = t("loading");
-      setOperationStatus("loading", t("loading"));
-      const parsed = parseMarkdownPack(PROMPT_PACK_MD);
-      if (parsed.items.length === 0) {
-        const message = t("importFailed", t("importReasonPackEmpty"));
-        ctx.notify("error", message);
-        setOperationStatus("error", message, () => templateBtn.click());
-        templateBtn.disabled = false;
-        templateBtn.removeAttribute("aria-busy");
-        templateBtn.textContent = originalLabel;
-        return;
-      }
-      openImportPolicyDialog(ctx, { items: parsed.items, pack: parsed.pack }, parsed.issues, { kind: "markdown-pack", items: parsed.items });
-      setOperationStatus("success", t("importPreview", String(parsed.items.length), String(parsed.issues.length)));
-      templateBtn.disabled = false;
-      templateBtn.removeAttribute("aria-busy");
-      templateBtn.textContent = originalLabel;
-    });
-    templateRow.appendChild(templateBtn);
-    dataSec.appendChild(templateRow);
-    root.appendChild(dataSec);
-  }
-  function openEspansoImportDialog(ctx, onClose) {
-    const t = ctx.t;
-    const dialog = new import_siyuan3.Dialog({
-      title: t("espansoTitle"),
-      content: "",
-      width: "min(680px, 92vw)",
-      height: "min(680px, 86vh)"
-    });
-    const container = dialog.element.querySelector(".b3-dialog__container");
-    if (container) container.classList.add("xlc-form-host", "xlc-settings-host");
-    const body = getDialogBody(dialog.element);
-    if (!body) {
-      onClose == null ? void 0 : onClose();
-      return;
-    }
-    body.innerHTML = "";
-    const root = document.createElement("div");
-    root.className = "xlc-form";
-    const hint = document.createElement("p");
-    hint.className = "xlc-form-hint";
-    hint.textContent = t("espansoHint");
-    root.appendChild(hint);
-    const ta = document.createElement("textarea");
-    ta.className = "b3-text-field";
-    ta.dataset.xlcControl = "settings.espanso.text";
-    ta.rows = 10;
-    ta.placeholder = t("espansoPlaceholder");
-    ta.setAttribute("spellcheck", "false");
-    root.appendChild(ta);
-    const preview = document.createElement("div");
-    preview.className = "xlc-form-hint";
-    preview.style.whiteSpace = "pre-wrap";
-    root.appendChild(preview);
-    const foot = document.createElement("div");
-    foot.className = "xlc-form-row";
-    foot.style.justifyContent = "flex-end";
-    foot.style.gap = "8px";
-    const cancelBtn = document.createElement("button");
-    cancelBtn.className = "b3-button";
-    cancelBtn.dataset.xlcControl = "settings.espanso.cancel";
-    cancelBtn.textContent = t("cancel");
-    foot.appendChild(cancelBtn);
-    const nextBtn = document.createElement("button");
-    nextBtn.className = "b3-button xlc-btn-primary";
-    nextBtn.dataset.xlcControl = "settings.espanso.next";
-    nextBtn.textContent = t("setupNext");
-    nextBtn.disabled = true;
-    foot.appendChild(nextBtn);
-    root.appendChild(foot);
-    body.appendChild(root);
-    let released = false;
-    const release = () => {
-      if (released) return;
-      released = true;
-      observer == null ? void 0 : observer.disconnect();
-      onClose == null ? void 0 : onClose();
-    };
-    let observer = null;
-    observer = typeof MutationObserver === "undefined" ? null : new MutationObserver(() => {
-      if (!dialog.element.isConnected) release();
-    });
-    observer == null ? void 0 : observer.observe(document.body, { childList: true, subtree: true });
-    let parsedItems = [];
-    let parsedText = null;
-    const runParse = async () => {
-      const sourceText = ta.value;
-      parsedItems = [];
-      parsedText = null;
-      nextBtn.disabled = true;
-      preview.textContent = "";
-      let parser;
-      try {
-        parser = await loadEspansoParser();
-      } catch (err) {
-        preview.textContent = t("importFailed", toErrorMessage(err).slice(0, 120));
-        return;
-      }
-      if (sourceText !== ta.value || !dialog.element.isConnected) return;
-      const result = parser.parseEspansoYaml(sourceText);
-      if (result.items.length === 0) {
-        preview.textContent = result.issues.length ? result.issues.slice(0, 5).join("\n") : t("espansoNone");
-        return;
-      }
-      parsedItems = result.items;
-      parsedText = sourceText;
-      const lines = [t("espansoParsed", String(result.items.length))];
-      for (const issue of result.issues.slice(0, 5)) lines.push(`\xB7 ${issue}`);
-      if (result.issues.length > 5) lines.push(`\xB7 \u2026+${result.issues.length - 5}`);
-      preview.textContent = lines.join("\n");
-      nextBtn.disabled = false;
-    };
-    let parseTimer;
-    ta.addEventListener("input", () => {
-      if (parseTimer) clearTimeout(parseTimer);
-      parsedItems = [];
-      parsedText = null;
-      nextBtn.disabled = true;
-      preview.textContent = "";
-      parseTimer = setTimeout(() => {
-        void runParse();
-      }, 400);
-    });
-    cancelBtn.addEventListener("click", () => {
-      dialog.destroy();
-      release();
-    });
-    nextBtn.addEventListener("click", () => {
-      if (nextBtn.disabled || parsedItems.length === 0 || parsedText !== ta.value) return;
-      dialog.destroy();
-      release();
-      openImportPolicyDialog(
-        ctx,
-        { items: parsedItems.map((i) => ({ id: i.id, title: i.title })) },
-        [],
-        { kind: "espanso", items: parsedItems }
-      );
-    });
-    ta.focus();
-  }
-  async function runTagAudit(ctx) {
-    var _a;
-    const t = ctx.t;
-    let idx;
-    try {
-      idx = await ctx.library.ensureIndex();
-    } catch (err) {
-      throw new Error(t("kernelError", toErrorMessage(err)));
-    }
-    const tags = collectTags(idx.entries);
-    if (tags.length < 2) {
-      ctx.notify("info", t("tagAuditTooFew"));
-      return "empty";
-    }
-    let suggestions;
-    try {
-      suggestions = await ctx.ai.tagAudit(tags);
-    } catch (err) {
-      throw new Error(ctx.aiErrorText(err));
-    }
-    const dialog = new import_siyuan3.Dialog({
-      title: t("tagAuditTitle"),
-      content: "",
-      width: "min(620px, 92vw)",
-      height: "min(600px, 84vh)"
-      // 固定高：建议清单增长不顶跳（R146）
-    });
-    (_a = dialog.element.querySelector(".b3-dialog__container")) == null ? void 0 : _a.classList.add("xlc-form-host", "xlc-settings-host");
-    const body = getDialogBody(dialog.element);
-    if (!body) throw new Error(t("kernelError", "\u65E0\u6CD5\u6253\u5F00\u4F53\u68C0\u7ED3\u679C"));
-    body.innerHTML = "";
-    const wrap = document.createElement("div");
-    wrap.className = "xlc-form";
-    if (suggestions.length === 0) {
-      const empty = document.createElement("p");
-      empty.className = "xlc-form-hint";
-      empty.textContent = t("tagAuditEmpty");
-      wrap.appendChild(empty);
-    } else {
-      for (const s of suggestions) {
-        const row = document.createElement("div");
-        row.className = "xlc-sugrow";
-        const label = document.createElement("span");
-        label.textContent = `\u2726 ${t(s.type === "merge" ? "tagAuditMerge" : "tagAuditRename")}\uFF1A${s.tags.join(" + ")} \u2192 ${s.suggestion}${s.reason ? `\uFF08${s.reason}\uFF09` : ""}`;
-        row.appendChild(label);
-        wrap.appendChild(row);
-      }
-      const hint = document.createElement("span");
-      hint.className = "xlc-form-hint";
-      hint.textContent = t("aiOriginalPreserved");
-      wrap.appendChild(hint);
-    }
-    const actions = document.createElement("div");
-    actions.className = "xlc-form-actions";
-    const close = document.createElement("button");
-    close.className = "b3-button";
-    close.dataset.xlcControl = "settings.tag-audit.close";
-    close.textContent = t("close");
-    close.addEventListener("click", () => dialog.destroy());
-    actions.appendChild(close);
-    wrap.appendChild(actions);
-    body.appendChild(wrap);
-    return suggestions.length === 0 ? "empty" : "shown";
-  }
-  function openImportPolicyDialog(ctx, parsed, issues, source) {
-    var _a, _b;
-    const t = ctx.t;
-    const dialog = new import_siyuan3.Dialog({
-      title: t("importPolicyTitle"),
-      content: "",
-      width: "min(540px, 92vw)",
-      height: "min(640px, 86vh)"
-      // 固定高：策略卡片高度稳定（R146）
-    });
-    (_a = dialog.element.querySelector(".b3-dialog__container")) == null ? void 0 : _a.classList.add("xlc-form-host", "xlc-settings-host");
-    const body = getDialogBody(dialog.element);
-    if (!body) return;
-    body.innerHTML = "";
-    const wrap = document.createElement("div");
-    wrap.className = "xlc-form";
-    const meta = document.createElement("div");
-    meta.className = "xlc-import-meta";
-    const metaCount = document.createElement("span");
-    metaCount.className = "xlc-badge xlc-badge--markdown";
-    metaCount.textContent = t("itemCountBadge", String(parsed.items.length));
-    meta.appendChild(metaCount);
-    if (issues.length > 0) {
-      const metaInvalid = document.createElement("span");
-      metaInvalid.className = "xlc-badge xlc-badge--warn";
-      metaInvalid.textContent = t("invalidSkipBadge", String(issues.length));
-      meta.appendChild(metaInvalid);
-    }
-    if (parsed.pack) {
-      const metaPack = document.createElement("span");
-      metaPack.className = "xlc-badge xlc-badge--var";
-      let packText = `${parsed.pack.name} \xB7 ${t("packVarsBadge", String(parsed.pack.vars.length))}`;
-      if (parsed.pack.snippets && parsed.pack.snippets.length > 0) {
-        packText += ` \xB7 ${t("packSnippetsBadge", String(parsed.pack.snippets.length))}`;
-      }
-      metaPack.textContent = packText;
-      meta.appendChild(metaPack);
-      if (parsed.pack.missingSnippets && parsed.pack.missingSnippets.length > 0) {
-        const metaMissing = document.createElement("span");
-        metaMissing.className = "xlc-badge xlc-badge--warn";
-        metaMissing.dataset.xlcControl = "import.pack.missing-snippets";
-        metaMissing.textContent = t("packMissingSnippetsBadge", String(parsed.pack.missingSnippets.length));
-        meta.appendChild(metaMissing);
-      }
-    }
-    wrap.appendChild(meta);
-    const preview = document.createElement("p");
-    preview.className = "xlc-form-hint";
-    preview.textContent = t("importPreview", String(parsed.items.length), String(issues.length));
-    wrap.appendChild(preview);
-    if (((_b = parsed.pack) == null ? void 0 : _b.missingSnippets) && parsed.pack.missingSnippets.length > 0) {
-      const missingHint = document.createElement("p");
-      missingHint.className = "xlc-form-hint xlc-form-error";
-      missingHint.dataset.xlcControl = "import.pack.missing-hint";
-      missingHint.textContent = t("packMissingSnippetsHint", parsed.pack.missingSnippets.join("\u3001"));
-      wrap.appendChild(missingHint);
-    }
-    const receiptHint = document.createElement("p");
-    receiptHint.className = "xlc-form-hint";
-    receiptHint.setAttribute("role", "status");
-    receiptHint.setAttribute("aria-live", "polite");
-    receiptHint.textContent = t("importReceiptHint");
-    const policyCards = [];
-    const run = async (policy) => {
-      var _a2;
-      if (policyCards.some((card) => card.disabled)) return;
-      policyCards.forEach((card) => {
-        card.disabled = true;
-        card.setAttribute("aria-busy", "true");
-      });
-      receiptHint.dataset.state = "loading";
-      receiptHint.textContent = t("loading");
-      try {
-        const receipt = source.kind === "json" ? await ctx.importBundleText(source.text, policy) : await ctx.importMarkdownItems(source.items, policy);
-        (_a2 = ctx.refreshSearch) == null ? void 0 : _a2.call(ctx);
-        const message = t(
-          "importDone",
-          String(receipt.created),
-          String(receipt.skipped),
-          String(receipt.overwritten),
-          String(receipt.renamed),
-          String(receipt.failed)
-        );
-        receiptHint.dataset.state = receipt.failed > 0 ? "error" : "success";
-        receiptHint.textContent = message;
-        ctx.notify(receipt.failed > 0 ? "error" : "info", message);
-      } catch (err) {
-        const message = t("importRunFailed", toErrorMessage(err));
-        receiptHint.dataset.state = "error";
-        receiptHint.replaceChildren();
-        const error = document.createElement("span");
-        error.className = "xlc-form-error";
-        error.textContent = message;
-        receiptHint.appendChild(error);
-        const retryBtn = document.createElement("button");
-        retryBtn.type = "button";
-        retryBtn.className = "b3-button xlc-btn-ghost xlc-operation-retry";
-        retryBtn.dataset.xlcControl = "settings.import.retry";
-        retryBtn.textContent = t("retry");
-        retryBtn.addEventListener("click", () => void run(policy));
-        receiptHint.appendChild(retryBtn);
-        ctx.notify("error", message);
-        policyCards.forEach((card) => {
-          card.disabled = false;
-          card.removeAttribute("aria-busy");
-        });
-      }
-    };
-    const policyList = document.createElement("div");
-    policyList.className = "xlc-policy-list";
-    for (const [policy, title, desc, recommended] of [
-      ["skip", t("importPolicySkip"), t("importPolicySkipDesc"), false],
-      ["overwrite", t("importPolicyOverwrite"), t("importPolicyOverwriteDesc"), false],
-      ["rename", t("importPolicyRename"), t("importPolicyRenameDesc"), true]
-    ]) {
-      const card = document.createElement("button");
-      card.type = "button";
-      card.className = "xlc-policy" + (recommended ? " xlc-policy--recommended" : "");
-      const icon = document.createElement("span");
-      icon.className = "xlc-policy-ic";
-      icon.textContent = policy === "skip" ? "\u25CB" : policy === "overwrite" ? "\u21C4" : "\uFF0B";
-      card.appendChild(icon);
-      const text = document.createElement("span");
-      const titleEl = document.createElement("span");
-      titleEl.className = "xlc-policy-title";
-      titleEl.textContent = title + (recommended ? `\uFF08${t("recommended")}\uFF09` : "");
-      text.appendChild(titleEl);
-      const descEl = document.createElement("span");
-      descEl.className = "xlc-policy-desc";
-      descEl.textContent = desc;
-      text.appendChild(descEl);
-      card.appendChild(text);
-      card.dataset.xlcControl = `settings.import.policy.${policy}`;
-      card.addEventListener("click", () => void run(policy));
-      policyCards.push(card);
-      policyList.appendChild(card);
-    }
-    wrap.appendChild(policyList);
-    wrap.appendChild(receiptHint);
-    body.appendChild(wrap);
-  }
-
-  // src/ui/capture.ts
-  var import_siyuan4 = __toESM(require_stub_dom());
-  init_item();
-  init_errors();
-  init_constants();
-  function isBlockRefTarget(blockId) {
-    return /^\d{14}-[0-9a-z]{7}$/.test(blockId);
-  }
-  var TOAST_TITLE_MAX = 48;
-  var shortTitle = (title) => title.length > TOAST_TITLE_MAX ? `${title.slice(0, TOAST_TITLE_MAX)}\u2026` : title;
-  var newWriteKey = (scope) => `xlc-${scope}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 12)}`.slice(0, 120);
-  function classifyLinkTarget(href) {
-    const h = (href != null ? href : "").trim();
-    if (isSafeHttpUrl(h)) return { kind: "url", value: h };
-    if (/^assets\/[^\s]+$/.test(h)) return { kind: "asset", value: h };
-    return null;
-  }
-  function inferTypeFromText(text) {
-    const trimmed = text.trim();
-    if (/^https?:\/\/\S+$/i.test(trimmed)) return "url";
-    if (/^```[\w+#.-]*\s*\n[\s\S]*\n```\s*$/.test(trimmed)) return "code";
-    if (/^!\[[^\]]*\]\((assets\/[^)\s]+)[^)]*\)$/.test(trimmed)) return "image";
-    if (/\]\((assets\/[^)\s]+)[^)]*\)/.test(trimmed)) return "asset";
-    if (/^#{1,6}\s|^\s*[-*+]\s|^\s*\d+\.\s|^\s*>\s|\*\*/.test(trimmed) || trimmed.includes("\n")) return "markdown";
-    return "text";
-  }
-  var CaptureDialog = class {
-    constructor(deps) {
-      this.deps = deps;
-      /** 命令面板入口没有可禁用的按钮，用操作锁防止重复读取和重复落库。 */
-      this.activeCaptures = /* @__PURE__ */ new Set();
-      this.formOpen = false;
-    }
-    /** 保存前的共同前置条件：没有内容库时直接回到首次设置，避免先访问宿主再报错。 */
-    ensureConfigured() {
-      var _a, _b;
-      if (!this.deps.isConfigured || this.deps.isConfigured()) return true;
-      (_b = (_a = this.deps).onNotConfigured) == null ? void 0 : _b.call(_a);
-      return false;
-    }
-    async withCaptureLock(key, action) {
-      if (this.activeCaptures.has(key)) {
-        this.deps.notify("info", this.deps.t("captureBusy"));
-        return;
-      }
-      this.activeCaptures.add(key);
-      try {
-        await action();
-      } catch (err) {
-        this.deps.notify("error", this.deps.t("kernelError", toErrorMessage(err)));
-      } finally {
-        this.activeCaptures.delete(key);
-      }
-    }
-    checkCaptureSize(text) {
-      if (text.length <= LIMITS.contentChars) return true;
-      this.deps.notify("error", this.deps.t("aiContentTooLong", String(LIMITS.contentChars)));
-      return false;
-    }
-    /** 保存当前选中内容（命令面板/正文右键入口） */
-    async saveSelection() {
-      var _a;
-      if (!this.ensureConfigured()) return;
-      let sel;
-      try {
-        sel = this.deps.getSelectionText();
-      } catch (err) {
-        this.deps.notify("error", this.deps.t("kernelError", toErrorMessage(err)));
-        return;
-      }
-      const text = sel.text.trim();
-      if (!text) {
-        this.deps.notify("error", this.deps.t("captureSelectionEmpty"));
-        return;
-      }
-      const content = text;
-      if (!this.checkCaptureSize(content)) return;
-      this.openForm(content, inferTypeFromText(content), sel.blockId, {
-        docId: (_a = this.deps.currentDocId()) != null ? _a : void 0,
-        sourceType: "selection"
-      });
-    }
-    /** 从剪贴板捕获（失败诚实回执） */
-    async captureFromClipboard() {
-      if (!this.ensureConfigured()) return;
-      await this.withCaptureLock("clipboard", async () => {
-        try {
-          const text = (await this.deps.readClipboardText()).trim();
-          if (!text) {
-            this.deps.notify("error", this.deps.t("clipboardEmpty"));
-            this.openForm("", "text", null, {
-              sourceType: "clipboard"
-            });
-            return;
-          }
-          const content = text;
-          if (!this.checkCaptureSize(content)) return;
-          this.openForm(content, inferTypeFromText(content), null, {
-            sourceType: "clipboard"
-          });
-        } catch {
-          this.deps.notify("error", this.deps.t("clipboardReadFailed"));
-          this.openForm("", "text", null, {
-            sourceType: "clipboard"
-          });
-        }
-      });
-    }
-    /** 快速捕获剪贴板（F8）：无表单一步入库——类型推断 + 首行作标题；
-     *  同文已存在则诚实提示不重复写入（不打断）；⌥⇧V 连按防重入。 */
-    async quickCaptureFromClipboard() {
-      var _a, _b;
-      if (this.deps.isConfigured && !this.deps.isConfigured()) {
-        (_b = (_a = this.deps).onNotConfigured) == null ? void 0 : _b.call(_a);
-        return;
-      }
-      await this.withCaptureLock("clipboard", () => this.doQuickCapture());
-    }
-    async doQuickCapture() {
-      var _a;
-      let text = "";
-      let readFailed = false;
-      try {
-        text = (await this.deps.readClipboardText()).trim();
-      } catch {
-        readFailed = true;
-      }
-      if (!text) {
-        this.deps.notify("error", this.deps.t(readFailed ? "clipboardReadFailed" : "clipboardEmpty"));
-        return;
-      }
-      const content = text;
-      if (!this.checkCaptureSize(content)) return;
-      if (bodyWriteRestriction(content)) {
-        this.deps.notify("error", this.deps.t("multiBlockPendingHint"));
-        return;
-      }
-      let dup;
-      try {
-        dup = await this.deps.findDuplicate(content);
-      } catch (err) {
-        this.deps.notify("error", this.deps.t("kernelError", toErrorMessage(err)));
-        return;
-      }
-      if (dup) {
-        this.deps.notify("info", this.deps.t("quickCaptureDuplicate", shortTitle(dup.title)));
-        return;
-      }
-      const firstLine = (_a = content.split(/\r?\n/).map((line) => line.trim()).find(Boolean)) != null ? _a : content;
-      let created;
-      try {
-        created = await this.deps.createItem({
-          itemType: inferTypeFromText(content),
-          markdown: content,
-          title: firstLine.slice(0, 512),
-          source: { sourceType: "clipboard" }
-        }, { idempotencyKey: newWriteKey("clipboard") });
-      } catch (err) {
-        this.deps.notify("error", this.deps.t("kernelError", toErrorMessage(err)));
-        return;
-      }
-      if (created.ok) {
-      } else {
-        this.deps.notify("error", created.message);
-      }
-    }
-    /** 手动新建（空表单） */
-    newManual(titleCandidate) {
-      var _a;
-      if (!this.ensureConfigured()) return;
-      this.openForm("", "text", null, {
-        ...titleCandidate ? { title: titleCandidate } : {},
-        docId: (_a = this.deps.currentDocId()) != null ? _a : void 0,
-        sourceType: "manual"
-      });
-    }
-    /** 从外部文本创建草稿（拖拽放置 / 面板快捷粘贴入口，ADR 0034 / T-0061） */
-    newWithContent(content, options) {
-      var _a, _b;
-      if (!this.ensureConfigured()) return;
-      const text = (content != null ? content : "").trim();
-      if (!text) {
-        this.newManual(options == null ? void 0 : options.title);
-        return;
-      }
-      if (!this.checkCaptureSize(text)) return;
-      const safeText = text;
-      const inferredType = inferTypeFromText(safeText);
-      const derived = inferredType === "url" ? safeText : (safeText.split("\n")[0] || "").slice(0, 60).trim();
-      const title = (options == null ? void 0 : options.title) || derived || this.deps.t("unknownType");
-      this.openForm(safeText, inferredType, null, {
-        title,
-        docId: (_a = this.deps.currentDocId()) != null ? _a : void 0,
-        sourceType: (_b = options == null ? void 0 : options.sourceType) != null ? _b : "manual"
-      });
-    }
-    /** 右键块引用捕获：把被引用块存为 blockref 条目（目标块=引用目标） */
-    captureBlockRef(blockId, refText) {
-      var _a;
-      if (!this.ensureConfigured()) return;
-      if (!isBlockRefTarget(blockId)) {
-        this.deps.notify("error", this.deps.t("invalidItem"));
-        return;
-      }
-      this.openForm(`((${blockId}))`, "blockref", null, {
-        title: (refText || blockId).slice(0, 120),
-        targetBlockId: blockId,
-        docId: (_a = this.deps.currentDocId()) != null ? _a : void 0,
-        sourceType: "block"
-      });
-    }
-    /** 右键图片捕获：assets/ 图片存为图片条目（非 assets 图诚实拒绝） */
-    captureImage(assetPath, altText) {
-      var _a;
-      if (!this.ensureConfigured()) return;
-      const target = classifyLinkTarget(assetPath);
-      if (!target || target.kind !== "asset") {
-        this.deps.notify("error", this.deps.t("invalidItem"));
-        return;
-      }
-      const title = (altText || target.value.split("/").pop() || target.value).slice(0, 120);
-      this.openForm(`![](${target.value})`, "image", null, { title, docId: (_a = this.deps.currentDocId()) != null ? _a : void 0, sourceType: "resource" });
-    }
-    /** 右键链接捕获：http(s) 外链 → url 条目；assets/ → asset 条目；其余诚实拒绝 */
-    captureLink(href, text) {
-      var _a, _b;
-      if (!this.ensureConfigured()) return;
-      const target = classifyLinkTarget(href);
-      if (!target) {
-        this.deps.notify("error", this.deps.t("invalidItem"));
-        return;
-      }
-      if (target.kind === "url") {
-        this.openForm(target.value, "url", null, { title: (text || target.value).slice(0, 120), docId: (_a = this.deps.currentDocId()) != null ? _a : void 0, sourceType: "resource" });
-      } else {
-        this.openForm(`[${text || this.deps.t("resourceFallback")}](${target.value})`, "asset", null, { title: (text || target.value).slice(0, 120), docId: (_b = this.deps.currentDocId()) != null ? _b : void 0, sourceType: "resource" });
-      }
-    }
-    /** 保存当前块：光标所在块整体作为条目，独立于选区保存语义。 */
-    async captureCurrentBlock() {
-      var _a;
-      if (!this.ensureConfigured()) return;
-      const sourceDocId = (_a = this.deps.currentDocId()) != null ? _a : void 0;
-      await this.withCaptureLock("block", async () => {
-        const blockId = this.deps.getSelectionText().blockId;
-        if (!blockId) {
-          this.deps.notify("error", this.deps.t("captureBlockNone"));
-          return;
-        }
-        const kramdown = await this.deps.getBlockKramdown(blockId);
-        if (kramdown === null || !kramdown.trim()) {
-          this.deps.notify("error", this.deps.t("captureBlockFailed"));
-          return;
-        }
-        const content = kramdown;
-        if (!this.checkCaptureSize(content)) return;
-        this.openForm(content, inferTypeFromText(content), blockId, {
-          docId: sourceDocId,
-          sourceType: "block"
-        });
-      });
-    }
-    /** 保存整篇文档为单个 Markdown 条目；不等同于发现文档中的多个候选。 */
-    async captureCurrentDoc() {
-      if (!this.ensureConfigured()) return;
-      await this.withCaptureLock("document", async () => {
-        var _a;
-        const docId = this.deps.currentDocId();
-        if (!docId) {
-          this.deps.notify("error", this.deps.t("relinkNoDoc"));
-          return;
-        }
-        const doc = await this.deps.exportDocContent(docId);
-        if (!doc) {
-          this.deps.notify("error", this.deps.t("captureDocFailed"));
-          return;
-        }
-        if (!doc.content.trim()) {
-          this.deps.notify("error", this.deps.t("captureDocEmpty"));
-          return;
-        }
-        const title = (_a = doc.hPath.split("/").filter(Boolean).pop()) != null ? _a : doc.hPath;
-        const content = doc.content;
-        if (!this.checkCaptureSize(content)) return;
-        this.openForm(content, "markdown", null, { title, docId, sourceType: "doc-fragment" });
-      });
-    }
-    openForm(defaultText, defaultType, sourceBlockId, overrides) {
-      var _a, _b, _c, _d;
-      if (this.deps.isConfigured && !this.deps.isConfigured()) {
-        (_b = (_a = this.deps).onNotConfigured) == null ? void 0 : _b.call(_a);
-        return;
-      }
-      if (this.formOpen) {
-        this.deps.notify("info", this.deps.t("captureBusy"));
-        return;
-      }
-      this.formOpen = true;
-      const t = this.deps.t;
-      let closed = false;
-      let saving = false;
-      const formWriteKey = newWriteKey("form");
-      let tidySeq = 0;
-      let draftSeq = 0;
-      const dialog = new import_siyuan4.Dialog({
-        title: t("newItem"),
-        content: "",
-        width: "min(620px, 92vw)",
-        height: "min(860px, 92vh)",
-        destroyCallback: () => {
-          closed = true;
-          this.formOpen = false;
-          ++tidySeq;
-          ++draftSeq;
-        }
-      });
-      (_c = dialog.element.querySelector(".b3-dialog__container")) == null ? void 0 : _c.classList.add("xlc-form-host");
-      const body = getDialogBody(dialog.element);
-      if (!body) {
-        this.formOpen = false;
-        dialog.destroy();
-        return;
-      }
-      body.innerHTML = "";
-      const form = document.createElement("div");
-      form.className = "xlc-form xlc-capture";
-      const intro = document.createElement("p");
-      intro.className = "xlc-page-intro";
-      intro.textContent = t("captureIntro");
-      form.appendChild(intro);
-      const field = (label, value, isArea, cls, parent) => {
-        const wrap = document.createElement("label");
-        wrap.className = "xlc-form-field";
-        const cap = document.createElement("span");
-        cap.className = "xlc-form-label";
-        cap.textContent = label;
-        wrap.appendChild(cap);
-        const inputEl = isArea ? document.createElement("textarea") : document.createElement("input");
-        if (isArea) {
-          inputEl.rows = 6;
-        }
-        inputEl.className = "b3-text-field " + cls;
-        inputEl.value = value;
-        wrap.appendChild(inputEl);
-        (parent != null ? parent : form).appendChild(wrap);
-        return inputEl;
-      };
-      const metaRow = document.createElement("div");
-      metaRow.className = "xlc-form-row";
-      const typeWrap = document.createElement("label");
-      typeWrap.className = "xlc-form-field xlc-form-field--fixed";
-      const typeLabel2 = document.createElement("span");
-      typeLabel2.className = "xlc-form-label";
-      typeLabel2.textContent = t("type");
-      typeWrap.appendChild(typeLabel2);
-      const typeSelect = document.createElement("select");
-      typeSelect.className = "b3-select xlc-form-type";
-      typeSelect.dataset.xlcControl = "capture.type";
-      for (const it of ["text", "markdown", "url", "code", "image", "asset", "blockref", "structure"]) {
-        const opt = document.createElement("option");
-        opt.value = it;
-        opt.textContent = t(`type.${it}`);
-        if (it === defaultType) opt.selected = true;
-        typeSelect.appendChild(opt);
-      }
-      typeWrap.appendChild(typeSelect);
-      metaRow.appendChild(typeWrap);
-      const contentEl = field(t("contentLabel"), defaultText, true, "xlc-form-content");
-      contentEl.dataset.xlcControl = "capture.content";
-      const contentWrap = contentEl.parentElement;
-      const contentError = document.createElement("span");
-      contentError.className = "xlc-form-error";
-      contentError.id = "xlc-capture-content-error";
-      contentError.setAttribute("role", "alert");
-      contentError.hidden = true;
-      contentWrap.appendChild(contentError);
-      const multiBlockHint = document.createElement("span");
-      multiBlockHint.className = "xlc-form-hint";
-      multiBlockHint.dataset.xlcControl = "capture.body-restriction";
-      multiBlockHint.setAttribute("role", "note");
-      multiBlockHint.textContent = t("multiBlockPendingHint");
-      contentWrap.appendChild(multiBlockHint);
-      const varbar = buildVariableBar(t, () => contentEl);
-      contentEl.parentElement.after(varbar);
-      const titleEl = field(t("title"), (_d = overrides == null ? void 0 : overrides.title) != null ? _d : "", false, "xlc-form-title");
-      titleEl.dataset.xlcControl = "capture.title";
-      form.appendChild(metaRow);
-      const aliasEl = field(t("alias"), "", false, "xlc-form-alias", metaRow);
-      aliasEl.dataset.xlcControl = "capture.alias";
-      metaRow.insertBefore(aliasEl.parentElement, typeWrap);
-      const tagRow = document.createElement("div");
-      tagRow.className = "xlc-form-row";
-      const tagsEl = field(t("tags"), "", false, "xlc-form-tags", tagRow);
-      tagsEl.dataset.xlcControl = "capture.tags";
-      const tagsHint = document.createElement("span");
-      tagsHint.className = "xlc-form-hint";
-      tagsHint.textContent = t("tagsHint");
-      tagsEl.parentElement.appendChild(tagsHint);
-      const categoryEl = field(t("category"), "", false, "xlc-form-category", tagRow);
-      categoryEl.dataset.xlcControl = "capture.category";
-      categoryEl.parentElement.classList.add("xlc-form-field--fixed");
-      form.appendChild(tagRow);
-      const hint = document.createElement("div");
-      hint.className = "xlc-form-hint";
-      hint.textContent = t("captureHint");
-      form.appendChild(hint);
-      if (this.deps.getLibraryName) {
-        void this.deps.getLibraryName().then((name) => {
-          if (closed || !name) return;
-          hint.textContent = `${t("captureHint")} \xB7 ${t("captureHintLib", name)}`;
-        }).catch(() => void 0);
-      }
-      const flagContentError = (message) => {
-        contentEl.classList.add("xlc-input--error");
-        contentEl.setAttribute("aria-invalid", "true");
-        contentEl.setAttribute("aria-describedby", contentError.id);
-        contentError.textContent = message;
-        contentError.hidden = false;
-        contentEl.focus();
-      };
-      contentEl.addEventListener("input", () => {
-        contentEl.classList.remove("xlc-input--error");
-        contentEl.removeAttribute("aria-invalid");
-        contentEl.removeAttribute("aria-describedby");
-        contentError.hidden = true;
-        contentError.textContent = "";
-      });
-      const sugrow = document.createElement("div");
-      sugrow.className = "xlc-sugrow";
-      sugrow.style.display = "none";
-      const sugText = document.createElement("span");
-      sugrow.appendChild(sugText);
-      const adoptBtn = document.createElement("button");
-      adoptBtn.className = "xlc-sugrow-adopt";
-      adoptBtn.dataset.xlcControl = "capture.ai.suggestion.adopt";
-      let suggestions = {};
-      const applySuggestions = () => {
-        var _a2;
-        if (closed || Object.keys(suggestions).length === 0) return;
-        if (suggestions.title) titleEl.value = suggestions.title;
-        if (suggestions.alias) aliasEl.value = suggestions.alias;
-        if ((_a2 = suggestions.tags) == null ? void 0 : _a2.length) tagsEl.value = suggestions.tags.join(", ");
-        if (suggestions.category) categoryEl.value = suggestions.category;
-        this.deps.notify("info", t("aiApplied"));
-      };
-      adoptBtn.textContent = t("adoptAll");
-      adoptBtn.addEventListener("click", applySuggestions);
-      sugrow.appendChild(adoptBtn);
-      form.insertBefore(sugrow, titleEl.parentElement);
-      if (this.deps.aiEnabled()) {
-        const contentLabel = contentEl.parentElement.querySelector(".xlc-form-label");
-        if (contentLabel) {
-          const tidyBtn = document.createElement("button");
-          tidyBtn.className = "xlc-form-ai";
-          tidyBtn.type = "button";
-          tidyBtn.dataset.xlcControl = "capture.ai.tidy";
-          tidyBtn.textContent = "\u2726 " + t("aiTidy");
-          const tidyFailure = document.createElement("div");
-          tidyFailure.className = "xlc-ai-failure";
-          tidyFailure.hidden = true;
-          const tidyFailureMessage = document.createElement("span");
-          tidyFailureMessage.className = "xlc-form-error";
-          tidyFailureMessage.dataset.xlcControl = "capture.ai.tidy.error";
-          tidyFailureMessage.setAttribute("role", "alert");
-          tidyFailureMessage.setAttribute("aria-live", "assertive");
-          tidyFailure.appendChild(tidyFailureMessage);
-          const tidyRetryBtn = document.createElement("button");
-          tidyRetryBtn.type = "button";
-          tidyRetryBtn.className = "xlc-form-ai xlc-ai-retry";
-          tidyRetryBtn.dataset.xlcControl = "capture.ai.tidy.retry";
-          tidyRetryBtn.textContent = t("retry");
-          tidyFailure.appendChild(tidyRetryBtn);
-          contentEl.parentElement.appendChild(tidyFailure);
-          let tidyBusy = false;
-          const syncTidyButton = () => {
-            tidyBtn.disabled = tidyBusy || !contentEl.value.trim();
-          };
-          contentEl.addEventListener("input", syncTidyButton);
-          syncTidyButton();
-          const clearTidyFailure = () => {
-            tidyFailure.hidden = true;
-            tidyFailureMessage.textContent = "";
-          };
-          const showTidyFailure = (message) => {
-            tidyFailureMessage.textContent = message || t("aiTransport");
-            tidyFailure.hidden = false;
-          };
-          const runTidy = () => {
-            if (closed || tidyBusy) return;
-            const value = contentEl.value.trim();
-            if (!value) {
-              this.deps.notify("error", t("invalidItem"));
-              return;
-            }
-            clearTidyFailure();
-            suggestions = {};
-            sugText.textContent = "";
-            sugrow.style.display = "none";
-            const request = ++tidySeq;
-            tidyBusy = true;
-            syncTidyButton();
-            tidyBtn.textContent = t("aiWorking");
-            void this.deps.aiTidy(value).then((result) => {
-              var _a2;
-              if (closed || request !== tidySeq) return;
-              tidyBtn.textContent = "\u2726 " + t("aiTidy");
-              tidyBusy = false;
-              syncTidyButton();
-              if (!result.ok) {
-                showTidyFailure(result.message);
-                return;
-              }
-              suggestions = result;
-              sugText.textContent = "";
-              const lead = document.createElement("span");
-              lead.textContent = "\u2726 " + t("aiSuggestion") + "\uFF1A";
-              sugText.appendChild(lead);
-              if (result.title) {
-                const titleEl2 = document.createElement("b");
-                titleEl2.textContent = result.title;
-                sugText.appendChild(titleEl2);
-              }
-              const parts = [
-                result.alias ? `${t("alias")}\uFF1A${result.alias}` : "",
-                ((_a2 = result.tags) == null ? void 0 : _a2.length) ? `${t("tags")}\uFF1A${result.tags.join("/")}` : "",
-                result.category ? `${t("category")}\uFF1A${result.category}` : ""
-              ].filter(Boolean);
-              if (parts.length) {
-                const tail = document.createElement("span");
-                tail.textContent = (result.title ? " \xB7 " : "") + parts.join(" \xB7 ");
-                sugText.appendChild(tail);
-              }
-              sugrow.style.display = "";
-            }).catch((err) => {
-              if (closed || request !== tidySeq) return;
-              tidyBtn.textContent = "\u2726 " + t("aiTidy");
-              tidyBusy = false;
-              syncTidyButton();
-              showTidyFailure(toErrorMessage(err, t("aiTransport")));
-            });
-          };
-          tidyBtn.addEventListener("click", runTidy);
-          tidyRetryBtn.addEventListener("click", runTidy);
-          contentLabel.appendChild(tidyBtn);
-        }
-        const draftWrap = document.createElement("div");
-        draftWrap.className = "xlc-form-field";
-        const draftLabel = document.createElement("span");
-        draftLabel.className = "xlc-form-label";
-        draftLabel.textContent = t("aiDraft");
-        draftWrap.appendChild(draftLabel);
-        const draftBtn = document.createElement("button");
-        draftBtn.type = "button";
-        draftBtn.className = "xlc-form-ai";
-        draftBtn.dataset.xlcControl = "capture.ai.draft.generate";
-        draftBtn.textContent = "\u2726 " + t("aiDraftDesc");
-        draftLabel.appendChild(draftBtn);
-        const draftInput = document.createElement("input");
-        draftInput.className = "b3-text-field";
-        draftInput.dataset.xlcControl = "capture.ai.draft.description";
-        draftInput.placeholder = t("aiDraftDesc");
-        draftWrap.appendChild(draftInput);
-        const draftFailure = document.createElement("div");
-        draftFailure.className = "xlc-ai-failure";
-        draftFailure.hidden = true;
-        const draftFailureMessage = document.createElement("span");
-        draftFailureMessage.className = "xlc-form-error";
-        draftFailureMessage.dataset.xlcControl = "capture.ai.draft.error";
-        draftFailureMessage.setAttribute("role", "alert");
-        draftFailureMessage.setAttribute("aria-live", "assertive");
-        draftFailure.appendChild(draftFailureMessage);
-        const draftRetryBtn = document.createElement("button");
-        draftRetryBtn.type = "button";
-        draftRetryBtn.className = "xlc-form-ai xlc-ai-retry";
-        draftRetryBtn.dataset.xlcControl = "capture.ai.draft.retry";
-        draftRetryBtn.textContent = t("retry");
-        draftFailure.appendChild(draftRetryBtn);
-        draftWrap.appendChild(draftFailure);
-        let draftBusy = false;
-        draftBtn.disabled = true;
-        const syncDraftButton = () => {
-          draftBtn.disabled = draftBusy || !draftInput.value.trim();
-        };
-        draftInput.addEventListener("input", syncDraftButton);
-        const clearDraftFailure = () => {
-          draftFailure.hidden = true;
-          draftFailureMessage.textContent = "";
-        };
-        const showDraftFailure = (message) => {
-          draftFailureMessage.textContent = message || t("aiTransport");
-          draftFailure.hidden = false;
-        };
-        const runDraft = () => {
-          if (closed || draftBusy) return;
-          const desc = draftInput.value.trim();
-          if (!desc) {
-            this.deps.notify("error", t("aiDraftNeedDescription"));
-            draftInput.focus();
-            return;
-          }
-          if (draftBtn.disabled) return;
-          clearDraftFailure();
-          draftBusy = true;
-          syncDraftButton();
-          const request = ++draftSeq;
-          draftBtn.textContent = t("aiWorking");
-          void this.deps.aiDraft(desc).then((result) => {
-            if (closed || request !== draftSeq) return;
-            draftBtn.textContent = "\u2726 " + t("aiDraftDesc");
-            draftBusy = false;
-            syncDraftButton();
-            if (!result.ok) {
-              showDraftFailure(result.message);
-              return;
-            }
-            const contentBox = contentEl;
-            if (contentBox.value.trim()) {
-              (0, import_siyuan4.confirm)(t("aiDraft"), t("aiDraftOverwrite"), () => {
-                contentBox.value = result.text;
-                contentBox.dispatchEvent(new Event("input", { bubbles: true }));
-              });
-              return;
-            }
-            contentBox.value = result.text;
-            contentBox.dispatchEvent(new Event("input", { bubbles: true }));
-          }).catch((err) => {
-            if (closed || request !== draftSeq) return;
-            draftBtn.textContent = "\u2726 " + t("aiDraftDesc");
-            draftBusy = false;
-            syncDraftButton();
-            showDraftFailure(toErrorMessage(err, t("aiTransport")));
-          });
-        };
-        draftBtn.addEventListener("click", runDraft);
-        draftRetryBtn.addEventListener("click", runDraft);
-        form.insertBefore(draftWrap, form.firstChild);
-      }
-      const actions = document.createElement("div");
-      actions.className = "xlc-form-actions";
-      const cancelBtn = document.createElement("button");
-      cancelBtn.className = "b3-button";
-      cancelBtn.dataset.xlcControl = "capture.cancel";
-      cancelBtn.textContent = t("cancel");
-      cancelBtn.addEventListener("click", () => {
-        closed = true;
-        ++tidySeq;
-        ++draftSeq;
-        dialog.destroy();
-      });
-      const saveBtn = document.createElement("button");
-      saveBtn.className = "b3-button xlc-btn-primary";
-      saveBtn.dataset.xlcControl = "capture.save";
-      saveBtn.textContent = t("save");
-      const submitOnEnter = (el) => {
-        el.addEventListener("keydown", (ev) => {
-          if (ev.isComposing || ev.keyCode === 229) return;
-          if (ev.key === "Enter" && !ev.altKey && !ev.ctrlKey && !ev.metaKey) {
-            ev.preventDefault();
-            saveBtn.click();
-          }
-        });
-      };
-      [titleEl, aliasEl, tagsEl, categoryEl].forEach((el) => submitOnEnter(el));
-      saveBtn.addEventListener("click", () => {
-        if (closed || saving) return;
-        const contentValue = contentEl.value;
-        if (!contentValue.trim() && !(typeSelect.value === "blockref" && (overrides == null ? void 0 : overrides.targetBlockId))) {
-          flagContentError(t("captureContentRequired"));
-          this.deps.notify("error", t("captureContentRequired"));
-          return;
-        }
-        const type = typeSelect.value;
-        if (type === "blockref" && !(overrides == null ? void 0 : overrides.targetBlockId)) {
-          this.deps.notify("error", t("blockrefNeedsTarget"));
-          return;
-        }
-        let markdown = type === "blockref" && !contentValue.trim() && (overrides == null ? void 0 : overrides.targetBlockId) ? `((${overrides.targetBlockId}))` : contentValue;
-        if (type === "code" && !/^```/.test(contentValue.trim())) {
-          markdown = "```\n" + contentValue + "\n```";
-        } else if (type === "url") {
-          markdown = contentValue.trim();
-          if (!isSafeHttpUrl(markdown)) {
-            flagContentError(t("captureUrlInvalid"));
-            this.deps.notify("error", t("captureUrlInvalid"));
-            return;
-          }
-        }
-        if (bodyWriteRestriction(markdown)) {
-          const message = markdown.length > LIMITS.contentChars ? t("aiContentTooLong", String(LIMITS.contentChars)) : t("multiBlockPendingHint");
-          flagContentError(message);
-          this.deps.notify("error", message);
-          return;
-        }
-        saving = true;
-        saveBtn.disabled = true;
-        saveBtn.textContent = t("checkingDuplicate");
-        cancelBtn.disabled = true;
-        const doSave = () => {
-          var _a2;
-          if (closed) return;
-          saving = true;
-          saveBtn.disabled = true;
-          saveBtn.textContent = t("saving");
-          cancelBtn.disabled = true;
-          const docId = overrides && "docId" in overrides ? overrides.docId : (overrides == null ? void 0 : overrides.sourceType) === "clipboard" ? void 0 : this.deps.currentDocId();
-          void this.deps.createItem({
-            itemType: type,
-            markdown,
-            title: titleEl.value || void 0,
-            alias: aliasEl.value || void 0,
-            tags: tagsEl.value ? tagsEl.value.split(/[,,]/).map((s) => s.trim()).filter(Boolean) : void 0,
-            category: categoryEl.value || void 0,
-            url: type === "url" ? markdown : void 0,
-            targetBlockId: overrides == null ? void 0 : overrides.targetBlockId,
-            source: docId || sourceBlockId || (overrides == null ? void 0 : overrides.sourceType) ? {
-              sourceDocId: docId != null ? docId : "",
-              sourceBlockId: sourceBlockId != null ? sourceBlockId : "",
-              sourceType: (_a2 = overrides == null ? void 0 : overrides.sourceType) != null ? _a2 : sourceBlockId ? "selection" : "manual"
-            } : void 0
-          }, { idempotencyKey: formWriteKey }).then((result) => {
-            saving = false;
-            if (result.ok) {
-              closed = true;
-              dialog.destroy();
-            } else {
-              saveBtn.disabled = false;
-              saveBtn.textContent = t("save");
-              cancelBtn.disabled = false;
-              this.deps.notify("error", result.message);
-            }
-          }).catch((err) => {
-            saving = false;
-            if (closed) return;
-            saveBtn.disabled = false;
-            saveBtn.textContent = t("save");
-            cancelBtn.disabled = false;
-            this.deps.notify("error", t("kernelError", toErrorMessage(err)));
-          });
-        };
-        void this.deps.findDuplicate(contentValue).then((dup) => {
-          if (closed) return;
-          if (!dup) {
-            saving = false;
-            doSave();
-            return;
-          }
-          saving = false;
-          saveBtn.disabled = false;
-          saveBtn.textContent = t("save");
-          cancelBtn.disabled = false;
-          (0, import_siyuan4.confirm)("\u26A0\uFE0F " + t("duplicateTitle"), t("duplicateConfirm", dup.title), () => {
-            if (!closed) doSave();
-          });
-        }).catch((err) => {
-          if (closed) return;
-          saving = false;
-          saveBtn.disabled = false;
-          saveBtn.textContent = t("save");
-          cancelBtn.disabled = false;
-          this.deps.notify("error", t("kernelError", toErrorMessage(err)));
-        });
-      });
-      actions.appendChild(cancelBtn);
-      actions.appendChild(saveBtn);
-      form.appendChild(actions);
-      body.appendChild(form);
-      contentEl.focus();
-    }
-  };
+  // scripts/harness/entry.ts
+  init_settings_dialog();
+  init_capture();
 
   // src/ui/discovery-dialog.ts
-  var import_siyuan5 = __toESM(require_stub_dom());
+  var import_siyuan6 = __toESM(require_stub_dom());
   init_constants();
+  init_dialog_dom();
   init_item();
   init_errors();
 
@@ -10631,7 +12067,7 @@ ${exception.mark.snippet}`;
       var _a, _b;
       if (this.dialog) return;
       this.closed = false;
-      const dialog = new import_siyuan5.Dialog({
+      const dialog = new import_siyuan6.Dialog({
         title: (_a = this.options.title) != null ? _a : this.tx(this.titleKey()),
         content: "",
         width: "min(1040px, 94vw)",
@@ -10718,7 +12154,7 @@ ${exception.mark.snippet}`;
     openCloseConfirmation(onClosed) {
       var _a;
       if (this.closeConfirmationDialog || this.closed) return;
-      const dialog = new import_siyuan5.Dialog({
+      const dialog = new import_siyuan6.Dialog({
         title: this.tx("discoveryCloseTitle"),
         content: "",
         width: "min(440px, 92vw)",
@@ -11739,7 +13175,7 @@ ${exception.mark.snippet}`;
         pathLabel: ((_f = this.options.sourcePath) != null ? _f : "").slice(0, LIMITS.savedViewPathChars),
         defaultCategory: ((_h = (_g = this.defaultCategoryInput) == null ? void 0 : _g.value) != null ? _h : "").trim().slice(0, LIMITS.category)
       };
-      const dialog = new import_siyuan5.Dialog({
+      const dialog = new import_siyuan6.Dialog({
         title: this.tx("discoverySaveView"),
         content: "",
         width: "min(440px, 92vw)",
@@ -12237,8 +13673,9 @@ ${details.join("\n")}` : ""}`;
   }
 
   // src/service/commands.ts
-  var import_siyuan6 = __toESM(require_stub_dom());
+  var import_siyuan7 = __toESM(require_stub_dom());
   init_constants();
+  init_actions();
 
   // src/model/placeholders.ts
   var PLACEHOLDER_PATTERN = /\{\{xlc:(date|time|datetime|weekday|title|path|doc|random)(?:\|([^}]+))?\}\}/g;
@@ -12389,6 +13826,7 @@ ${details.join("\n")}` : ""}`;
   }
 
   // src/service/commands.ts
+  init_variables();
   var ActionExecutor = class {
     constructor(library, host, notify, onItemUsed, placeholders) {
       this.library = library;
@@ -12722,6 +14160,9 @@ ${details.join("\n")}` : ""}`;
 
   // src/service/library.ts
   init_item();
+  init_kramdown();
+  init_pinyin();
+  init_variables();
   init_errors();
   function fail(reason, message) {
     return { ok: false, reason, message };
@@ -14361,6 +15802,29 @@ ${details.join("\n")}` : ""}`;
     espansoParse: "\u89E3\u6790\u9884\u89C8",
     espansoParsed: "\u89E3\u6790\u51FA %s \u6761\uFF0C\u53EF\u8FDB\u5165\u5BFC\u5165\u7B56\u7565",
     espansoNone: "\u672A\u89E3\u6790\u51FA\u53EF\u7528\u6761\u76EE\uFF0C\u8BF7\u786E\u8BA4\u7C98\u8D34\u7684\u662F Espanso match \u914D\u7F6E",
+    csvImportBtn: "\u4ECE CSV / \u8868\u683C\u5BFC\u5165",
+    csvImportTitle: "\u4ECE CSV / TSV \u8868\u683C\u5BFC\u5165\u5E38\u7528\u8BED",
+    csvImportHint: "\u7C98\u8D34\u6765\u81EA Excel\u3001\u98DE\u4E66\u8868\u683C\u3001Google Sheets \u6216 CSV/TSV \u6587\u4EF6\u7684\u6587\u672C\u3002\u81EA\u52A8\u8BC6\u522B\u5206\u9694\u7B26\uFF08\u9017\u53F7/\u5236\u8868\u7B26/\u5206\u53F7\uFF09\u4E0E\u8868\u5934\u5217\uFF08\u6807\u9898/\u6B63\u6587/\u5206\u7C7B/\u6807\u7B7E/\u522B\u540D/\u94FE\u63A5\uFF09\uFF1B\u65E0\u8868\u5934\u6309\u5217\u4F4D\u667A\u80FD\u964D\u7EA7\u63A8\u65AD\u3002",
+    csvImportPlaceholder: "\u6807\u9898,\u5185\u5BB9,\u5206\u7C7B,\u6807\u7B7E\n\u6253\u5361\u7B7E\u5230,\u4ECA\u65E5\u5DF2\u6309\u8BA1\u5212\u5B8C\u6210\u5404\u9879\u4EFB\u52A1\uFF0C\u8BF7\u67E5\u6536\uFF01,\u5DE5\u4F5C,\u6253\u5361;\u5DE5\u4F5C\u6C47\u62A5\n\u4F1A\u8BAE\u901A\u77E5,\u8BF7\u4E8E\u4ECA\u5929\u4E0B\u5348\u4E24\u70B9\u5728\u4E09\u697C\u4F1A\u8BAE\u5BA4\u53EC\u5F00\u5468\u4F1A\u3002,\u5DE5\u4F5C,\u901A\u77E5",
+    csvImportParsed: "\u89E3\u6790\u51FA %s \u6761\uFF08\u5206\u9694\u7B26\u300C%s\u300D\uFF0C\u8868\u5934 %s \u5217\uFF09\uFF0C\u53EF\u8FDB\u5165\u5BFC\u5165\u7B56\u7565",
+    csvImportNone: "\u672A\u89E3\u6790\u51FA\u53EF\u7528\u6761\u76EE\uFF0C\u8BF7\u786E\u8BA4\u7C98\u8D34\u7684\u662F\u6709\u6548\u7684 CSV/TSV \u8868\u683C\u6587\u672C",
+    searchCurrentDocAction: "\u5728\u5F53\u524D\u6253\u5F00\u6587\u6863\u4E2D\u68C0\u7D22\u300C%s\u300D",
+    searchAllNotesAction: "\u5728\u5168\u5E93\u7B14\u8BB0\u4E2D\u68C0\u7D22\u300C%s\u300D",
+    scopeCurrentDoc: "\u5F53\u524D\u6587\u6863",
+    scopeAllNotes: "\u5168\u5E93\u7B14\u8BB0",
+    saveToCommon: "\u6536\u5F55\u4E3A\u5E38\u7528\u8BED",
+    savedToCommon: "\u5DF2\u5C06\u300C%s\u300D\u6536\u5F55\u5230\u5E38\u7528\u8BED\u5E93",
+    emptyCurrentDoc: "\u5F53\u524D\u6587\u6863\u4E2D\u672A\u627E\u5230\u5305\u542B\u5173\u952E\u8BCD\u7684\u5185\u5BB9\u5757",
+    emptyAllNotes: "\u5168\u5E93\u7B14\u8BB0\u4E2D\u672A\u627E\u5230\u5305\u542B\u5173\u952E\u8BCD\u7684\u6587\u6863",
+    fieldMapping: "\u5217\u5B57\u6BB5\u6620\u5C04",
+    autoInfer: "\u667A\u80FD\u63A8\u65AD",
+    noData: "\u6682\u65E0\u6709\u6548\u6570\u636E",
+    fieldTitle: "\u6807\u9898\u5217",
+    fieldContent: "\u6B63\u6587\u5217",
+    fieldCategory: "\u5206\u7C7B\u5217",
+    fieldTags: "\u6807\u7B7E\u5217",
+    fieldAlias: "\u522B\u540D\u5217",
+    fieldUrl: "\u94FE\u63A5\u5217",
     discoveryTitle: "\u4ECE\u5F53\u524D\u6587\u6863\u53D1\u73B0",
     discoveryTitleNotebook: "\u4ECE\u5F53\u524D\u7B14\u8BB0\u672C\u53D1\u73B0",
     discoveryTitleGeneral: "\u53D1\u73B0\u5DF2\u6709\u5185\u5BB9",

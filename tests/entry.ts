@@ -24,6 +24,7 @@ import * as dedupe from "../src/model/dedupe";
 import * as capture from "../src/ui/capture";
 import * as importer from "../src/service/importer";
 import * as espanso from "../src/service/espanso-import";
+import * as csvTsvImport from "../src/service/csv-tsv-import";
 import * as library from "../src/service/library";
 import * as commands from "../src/service/commands";
 import * as providers from "../src/service/providers";
@@ -34,6 +35,9 @@ import * as externalBridge from "../src/service/external-bridge";
 import * as discovery from "../src/service/discovery";
 import * as discoveryTarget from "../src/model/discovery-target";
 import * as emptyState from "../src/ui/empty-state";
+import * as previewRenderer from "../src/ui/preview-renderer";
+import * as hierarchy from "../src/model/hierarchy";
+import * as omniSearch from "../src/service/omni-search";
 
 export {
     item,
@@ -55,6 +59,7 @@ export {
     capture,
     importer,
     espanso,
+    csvTsvImport,
     transfer,
     client,
     lru,
@@ -69,4 +74,7 @@ export {
     discovery,
     discoveryTarget,
     emptyState,
+    previewRenderer,
+    hierarchy,
+    omniSearch,
 };

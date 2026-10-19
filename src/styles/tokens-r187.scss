@@ -27,6 +27,11 @@ $roots: ".xlc-dialog, .xlc-form, .xlc-varform, .b3-dialog__container.xlc-dialog-
   --xlc-info-soft: #eaf4f8;
   --xlc-favorite: #e8a020;
   --xlc-control-knob: #ffffff;
+  --xlc-tok-kw: #6351d4;
+  --xlc-tok-str: #2d7a54;
+  --xlc-tok-num: #ad5a18;
+  --xlc-tok-comment: #858296;
+  --xlc-tok-var: #c23b72;
   --xlc-overlay-shadow: 0 12px 40px rgba(41, 34, 72, .10);
   --xlc-chevron: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%236c6a7f' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
   color-scheme: light;
@@ -56,6 +61,11 @@ $roots: ".xlc-dialog, .xlc-form, .xlc-varform, .b3-dialog__container.xlc-dialog-
   --xlc-info-soft: #273840;
   --xlc-favorite: #f4c78a;
   --xlc-control-knob: #ffffff;
+  --xlc-tok-kw: #b5afff;
+  --xlc-tok-str: #79d2a2;
+  --xlc-tok-num: #f4b36d;
+  --xlc-tok-comment: #8a869e;
+  --xlc-tok-var: #f683a6;
   --xlc-overlay-shadow: 0 12px 40px rgba(0, 0, 0, .32);
   --xlc-chevron: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%23b2aec4' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
   color-scheme: dark;
@@ -579,6 +589,144 @@ $roots: ".xlc-dialog, .xlc-form, .xlc-varform, .b3-dialog__container.xlc-dialog-
   }
 }
 
+// ══════════ 详情预览代码高亮与 Markdown 结构（G6/R268）══════════
+:is(#{$roots}) {
+  .xlc-code-banner {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: var(--xlc-space-1) var(--xlc-space-3);
+    margin-bottom: var(--xlc-space-2);
+    background: var(--xlc-soft);
+    border: 1px solid var(--xlc-line);
+    border-radius: var(--xlc-radius-sm);
+    font-size: var(--xlc-font-xs);
+    color: var(--xlc-muted);
+  }
+
+  .xlc-code-lines {
+    font-size: var(--xlc-font-xs);
+    color: var(--xlc-muted);
+  }
+
+  .xlc-preview-code {
+    margin: 0;
+    padding: var(--xlc-space-3);
+    background: var(--xlc-soft);
+    border: 1px solid var(--xlc-line);
+    border-radius: var(--xlc-radius-md);
+    font-family: SFMono-Regular, Consolas, "Liberation Mono", Menlo, Courier, monospace;
+    font-size: var(--xlc-font-sm);
+    line-height: 1.6;
+    overflow-x: auto;
+    white-space: pre;
+
+    &--inline {
+      margin: var(--xlc-space-2) 0;
+    }
+  }
+
+  .xlc-code-line {
+    display: flex;
+    align-items: baseline;
+    min-height: 20px;
+  }
+
+  .xlc-line-num {
+    display: inline-block;
+    width: 28px;
+    min-width: 28px;
+    text-align: right;
+    margin-right: var(--xlc-space-3);
+    color: var(--xlc-muted);
+    user-select: none;
+    font-size: var(--xlc-font-xs);
+    opacity: 0.6;
+  }
+
+  .xlc-code-content {
+    flex: 1;
+  }
+
+  .xlc-tok {
+    &--kw { color: var(--xlc-tok-kw); font-weight: 600; }
+    &--str { color: var(--xlc-tok-str); }
+    &--num { color: var(--xlc-tok-num); }
+    &--comment { color: var(--xlc-tok-comment); font-style: italic; }
+    &--variable {
+      color: var(--xlc-tok-var);
+      background: var(--xlc-lavender);
+      padding: 1px 4px;
+      border-radius: var(--xlc-radius-xs);
+      font-weight: 500;
+    }
+  }
+
+  .xlc-md-h {
+    font-weight: 600;
+    color: var(--xlc-ink);
+    margin: var(--xlc-space-3) 0 var(--xlc-space-2);
+    line-height: var(--xlc-leading-snug);
+  }
+  .xlc-md-h1 { font-size: var(--xlc-font-2xl); border-bottom: 1px solid var(--xlc-line); padding-bottom: var(--xlc-space-1); }
+  .xlc-md-h2 { font-size: var(--xlc-font-xl); }
+  .xlc-md-h3 { font-size: var(--xlc-font-lg); }
+
+  .xlc-md-quote {
+    margin: var(--xlc-space-2) 0;
+    padding: var(--xlc-space-2) var(--xlc-space-3);
+    border-left: 3px solid var(--xlc-accent);
+    background: var(--xlc-soft);
+    color: var(--xlc-muted);
+    border-radius: 0 var(--xlc-radius-sm) var(--xlc-radius-sm) 0;
+  }
+
+  .xlc-md-list-item {
+    display: flex;
+    align-items: baseline;
+    gap: var(--xlc-space-2);
+    margin: var(--xlc-space-1) 0;
+  }
+  .xlc-md-bullet, .xlc-md-ordered-num {
+    color: var(--xlc-accent);
+    font-weight: 600;
+    user-select: none;
+  }
+
+  .xlc-md-p {
+    margin: var(--xlc-space-2) 0;
+    line-height: var(--xlc-leading-loose);
+    color: var(--xlc-ink);
+  }
+
+  .xlc-md-bold {
+    font-weight: 600;
+    color: var(--xlc-ink);
+  }
+
+  .xlc-md-inline-code {
+    font-family: SFMono-Regular, Consolas, "Liberation Mono", Menlo, Courier, monospace;
+    font-size: var(--xlc-font-xs);
+    padding: 1px 5px;
+    background: var(--xlc-soft);
+    border: 1px solid var(--xlc-line);
+    border-radius: var(--xlc-radius-xs);
+    color: var(--xlc-accent);
+  }
+
+  .xlc-md-link {
+    color: var(--xlc-accent);
+    text-decoration: underline;
+    text-underline-offset: 2px;
+  }
+
+  .xlc-md-hr {
+    border: none;
+    border-top: 1px solid var(--xlc-line);
+    margin: var(--xlc-space-3) 0;
+  }
+}
+
 // ══════════ 强制颜色与系统变量映射（forced-colors: active · Epoch 5）══════════
 @media (forced-colors: active) {
   :is(#{$roots}) {
@@ -605,6 +753,11 @@ $roots: ".xlc-dialog, .xlc-form, .xlc-varform, .b3-dialog__container.xlc-dialog-
     --xlc-info-soft: Canvas;
     --xlc-favorite: Highlight;
     --xlc-control-knob: CanvasText;
+    --xlc-tok-kw: Highlight;
+    --xlc-tok-str: CanvasText;
+    --xlc-tok-num: CanvasText;
+    --xlc-tok-comment: CanvasText;
+    --xlc-tok-var: Highlight;
     --xlc-overlay-shadow: none;
 
     --b3-theme-background: Canvas;
@@ -626,6 +779,8 @@ $roots: ".xlc-dialog, .xlc-form, .xlc-varform, .b3-dialog__container.xlc-dialog-
     .xlc-search,
     .xlc-list,
     .xlc-pane,
+    .xlc-preview-code,
+    .xlc-code-banner,
     .xlc-discovery-list,
     .xlc-discovery-preview,
     .xlc-menu,

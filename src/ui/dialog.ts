@@ -14,14 +14,20 @@ import {TransformKind} from "../service/ai";
 import {ProviderRow} from "../model/provider-section";
 import {AskField, askFieldTag, hasCursorToken, listAskFields, listSnippetRefs} from "../model/variables";
 import {openVariableFillCard} from "./variable-form";
-import {formatScopeFallbackQuery, shouldShowScopeFallback} from "./empty-state";
+import {formatScopeFallbackQuery, shouldShowOmniSearchFallback, shouldShowScopeFallback, SearchScope} from "./empty-state";
 import {findPinyinMatches} from "../model/pinyin-tiny";
+import {renderSafePreview} from "./preview-renderer";
+import {buildHierarchyTree, flattenHierarchyTree} from "../model/hierarchy";
 
 export interface DialogDeps {
     t: (key: string, ...args: string[]) => string;
     search: (query: SearchQuery) => Promise<{entries: SearchEntry[]; truncated: boolean; total: number; loading?: boolean; error?: string}>;
     /** 文档搜索（插入到指定文档的选择器） */
     searchDocs: (k: string) => Promise<Array<{id: string; hPath: string; name: string}>>;
+    /** 全域搜索终端扩展（G12 / T-0123） */
+    searchCurrentDoc?: (keyword: string) => Promise<SearchEntry[]>;
+    searchAllNotes?: (keyword: string) => Promise<SearchEntry[]>;
+    createFromOmni?: (entry: SearchEntry) => Promise<boolean>;
     insertToDoc: (itemId: string, docId: string, hPath: string, fills?: Record<string, string>, mode?: "insert" | "insert-content" | "insert-ref" | "insert-embed") => Promise<boolean>;
     duplicateItem: (itemId: string) => Promise<void>;
     /** AI 变换结果存为新条目（来源=原条目；原条目不被修改） */
@@ -103,7 +109,7 @@ export class CommonSearchDialog {
     private activeIndex = 0;
     private searchSeq = 0;
     private previewSeq = 0;
-    private currentScope: "all" | "favorites" | "recent" = "all";
+    private currentScope: SearchScope = "all";
     private lastPreviewId: string | null = null;
     /** 空状态文案（refresh 计算后交 renderList 渲染大空态；瞬态/错误仍走 status 行） */
     private emptyMessage = "";
@@ -377,12 +383,18 @@ export class CommonSearchDialog {
         });
         filters.appendChild(categorySelect);
 
-        for (const scope of ["favorites", "recent"] as const) {
+        const scopes = ["favorites", "recent", "current-doc", "all-notes"] as const;
+        for (const scope of scopes) {
             const chip = document.createElement("button");
             chip.className = "xlc-chip xlc-scope-chip";
             chip.dataset.scope = scope;
             chip.dataset.xlcControl = `filter.scope.${scope}`;
-            chip.textContent = (scope === "favorites" ? "★ " : "🕐 ") + this.deps.t(`filter${scope === "favorites" ? "Favorites" : "Recent"}`);
+            let text = "";
+            if (scope === "favorites") text = "★ " + this.deps.t("filterFavorites");
+            else if (scope === "recent") text = "🕐 " + this.deps.t("filterRecent");
+            else if (scope === "current-doc") text = "☵ " + this.deps.t("scopeCurrentDoc");
+            else if (scope === "all-notes") text = "🔍 " + this.deps.t("scopeAllNotes");
+            chip.textContent = text;
             chip.addEventListener("click", () => {
                 this.currentScope = this.currentScope === scope ? "all" : scope;
                 this.syncScopeChips();
@@ -746,12 +758,34 @@ export class CommonSearchDialog {
             const entry = this.results[this.activeIndex];
             if (entry) void this.deps.editItem(entry.id);
         });
+        const saveOmni = document.createElement("button");
+        saveOmni.className = "b3-button b3-button--text xlc-btn-ghost";
+        saveOmni.textContent = "✦ " + this.deps.t("saveToCommon");
+        saveOmni.dataset.xlcPaneAct = "save-omni";
+        saveOmni.dataset.xlcControl = "preview.save-omni";
+        saveOmni.style.display = "none";
+        saveOmni.addEventListener("click", () => {
+            const entry = this.results[this.activeIndex];
+            if (entry && this.deps.createFromOmni) {
+                saveOmni.disabled = true;
+                saveOmni.textContent = this.deps.t("loading");
+                void this.deps.createFromOmni(entry).then((ok) => {
+                    if (ok) {
+                        saveOmni.textContent = "✓ " + this.deps.t("saveToCommon");
+                    } else {
+                        saveOmni.disabled = false;
+                        saveOmni.textContent = "✦ " + this.deps.t("saveToCommon");
+                    }
+                });
+            }
+        });
         foot.appendChild(insert);
         foot.appendChild(aiBtn);
         foot.appendChild(copy);
         foot.appendChild(spacer);
         foot.appendChild(source);
         foot.appendChild(edit);
+        foot.appendChild(saveOmni);
         return foot;
     }
 
@@ -780,18 +814,25 @@ export class CommonSearchDialog {
         if (seq !== this.filterOptionsSeq || !this.dialog) return false;
         const tags = tagsResult.status === "fulfilled" ? Array.from(new Set(tagsResult.value.filter(Boolean))) : [];
         const categories = categoriesResult.status === "fulfilled" ? Array.from(new Set(categoriesResult.value.filter(Boolean))) : [];
-        for (const tag of tags) {
+
+        const tagTree = buildHierarchyTree(tags);
+        const flatTags = flattenHierarchyTree(tagTree, {includeCount: false, showPrefixBranch: true});
+        for (const item of flatTags) {
             const option = document.createElement("option");
-            option.value = tag;
-            option.textContent = tag;
+            option.value = item.path;
+            option.textContent = item.label;
             tagSelect.appendChild(option);
         }
-        for (const category of categories) {
+
+        const catTree = buildHierarchyTree(categories);
+        const flatCats = flattenHierarchyTree(catTree, {includeCount: false, showPrefixBranch: true});
+        for (const item of flatCats) {
             const option = document.createElement("option");
-            option.value = category;
-            option.textContent = category;
+            option.value = item.path;
+            option.textContent = item.label;
             categorySelect.appendChild(option);
         }
+
         if (tagsResult.status === "rejected") {
             tagSelect.title = this.deps.t("kernelError", this.deps.t("tags"));
             if (current.tag) {
@@ -810,8 +851,10 @@ export class CommonSearchDialog {
                 categorySelect.appendChild(option);
             }
         }
-        const nextTag = tagsResult.status === "fulfilled" ? (current.tag && tags.includes(current.tag) ? current.tag : "") : current.tag;
-        const nextCategory = categoriesResult.status === "fulfilled" ? (current.category && categories.includes(current.category) ? current.category : "") : current.category;
+        const validTagPaths = new Set(flatTags.map((t) => t.path).concat(tags));
+        const validCatPaths = new Set(flatCats.map((c) => c.path).concat(categories));
+        const nextTag = tagsResult.status === "fulfilled" ? (current.tag && validTagPaths.has(current.tag) ? current.tag : "") : current.tag;
+        const nextCategory = categoriesResult.status === "fulfilled" ? (current.category && validCatPaths.has(current.category) ? current.category : "") : current.category;
         tagSelect.value = nextTag;
         categorySelect.value = nextCategory;
         tagSelect.disabled = false;
@@ -911,7 +954,8 @@ export class CommonSearchDialog {
             const text = query.text.trim();
             if (text.startsWith("?") && text.length > 1) {
                 // AI 语义找（仅元数据出域；未启用/失败诚实提示）
-                const aiResult = await this.deps.aiSemantic(text.slice(1), {itemType: query.itemType ?? "", tag: query.tag ?? "", category: query.category ?? "", scope: this.currentScope});
+                const aiScope: "all" | "favorites" | "recent" = this.currentScope === "favorites" || this.currentScope === "recent" ? this.currentScope : "all";
+                const aiResult = await this.deps.aiSemantic(text.slice(1), {itemType: query.itemType ?? "", tag: query.tag ?? "", category: query.category ?? "", scope: aiScope});
                 if (seq !== this.searchSeq) return;
                 if (aiResult.ok) {
                     this.results = aiResult.entries;
@@ -927,6 +971,24 @@ export class CommonSearchDialog {
                 if (aiBanner && this.aiResults) {
                     aiBanner.textContent = `✦ ${this.deps.t("aiResultCount", String(this.results.length))}`;
                 }
+            } else if (this.currentScope === "current-doc" && this.deps.searchCurrentDoc) {
+                const entries = await this.deps.searchCurrentDoc(query.text);
+                if (seq !== this.searchSeq) return;
+                this.results = entries;
+                total = entries.length;
+                truncated = false;
+                loading = false;
+                this.aiResults = false;
+                if (aiBanner) aiBanner.style.display = "none";
+            } else if (this.currentScope === "all-notes" && this.deps.searchAllNotes) {
+                const entries = await this.deps.searchAllNotes(query.text);
+                if (seq !== this.searchSeq) return;
+                this.results = entries;
+                total = entries.length;
+                truncated = false;
+                loading = false;
+                this.aiResults = false;
+                if (aiBanner) aiBanner.style.display = "none";
             } else {
                 const result = await this.deps.search(query);
                 if (seq !== this.searchSeq) return;
@@ -980,7 +1042,11 @@ export class CommonSearchDialog {
                 // 空态文案移入列表大空态（图标 + 主文案 + 语义找提示）；status 保持安静；
                 // 收藏/最近范围给分区专属文案（无 AI 建议提示）
                 status.textContent = "";
-                if (!query.text.trim() && this.currentScope === "favorites") {
+                if (this.currentScope === "current-doc") {
+                    this.emptyMessage = this.deps.t("emptyCurrentDoc");
+                } else if (this.currentScope === "all-notes") {
+                    this.emptyMessage = this.deps.t("emptyAllNotes");
+                } else if (!query.text.trim() && this.currentScope === "favorites") {
                     this.emptyMessage = this.deps.t("emptyFavorites");
                 } else if (!query.text.trim() && this.currentScope === "recent") {
                     this.emptyMessage = this.deps.t("emptyRecent");
@@ -1355,6 +1421,46 @@ export class CommonSearchDialog {
                 empty.appendChild(scopeFallback);
             }
 
+            // 全域内容扩展引导（G12 / T-0123，小驴常用全域搜索终端）：
+            // 当常用库中无匹配条目时，提供「在当前打开文档中检索」与「在全库笔记中检索」两大终端级直达入口。
+            if (this.currentScope === "all" && query && shouldShowOmniSearchFallback(query, this.currentScope)) {
+                if (this.deps.searchCurrentDoc) {
+                    const currentDocBtn = document.createElement("button");
+                    currentDocBtn.type = "button";
+                    currentDocBtn.className = "b3-button xlc-btn-primary xlc-empty-action";
+                    currentDocBtn.dataset.xlcControl = "empty.omni-current-doc";
+                    const shortQ = formatScopeFallbackQuery(query);
+                    const label = this.deps.t("searchCurrentDocAction", shortQ);
+                    currentDocBtn.textContent = "☵ " + label;
+                    currentDocBtn.setAttribute("aria-label", label);
+                    currentDocBtn.title = label;
+                    currentDocBtn.addEventListener("click", () => {
+                        this.currentScope = "current-doc";
+                        this.syncScopeChips();
+                        void this.refresh().then(() => this.restoreFocusToSearch());
+                    });
+                    empty.appendChild(currentDocBtn);
+                }
+
+                if (this.deps.searchAllNotes) {
+                    const allNotesBtn = document.createElement("button");
+                    allNotesBtn.type = "button";
+                    allNotesBtn.className = "b3-button xlc-btn-primary xlc-empty-action";
+                    allNotesBtn.dataset.xlcControl = "empty.omni-all-notes";
+                    const shortQ = formatScopeFallbackQuery(query);
+                    const label = this.deps.t("searchAllNotesAction", shortQ);
+                    allNotesBtn.textContent = "🔍 " + label;
+                    allNotesBtn.setAttribute("aria-label", label);
+                    allNotesBtn.title = label;
+                    allNotesBtn.addEventListener("click", () => {
+                        this.currentScope = "all-notes";
+                        this.syncScopeChips();
+                        void this.refresh().then(() => this.restoreFocusToSearch());
+                    });
+                    empty.appendChild(allNotesBtn);
+                }
+            }
+
             // 搜索无命中时同样提供下一步，避免用户只能返回其他入口再新建。
             // 空库分支沿用既有按钮；收藏/最近空态不显示，防止动作与当前范围语义冲突。
             if (this.emptyMessage === this.deps.t("emptyLibrary")
@@ -1592,9 +1698,13 @@ export class CommonSearchDialog {
                 }
                 const entry = this.results[this.activeIndex];
                 const act = btn.dataset.xlcPaneAct ?? "";
+                const isOmniScope = this.currentScope === "current-doc" || this.currentScope === "all-notes";
                 const unavailable = !entry
                     || (act === "ai" && !this.deps.aiEnabled())
-                    || (act === "source" && this.deps.isSourceMissing(entry));
+                    || (act === "source" && (this.deps.isSourceMissing(entry) || (isOmniScope && !this.deps.createFromOmni)))
+                    || (act === "edit" && isOmniScope);
+                const showOmniSave = act === "save-omni" && isOmniScope && Boolean(this.deps.createFromOmni);
+                btn.style.display = showOmniSave ? "" : (act === "save-omni" ? "none" : "");
                 btn.disabled = !actionable || unavailable || this.primaryBusy || this.varFormOpen;
                 btn.removeAttribute("title");
                 if (act === "ai" && !this.deps.aiEnabled()) btn.title = this.deps.t("aiDisabled");
@@ -2022,7 +2132,11 @@ export class CommonSearchDialog {
                 this.paintPaneMeta(undefined);
                 paneBody.classList.remove("xlc-pane-body--muted", "xlc-pane-body--code");
                 this.paintPaneVars(null, "provider");
-                paneBody.textContent = row.payload;
+                try {
+                    renderSafePreview(paneBody, row.payload, "provider");
+                } catch {
+                    paneBody.textContent = row.payload;
+                }
                 return;
             }
             this.activeProvider = -1;
@@ -2064,7 +2178,15 @@ export class CommonSearchDialog {
             const finalText = text || this.deps.t("previewUnavailable");
             // 占位（暂无预览）保持降调；真内容恢复主文字色
             paneBody.classList.toggle("xlc-pane-body--muted", finalText === this.deps.t("previewUnavailable"));
-            paneBody.textContent = finalText;
+            if (text) {
+                try {
+                    renderSafePreview(paneBody, text, entry?.itemType);
+                } catch {
+                    paneBody.textContent = finalText;
+                }
+            } else {
+                paneBody.textContent = finalText;
+            }
             // 切换条目后回到顶部（长内容滚动位置不残留）
             paneBody.scrollTop = 0;
             // 代码条目预览用等宽字体（纯文本渲染不变，仅观感）

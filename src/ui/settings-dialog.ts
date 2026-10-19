@@ -16,6 +16,7 @@ import {toErrorMessage} from "../model/errors";
 import {collectTags} from "../model/search";
 import {PROMPT_PACK_MD} from "../service/prompt-pack";
 import type {SavedDiscoveryScope, SavedDiscoveryView} from "../model/storage";
+import {openCsvTsvImportWizard} from "./csv-tsv-wizard";
 
 type TFn = (key: string, ...args: string[]) => string;
 
@@ -29,6 +30,13 @@ let espansoParserPromise: Promise<typeof import("../service/espanso-import")> | 
 function loadEspansoParser(): Promise<typeof import("../service/espanso-import")> {
     espansoParserPromise ??= import("../service/espanso-import");
     return espansoParserPromise;
+}
+
+// CSV/TSV 表格解析器按需懒加载；避免首屏预载表格解析模块。
+let csvTsvParserPromise: Promise<typeof import("../service/csv-tsv-import")> | null = null;
+function loadCsvTsvParser(): Promise<typeof import("../service/csv-tsv-import")> {
+    csvTsvParserPromise ??= import("../service/csv-tsv-import");
+    return csvTsvParserPromise;
 }
 
 /** 开关行统一构造（文本+说明在左，开关右贴；input 语义不变） */
@@ -1717,7 +1725,7 @@ function buildDataSection(ctx: SettingsUiContext, root: HTMLElement): void {
         const fileInput = document.createElement("input");
         fileInput.type = "file";
         fileInput.dataset.xlcControl = "settings.import.file";
-        fileInput.accept = ".json,application/json,.md,text/markdown";
+        fileInput.accept = ".json,application/json,.md,text/markdown,.csv,text/csv,.tsv,text/tab-separated-values";
         fileInput.addEventListener("change", () => {
             const file = fileInput.files?.[0];
             if (!file) {
@@ -1733,6 +1741,7 @@ function buildDataSection(ctx: SettingsUiContext, root: HTMLElement): void {
             }
             void file.text().then((text) => {
                 const isMd = /\.md$/i.test(file.name);
+                const isCsvTsv = /\.(csv|tsv)$/i.test(file.name);
                 if (isMd) {
                     // Markdown 包：解析 → 同一策略对话框 → importBundle
                     const parsed = parseMarkdownPack(text);
@@ -1746,6 +1755,28 @@ function buildDataSection(ctx: SettingsUiContext, root: HTMLElement): void {
                     openImportPolicyDialog(ctx, {items: parsed.items, pack: parsed.pack}, parsed.issues, {kind: "markdown-pack", items: parsed.items});
                     setOperationStatus("success", t("importPreview", String(parsed.items.length), String(parsed.issues.length)));
                     finish();
+                    return;
+                }
+                if (isCsvTsv) {
+                    void loadCsvTsvParser().then((parser) => {
+                        const parsed = parser.parseCsvTsvItems(text);
+                        if (parsed.items.length === 0) {
+                            const message = t("importFailed", parsed.issues[0] ?? t("importReasonNoMeta"));
+                            ctx.notify("error", message);
+                            setOperationStatus("error", message, () => importBtn.click());
+                            finish();
+                            return;
+                        }
+                        const importIssues: ImportIssue[] = parsed.issues.map((reason, index) => ({index, reason}));
+                        openImportPolicyDialog(ctx, {items: parsed.items}, importIssues, {kind: "csv-tsv", items: parsed.items});
+                        setOperationStatus("success", t("importPreview", String(parsed.items.length), String(parsed.issues.length)));
+                        finish();
+                    }).catch((err: unknown) => {
+                        const message = t("importFailed", toErrorMessage(err));
+                        ctx.notify("error", message);
+                        setOperationStatus("error", message, () => importBtn.click());
+                        finish();
+                    });
                     return;
                 }
                 const validation = validateImport(text);
@@ -1790,7 +1821,25 @@ function buildDataSection(ctx: SettingsUiContext, root: HTMLElement): void {
             setOperationStatus("idle");
         });
     });
+    const csvImportBtn = mkBtn(t("csvImportBtn"), undefined, "settings.data.csvImport");
+    let csvOpen = false;
+    csvImportBtn.addEventListener("click", () => {
+        if (csvOpen || csvImportBtn.disabled) return;
+        csvOpen = true;
+        csvImportBtn.disabled = true;
+        csvImportBtn.setAttribute("aria-busy", "true");
+        setOperationStatus("loading", t("loading"));
+        openCsvTsvImportWizard(ctx, () => {
+            csvOpen = false;
+            csvImportBtn.disabled = false;
+            csvImportBtn.removeAttribute("aria-busy");
+            setOperationStatus("idle");
+        });
+    });
+    dataBtns.appendChild(csvImportBtn);
     dataSec.appendChild(dataBtns);
+    
+    // 提示包导入（R74）
     const templateRow = document.createElement("div");
     templateRow.className = "xlc-setting-row xlc-template-import-row";
     const templateText = document.createElement("span");
@@ -2028,7 +2077,7 @@ export function openImportPolicyDialog(
     ctx: SettingsUiContext,
     parsed: {items: Array<{id: string; title: string}>; pack?: {name: string; vars: string[]; snippets?: string[]; missingSnippets?: string[]}},
     issues: ImportIssue[],
-    source: {kind: "json"; text: string} | {kind: "markdown-pack"; items: ExportedItem[]} | {kind: "espanso"; items: ExportedItem[]},
+    source: {kind: "json"; text: string} | {kind: "markdown-pack"; items: ExportedItem[]} | {kind: "espanso"; items: ExportedItem[]} | {kind: "csv-tsv"; items: ExportedItem[]},
 ): void {
     const t = ctx.t;
     const dialog = new Dialog({
