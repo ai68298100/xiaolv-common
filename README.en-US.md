@@ -12,9 +12,35 @@ A quick-recall content launcher for SiYuan Notes: turn frequently used content �
 
 > Runs fully standalone (no dependency on other Lv plugins), and exposes the `xiaolv-common/v1` protocol for sibling plugins.
 
-> **Released: v0.4.2 (2026-10-16)** · [Download the latest release](https://github.com/ai68298100/xiaolv-common/releases/latest) · Keep source notes in place with tag discovery, saved views, and reference syncing, plus improved search, keyboard workflows, and insert-target protection.
+> **Released: v0.5.0 (2026-10-19)** · [Download the latest release](https://github.com/ai68298100/xiaolv-common/releases/latest) · Enhanced dynamic templates (date arithmetic / Chinese natural language / delimiter normalization / snippet diagnostics), Compact Bundle sharing and dependency preflight, body write boundary protections, and static error handling gate.
 
-## This release (v0.4.2)
+## This release (v0.5.0)
+
+Enhanced dynamic templates & placeholder capabilities:
+
+- **Date arithmetic & Chinese natural language shortcuts**: Dynamic placeholders support `{{xlc:date|+3d}}`, `{{xlc:date|-1w}}`, `{{xlc:date|+1y}}`, `{{xlc:date|next_monday}}`, and localized natural-language phrases such as `{{xlc:date|今天}}`, `{{xlc:date|明天}}`, `{{xlc:date|后天}}`, `{{xlc:date|昨天}}`, `{{xlc:date|下周五}}`, clamped to month-ends on month/year rollovers.
+- **Option delimiter normalization**: Variable dropdowns (`{{xlc:ask:plan|Standard, Pro, Flagship}}`) and random placeholders (`{{xlc:random|A, B, C}}`) support Chinese full-width commas (`，`) and enumeration comma (`、`), preventing input-method delimiter misparsing.
+- **Variable form default values & prefill**: Equal-sign syntax (`{{xlc:ask:currency=CNY}}`) and single-option fallback defaults; fields are automatically prefilled when opening the fill card while keeping editability intact.
+- **Nested snippet visualization & observability**: The preview pane visualizes `{{xlc:snippet:Title}}` chips. `LibraryService` introduces `expandSnippetRefsDetailed` to track expanded titles, missing items, cycle breaks, and recursion depths.
+
+Sharing, import & search enhancements:
+
+- **Template pack dependency preflight**: Markdown packs declare `snippets:` dependencies in the header manifest; imports check against local items and display warning badges for missing snippets.
+- **Compact Bundle sharing & direct import**: Export bundles as single-line `xlc-bundle:...` Base64 strings or `xlc://import?bundle=...` URLs for instant sharing and direct one-click import with full conflict policy support.
+- **Espanso syntax import fidelity**: Automated code fence inference, safe URL attribute population, and lossless text/markdown conversion.
+- **Multi-keyword search delimiter tolerance**: Supports commas, slashes, backslashes, plus signs, semicolons, and pipes as delimiters alongside spaces, with cross-field AND scoring and highlight alignment.
+- **Pinyin consecutive syllable smoothing**: Syllable matching now smooths multi-character prefix matching to eliminate highlight flicker during typing.
+- **Date range filter model**: `SearchQuery` adds closed-interval `dateRange` filtering across `createdAt` and `updatedAt`.
+- **Dedupe agent exclusion**: Exclude the current item ID (`excludeId`) during editing to prevent false positive self-duplicate alerts.
+
+Safety defenses & infrastructure hardening:
+
+- **B-006 Kramdown write-boundary protection**: Restricts body creation/updates to single-line text or a complete code fence; blocks structural elements (`>`, lists, tables, superblocks) before writing to preserve block hierarchy integrity.
+- **Static error handling gate**: CI gate `scripts/check-error-handling.cjs` forbids unsafe thrown value property reads, enforcing `toErrorMessage`.
+- **Tag delimiter normalization & hash cleanup**: Multi-delimiter support with automatic stripping of native SiYuan `#tag#` prefixes and suffixes.
+- **Independent notebook compensation receipt**: Two-step notebook setup exposes compensation receipts (`setup.independent.orphan-notebook`) if rollback deletion fails.
+
+## Previous release (v0.4.2)
 
 Build reusable collections while keeping source notes in place:
 
