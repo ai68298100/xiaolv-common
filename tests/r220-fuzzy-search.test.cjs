@@ -98,7 +98,7 @@ test("精确匹配与拼音匹配的优先级严格高于模糊匹配", () => {
 
 test("calculateRecencyDecay 时间半衰期衰减纯函数计算", () => {
     const halfLife = 7 * 24 * 3600 * 1000;
-    const now = 2000000000000;
+    const now = 1700000000000; // 真实毫秒时间戳基准
 
     // 无时间戳或负时间戳返回 0
     assert.strictEqual(search.calculateRecencyDecay(undefined, now, halfLife), 0);
