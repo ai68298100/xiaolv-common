@@ -98,14 +98,22 @@ function matchSingleToken(entry: SearchEntry, token: string): {score: number; ma
     return best;
 }
 
+/** 搜索多关键词分隔符：支持空白、中英文逗号、斜杠、反斜杠、加号、中英文分号与竖线（T-0117）。 */
+export const SEARCH_TOKEN_DELIMITER = /[\s,，/\\+;；|｜]+/;
+
+/** 切分搜索词中的有效检索 token（去首尾空白、过滤空串、限长保护）。 */
+export function splitSearchTokens(query: string): string[] {
+    const trimmed = query.slice(0, LIMITS.queryChars).trim();
+    if (!trimmed) return [];
+    return trimmed.split(SEARCH_TOKEN_DELIMITER).map((t) => t.trim()).filter(Boolean);
+}
+
 /**
  * 单词/多词组合评分：标题×8（前缀+3）/ 别名×6（前缀+2）/ 标签×4 / 分类×4 / 摘要×2。
- * 单词走快速路径；空格分隔的多词执行跨字段 AND 匹配并累加各词得分（ADR 0036 / T-0063）。
+ * 单词走快速路径；空格/多维标点分隔的多词执行跨字段 AND 匹配并累加各词得分（ADR 0036 / T-0063 / T-0117）。
  */
 export function matchEntry(entry: SearchEntry, rawQuery: string): Omit<ScoredResult, "order"> | null {
-    const trimmed = rawQuery.slice(0, LIMITS.queryChars).trim();
-    if (!trimmed) return null;
-    const tokens = trimmed.split(/\s+/).filter(Boolean);
+    const tokens = splitSearchTokens(rawQuery);
     if (tokens.length === 0) return null;
 
     if (tokens.length === 1) {

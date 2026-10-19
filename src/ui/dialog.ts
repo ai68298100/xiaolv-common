@@ -8,7 +8,7 @@ import {Dialog} from "siyuan";
 import {getDialogBody} from "./dialog-dom";
 import {ITEM_TYPES, ItemType, getCategoryColorVariant} from "../model/item";
 import {toErrorMessage} from "../model/errors";
-import {SearchEntry, SearchQuery} from "../model/search";
+import {SearchEntry, SearchQuery, splitSearchTokens} from "../model/search";
 import {InsertMode} from "../model/actions";
 import {TransformKind} from "../service/ai";
 import {ProviderRow} from "../model/provider-section";
@@ -1043,15 +1043,11 @@ export class CommonSearchDialog {
     }
 
     /**
-     * 命中高亮：支持多关键词按空格分词高亮，收集匹配区间并合并重叠区域，注入 mark span。
-     * 文本一律 textContent / createTextNode，绝不使用 innerHTML（ADR 0036 / T-0063）。
+     * 命中高亮：支持多关键词按空格/多维标点分词高亮，收集匹配区间并合并重叠区域，注入 mark span。
+     * 文本一律 textContent / createTextNode，绝不使用 innerHTML（ADR 0036 / T-0063 / T-0117）。
      */
     private appendHighlighted(parent: HTMLElement, text: string, query: string): void {
-        const tokens = query
-            .toLowerCase()
-            .split(/\s+/)
-            .map((t) => t.trim())
-            .filter((t) => t.length > 0);
+        const tokens = splitSearchTokens(query).map((t) => t.toLowerCase());
 
         if (tokens.length === 0) {
             parent.appendChild(document.createTextNode(text));

@@ -1,7 +1,7 @@
 // R210 多关键词组合检索与分词高亮契约专项测试（ADR 0036 / T-0063）
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const {matchEntry, searchEntries} = require("./.build/entry.cjs").search;
+const {matchEntry, searchEntries, splitSearchTokens, SEARCH_TOKEN_DELIMITER} = require("./.build/entry.cjs").search;
 
 const DEMO_ENTRY = {
     id: "xlc-demo0000001",
@@ -129,4 +129,39 @@ test("多关键词高亮切分与重叠区间合并算法契约", () => {
     // 3. 大小写不敏感（“sql 分页” 匹配 “SQL 分页查询”）
     const intervals3 = computeMergedIntervals("SQL 分页查询", "sql 分页");
     assert.deepEqual(intervals3, [[0, 3], [4, 6]]);
+});
+
+test("多关键词多维标点切分与 AND 检索：支持逗号、分号、加号、斜杠与竖线", () => {
+    // 1. splitSearchTokens 切分规范
+    assert.deepEqual(splitSearchTokens(""), []);
+    assert.deepEqual(splitSearchTokens("   "), []);
+    assert.deepEqual(splitSearchTokens("延期，致歉"), ["延期", "致歉"]);
+    assert.deepEqual(splitSearchTokens("延期,致歉"), ["延期", "致歉"]);
+    assert.deepEqual(splitSearchTokens("客服+模板+延期"), ["客服", "模板", "延期"]);
+    assert.deepEqual(splitSearchTokens("开发/SQL;分页；模板|测试｜部署"), ["开发", "SQL", "分页", "模板", "测试", "部署"]);
+
+    // 2. matchEntry 多维标点跨字段 AND 匹配
+    // 中文逗号切分
+    const resComma = matchEntry(DEMO_ENTRY, "客服，延期");
+    assert.ok(resComma);
+    assert.strictEqual(resComma.matchedBy, "multi");
+
+    // 加号切分
+    const resPlus = matchEntry(DEMO_ENTRY, "客服+致歉");
+    assert.ok(resPlus);
+    assert.strictEqual(resPlus.matchedBy, "multi");
+
+    // 斜杠与分号切分
+    const resSlash = matchEntry(DEMO_ENTRY, "客服/致歉;模板");
+    assert.ok(resSlash);
+    assert.strictEqual(resSlash.matchedBy, "multi");
+
+    // 竖线切分
+    const resPipe = matchEntry(DEMO_ENTRY, "客服|延期");
+    assert.ok(resPipe);
+    assert.strictEqual(resPipe.matchedBy, "multi");
+
+    // 不匹配词阻断
+    const resBlocked = matchEntry(DEMO_ENTRY, "客服+不存在的内容");
+    assert.strictEqual(resBlocked, null);
 });

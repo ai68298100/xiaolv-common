@@ -3300,6 +3300,40 @@ ${exception.mark.snippet}`;
   init_item();
   init_errors();
 
+  // src/model/search.ts
+  init_constants();
+
+  // src/model/pinyin.ts
+  function createNoopPinyinAdapter() {
+    return {
+      capabilities: { initials: false, fullPinyin: false },
+      expand(query) {
+        const q = query.trim();
+        return q ? [q] : [];
+      },
+      annotate() {
+        return null;
+      }
+    };
+  }
+  var active = createNoopPinyinAdapter();
+  function getPinyinAdapter() {
+    return active;
+  }
+
+  // src/model/search.ts
+  var SEARCH_TOKEN_DELIMITER = /[\s,，/\\+;；|｜]+/;
+  function splitSearchTokens(query) {
+    const trimmed = query.slice(0, LIMITS.queryChars).trim();
+    if (!trimmed) return [];
+    return trimmed.split(SEARCH_TOKEN_DELIMITER).map((t) => t.trim()).filter(Boolean);
+  }
+  function collectTags(entries) {
+    const tags = /* @__PURE__ */ new Set();
+    for (const e of entries) for (const t of e.tags) tags.add(t);
+    return Array.from(tags).sort((a, b) => a.localeCompare(b, "zh-Hans-CN"));
+  }
+
   // src/model/variables.ts
   init_constants();
   var ASK_PATTERN = /\{\{xlc:ask:([^|}]+)(?:\|([^}]*))?\}\}/g;
@@ -3608,26 +3642,6 @@ ${exception.mark.snippet}`;
 
   // src/model/pinyin-tiny.ts
   var import_tiny_pinyin = __toESM(require_dist());
-
-  // src/model/pinyin.ts
-  function createNoopPinyinAdapter() {
-    return {
-      capabilities: { initials: false, fullPinyin: false },
-      expand(query) {
-        const q = query.trim();
-        return q ? [q] : [];
-      },
-      annotate() {
-        return null;
-      }
-    };
-  }
-  var active = createNoopPinyinAdapter();
-  function getPinyinAdapter() {
-    return active;
-  }
-
-  // src/model/pinyin-tiny.ts
   var POLYPHONE_PHRASES = {
     "\u5F00\u6237\u884C": ["kai", "hu", "hang"],
     "\u5F00\u6237\u94F6\u884C": ["kai", "hu", "yin", "hang"],
@@ -3887,7 +3901,17 @@ ${exception.mark.snippet}`;
         input.value = "";
         syncQMark();
         input.focus();
-        input.dispatchEvent(new Event("input", { bubbles: true }));
+        if (this.inputDebounce) {
+          clearTimeout(this.inputDebounce);
+          this.inputDebounce = null;
+        }
+        this.currentScope = "all";
+        this.syncScopeChips();
+        if (!this.navigatingHistory) {
+          this.historyCursor = -1;
+        }
+        this.deps.setLastQuery("");
+        void this.refresh();
       });
       input.addEventListener("input", () => {
         syncQMark();
@@ -4643,11 +4667,11 @@ ${exception.mark.snippet}`;
       (_b = (_a = this.dialog) == null ? void 0 : _a.element.querySelector(".xlc-search-input")) == null ? void 0 : _b.focus();
     }
     /**
-     * 命中高亮：支持多关键词按空格分词高亮，收集匹配区间并合并重叠区域，注入 mark span。
-     * 文本一律 textContent / createTextNode，绝不使用 innerHTML（ADR 0036 / T-0063）。
+     * 命中高亮：支持多关键词按空格/多维标点分词高亮，收集匹配区间并合并重叠区域，注入 mark span。
+     * 文本一律 textContent / createTextNode，绝不使用 innerHTML（ADR 0036 / T-0063 / T-0117）。
      */
     appendHighlighted(parent, text, query) {
-      const tokens = query.toLowerCase().split(/\s+/).map((t) => t.trim()).filter((t) => t.length > 0);
+      const tokens = splitSearchTokens(query).map((t) => t.toLowerCase());
       if (tokens.length === 0) {
         parent.appendChild(document.createTextNode(text));
         return;
@@ -5035,14 +5059,35 @@ ${exception.mark.snippet}`;
           list.appendChild(bottomSpacer);
           this.paintActive();
         };
-        const onScroll = () => renderWindow();
+        let rafId = null;
+        const scheduleRender = () => {
+          if (rafId !== null) return;
+          const raf = typeof requestAnimationFrame === "function" ? requestAnimationFrame : (cb) => setTimeout(cb, 16);
+          rafId = raf(() => {
+            rafId = null;
+            renderWindow();
+          });
+        };
+        const onScroll = () => scheduleRender();
         list.classList.add("xlc-list--virtual");
         list.addEventListener("scroll", onScroll, { passive: true });
         this.virtualListCleanup = () => {
+          if (rafId !== null) {
+            const caf = typeof cancelAnimationFrame === "function" ? cancelAnimationFrame : (id) => clearTimeout(id);
+            caf(rafId);
+            rafId = null;
+          }
           list.removeEventListener("scroll", onScroll);
           list.classList.remove("xlc-list--virtual");
         };
-        this.virtualEnsureIndex = (index) => renderWindow(index);
+        this.virtualEnsureIndex = (index) => {
+          if (rafId !== null) {
+            const caf = typeof cancelAnimationFrame === "function" ? cancelAnimationFrame : (id) => clearTimeout(id);
+            caf(rafId);
+            rafId = null;
+          }
+          renderWindow(index);
+        };
         renderWindow();
       } else {
         for (let i = 0; i < this.results.length; i++) {
@@ -5805,10 +5850,16 @@ ${exception.mark.snippet}`;
           input.placeholder = this.deps.t("insertToDocPick");
           input.setAttribute("aria-label", this.deps.t("insertToDocPick"));
           input.setAttribute("autocomplete", "off");
+          let docDebounce = null;
           input.addEventListener("keydown", (ev) => {
             ev.stopPropagation();
             if (ev.key === "Enter" && !ev.isComposing) {
               ev.preventDefault();
+              if (docDebounce) {
+                clearTimeout(docDebounce);
+                docDebounce = null;
+                runDocSearch(input.value);
+              }
               const first = sec.querySelector(".xlc-pickdoc-hit");
               first == null ? void 0 : first.click();
             }
@@ -5860,13 +5911,23 @@ ${exception.mark.snippet}`;
               retry.className = "b3-button xlc-btn-ghost xlc-pickdoc-retry";
               retry.dataset.xlcControl = "dialog.pickdoc.retry";
               retry.textContent = this.deps.t("retry");
-              retry.addEventListener("click", () => runDocSearch(input.value));
+              retry.addEventListener("click", () => {
+                if (docDebounce) {
+                  clearTimeout(docDebounce);
+                  docDebounce = null;
+                }
+                runDocSearch(input.value);
+              });
               searchStatus.appendChild(document.createTextNode(" "));
               searchStatus.appendChild(retry);
             });
           };
           input.addEventListener("input", () => {
-            runDocSearch(input.value);
+            if (docDebounce) clearTimeout(docDebounce);
+            docDebounce = setTimeout(() => {
+              docDebounce = null;
+              runDocSearch(input.value);
+            }, 200);
           });
           const actions2 = menu.querySelectorAll(".xlc-menu-sec");
           (_a3 = actions2[actions2.length - 1]) == null ? void 0 : _a3.before(sec);
@@ -7125,14 +7186,6 @@ ${exception.mark.snippet}`;
 
   // src/ui/settings-dialog.ts
   init_errors();
-
-  // src/model/search.ts
-  init_constants();
-  function collectTags(entries) {
-    const tags = /* @__PURE__ */ new Set();
-    for (const e of entries) for (const t of e.tags) tags.add(t);
-    return Array.from(tags).sort((a, b) => a.localeCompare(b, "zh-Hans-CN"));
-  }
 
   // src/service/prompt-pack.ts
   var PROMPT_PACK_NAME = "\u5E38\u7528\u5185\u5BB9\u793A\u4F8B";
