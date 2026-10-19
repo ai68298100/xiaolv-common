@@ -19,6 +19,7 @@ export function bodyWriteRestriction(markdown: string): string | undefined {
         if (closingIndex === lines.length - 1) return undefined;
     }
     if (lines.length === 1 && !STRUCTURED_PATTERN.test(lines[0]!)) return undefined;
+    // Multi-line non-fence content is blocked pending B-006 host verification.
     return "multi-line or structured body writing is unavailable pending B-006 host verification; use a single line or a complete code fence";
 }
 
