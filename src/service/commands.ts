@@ -190,6 +190,20 @@ export class HostBridge implements IHostBridge {
             return null;
         }
     }
+
+    currentDocInfo(): {docId: string; hPath?: string} | null {
+        try {
+            const editor = getActiveEditor();
+            const rootID = editor?.protyle?.block?.rootID;
+            if (typeof rootID === "string" && rootID.length > 0) {
+                const hPath = editor?.protyle?.title?.editElement?.textContent?.trim() || undefined;
+                return {docId: rootID, hPath};
+            }
+            return null;
+        } catch {
+            return null;
+        }
+    }
 }
 
 export interface ExecutionReceipt {

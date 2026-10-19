@@ -56,6 +56,20 @@ export type SearchEntry = Pick<CommonItem, "id" | "blockId" | "libraryDocId" | "
     targetBlockId?: string;
     /** 链接（url 条目） */
     url?: string;
+    /** 全域条目完整正文（全域搜索/即时预览/快捷编辑上下文用） */
+    content?: string;
+    /** 是否为全域搜索临时条目（用于区分常用语真源与全域检索条目） */
+    isOmni?: boolean;
+    /** 匹配度分数（用于排序） */
+    score: number;
+    /** 命中片段（用于高亮） */
+    snippet?: string;
+    /** 来源文档路径（当前仅用于全局搜索） */
+    sourceDocPath?: string;
+    /** 是否来自收藏夹 */
+    isFavorite?: boolean;
+    /** 是否来自最近使用 */
+    isRecent?: boolean;
 };
 
 export interface ScoredResult {

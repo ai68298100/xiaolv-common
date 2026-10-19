@@ -9,6 +9,7 @@ import {parseChildBlocks, parseBatchKramdowns, parseDocSearch} from "../kernel/c
 import {SearchEntry, splitSearchTokens} from "../model/search";
 import {deriveTitle, deriveSummary, inferItemType, isBlockId, ItemType} from "../model/item";
 import {inferTypeFromText} from "../ui/capture";
+import {bodyWriteRestriction} from "../model/kramdown";
 
 export interface OmniSearchOptions {
     maxCurrentDocBlocks?: number;
@@ -62,6 +63,8 @@ export function scoreAndFilterBlocks(
                 libraryDocId: docId,
                 title,
                 summary,
+                content: kd,
+                isOmni: true,
                 itemType: inferredType,
                 category: docPath,
                 tags: ["当前文档"],
@@ -145,6 +148,8 @@ export async function searchAllNotesDocuments(
             libraryDocId: hit.id,
             title,
             summary: hit.hPath,
+            content: hit.hPath,
+            isOmni: true,
             itemType: inferTypeFromText(hit.hPath),
             category: "全库笔记",
             tags: ["全库笔记"],
@@ -157,6 +162,43 @@ export async function searchAllNotesDocuments(
         };
         return entry;
     });
+}
+
+/** 校验全域块内容更新（遵循 B-006 写前安全约束，防止多行结构损坏思源块层级） */
+export function validateOmniBlockUpdate(content: string): {valid: boolean; error?: string} {
+    const err = bodyWriteRestriction(content);
+    if (err) {
+        return {valid: false, error: err};
+    }
+    return {valid: true};
+}
+
+/** 纯函数安全调用思源 updateBlock 端点更新块内容 */
+export async function updateDocBlock(
+    kernel: IKernelClient,
+    blockId: string,
+    newKramdown: string,
+): Promise<{success: boolean; error?: string}> {
+    const validation = validateOmniBlockUpdate(newKramdown);
+    if (!validation.valid) {
+        return {success: false, error: validation.error};
+    }
+    if (!isBlockId(blockId)) {
+        return {success: false, error: "invalid block ID"};
+    }
+    try {
+        await kernel.request("updateBlock", {
+            id: blockId,
+            dataType: "markdown",
+            data: newKramdown,
+        }, {
+            latest: true,
+            raceKey: `omni.updateBlock.${blockId}`,
+        });
+        return {success: true};
+    } catch (e: any) {
+        return {success: false, error: e?.message || "kernel error updating block"};
+    }
 }
 
 /** 全域内容搜索服务包装类 */
@@ -174,5 +216,9 @@ export class OmniSearchService {
 
     async searchInAllNotes(keyword: string): Promise<SearchEntry[]> {
         return searchAllNotesDocuments(this.kernel, keyword);
+    }
+
+    async updateBlockContent(blockId: string, newContent: string): Promise<{success: boolean; error?: string}> {
+        return updateDocBlock(this.kernel, blockId, newContent);
     }
 }

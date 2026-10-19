@@ -34,9 +34,11 @@ import {AiAssistant, AiUnavailableError, SearchMetaEntry, type AiEndpointName} f
 import {ProviderRegistry} from "./service/providers";
 import {XiaolvCommonService} from "./service/service";
 import {DiscoveryService, type DiscoveryReceipt, type DiscoverySessionView} from "./service/discovery";
+import {OmniSearchService} from "./service/omni-search";
 import {CommonSearchDialog} from "./ui/dialog";
 import {openDiscoveryDialog, type DiscoveryDialogController} from "./ui/discovery-dialog";
 import {CaptureDialog, confirmDelete, classifyLinkTarget} from "./ui/capture";
+import {openQuickEditDialog} from "./ui/quick-edit";
 import {ICONS} from "./ui/icons";
 import type {SettingsUiContext} from "./ui/settings-dialog";
 import {buildVariableBar} from "./ui/variable-form";
@@ -80,6 +82,7 @@ export default class XiaolvCommonPlugin extends Plugin {
     private ai!: AiAssistant;
     private service!: XiaolvCommonService;
     private discovery!: DiscoveryService;
+    private omniSearch!: OmniSearchService;
     private capture!: CaptureDialog;
     private state!: PluginState;
     private config!: LibraryConfig | null;
@@ -171,6 +174,7 @@ export default class XiaolvCommonPlugin extends Plugin {
         if (this.config) this.library.setConfig(this.config);
         this.discovery = new DiscoveryService(kernel, this.library);
         this.host = new HostBridge(this.app, this);
+        this.omniSearch = new OmniSearchService(kernel, () => this.host.currentDocInfo());
         this.registry = new ProviderRegistry();
         this.registry.restore(this.state.providers);
         const aiTransport = {
@@ -1065,6 +1069,58 @@ export default class XiaolvCommonPlugin extends Plugin {
                 const result = await this.library.searchDocs(k);
                 if (!result.ok) throw new Error(result.message);
                 return result.data;
+            },
+            searchCurrentDoc: async (keyword: string) => {
+                return this.omniSearch.searchInCurrentDoc(keyword);
+            },
+            searchAllNotes: async (keyword: string) => {
+                return this.omniSearch.searchInAllNotes(keyword);
+            },
+            createFromOmni: async (entry: SearchEntry) => {
+                const content = (entry.content || entry.summary || "").trim();
+                if (!content) return false;
+                const isCurrentDoc = entry.tags?.includes("当前文档");
+                const created = await this.library.createItem({
+                    itemType: entry.itemType,
+                    markdown: content,
+                    title: entry.title,
+                    tags: ["全域收录", ...(isCurrentDoc ? ["文档收集"] : ["笔记收集"])],
+                    category: isCurrentDoc ? "文档收集" : "笔记收集",
+                    source: {
+                        sourceDocId: entry.sourceDocId,
+                        sourceBlockId: entry.targetBlockId || entry.sourceBlockId,
+                        sourceType: "external",
+                    },
+                });
+                if (created.ok) {
+                    this.notify("info", this.i18nFn()("saved", created.data.item.title));
+                    this.searchDialog?.refreshAfterExternalChange();
+                    return true;
+                } else {
+                    this.notify("error", created.message);
+                    return false;
+                }
+            },
+            captureOmniWithForm: (entry: SearchEntry) => {
+                this.capture.captureOmniWithForm(entry);
+            },
+            quickEditBlock: (blockId: string, currentContent: string) => {
+                openQuickEditDialog({
+                    t: this.i18nFn(),
+                    updateBlock: (bId, text) => this.omniSearch.updateBlockContent(bId, text),
+                    notify: (type, msg) => this.notify(type, msg),
+                    onUpdated: (_bId, newText) => {
+                        const active = this.searchDialog?.getActiveEntry();
+                        if (active && (active.targetBlockId === blockId || active.id.includes(blockId))) {
+                            active.content = newText;
+                            active.summary = newText.slice(0, 100);
+                            this.searchDialog?.refreshAfterExternalChange();
+                        }
+                    },
+                }, blockId, currentContent);
+            },
+            openDocBlock: (blockId: string) => {
+                this.host.openDoc("", blockId);
             },
             insertToDoc: async (itemId, docId, hPath, fills, mode = "insert") => {
                 const got = await this.library.getItem(itemId);

@@ -24,10 +24,13 @@ export interface DialogDeps {
     search: (query: SearchQuery) => Promise<{entries: SearchEntry[]; truncated: boolean; total: number; loading?: boolean; error?: string}>;
     /** 文档搜索（插入到指定文档的选择器） */
     searchDocs: (k: string) => Promise<Array<{id: string; hPath: string; name: string}>>;
-    /** 全域搜索终端扩展（G12 / T-0123） */
+    /** 全域搜索终端扩展（G12 / T-0123 / G14 / T-0126） */
     searchCurrentDoc?: (keyword: string) => Promise<SearchEntry[]>;
     searchAllNotes?: (keyword: string) => Promise<SearchEntry[]>;
     createFromOmni?: (entry: SearchEntry) => Promise<boolean>;
+    captureOmniWithForm?: (entry: SearchEntry) => void;
+    quickEditBlock?: (blockId: string, currentContent: string) => Promise<void> | void;
+    openDocBlock?: (blockId: string) => Promise<void> | void;
     insertToDoc: (itemId: string, docId: string, hPath: string, fills?: Record<string, string>, mode?: "insert" | "insert-content" | "insert-ref" | "insert-embed") => Promise<boolean>;
     duplicateItem: (itemId: string) => Promise<void>;
     /** AI 变换结果存为新条目（来源=原条目；原条目不被修改） */
@@ -747,7 +750,13 @@ export class CommonSearchDialog {
         source.dataset.xlcControl = "preview.source";
         source.addEventListener("click", () => {
             const entry = this.results[this.activeIndex];
-            if (entry) void this.deps.openSource(entry.id);
+            if (entry) {
+                if (entry.isOmni && this.deps.openDocBlock) {
+                    void this.deps.openDocBlock(entry.targetBlockId || entry.id);
+                } else {
+                    void this.deps.openSource(entry.id);
+                }
+            }
         });
         const edit = document.createElement("button");
         edit.className = "b3-button b3-button--text xlc-btn-ghost";
@@ -756,7 +765,27 @@ export class CommonSearchDialog {
         edit.dataset.xlcControl = "preview.edit";
         edit.addEventListener("click", () => {
             const entry = this.results[this.activeIndex];
-            if (entry) void this.deps.editItem(entry.id);
+            if (entry) {
+                if (entry.isOmni) {
+                    if (this.deps.quickEditBlock) {
+                        void this.deps.quickEditBlock(entry.targetBlockId || entry.id, entry.content || entry.summary || "");
+                    }
+                } else {
+                    void this.deps.editItem(entry.id);
+                }
+            }
+        });
+        const editAndCapture = document.createElement("button");
+        editAndCapture.className = "b3-button b3-button--text xlc-btn-ghost";
+        editAndCapture.textContent = "✎ " + this.deps.t("editAndCapture");
+        editAndCapture.dataset.xlcPaneAct = "edit-and-capture-omni";
+        editAndCapture.dataset.xlcControl = "preview.edit-and-capture-omni";
+        editAndCapture.style.display = "none";
+        editAndCapture.addEventListener("click", () => {
+            const entry = this.results[this.activeIndex];
+            if (entry && this.deps.captureOmniWithForm) {
+                this.deps.captureOmniWithForm(entry);
+            }
         });
         const saveOmni = document.createElement("button");
         saveOmni.className = "b3-button b3-button--text xlc-btn-ghost";
@@ -785,6 +814,7 @@ export class CommonSearchDialog {
         foot.appendChild(spacer);
         foot.appendChild(source);
         foot.appendChild(edit);
+        foot.appendChild(editAndCapture);
         foot.appendChild(saveOmni);
         return foot;
     }
@@ -1701,10 +1731,19 @@ export class CommonSearchDialog {
                 const isOmniScope = this.currentScope === "current-doc" || this.currentScope === "all-notes";
                 const unavailable = !entry
                     || (act === "ai" && !this.deps.aiEnabled())
-                    || (act === "source" && (this.deps.isSourceMissing(entry) || (isOmniScope && !this.deps.createFromOmni)))
-                    || (act === "edit" && isOmniScope);
+                    || (act === "source" && (isOmniScope ? !this.deps.openDocBlock : this.deps.isSourceMissing(entry)))
+                    || (act === "edit" && isOmniScope && !this.deps.quickEditBlock);
                 const showOmniSave = act === "save-omni" && isOmniScope && Boolean(this.deps.createFromOmni);
-                btn.style.display = showOmniSave ? "" : (act === "save-omni" ? "none" : "");
+                const showOmniEditCapture = act === "edit-and-capture-omni" && isOmniScope && Boolean(this.deps.captureOmniWithForm);
+                btn.style.display = (act === "save-omni" || act === "edit-and-capture-omni")
+                    ? (showOmniSave && act === "save-omni" ? "" : (showOmniEditCapture && act === "edit-and-capture-omni" ? "" : "none"))
+                    : "";
+                if (act === "edit") {
+                    btn.textContent = (isOmniScope && this.deps.quickEditBlock) ? "✎ " + this.deps.t("quickEditBlock") : this.deps.t("edit");
+                }
+                if (act === "source") {
+                    btn.textContent = isOmniScope ? "↗ " + this.deps.t("locateInDoc") : this.deps.t("openSource");
+                }
                 btn.disabled = !actionable || unavailable || this.primaryBusy || this.varFormOpen;
                 btn.removeAttribute("title");
                 if (act === "ai" && !this.deps.aiEnabled()) btn.title = this.deps.t("aiDisabled");
@@ -2433,21 +2472,36 @@ export class CommonSearchDialog {
                 sec2.appendChild(btn);
                 return btn;
             };
-            addSilent("↗", this.deps.t("openSource"), () => this.deps.openSource(entry.id));
-            addSilent("✎", this.deps.t("edit"), () => this.deps.editItem(entry.id));
-            addSilent("⧉", this.deps.t("duplicateItem"), () => this.deps.duplicateItem(entry.id));
-            const useCount = this.usageCounts.get(entry.id) ?? 0;
-            if (useCount > 0 && this.deps.resetItemUsage) {
-                addSilent("↺", this.deps.t("resetItemUsage", String(useCount)), async () => {
-                    const ok = this.deps.resetItemUsage?.(entry.id);
-                    if (ok) {
-                        this.usageCounts.delete(entry.id);
-                        void this.refreshPreservingPosition();
-                    }
-                }, "xlc-menu-item", this.deps.t("resetItemUsage", String(useCount)));
+            if (entry.isOmni) {
+                if (this.deps.openDocBlock) {
+                    addSilent("↗", this.deps.t("locateInDoc"), () => this.deps.openDocBlock!(entry.targetBlockId || entry.id));
+                }
+                if (this.deps.quickEditBlock) {
+                    addSilent("✎", this.deps.t("quickEditBlock"), () => this.deps.quickEditBlock!(entry.targetBlockId || entry.id, entry.content || entry.summary || ""));
+                }
+                if (this.deps.captureOmniWithForm) {
+                    addSilent("✦", this.deps.t("editAndCapture"), () => this.deps.captureOmniWithForm!(entry));
+                }
+                if (this.deps.createFromOmni) {
+                    addSilent("✓", this.deps.t("saveToCommon"), () => this.deps.createFromOmni!(entry));
+                }
+            } else {
+                addSilent("↗", this.deps.t("openSource"), () => this.deps.openSource(entry.id));
+                addSilent("✎", this.deps.t("edit"), () => this.deps.editItem(entry.id));
+                addSilent("⧉", this.deps.t("duplicateItem"), () => this.deps.duplicateItem(entry.id));
+                const useCount = this.usageCounts.get(entry.id) ?? 0;
+                if (useCount > 0 && this.deps.resetItemUsage) {
+                    addSilent("↺", this.deps.t("resetItemUsage", String(useCount)), async () => {
+                        const ok = this.deps.resetItemUsage?.(entry.id);
+                        if (ok) {
+                            this.usageCounts.delete(entry.id);
+                            void this.refreshPreservingPosition();
+                        }
+                    }, "xlc-menu-item", this.deps.t("resetItemUsage", String(useCount)));
+                }
+                // 删除 = 危险动作，固定语义红（样式层区分；确认弹窗不变）
+                addSilent("🗑", this.deps.t("delete"), () => this.deps.deleteItem(entry.id), "xlc-menu-item xlc-menu-item--danger", `${this.deps.t("delete")} (Alt+Delete)`);
             }
-            // 删除 = 危险动作，固定语义红（样式层区分；确认弹窗不变）
-            addSilent("🗑", this.deps.t("delete"), () => this.deps.deleteItem(entry.id), "xlc-menu-item xlc-menu-item--danger", `${this.deps.t("delete")} (Alt+Delete)`);
             // 插入到指定文档（菜单内联文档选择器；无活动编辑器场景的主路径）
             const toDocBtn = this.menuButton("⤓", this.deps.t("insertToDoc"), "xlc-menu-item", () => {
                 let sec = menu.querySelector<HTMLElement>(".xlc-menu-pickdoc");
@@ -2862,8 +2916,14 @@ export class CommonSearchDialog {
             const entry = this.results[this.activeIndex];
             if (entry) {
                 e.preventDefault();
-                this.destroy();
-                await this.deps.editItem(entry.id);
+                if (entry.isOmni) {
+                    if (this.deps.quickEditBlock) {
+                        void this.deps.quickEditBlock(entry.targetBlockId || entry.id, entry.content || entry.summary || "");
+                    }
+                } else {
+                    this.destroy();
+                    await this.deps.editItem(entry.id);
+                }
             }
         } else if ((e.ctrlKey || e.metaKey || e.altKey) && (e.key === "d" || e.key === "D")) {
             if (e.repeat) return;
@@ -2898,6 +2958,10 @@ export class CommonSearchDialog {
                 void this.refreshPreservingPosition().then(() => this.restoreFocusToSearch());
             }
         }
+    }
+
+    getActiveEntry(): SearchEntry | null {
+        return this.results[this.activeIndex] ?? null;
     }
 
     destroy(): void {

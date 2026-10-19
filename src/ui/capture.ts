@@ -8,6 +8,7 @@ import {NewItemInput} from "../service/library";
 import {buildVariableBar} from "./variable-form";
 import {bodyWriteRestriction} from "../model/kramdown";
 import {LIMITS} from "../constants";
+import type {SearchEntry} from "../model/search";
 
 /** 块引用目标校验（官方 data-id 属性值） */
 export function isBlockRefTarget(blockId: string): boolean {
@@ -329,7 +330,23 @@ export class CaptureDialog {
         });
     }
 
-    openForm(defaultText: string, defaultType: ItemType, sourceBlockId: string | null, overrides?: {title?: string; docId?: string; targetBlockId?: string; sourceType?: "selection" | "block" | "doc-fragment" | "clipboard" | "manual" | "resource"}): void {
+    /** 全域条目编辑并收录：携带条目正文、类型、来源文档与全域收录标签打开收录表单 */
+    captureOmniWithForm(entry: SearchEntry): void {
+        if (!this.ensureConfigured()) return;
+        const text = (entry.content || entry.summary || "").trim();
+        const title = entry.title || this.deps.t("unknownType");
+        const isCurrentDoc = entry.tags?.includes("当前文档");
+        this.openForm(text, entry.itemType, null, {
+            title,
+            tags: ["全域收录", ...(isCurrentDoc ? ["文档收集"] : ["笔记收集"])],
+            category: isCurrentDoc ? "文档收集" : "笔记收集",
+            docId: entry.sourceDocId,
+            targetBlockId: entry.targetBlockId,
+            sourceType: "block",
+        });
+    }
+
+    openForm(defaultText: string, defaultType: ItemType, sourceBlockId: string | null, overrides?: {title?: string; docId?: string; targetBlockId?: string; tags?: string[]; category?: string; sourceType?: "selection" | "block" | "doc-fragment" | "clipboard" | "manual" | "resource"}): void {
         if (this.deps.isConfigured && !this.deps.isConfigured()) {
             this.deps.onNotConfigured?.();
             return;
@@ -442,13 +459,14 @@ export class CaptureDialog {
         // 标签 + 分类（原型：双栏行）
         const tagRow = document.createElement("div");
         tagRow.className = "xlc-form-row";
-        const tagsEl = field(t("tags"), "", false, "xlc-form-tags", tagRow);
+        const initialTags = overrides?.tags ? overrides.tags.join("; ") : "";
+        const tagsEl = field(t("tags"), initialTags, false, "xlc-form-tags", tagRow);
         tagsEl.dataset.xlcControl = "capture.tags";
         const tagsHint = document.createElement("span");
         tagsHint.className = "xlc-form-hint";
         tagsHint.textContent = t("tagsHint");
         (tagsEl.parentElement as HTMLElement).appendChild(tagsHint);
-        const categoryEl = field(t("category"), "", false, "xlc-form-category", tagRow);
+        const categoryEl = field(t("category"), overrides?.category ?? "", false, "xlc-form-category", tagRow);
         categoryEl.dataset.xlcControl = "capture.category";
         (categoryEl.parentElement as HTMLElement).classList.add("xlc-form-field--fixed");
         form.appendChild(tagRow);

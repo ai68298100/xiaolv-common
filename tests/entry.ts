@@ -38,6 +38,7 @@ import * as emptyState from "../src/ui/empty-state";
 import * as previewRenderer from "../src/ui/preview-renderer";
 import * as hierarchy from "../src/model/hierarchy";
 import * as omniSearch from "../src/service/omni-search";
+import * as quickEdit from "../src/ui/quick-edit";
 
 export {
     item,
@@ -77,4 +78,5 @@ export {
     previewRenderer,
     hierarchy,
     omniSearch,
+    quickEdit,
 };
