@@ -2460,7 +2460,7 @@ export class CommonSearchDialog {
 
             const sec2 = document.createElement("div");
             sec2.className = "xlc-menu-sec";
-            const addSilent = (icon: string, label: string, run: () => Promise<unknown>, cls = "xlc-menu-item", title?: string): HTMLButtonElement => {
+            const addSilent = (icon: string, label: string, run: () => Promise<unknown> | void, cls = "xlc-menu-item", title?: string): HTMLButtonElement => {
                 const btn = this.menuButton(icon, label, cls, async () => {
                     // 统一走 menuDismiss：document 监听必须摘除、账目不被错清（此前 menu.remove() 泄漏监听，
                     // 后续 pointerdown 会把焦点从编辑弹窗抢回搜索框，R138）

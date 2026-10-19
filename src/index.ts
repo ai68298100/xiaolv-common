@@ -19,7 +19,7 @@ import {ExportedItem, buildBundle, validateImport, ConflictPolicy, ImportReceipt
 import {importBundle as importBundleCore} from "./service/importer";
 import {importMarkdownBundle} from "./service/import-markdown";
 import {LibraryConfig, CONFIG_VERSION, migrateState, normalizeLibraryConfig, normalizeSavedDiscoveryViews, normalizeState, PluginState, pushRecentQuery, type SavedDiscoveryView} from "./model/storage";
-import {SearchContext, collectCategories, collectTags, searchEntries, applyBasicFilters} from "./model/search";
+import {SearchContext, collectCategories, collectTags, searchEntries, applyBasicFilters, SearchEntry} from "./model/search";
 import {findDuplicateByContent} from "./model/dedupe";
 import {LruCache, PREVIEW_CACHE_CAPACITY, PREVIEW_CACHE_TTL_MS} from "./model/lru";
 import {readWithTimeout} from "./model/startup";

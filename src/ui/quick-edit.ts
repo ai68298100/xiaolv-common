@@ -29,7 +29,7 @@ export function openQuickEditDialog(
         },
     });
 
-    const body = getDialogBody(dialog);
+    const body = getDialogBody(dialog.element);
     const container = document.createElement("div");
     container.className = "xlc-quick-edit-container";
     container.style.display = "flex";
@@ -129,7 +129,9 @@ export function openQuickEditDialog(
     container.appendChild(errHint);
     container.appendChild(btnRow);
 
-    body.appendChild(container);
+    if (body) {
+        body.appendChild(container);
+    }
     setTimeout(() => textarea.focus(), 50);
 
     return dialog;

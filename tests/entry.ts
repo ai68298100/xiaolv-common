@@ -10,6 +10,7 @@ import * as transfer from "../src/model/transfer";
 import * as client from "../src/kernel/client";
 import * as lru from "../src/model/lru";
 import * as zip from "../src/model/zip";
+import * as kramdown from "../src/model/kramdown";
 import * as pinyin from "../src/model/pinyin";
 import * as pinyinTiny from "../src/model/pinyin-tiny";
 import * as placeholders from "../src/model/placeholders";

@@ -2696,8 +2696,24 @@
             this.openForm(content, "markdown", null, { title, docId, sourceType: "doc-fragment" });
           });
         }
+        /** 全域条目编辑并收录：携带条目正文、类型、来源文档与全域收录标签打开收录表单 */
+        captureOmniWithForm(entry) {
+          var _a;
+          if (!this.ensureConfigured()) return;
+          const text = (entry.content || entry.summary || "").trim();
+          const title = entry.title || this.deps.t("unknownType");
+          const isCurrentDoc = (_a = entry.tags) == null ? void 0 : _a.includes("\u5F53\u524D\u6587\u6863");
+          this.openForm(text, entry.itemType, null, {
+            title,
+            tags: ["\u5168\u57DF\u6536\u5F55", ...isCurrentDoc ? ["\u6587\u6863\u6536\u96C6"] : ["\u7B14\u8BB0\u6536\u96C6"]],
+            category: isCurrentDoc ? "\u6587\u6863\u6536\u96C6" : "\u7B14\u8BB0\u6536\u96C6",
+            docId: entry.sourceDocId,
+            targetBlockId: entry.targetBlockId,
+            sourceType: "block"
+          });
+        }
         openForm(defaultText, defaultType, sourceBlockId, overrides) {
-          var _a, _b, _c, _d;
+          var _a, _b, _c, _d, _e;
           if (this.deps.isConfigured && !this.deps.isConfigured()) {
             (_b = (_a = this.deps).onNotConfigured) == null ? void 0 : _b.call(_a);
             return;
@@ -2801,13 +2817,14 @@
           metaRow.insertBefore(aliasEl.parentElement, typeWrap);
           const tagRow = document.createElement("div");
           tagRow.className = "xlc-form-row";
-          const tagsEl = field(t("tags"), "", false, "xlc-form-tags", tagRow);
+          const initialTags = (overrides == null ? void 0 : overrides.tags) ? overrides.tags.join("; ") : "";
+          const tagsEl = field(t("tags"), initialTags, false, "xlc-form-tags", tagRow);
           tagsEl.dataset.xlcControl = "capture.tags";
           const tagsHint = document.createElement("span");
           tagsHint.className = "xlc-form-hint";
           tagsHint.textContent = t("tagsHint");
           tagsEl.parentElement.appendChild(tagsHint);
-          const categoryEl = field(t("category"), "", false, "xlc-form-category", tagRow);
+          const categoryEl = field(t("category"), (_e = overrides == null ? void 0 : overrides.category) != null ? _e : "", false, "xlc-form-category", tagRow);
           categoryEl.dataset.xlcControl = "capture.category";
           categoryEl.parentElement.classList.add("xlc-form-field--fixed");
           form.appendChild(tagRow);
@@ -9698,7 +9715,13 @@ ${exception.mark.snippet}`;
       source.dataset.xlcControl = "preview.source";
       source.addEventListener("click", () => {
         const entry = this.results[this.activeIndex];
-        if (entry) void this.deps.openSource(entry.id);
+        if (entry) {
+          if (entry.isOmni && this.deps.openDocBlock) {
+            void this.deps.openDocBlock(entry.targetBlockId || entry.id);
+          } else {
+            void this.deps.openSource(entry.id);
+          }
+        }
       });
       const edit = document.createElement("button");
       edit.className = "b3-button b3-button--text xlc-btn-ghost";
@@ -9707,7 +9730,27 @@ ${exception.mark.snippet}`;
       edit.dataset.xlcControl = "preview.edit";
       edit.addEventListener("click", () => {
         const entry = this.results[this.activeIndex];
-        if (entry) void this.deps.editItem(entry.id);
+        if (entry) {
+          if (entry.isOmni) {
+            if (this.deps.quickEditBlock) {
+              void this.deps.quickEditBlock(entry.targetBlockId || entry.id, entry.content || entry.summary || "");
+            }
+          } else {
+            void this.deps.editItem(entry.id);
+          }
+        }
+      });
+      const editAndCapture = document.createElement("button");
+      editAndCapture.className = "b3-button b3-button--text xlc-btn-ghost";
+      editAndCapture.textContent = "\u270E " + this.deps.t("editAndCapture");
+      editAndCapture.dataset.xlcPaneAct = "edit-and-capture-omni";
+      editAndCapture.dataset.xlcControl = "preview.edit-and-capture-omni";
+      editAndCapture.style.display = "none";
+      editAndCapture.addEventListener("click", () => {
+        const entry = this.results[this.activeIndex];
+        if (entry && this.deps.captureOmniWithForm) {
+          this.deps.captureOmniWithForm(entry);
+        }
       });
       const saveOmni = document.createElement("button");
       saveOmni.className = "b3-button b3-button--text xlc-btn-ghost";
@@ -9736,6 +9779,7 @@ ${exception.mark.snippet}`;
       foot.appendChild(spacer);
       foot.appendChild(source);
       foot.appendChild(edit);
+      foot.appendChild(editAndCapture);
       foot.appendChild(saveOmni);
       return foot;
     }
@@ -10574,9 +10618,16 @@ ${exception.mark.snippet}`;
         const entry = this.results[this.activeIndex];
         const act = (_b2 = btn.dataset.xlcPaneAct) != null ? _b2 : "";
         const isOmniScope = this.currentScope === "current-doc" || this.currentScope === "all-notes";
-        const unavailable = !entry || act === "ai" && !this.deps.aiEnabled() || act === "source" && (this.deps.isSourceMissing(entry) || isOmniScope && !this.deps.createFromOmni) || act === "edit" && isOmniScope;
+        const unavailable = !entry || act === "ai" && !this.deps.aiEnabled() || act === "source" && (isOmniScope ? !this.deps.openDocBlock : this.deps.isSourceMissing(entry)) || act === "edit" && isOmniScope && !this.deps.quickEditBlock;
         const showOmniSave = act === "save-omni" && isOmniScope && Boolean(this.deps.createFromOmni);
-        btn.style.display = showOmniSave ? "" : act === "save-omni" ? "none" : "";
+        const showOmniEditCapture = act === "edit-and-capture-omni" && isOmniScope && Boolean(this.deps.captureOmniWithForm);
+        btn.style.display = act === "save-omni" || act === "edit-and-capture-omni" ? showOmniSave && act === "save-omni" ? "" : showOmniEditCapture && act === "edit-and-capture-omni" ? "" : "none" : "";
+        if (act === "edit") {
+          btn.textContent = isOmniScope && this.deps.quickEditBlock ? "\u270E " + this.deps.t("quickEditBlock") : this.deps.t("edit");
+        }
+        if (act === "source") {
+          btn.textContent = isOmniScope ? "\u2197 " + this.deps.t("locateInDoc") : this.deps.t("openSource");
+        }
         btn.disabled = !actionable || unavailable || this.primaryBusy || this.varFormOpen;
         btn.removeAttribute("title");
         if (act === "ai" && !this.deps.aiEnabled()) btn.title = this.deps.t("aiDisabled");
@@ -11241,21 +11292,36 @@ ${exception.mark.snippet}`;
           sec2.appendChild(btn);
           return btn;
         };
-        addSilent("\u2197", this.deps.t("openSource"), () => this.deps.openSource(entry.id));
-        addSilent("\u270E", this.deps.t("edit"), () => this.deps.editItem(entry.id));
-        addSilent("\u29C9", this.deps.t("duplicateItem"), () => this.deps.duplicateItem(entry.id));
-        const useCount = (_a2 = this.usageCounts.get(entry.id)) != null ? _a2 : 0;
-        if (useCount > 0 && this.deps.resetItemUsage) {
-          addSilent("\u21BA", this.deps.t("resetItemUsage", String(useCount)), async () => {
-            var _a3, _b2;
-            const ok2 = (_b2 = (_a3 = this.deps).resetItemUsage) == null ? void 0 : _b2.call(_a3, entry.id);
-            if (ok2) {
-              this.usageCounts.delete(entry.id);
-              void this.refreshPreservingPosition();
-            }
-          }, "xlc-menu-item", this.deps.t("resetItemUsage", String(useCount)));
+        if (entry.isOmni) {
+          if (this.deps.openDocBlock) {
+            addSilent("\u2197", this.deps.t("locateInDoc"), () => this.deps.openDocBlock(entry.targetBlockId || entry.id));
+          }
+          if (this.deps.quickEditBlock) {
+            addSilent("\u270E", this.deps.t("quickEditBlock"), () => this.deps.quickEditBlock(entry.targetBlockId || entry.id, entry.content || entry.summary || ""));
+          }
+          if (this.deps.captureOmniWithForm) {
+            addSilent("\u2726", this.deps.t("editAndCapture"), () => this.deps.captureOmniWithForm(entry));
+          }
+          if (this.deps.createFromOmni) {
+            addSilent("\u2713", this.deps.t("saveToCommon"), () => this.deps.createFromOmni(entry));
+          }
+        } else {
+          addSilent("\u2197", this.deps.t("openSource"), () => this.deps.openSource(entry.id));
+          addSilent("\u270E", this.deps.t("edit"), () => this.deps.editItem(entry.id));
+          addSilent("\u29C9", this.deps.t("duplicateItem"), () => this.deps.duplicateItem(entry.id));
+          const useCount = (_a2 = this.usageCounts.get(entry.id)) != null ? _a2 : 0;
+          if (useCount > 0 && this.deps.resetItemUsage) {
+            addSilent("\u21BA", this.deps.t("resetItemUsage", String(useCount)), async () => {
+              var _a3, _b2;
+              const ok2 = (_b2 = (_a3 = this.deps).resetItemUsage) == null ? void 0 : _b2.call(_a3, entry.id);
+              if (ok2) {
+                this.usageCounts.delete(entry.id);
+                void this.refreshPreservingPosition();
+              }
+            }, "xlc-menu-item", this.deps.t("resetItemUsage", String(useCount)));
+          }
+          addSilent("\u{1F5D1}", this.deps.t("delete"), () => this.deps.deleteItem(entry.id), "xlc-menu-item xlc-menu-item--danger", `${this.deps.t("delete")} (Alt+Delete)`);
         }
-        addSilent("\u{1F5D1}", this.deps.t("delete"), () => this.deps.deleteItem(entry.id), "xlc-menu-item xlc-menu-item--danger", `${this.deps.t("delete")} (Alt+Delete)`);
         const toDocBtn = this.menuButton("\u2913", this.deps.t("insertToDoc"), "xlc-menu-item", () => {
           var _a3;
           let sec = menu.querySelector(".xlc-menu-pickdoc");
@@ -11643,8 +11709,14 @@ ${exception.mark.snippet}`;
         const entry = this.results[this.activeIndex];
         if (entry) {
           e.preventDefault();
-          this.destroy();
-          await this.deps.editItem(entry.id);
+          if (entry.isOmni) {
+            if (this.deps.quickEditBlock) {
+              void this.deps.quickEditBlock(entry.targetBlockId || entry.id, entry.content || entry.summary || "");
+            }
+          } else {
+            this.destroy();
+            await this.deps.editItem(entry.id);
+          }
         }
       } else if ((e.ctrlKey || e.metaKey || e.altKey) && (e.key === "d" || e.key === "D")) {
         if (e.repeat) return;
@@ -11673,6 +11745,10 @@ ${exception.mark.snippet}`;
           void this.refreshPreservingPosition().then(() => this.restoreFocusToSearch());
         }
       }
+    }
+    getActiveEntry() {
+      var _a;
+      return (_a = this.results[this.activeIndex]) != null ? _a : null;
     }
     destroy() {
       var _a, _b, _c, _d;
@@ -15814,6 +15890,11 @@ ${details.join("\n")}` : ""}`;
     scopeAllNotes: "\u5168\u5E93\u7B14\u8BB0",
     saveToCommon: "\u6536\u5F55\u4E3A\u5E38\u7528\u8BED",
     savedToCommon: "\u5DF2\u5C06\u300C%s\u300D\u6536\u5F55\u5230\u5E38\u7528\u8BED\u5E93",
+    editAndCapture: "\u7F16\u8F91\u5E76\u6536\u5F55...",
+    quickEditBlock: "\u5C31\u5730\u4FEE\u6539\u5757\u5185\u5BB9...",
+    blockUpdated: "\u5757\u5185\u5BB9\u5DF2\u66F4\u65B0",
+    locateInDoc: "\u5728\u6587\u6863\u4E2D\u5B9A\u4F4D",
+    saveChanges: "\u4FDD\u5B58\u4FEE\u6539",
     emptyCurrentDoc: "\u5F53\u524D\u6587\u6863\u4E2D\u672A\u627E\u5230\u5305\u542B\u5173\u952E\u8BCD\u7684\u5185\u5BB9\u5757",
     emptyAllNotes: "\u5168\u5E93\u7B14\u8BB0\u4E2D\u672A\u627E\u5230\u5305\u542B\u5173\u952E\u8BCD\u7684\u6587\u6863",
     fieldMapping: "\u5217\u5B57\u6BB5\u6620\u5C04",

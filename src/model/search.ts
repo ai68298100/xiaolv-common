@@ -61,7 +61,7 @@ export type SearchEntry = Pick<CommonItem, "id" | "blockId" | "libraryDocId" | "
     /** 是否为全域搜索临时条目（用于区分常用语真源与全域检索条目） */
     isOmni?: boolean;
     /** 匹配度分数（用于排序） */
-    score: number;
+    score?: number;
     /** 命中片段（用于高亮） */
     snippet?: string;
     /** 来源文档路径（当前仅用于全局搜索） */
