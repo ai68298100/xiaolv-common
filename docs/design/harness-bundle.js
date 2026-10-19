@@ -3322,6 +3322,7 @@ ${exception.mark.snippet}`;
   }
 
   // src/model/search.ts
+  var DEFAULT_RECENCY_HALF_LIFE_MS = 7 * 24 * 60 * 60 * 1e3;
   var SEARCH_TOKEN_DELIMITER = /[\s,，/\\+;；|｜]+/;
   function splitSearchTokens(query) {
     const trimmed = query.slice(0, LIMITS.queryChars).trim();

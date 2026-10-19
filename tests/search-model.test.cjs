@@ -160,3 +160,39 @@ test("dateRange 搜索时间范围筛选：闭区间过滤、createdAt/updatedAt
     }, CTX);
     assert.deepEqual(basic.map((e) => e.id), ["xlc-e2"]);
 });
+
+test("半衰期衰减与模糊容错检索算法专项测试", () => {
+    // 1. calculateRecencyDecay 计算与边界
+    assert.equal(search.calculateRecencyDecay(undefined, 1000), 0);
+    assert.equal(search.calculateRecencyDecay(0, 1000), 0);
+    assert.equal(search.calculateRecencyDecay(-1, 1000), 0);
+    // 刚使用（delta = 0）衰减系数为 1.0
+    assert.equal(search.calculateRecencyDecay(1000, 1000), 1.0);
+    // 恰好经历一个半衰期（delta = halfLife）衰减系数为 0.5
+    const halfLife = 7 * 24 * 3600 * 1000;
+    const oneHalf = search.calculateRecencyDecay(1000, 1000 + halfLife, halfLife);
+    assert.ok(Math.abs(oneHalf - 0.5) < 0.001);
+
+    // 2. levenshteinDistance 最小编辑距离
+    assert.equal(search.levenshteinDistance("", ""), 0);
+    assert.equal(search.levenshteinDistance("a", ""), 1);
+    assert.equal(search.levenshteinDistance("", "b"), 1);
+    assert.equal(search.levenshteinDistance("kitten", "sitting"), 3);
+    assert.equal(search.levenshteinDistance("延期致歉", "延期道歉"), 1);
+
+    // 3. fuzzyMatchHaystack 滑动窗口模糊匹配 (maxDistance=1)
+    assert.equal(search.fuzzyMatchHaystack("延期致歉回复", "延期道歉").matched, true);
+    assert.equal(search.fuzzyMatchHaystack("延期致歉回复", "延期道歉").distance, 1);
+    assert.equal(search.fuzzyMatchHaystack("项目交付通知", "交付").matched, true);
+    assert.equal(search.fuzzyMatchHaystack("项目交付通知", "交付").distance, 0);
+    // 距离超过 1 不匹配
+    assert.equal(search.fuzzyMatchHaystack("延期致歉回复", "完全无关").matched, false);
+
+    // 4. matchEntry 模糊容错降级
+    const eFuzzy = entry({id: "xlc-fz1", title: "客户延期说明", alias: "致歉回复", tags: ["客服"]});
+    // 错别字 “延琪” 距离 “延期” 为 1，且拼音/精确未命中时，触发 fuzzy-title
+    const matchRes = search.matchEntry(eFuzzy, "延琪");
+    assert.ok(matchRes);
+    assert.equal(matchRes.matchedBy, "fuzzy-title");
+    assert.equal(matchRes.score, 3);
+});

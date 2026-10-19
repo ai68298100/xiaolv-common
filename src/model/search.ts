@@ -32,6 +32,12 @@ export interface SearchContext {
     manualOrder?: ReadonlyMap<string, number>;
     /** 排序模式（title 仅在无关键词浏览时生效，有关键词保持相关度优先） */
     sort?: "manual" | "recent" | "frequent" | "title";
+    /** 启用时间半衰期衰减评分加权（默认 false，开启时为最近使用记录注入半衰期相关度提升） */
+    enableRecencyDecay?: boolean;
+    /** 半衰期毫秒数（默认 7 天: 7 * 24 * 3600 * 1000） */
+    recencyHalfLifeMs?: number;
+    /** 半衰期衰减最大加权分值（默认 2.0 分） */
+    recencyMaxBoost?: number;
     now: number;
 }
 
@@ -53,6 +59,114 @@ export interface ScoredResult {
     matchedBy: string;
     /** 输入序（最终平级兜底：默认保持库内顺序，而非隐式标题序） */
     order: number;
+}
+
+export const DEFAULT_RECENCY_HALF_LIFE_MS = 7 * 24 * 60 * 60 * 1000; // 7 天
+export const DEFAULT_RECENCY_MAX_BOOST = 2.0;
+
+/**
+ * 计算时间半衰期衰减系数：
+ * decay = 0.5 ^ (deltaMs / halfLifeMs)
+ * 范围在 [0, 1]，刚使用（deltaMs = 0）为 1.0，到达半衰期为 0.5，更久远渐近于 0。
+ */
+export function calculateRecencyDecay(
+    lastUsedMs: number | undefined,
+    nowMs: number,
+    halfLifeMs: number = DEFAULT_RECENCY_HALF_LIFE_MS
+): number {
+    if (!lastUsedMs || lastUsedMs <= 0 || !Number.isFinite(lastUsedMs)) return 0;
+    const deltaMs = Math.max(0, nowMs - lastUsedMs);
+    const safeHalfLife = halfLifeMs > 0 ? halfLifeMs : DEFAULT_RECENCY_HALF_LIFE_MS;
+    return Math.pow(0.5, deltaMs / safeHalfLife);
+}
+
+/**
+ * 计算两个字符串的 Levenshtein 最小编辑距离（支持插入、删除、替换）
+ */
+export function levenshteinDistance(a: string, b: string): number {
+    if (a === b) return 0;
+    const la = a.length;
+    const lb = b.length;
+    if (la === 0) return lb;
+    if (lb === 0) return la;
+
+    // 2行滚动数组节省空间
+    let prev = new Array<number>(lb + 1);
+    let curr = new Array<number>(lb + 1);
+
+    for (let j = 0; j <= lb; j++) {
+        prev[j] = j;
+    }
+
+    for (let i = 1; i <= la; i++) {
+        curr[0] = i;
+        const ca = a.charCodeAt(i - 1);
+        for (let j = 1; j <= lb; j++) {
+            const cost = ca === b.charCodeAt(j - 1) ? 0 : 1;
+            curr[j] = Math.min(
+                prev[j]! + 1,       // 删除 a[i-1]
+                curr[j - 1]! + 1,   // 插入 b[j-1]
+                prev[j - 1]! + cost // 替换
+            );
+        }
+        const temp = prev;
+        prev = curr;
+        curr = temp;
+    }
+    return prev[lb]!;
+}
+
+export interface FuzzyMatchResult {
+    matched: boolean;
+    distance: number;
+}
+
+/**
+ * 在目标字符串中模糊滑动匹配关键词（允许最大编辑距离 maxDistance，默认 1）
+ * 仅对长度 >= 2 的 token 生效，避免单字符模糊匹配产生海量误命中噪声
+ */
+export function fuzzyMatchHaystack(haystack: string, needle: string, maxDistance = 1): FuzzyMatchResult {
+    if (!needle || !haystack || needle.length < 2) {
+        return {matched: false, distance: Infinity};
+    }
+    if (haystack.includes(needle)) {
+        return {matched: true, distance: 0};
+    }
+    const nLen = needle.length;
+    const hLen = haystack.length;
+
+    // 如果目标长度小于 needle - maxDistance，不可能在编辑距离内匹配
+    if (hLen < nLen - maxDistance) {
+        return {matched: false, distance: Infinity};
+    }
+
+    // 1. 全串比对（当长度接近时）
+    if (Math.abs(hLen - nLen) <= maxDistance) {
+        const d = levenshteinDistance(haystack, needle);
+        if (d <= maxDistance) {
+            return {matched: true, distance: d};
+        }
+    }
+
+    // 2. 滑动窗口比对（针对 haystack 比 needle 长的场景）
+    let bestDist = Infinity;
+    const minW = Math.max(1, nLen - maxDistance);
+    const maxW = Math.min(hLen, nLen + maxDistance);
+
+    for (let w = minW; w <= maxW; w++) {
+        for (let i = 0; i <= hLen - w; i++) {
+            const sub = haystack.slice(i, i + w);
+            const d = levenshteinDistance(sub, needle);
+            if (d < bestDist) {
+                bestDist = d;
+                if (bestDist <= maxDistance) {
+                    return {matched: true, distance: bestDist};
+                }
+            }
+        }
+    }
+
+    return {matched: bestDist <= maxDistance, distance: bestDist};
 }
 
 function normalizeText(s: string): string {
@@ -95,7 +209,36 @@ function matchSingleToken(entry: SearchEntry, token: string): {score: number; ma
         const top = candidates.reduce((a, b) => (b.score > a.score ? b : a), first);
         if (top.score > 0 && (!best || top.score > best.score)) best = top;
     }
-    return best;
+
+    // 若已有精确或拼音命中，直接返回最高分
+    if (best && best.score > 0) return best;
+
+    // 模糊容错匹配降级 (Epoch 7: Fuzzy match via Levenshtein distance <= 1)
+    // 仅在 token 长度 >= 2 且未发生任何精确/拼音命中时触发，避免单字符误命中
+    if (token.length >= 2) {
+        const normToken = normalizeText(token);
+        if (normToken.length >= 2) {
+            // 1. 尝试标题模糊匹配 (基础分 3)
+            const titleFuzzy = fuzzyMatchHaystack(title, normToken, 1);
+            if (titleFuzzy.matched) {
+                return {score: 3, matchedBy: "fuzzy-title"};
+            }
+            // 2. 尝试别名模糊匹配 (基础分 2)
+            const aliasFuzzy = fuzzyMatchHaystack(alias, normToken, 1);
+            if (aliasFuzzy.matched) {
+                return {score: 2, matchedBy: "fuzzy-alias"};
+            }
+            // 3. 尝试标签模糊匹配 (基础分 1.5)
+            for (const tag of tags) {
+                const tagFuzzy = fuzzyMatchHaystack(tag, normToken, 1);
+                if (tagFuzzy.matched) {
+                    return {score: 1.5, matchedBy: "fuzzy-tags"};
+                }
+            }
+        }
+    }
+
+    return null;
 }
 
 /** 搜索多关键词分隔符：支持空白、中英文逗号、斜杠、反斜杠、加号、中英文分号与竖线（T-0117）。 */
@@ -198,16 +341,32 @@ function compareResults(a: ScoredResult, b: ScoredResult, ctx: SearchContext): n
 
 export function searchEntries(entries: readonly SearchEntry[], query: SearchQuery, ctx: SearchContext, cap = 100): ScoredResult[] {
     const results: ScoredResult[] = [];
+    const useDecay = Boolean(ctx.enableRecencyDecay);
+    const halfLife = ctx.recencyHalfLifeMs ?? DEFAULT_RECENCY_HALF_LIFE_MS;
+    const maxBoost = ctx.recencyMaxBoost ?? DEFAULT_RECENCY_MAX_BOOST;
+
     for (let order = 0; order < entries.length; order++) {
         const entry = entries[order];
         if (!entry || !passesFilters(entry, query, ctx)) continue;
         const text = query.text.trim();
+        let itemResult: ScoredResult;
         if (text) {
             const m = matchEntry(entry, text);
-            if (m) results.push({...m, order});
+            if (!m) continue;
+            itemResult = {...m, order};
         } else {
-            results.push({entry, score: 0, matchedBy: "none", order});
+            itemResult = {entry, score: 0, matchedBy: "none", order};
         }
+
+        if (useDecay) {
+            const lastUsed = ctx.recents.get(entry.id);
+            const decay = calculateRecencyDecay(lastUsed, ctx.now, halfLife);
+            if (decay > 0) {
+                const boost = Number((decay * maxBoost).toFixed(2));
+                itemResult.score += boost;
+            }
+        }
+        results.push(itemResult);
     }
     results.sort((a, b) => compareResults(a, b, ctx));
     return results.slice(0, cap);
