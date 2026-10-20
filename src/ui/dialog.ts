@@ -132,6 +132,7 @@ export class CommonSearchDialog {
     private lastQueryText = "";
     private multiSelectMode = false;
     private selectedIds = new Set<string>();
+    private capturedOmniIds = new Set<string>();
     private batchBarEl: HTMLElement | null = null;
     /** 动作菜单 document 监听兜底清理（destroy 时调用；防键盘关弹窗残留监听） */
     private menuDismiss: (() => void) | null = null;
@@ -316,6 +317,8 @@ export class CommonSearchDialog {
                 {key: `${isApple ? "⌘" : "Ctrl"} + Enter`, action: this.deps.t("kbdCopy")},
                 {key: `${isApple ? "⌥" : "Alt"} + 1-9`, action: this.deps.t("kbdQuickInsert")},
                 {key: `${isApple ? "⌥ + ⇧" : "Alt + Shift"} + 1-9`, action: this.deps.t("kbdQuickCopy")},
+                {key: `${isApple ? "⌥" : "Alt"} + S`, action: "收录全库块"},
+                {key: "@ /", action: "全库穿透"},
                 {key: `${isApple ? "⌥" : "Alt"} + F`, action: this.deps.t("kbdFavorite")},
                 {key: "Tab", action: this.deps.t("kbdTabActions")},
                 {key: "Esc", action: this.deps.t("kbdClose")},
@@ -838,10 +841,11 @@ export class CommonSearchDialog {
                 saveOmni.textContent = this.deps.t("loading");
                 void this.deps.createFromOmni(entry).then((ok) => {
                     if (ok) {
+                        this.capturedOmniIds.add(entry.id);
                         saveOmni.textContent = "✓ " + this.deps.t("saveToCommon");
                     } else {
                         saveOmni.disabled = false;
-                        saveOmni.textContent = "✦ " + this.deps.t("saveToCommon");
+                        saveOmni.textContent = "✦ " + this.deps.t("saveToCommon") + " (Alt+S)";
                     }
                 });
             }
@@ -977,6 +981,23 @@ export class CommonSearchDialog {
         this.dialog?.element.querySelectorAll<HTMLElement>(".xlc-scope-chip").forEach((chip) => {
             chip.classList.toggle("xlc-chip--on", chip.dataset.scope === this.currentScope);
         });
+        const input = this.dialog?.element.querySelector<HTMLInputElement>(".xlc-search-input");
+        if (input) {
+            let ph = this.deps.t("searchPlaceholder");
+            if (this.currentScope === "all-notes") {
+                ph = "🔍 " + (this.deps.t("scopeAllNotesPlaceholder") || "搜索思源全库内容块与文档...");
+            } else if (this.currentScope === "current-doc") {
+                ph = "☵ " + (this.deps.t("scopeCurrentDocPlaceholder") || "搜索当前打开文档中的内容块...");
+            } else if (this.currentScope === "favorites") {
+                ph = "★ " + (this.deps.t("filterFavorites") || "收藏常用语");
+            } else if (this.currentScope === "recent") {
+                ph = "🕐 " + (this.deps.t("filterRecent") || "最近使用常用语");
+            } else {
+                ph = this.deps.t("searchPlaceholder") + " (@ / 检索全库)";
+            }
+            input.placeholder = ph;
+            input.setAttribute("aria-label", ph);
+        }
     }
 
     private buildQuery(): SearchQuery {
@@ -1304,7 +1325,7 @@ export class CommonSearchDialog {
             omniBadge.title = "思源全库检索条目，可直接复用或一键收录为常用语 (Alt+S)";
             title.appendChild(omniBadge);
         }
-        if (entry.category && entry.category.trim()) {
+        if (entry.category && entry.category.trim() && !entry.isOmni) {
             const catBadge = document.createElement("span");
             const variant = getCategoryColorVariant(entry.category);
             catBadge.className = `xlc-badge xlc-badge--cat xlc-cat--${variant}`;
@@ -1347,6 +1368,18 @@ export class CommonSearchDialog {
         main.appendChild(title);
         const meta = document.createElement("div");
         meta.className = "xlc-row-meta";
+
+        // 全域条目显示精细面包屑路径
+        if (entry.isOmni && entry.category) {
+            const breadcrumb = document.createElement("span");
+            breadcrumb.className = "xlc-row-breadcrumb";
+            const cleanPath = entry.category.replace(/^\/+/, "").replace(/\.sy$/, "");
+            const parts = cleanPath.split("/").filter(Boolean);
+            breadcrumb.textContent = parts.length > 0 ? parts.join(" › ") : entry.category;
+            breadcrumb.title = `所属文档路径：${entry.category}`;
+            meta.appendChild(breadcrumb);
+        }
+
         const currentFilters = this.deps.getFilters();
         const cleanTags = entry.tags.filter(Boolean);
         const shownTags = cleanTags.slice(0, 3);
@@ -1384,7 +1417,13 @@ export class CommonSearchDialog {
             const summarySpan = document.createElement("span");
             summarySpan.className = "xlc-row-summary";
             const summaryText = entry.summary.length > 100 ? entry.summary.slice(0, 100) + "…" : entry.summary;
-            summarySpan.textContent = (shownTags.length > 0 ? " · " : "") + summaryText;
+            const prefix = (shownTags.length > 0 || (entry.isOmni && entry.category)) ? " · " : "";
+            if (prefix) summarySpan.appendChild(document.createTextNode(prefix));
+            if (this.lastQueryText && !this.lastQueryText.startsWith("?") && !this.aiResults) {
+                this.appendHighlighted(summarySpan, summaryText, this.lastQueryText);
+            } else {
+                summarySpan.appendChild(document.createTextNode(summaryText));
+            }
             meta.appendChild(summarySpan);
         }
         if (useCount > 0) {
@@ -1814,6 +1853,11 @@ export class CommonSearchDialog {
                 btn.style.display = (act === "save-omni" || act === "edit-and-capture-omni")
                     ? (showOmniSave && act === "save-omni" ? "" : (showOmniEditCapture && act === "edit-and-capture-omni" ? "" : "none"))
                     : "";
+                if (act === "save-omni") {
+                    const isCaptured = entry ? this.capturedOmniIds.has(entry.id) : false;
+                    btn.textContent = isCaptured ? "✓ " + this.deps.t("saveToCommon") : "✦ " + this.deps.t("saveToCommon") + " (Alt+S)";
+                    btn.disabled = isCaptured;
+                }
                 if (act === "edit") {
                     btn.textContent = (isOmniScope && this.deps.quickEditBlock) ? "✎ " + this.deps.t("quickEditBlock") : this.deps.t("edit");
                 }
@@ -2154,6 +2198,21 @@ export class CommonSearchDialog {
         typeBadge.className = `xlc-badge xlc-badge--${entry.itemType}`;
         typeBadge.textContent = TYPE_BADGES[entry.itemType] ?? "TXT";
         meta.appendChild(typeBadge);
+        if (entry.isOmni) {
+            const omniBadge = document.createElement("span");
+            omniBadge.className = "xlc-badge xlc-badge--omni";
+            omniBadge.textContent = entry.tags?.includes("全库块") ? "思源全库块" : (entry.tags?.includes("当前文档") ? "当前文档块" : "思源文档");
+            meta.appendChild(omniBadge);
+
+            if (entry.category) {
+                const docPathSpan = document.createElement("span");
+                docPathSpan.className = "xlc-row-breadcrumb";
+                const clean = entry.category.replace(/^\/+/, "").replace(/\.sy$/, "");
+                docPathSpan.textContent = clean.split("/").filter(Boolean).join(" › ") || entry.category;
+                docPathSpan.title = `所属文档路径：${entry.category}`;
+                meta.appendChild(docPathSpan);
+            }
+        }
         const setFilter = (patch: {tag?: string; category?: string}): void => {
             const current = this.deps.getFilters();
             const next = {
@@ -3042,7 +3101,11 @@ export class CommonSearchDialog {
             const entry = this.results[this.activeIndex];
             if (entry?.isOmni && this.deps.createFromOmni) {
                 e.preventDefault();
-                await this.deps.createFromOmni(entry);
+                const ok = await this.deps.createFromOmni(entry);
+                if (ok) {
+                    this.capturedOmniIds.add(entry.id);
+                    this.syncPaneActions();
+                }
                 return;
             }
         } else if ((e.ctrlKey || e.metaKey || e.altKey) && (e.key === "e" || e.key === "E")) {

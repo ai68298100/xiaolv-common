@@ -643,6 +643,24 @@
         flex-shrink: 0;
       }
 
+      .xlc-row-breadcrumb {
+        display: inline-flex;
+        align-items: center;
+        font-size: var(--xlc-font-2xs);
+        color: var(--b3-theme-primary);
+        background-color: var(--xlc-list-selected, rgba(53, 117, 240, 0.08));
+        border: 1px solid rgba(53, 117, 240, 0.2);
+        padding: 1px 6px;
+        border-radius: var(--b3-border-radius);
+        max-width: 200px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        margin-right: 6px;
+        font-weight: 500;
+        vertical-align: middle;
+      }
+
       .xlc-tag-pill {
         display: inline-flex;
         align-items: center;

@@ -221,6 +221,7 @@ export function openSettingsDialog(ctx: SettingsUiContext): void {
     buildSearchSection(ctx, root);
     buildSavedViewsSection(ctx, root, () => dialog.destroy());
     buildHealthSection(ctx, root);
+    buildExternalIntegrationSection(ctx, root);
     buildProviderSection(ctx, root);
     buildDataSection(ctx, root);
     body.appendChild(root);
@@ -1743,6 +1744,65 @@ function buildHealthSection(ctx: SettingsUiContext, root: HTMLElement): void {
             runBtn.removeAttribute("aria-busy");
         }
     });
+
+    root.appendChild(sec);
+}
+
+function buildExternalIntegrationSection(ctx: SettingsUiContext, root: HTMLElement): void {
+    void ctx;
+    const sec = document.createElement("div");
+    sec.className = "xlc-form-field xlc-card xlc-external-integration";
+    sec.dataset.xlcControl = "settings.external-integration";
+
+    const label = document.createElement("span");
+    label.className = "xlc-form-label";
+    label.textContent = "全局可用与外部调用联动 (Quicker / Headless API)";
+    sec.appendChild(label);
+
+    const desc = document.createElement("div");
+    desc.className = "xlc-form-hint";
+    desc.style.lineHeight = "1.6";
+    desc.textContent = "小驴常用已全面开放 Headless 纯求值与检索协议。支持在微信、Word、QQ、浏览器等任意外部窗口，通过全局热键、Quicker 动作或本地脚本，免切思源窗口直接检索常用语并秒级喷射文本。";
+    sec.appendChild(desc);
+
+    const apiCard = document.createElement("div");
+    apiCard.className = "xlc-api-code-block";
+    apiCard.style.cssText = "background:var(--b3-theme-surface); border:1px solid var(--b3-border-color); border-radius:var(--b3-border-radius); padding:10px 12px; margin:8px 0; font-family:var(--b3-font-family-code); font-size:12px; line-height:1.5;";
+
+    apiCard.innerHTML = `
+        <div style="color:var(--b3-theme-primary); font-weight:600; margin-bottom:4px;">开放协议命令（思源内部命令 / WebSocket / 窗口桥）：</div>
+        <div>• <strong>xiaolv.common.resolve</strong>: 条目纯求值（自动展开嵌套片段并计算宏变量，支持填参 fills）</div>
+        <div>• <strong>xiaolv.common.search</strong>: 按关键词检索常用条目清单（含标题、类型、别名、标签）</div>
+        <div>• <strong>xiaolv.common.recent</strong>: 获取最近使用过的常用条目</div>
+        <div>• <strong>xiaolv.common.get</strong>: 获取条目完整定义与元数据</div>
+    `;
+    sec.appendChild(apiCard);
+
+    const copyBtn = document.createElement("button");
+    copyBtn.type = "button";
+    copyBtn.className = "b3-button xlc-btn-ghost";
+    copyBtn.style.marginTop = "4px";
+    copyBtn.textContent = "复制 Quicker 动作调用配置与参数示例";
+    copyBtn.addEventListener("click", () => {
+        const examplePayload = JSON.stringify({
+            target: "xiaolv-common",
+            protocol: "xiaolv-common/v1",
+            operations: {
+                search: { command: "xiaolv.common.search", params: { keyword: "退款", limit: 20 } },
+                resolve: { command: "xiaolv.common.resolve", params: { itemId: "条目ID", fills: { "客户姓名": "张经理" } } },
+                recent: { command: "xiaolv.common.recent", params: { limit: 15 } }
+            },
+            quickerNote: "向思源内核 POST /api/command 发送上述指令，获取 resolve 结果中的 resolvedText 即可由 Quicker 写入剪贴板并模拟 Ctrl+V 喷射。"
+        }, null, 2);
+
+        void navigator.clipboard.writeText(examplePayload).then(() => {
+            copyBtn.textContent = "✓ 已复制配置示例到剪贴板";
+            setTimeout(() => {
+                copyBtn.textContent = "复制 Quicker 动作调用配置与参数示例";
+            }, 3000);
+        });
+    });
+    sec.appendChild(copyBtn);
 
     root.appendChild(sec);
 }
