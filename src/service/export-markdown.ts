@@ -10,6 +10,8 @@ import {CommonItem} from "../model/item";
 import {LIMITS} from "../constants";
 import {listAskFields, listSnippetRefs} from "../model/variables";
 
+import {SanitizerOptions, sanitizeTextForExport} from "../model/export-sanitizer";
+
 export class ExportIntegrityError extends Error {
     constructor(
         public readonly reason: "index-incomplete" | "item-unreadable" | "body-missing" | "too-large",
@@ -37,8 +39,10 @@ export async function buildMarkdownExport(
     items: readonly CommonItem[],
     kramdownById: ReadonlyMap<string, string>,
     fetchAssetBytes: (assetPath: string) => Promise<Uint8Array | null>,
-    pack?: {name: string},
+    packOrOptions?: {name: string} | {pack?: {name: string}; sanitizer?: SanitizerOptions},
 ): Promise<MarkdownExportResult> {
+    const pack = packOrOptions && "name" in packOrOptions ? packOrOptions : (packOrOptions as {pack?: {name: string}})?.pack;
+    const sanitizer = packOrOptions && "sanitizer" in packOrOptions ? (packOrOptions as {sanitizer?: SanitizerOptions}).sanitizer : undefined;
     const oneLine = (value: string): string => value.replace(/[\r\n]+/g, " ").trim();
     for (const item of items) {
         if (!kramdownById.has(item.id)) {
@@ -54,7 +58,11 @@ export async function buildMarkdownExport(
     const varNames: string[] = [];
     for (const item of items) {
         if (item.itemType === "code") continue;
-        for (const field of listAskFields(kramdownById.get(item.id) ?? "")) {
+        let text = kramdownById.get(item.id) ?? "";
+        if (sanitizer) {
+            text = sanitizeTextForExport(text, sanitizer).text;
+        }
+        for (const field of listAskFields(text)) {
             if (!varNames.includes(field.name)) varNames.push(field.name);
             if (varNames.length >= LIMITS.maxAskFields) break;
         }
@@ -90,7 +98,10 @@ export async function buildMarkdownExport(
     // Count actual separators and metadata, and stop before allocating an oversized body or fetching its assets.
     let totalLen = mdParts.reduce((length, part) => length + part.length, 0) + mdParts.length - 1;
     for (const item of items) {
-        const kramdown = kramdownById.get(item.id) ?? "";
+        let kramdown = kramdownById.get(item.id) ?? "";
+        if (sanitizer && item.itemType !== "code") {
+            kramdown = sanitizeTextForExport(kramdown, sanitizer).text;
+        }
         const meta = [
             `<!-- xlc-item`,
             `id: ${item.id}`,

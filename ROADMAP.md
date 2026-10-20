@@ -890,6 +890,12 @@
 - [x] `src/service/import-markdown.ts` 纯函数 `buildPackDependencyMap`：遍历提取包内条目的片段嵌套依赖关系，装配至 `MarkdownPackManifest.dependencyMap`。
 - [x] 导入策略卡片增强：在 `openImportPolicyDialog` 渲染 `.xlc-import-dep-tree` 树状关系图谱，直观呈现父条目与被引用子片段脉络。
 
+## T-0142 / R289（2026-10-20 批量条目分类与标签操作管理）
+
+- [x] `src/model/batch-ops.ts` 纯函数引擎：`BatchSelectionManager` 状态机支持单项点选、Shift+Click 连续范围选择、全选与清空；`mergeTags` 支持大小写不敏感去重保序合并；`applyBatchTagCategoryOps` 精确比对并计算属性变更载荷。
+- [x] 多选批处理交互与沉浸式工具栏：搜索弹窗条目左侧渲染选择框，支持 Shift 连选与快捷键 Alt+M / Option+M 极速切换；悬浮批处理工具栏支持「批量加标签...」、「批量设分类...」与退出；`LibraryService.batchUpdateAttributes` 实施写前门禁与逐项属性回执聚合。
+- [x] 决策见 [ADR 0082](docs/adr/0082-batch-tag-category-management.md)；新增 `tests/r289-batch-ops.test.cjs` 专项测试，通过禁用去重逻辑的严格负向验证，全套 674/674 门禁通过。
+
 ## T-0086–T-0092 / R233–R239（2026-10-18 审计、示例调研与多块保护）
 
 - [x] 完成源码、原型、Chrome UI、功能边界、GitHub issue/CI/release/附件和安全状态审计；证据见 [状态审计](docs/status-audit-2026-10-18.md) 与 [UI 审计目录](docs/design/audit-2026-10-18/)。
@@ -926,3 +932,6 @@
 - [x] **G27 唯一别名精确匹配快捷直达与缩写极速插入**：（已在 T-0139 实现）对标 Alfred Snippets Keyword / Raycast，输入词与别名完全吻合且全局唯一时，行内呈现金色 ⚡Tab直达 徽标，输入框按 Tab 闪电插入，心流毫无停顿，严格 IME 组词隔离。
 - [x] **G28 常用语使用热力透视与打字时间节省计算看板**：（已在 T-0140 实现）对标 Raycast Usage Insights / TextExpander Statistics，建立打字速度与按键节省计算模型，在设置面板量化呈现累计调用、节省击键、工时收益与 7 天活跃指标，纯本地侧车计算。
 - [x] **G29 模板包片段嵌套依赖树形图谱分析与导入策略可视化**：（已在 T-0141 实现）解析并构建 Markdown 模板包内片段引用关系网，在导入策略对话框展示直观的层级依赖树，依赖脉络一览无余。
+- [x] **G30 批量条目分类与标签操作管理**：（已在 T-0142 实现）对标 Raycast Multi-select Actions / 邮箱批量处理，支持复选框/Shift 连选/Alt+M 批量选中，悬浮工具栏支持一键批量打标签与批量调整分类，防脏写与属性原子比对。
+- [ ] **G31 导出隐私脱敏与敏感文本屏蔽过滤器**：对标 1Password / 企业合规导出，在 Markdown 模板包导出时提供选项脱敏手机号、邮箱、IP、身份证及自定义关键词，保护个人与团队隐私。
+- [ ] **G32 别名与首字母权重动态倾斜检索算法**：对标 Alfred / Raycast 顶级命中体验，若查询词精确命中条目别名首字母或完整别名，大幅倾斜匹配权重置顶，杜绝正文稀释。

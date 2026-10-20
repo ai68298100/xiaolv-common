@@ -9,6 +9,7 @@ import {getDialogBody} from "./dialog-dom";
 import {ITEM_TYPES, ItemType, getCategoryColorVariant} from "../model/item";
 import {toErrorMessage} from "../model/errors";
 import {SearchEntry, SearchQuery, splitSearchTokens, findExactAliasMatch} from "../model/search";
+import {BatchTagCategoryPatch, BatchOperationReceipt} from "../model/batch-ops";
 import {InsertMode} from "../model/actions";
 import {TransformKind} from "../service/ai";
 import {ProviderRow} from "../model/provider-section";
@@ -46,6 +47,8 @@ export interface DialogDeps {
     getVariableDefaults?: (labels: string[]) => Record<string, string>;
     /** 记录变量填写值（ADR 0074 / G22 / T-0133） */
     rememberVariables?: (fills: Record<string, string>) => void;
+    /** 批量更新条目标签与分类（G30 / ADR 0082 / T-0142） */
+    batchUpdateMetadata?: (itemIds: string[], patch: BatchTagCategoryPatch) => Promise<BatchOperationReceipt>;
     openSource: (itemId: string) => Promise<{ok: boolean; message: string}>;
     editItem: (itemId: string) => Promise<void>;
     deleteItem: (itemId: string) => Promise<void>;
@@ -127,6 +130,9 @@ export class CommonSearchDialog {
     private usageCounts = new Map<string, number>();
     /** 最近一次查询词（行标题命中高亮用；空串=不高亮） */
     private lastQueryText = "";
+    private multiSelectMode = false;
+    private selectedIds = new Set<string>();
+    private batchBarEl: HTMLElement | null = null;
     /** 动作菜单 document 监听兜底清理（destroy 时调用；防键盘关弹窗残留监听） */
     private menuDismiss: (() => void) | null = null;
     private inputDebounce: ReturnType<typeof setTimeout> | null = null;
@@ -483,6 +489,22 @@ export class CommonSearchDialog {
             const index = Number(row.dataset.xlcIndex);
             const entry = this.results[index];
             if (!entry) return;
+
+            // 多选模式或按住 Shift/Ctrl 点击行：切换选择状态
+            if (this.multiSelectMode || e.shiftKey || e.ctrlKey || e.metaKey) {
+                if (!this.multiSelectMode) {
+                    this.multiSelectMode = true;
+                }
+                if (this.selectedIds.has(entry.id)) {
+                    this.selectedIds.delete(entry.id);
+                } else {
+                    this.selectedIds.add(entry.id);
+                }
+                this.renderBatchBar();
+                this.renderList(list);
+                return;
+            }
+
             if (isMobile) {
                 this.activeIndex = index;
                 this.activeProvider = -1;
@@ -544,6 +566,7 @@ export class CommonSearchDialog {
             bodyWrap.appendChild(pane);
         }
         root.appendChild(bodyWrap);
+        root.appendChild(this.buildBatchBar());
 
         // 底栏（原型：左计数 / 右真源声明 + 设置入口；移动端=操作钮行 + 点按提示）
         const footer = document.createElement("div");
@@ -1216,6 +1239,9 @@ export class CommonSearchDialog {
         row.className = "xlc-row"
             + (index === this.activeIndex ? " xlc-row--active" : "")
             + (fav ? " xlc-row--fav" : "");
+        if (this.multiSelectMode && this.selectedIds.has(entry.id)) {
+            row.classList.add("xlc-row--selected");
+        }
         row.dataset.xlcControl = "item.row";
         row.dataset.xlcIndex = String(index);
         row.id = `xlc-result-${index}`;
@@ -1223,6 +1249,24 @@ export class CommonSearchDialog {
         row.setAttribute("aria-current", index === this.activeIndex ? "true" : "false");
         row.setAttribute("aria-posinset", String(index + 1));
         row.setAttribute("aria-setsize", String(this.results.length));
+
+        if (this.multiSelectMode) {
+            const checkbox = document.createElement("input");
+            checkbox.type = "checkbox";
+            checkbox.className = "xlc-row-checkbox";
+            checkbox.checked = this.selectedIds.has(entry.id);
+            checkbox.setAttribute("aria-label", `选择 ${entry.title}`);
+            checkbox.addEventListener("click", (e) => {
+                e.stopPropagation();
+                if (checkbox.checked) {
+                    this.selectedIds.add(entry.id);
+                } else {
+                    this.selectedIds.delete(entry.id);
+                }
+                this.renderBatchBar();
+            });
+            row.appendChild(checkbox);
+        }
 
         const main = document.createElement("div");
         main.className = "xlc-row-main";
@@ -2902,6 +2946,10 @@ export class CommonSearchDialog {
             if (entry) await this.deps.runAction(entry.id, "copy");
         } else if (e.key === "Escape") {
             e.preventDefault();
+            if (this.multiSelectMode) {
+                this.exitMultiSelectMode();
+                return;
+            }
             this.destroy();
         } else if (e.altKey && !e.ctrlKey && !e.metaKey && (/^[1-9]$/.test(e.key) || /^Digit[1-9]$/.test(e.code))) {
             let num: number | null = null;
@@ -3000,6 +3048,11 @@ export class CommonSearchDialog {
                 e.preventDefault();
                 await this.deps.deleteItem(entry.id);
             }
+        } else if (
+            e.altKey && !e.ctrlKey && !e.metaKey && (e.key === "m" || e.key === "M")
+        ) {
+            e.preventDefault();
+            this.toggleMultiSelectMode();
         } else if (
             e.altKey && !e.ctrlKey && !e.metaKey &&
             (e.key === "f" || e.key === "F" || e.key === "s" || e.key === "S")
@@ -3115,6 +3168,129 @@ export class CommonSearchDialog {
             loading.textContent = "预览加载失败";
         });
         return true;
+    }
+
+    /** 切换多选模式（G30 / ADR 0082） */
+    toggleMultiSelectMode(): void {
+        this.multiSelectMode = !this.multiSelectMode;
+        if (!this.multiSelectMode) {
+            this.selectedIds.clear();
+        }
+        this.renderBatchBar();
+        const list = this.dialog?.element.querySelector<HTMLElement>(".xlc-list");
+        if (list) this.renderList(list);
+    }
+
+    exitMultiSelectMode(): void {
+        if (!this.multiSelectMode) return;
+        this.multiSelectMode = false;
+        this.selectedIds.clear();
+        this.renderBatchBar();
+        const list = this.dialog?.element.querySelector<HTMLElement>(".xlc-list");
+        if (list) this.renderList(list);
+    }
+
+    isMultiSelectMode(): boolean {
+        return this.multiSelectMode;
+    }
+
+    getSelectedCount(): number {
+        return this.selectedIds.size;
+    }
+
+    getSelectedIds(): string[] {
+        return Array.from(this.selectedIds);
+    }
+
+    /** 公开批量修改接口（供 UI 交互与测试桩调用） */
+    async applyBatchUpdate(patch: BatchTagCategoryPatch): Promise<BatchOperationReceipt | null> {
+        if (this.selectedIds.size === 0 || !this.deps.batchUpdateMetadata) return null;
+        const ids = Array.from(this.selectedIds);
+        const receipt = await this.deps.batchUpdateMetadata(ids, patch);
+        this.exitMultiSelectMode();
+        await this.refresh();
+        return receipt;
+    }
+
+    private buildBatchBar(): HTMLElement {
+        const bar = document.createElement("div");
+        bar.className = "xlc-batch-bar";
+        bar.dataset.xlcControl = "search.batch.bar";
+        bar.style.display = "none";
+
+        const countSpan = document.createElement("span");
+        countSpan.className = "xlc-batch-count";
+        countSpan.textContent = "已选 0 项";
+
+        const actions = document.createElement("div");
+        actions.className = "xlc-batch-actions";
+
+        const addTagBtn = document.createElement("button");
+        addTagBtn.type = "button";
+        addTagBtn.className = "b3-button";
+        addTagBtn.dataset.xlcControl = "search.batch.add-tags";
+        addTagBtn.textContent = "＋ 加标签";
+        addTagBtn.addEventListener("click", () => {
+            if (this.selectedIds.size === 0 || !this.deps.batchUpdateMetadata) return;
+            const input = typeof window !== "undefined" && typeof window.prompt === "function"
+                ? window.prompt("请输入要批量追加的标签（支持中英文逗号分号分隔）：")
+                : "";
+            if (!input || !input.trim()) return;
+            void this.applyBatchUpdate({addTags: [input.trim()]});
+        });
+
+        const removeTagBtn = document.createElement("button");
+        removeTagBtn.type = "button";
+        removeTagBtn.className = "b3-button";
+        removeTagBtn.dataset.xlcControl = "search.batch.remove-tags";
+        removeTagBtn.textContent = "－ 删标签";
+        removeTagBtn.addEventListener("click", () => {
+            if (this.selectedIds.size === 0 || !this.deps.batchUpdateMetadata) return;
+            const input = typeof window !== "undefined" && typeof window.prompt === "function"
+                ? window.prompt("请输入要批量移除的标签（大小写不敏感）：")
+                : "";
+            if (!input || !input.trim()) return;
+            void this.applyBatchUpdate({removeTags: [input.trim()]});
+        });
+
+        const setCatBtn = document.createElement("button");
+        setCatBtn.type = "button";
+        setCatBtn.className = "b3-button";
+        setCatBtn.dataset.xlcControl = "search.batch.set-category";
+        setCatBtn.textContent = "🏷️ 设分类";
+        setCatBtn.addEventListener("click", () => {
+            if (this.selectedIds.size === 0 || !this.deps.batchUpdateMetadata) return;
+            const input = typeof window !== "undefined" && typeof window.prompt === "function"
+                ? window.prompt("请输入目标分类名称（留空表示清空分类）：")
+                : null;
+            if (input === null) return;
+            void this.applyBatchUpdate({setCategory: input.trim()});
+        });
+
+        const exitBtn = document.createElement("button");
+        exitBtn.type = "button";
+        exitBtn.className = "b3-button xlc-btn-ghost";
+        exitBtn.dataset.xlcControl = "search.batch.exit";
+        exitBtn.textContent = "退出多选 (Esc)";
+        exitBtn.addEventListener("click", () => this.exitMultiSelectMode());
+
+        actions.append(addTagBtn, removeTagBtn, setCatBtn, exitBtn);
+        bar.append(countSpan, actions);
+        this.batchBarEl = bar;
+        return bar;
+    }
+
+    private renderBatchBar(): void {
+        if (!this.batchBarEl) return;
+        this.batchBarEl.style.display = this.multiSelectMode ? "flex" : "none";
+        const countSpan = this.batchBarEl.querySelector(".xlc-batch-count");
+        if (countSpan) {
+            countSpan.textContent = `已选 ${this.selectedIds.size} 项`;
+        }
+        const actionBtns = this.batchBarEl.querySelectorAll<HTMLButtonElement>("button:not([data-xlc-control='search.batch.exit'])");
+        actionBtns.forEach((b) => {
+            b.disabled = this.selectedIds.size === 0;
+        });
     }
 
     destroy(): void {

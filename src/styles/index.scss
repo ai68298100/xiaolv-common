@@ -3276,3 +3276,42 @@
   .xlc-discovery .xlc-discovery-candidate-category .b3-button { padding-right: var(--xlc-space-1); padding-left: var(--xlc-space-1); }
   .xlc-discovery-row-side .xlc-badge { max-width: 76px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 }
+
+// ---------- 批量多选管理栏（G30 / ADR 0082）----------
+.xlc-batch-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--xlc-space-2);
+  padding: var(--xlc-space-2) var(--xlc-space-3);
+  background-color: var(--xlc-surface-raised, var(--b3-theme-surface));
+  border-top: 1px solid var(--b3-border-color);
+  box-shadow: 0 -2px 8px rgba(0, 0, 0, 0.08);
+
+  .xlc-batch-count {
+    font-size: var(--xlc-font-xs);
+    font-weight: 600;
+    color: var(--b3-theme-primary);
+  }
+
+  .xlc-batch-actions {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+
+    .b3-button {
+      padding: 2px 8px;
+      font-size: var(--xlc-font-xs);
+    }
+  }
+}
+
+.xlc-row-checkbox {
+  margin-right: 6px;
+  cursor: pointer;
+  accent-color: var(--b3-theme-primary);
+}
+
+.xlc-row--selected {
+  background-color: var(--xlc-list-selected, rgba(53, 117, 240, 0.08)) !important;
+}

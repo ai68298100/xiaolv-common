@@ -1,6 +1,7 @@
 // 导入导出 v1：JSON 捆绑包。导入前校验 → 冲突分类 → 逐项回执；失败不落库（不覆盖原始数据）。
 import {EXPORT_SCHEMA_VERSION, LIMITS, PROTOCOL_NAME} from "../constants";
 import {CommonItem, isItemType, isLogicalId, isSafeHttpUrl, isSourceType, newLogicalId} from "./item";
+import {SanitizerOptions, sanitizeTextForExport} from "./export-sanitizer";
 
 export interface ExportBundle {
     protocol: typeof PROTOCOL_NAME;
@@ -28,25 +29,36 @@ export interface ExportedItem {
     extensions?: Record<string, unknown>;
 }
 
-export function buildBundle(items: readonly CommonItem[], kramdownById: ReadonlyMap<string, string>, now: number): ExportBundle {
+export function buildBundle(
+    items: readonly CommonItem[],
+    kramdownById: ReadonlyMap<string, string>,
+    now: number,
+    sanitizer?: SanitizerOptions,
+): ExportBundle {
     return {
         protocol: PROTOCOL_NAME,
         schemaVersion: EXPORT_SCHEMA_VERSION,
         exportedAt: now,
-        items: items.map((item) => ({
-            id: item.id,
-            itemType: item.itemType,
-            title: item.title,
-            alias: item.alias,
-            tags: [...item.tags],
-            category: item.category,
-            kramdown: (kramdownById.get(item.id) ?? "").slice(0, LIMITS.contentChars),
-            source: {...item.source},
-            url: item.url,
-            targetBlockId: item.targetBlockId,
-            createdAt: item.createdAt,
-            updatedAt: item.updatedAt,
-        })),
+        items: items.map((item) => {
+            let body = (kramdownById.get(item.id) ?? "").slice(0, LIMITS.contentChars);
+            if (sanitizer && item.itemType !== "code") {
+                body = sanitizeTextForExport(body, sanitizer).text;
+            }
+            return {
+                id: item.id,
+                itemType: item.itemType,
+                title: item.title,
+                alias: item.alias,
+                tags: [...item.tags],
+                category: item.category,
+                kramdown: body,
+                source: {...item.source},
+                url: item.url,
+                targetBlockId: item.targetBlockId,
+                createdAt: item.createdAt,
+                updatedAt: item.updatedAt,
+            };
+        }),
     };
 }
 

@@ -1386,6 +1386,15 @@ export default class XiaolvCommonPlugin extends Plugin {
                 this.state.variableMemory = rememberValues(this.state.variableMemory, fills, Date.now());
                 this.persistSoon();
             },
+            batchUpdateMetadata: async (itemIds, patch) => {
+                const receipt = await this.library.batchUpdateTagsAndCategory(itemIds, patch);
+                if (receipt.failed > 0) {
+                    this.notify("error", `批量更新完成：成功 ${receipt.updated} 项，失败 ${receipt.failed} 项`);
+                } else if (receipt.updated > 0) {
+                    this.notify("info", `已批量更新 ${receipt.updated} 个条目的元数据`);
+                }
+                return receipt;
+            },
             getUsage: () => this.state.usage,
             resetItemUsage: (itemId: string) => this.resetItemUsage(itemId),
             newItem: (titleCandidate?: string) => this.capture.newManual(titleCandidate),

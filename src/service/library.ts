@@ -28,6 +28,11 @@ import {
     normalizeCommonItem,
     resolveBlockRefTarget,
 } from "../model/item";
+import {
+    BatchTagCategoryPatch,
+    BatchOperationReceipt,
+    applyBatchTagCategoryOps,
+} from "../model/batch-ops";
 import {LibraryConfig} from "../model/storage";
 import {SearchEntry} from "../model/search";
 import {bodyWriteRestriction, normalizeKramdownIal} from "../model/kramdown";
@@ -1156,6 +1161,75 @@ export class LibraryService {
             return receipt;
         };
         return this.withWriteLock(key, action);
+    }
+
+    /**
+     * 批量追加/移除标签与批量变更所属分类（G30 / ADR 0082 / T-0142）
+     * 串行更新、精准原子事务回执、自动失效索引
+     */
+    async batchUpdateTagsAndCategory(
+        itemIds: readonly string[],
+        patch: BatchTagCategoryPatch,
+    ): Promise<BatchOperationReceipt> {
+        const receipt: BatchOperationReceipt = {
+            total: itemIds.length,
+            updated: 0,
+            skipped: 0,
+            failed: 0,
+            items: [],
+        };
+        if (itemIds.length === 0) return receipt;
+
+        for (const itemId of itemIds) {
+            const got = await this.getItem(itemId);
+            if (!got.ok) {
+                receipt.failed++;
+                receipt.items.push({
+                    itemId,
+                    title: itemId,
+                    status: "failed",
+                    error: got.message,
+                });
+                continue;
+            }
+            const item = got.data;
+            const applied = applyBatchTagCategoryOps(item, patch);
+            if (!applied.changed) {
+                receipt.skipped++;
+                receipt.items.push({
+                    itemId,
+                    title: item.title,
+                    status: "skipped",
+                });
+                continue;
+            }
+
+            const updateRes = await this.updateItem(itemId, {
+                tags: applied.tags,
+                category: applied.category,
+            });
+            if (updateRes.ok) {
+                receipt.updated++;
+                receipt.items.push({
+                    itemId,
+                    title: item.title,
+                    status: "updated",
+                });
+            } else {
+                receipt.failed++;
+                receipt.items.push({
+                    itemId,
+                    title: item.title,
+                    status: "failed",
+                    error: updateRes.message,
+                });
+            }
+        }
+
+        if (receipt.updated > 0) {
+            this.invalidateIndex();
+        }
+        return receipt;
     }
 
     private async updateItemUnlocked(itemId: string, patch: Partial<Pick<NewItemInput, "title" | "alias" | "tags" | "category" | "markdown" | "url" | "targetBlockId">>, options: WriteOptions = {}): Promise<Receipt<{item: CommonItem}>> {

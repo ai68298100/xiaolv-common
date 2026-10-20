@@ -210,6 +210,15 @@ function matchSingleToken(entry: SearchEntry, token: string): {score: number; ma
     const tags = entry.tags.map(normalizeText);
     const category = normalizeText(entry.category);
     const summary = normalizeText(entry.summary);
+    let aliasPy = "";
+    let aliasPyi = "";
+    if (entry.alias) {
+        const anno = getPinyinAdapter().annotate({title: "", alias: entry.alias});
+        if (anno) {
+            aliasPy = normalizeText(anno.py);
+            aliasPyi = normalizeText(anno.pyi);
+        }
+    }
     let best: {score: number; matchedBy: string} | null = null;
     for (const q of expansions.map(normalizeText)) {
         if (!q) continue;
@@ -219,6 +228,9 @@ function matchSingleToken(entry: SearchEntry, token: string): {score: number; ma
             {score: Math.max(0, ...tags.map((t) => scoreHaystack(t, q, 4))), matchedBy: "tags"},
             {score: scoreHaystack(category, q, 4), matchedBy: "category"},
             {score: scoreHaystack(summary, q, 2), matchedBy: "summary"},
+            // 别名拼音候选项（未预填 entry.py/pyi 时的独立别名拼音通道）
+            {score: aliasPy ? scoreHaystack(aliasPy, q, 3) : 0, matchedBy: "pinyin"},
+            {score: aliasPyi ? scoreHaystack(aliasPyi, q, 3, 2) : 0, matchedBy: "pinyin-initials"},
             // 拼音注解（适配器启用时才存在）：全拼/首字母低权重命中
             {score: entry.py ? scoreHaystack(entry.py, q, 3) : 0, matchedBy: "pinyin"},
             {score: entry.pyi ? scoreHaystack(entry.pyi, q, 3, 2) : 0, matchedBy: "pinyin-initials"},
@@ -270,34 +282,108 @@ export function splitSearchTokens(query: string): string[] {
     return trimmed.split(SEARCH_TOKEN_DELIMITER).map((t) => t.trim()).filter(Boolean);
 }
 
+export const ALIAS_EXACT_MATCH_BOOST = 400;
+export const ALIAS_PREFIX_MATCH_BOOST = 200;
+export const ALIAS_PINYIN_EXACT_BOOST = 150;
+export const ALIAS_PINYIN_PREFIX_BOOST = 100;
+
+/**
+ * 别名专属打分加权体系（ADR 0084 / T-0144）
+ * 建立与 Raycast / Alfred 等业界顶尖启动器一致的别名优先体验：
+ * 1. 别名完全吻合：原得分 + 400（最高优先级，确立绝对首位）
+ * 2. 别名前缀吻合：原得分 + 200
+ * 3. 别名拼音完全吻合：原得分 + 150
+ * 4. 别名拼音前缀吻合：原得分 + 100
+ * 仅返回最高梯队加权，阶梯不累加。若无别名或未命中则返回 0。
+ */
+export function calculateAliasBoost(entry: SearchEntry, rawQuery: string, tokens: readonly string[]): number {
+    const alias = normalizeText(entry.alias);
+    if (!alias) return 0;
+    const cleanQuery = normalizeText(rawQuery);
+    const cleanTokens = tokens.map(normalizeText).filter(Boolean);
+    if (!cleanQuery && cleanTokens.length === 0) return 0;
+
+    // 辅助检查：是否在整词或任意有效 token 中完全相等
+    const matchExact = (target: string): boolean => {
+        if (!target) return false;
+        if (cleanQuery && target === cleanQuery) return true;
+        return cleanTokens.some((t) => t === target);
+    };
+
+    // 辅助检查：是否以整词或任意有效 token 为前缀
+    const matchPrefix = (target: string): boolean => {
+        if (!target) return false;
+        if (cleanQuery && cleanQuery.length > 0 && target.startsWith(cleanQuery)) return true;
+        return cleanTokens.some((t) => t.length > 0 && target.startsWith(t));
+    };
+
+    // 1. 别名完全吻合 (+400)
+    if (matchExact(alias)) {
+        return ALIAS_EXACT_MATCH_BOOST;
+    }
+
+    // 2. 别名前缀吻合 (+200)
+    if (matchPrefix(alias)) {
+        return ALIAS_PREFIX_MATCH_BOOST;
+    }
+
+    // 拼音专属加权（仅在拼音适配器具备能力时计算）
+    const anno = getPinyinAdapter().annotate({title: "", alias: entry.alias});
+    if (anno) {
+        const py = normalizeText(anno.py);
+        const pyi = normalizeText(anno.pyi);
+
+        // 3. 别名拼音完全吻合 (+150)
+        if (matchExact(py) || matchExact(pyi)) {
+            return ALIAS_PINYIN_EXACT_BOOST;
+        }
+
+        // 4. 别名拼音前缀吻合 (+100)
+        if (matchPrefix(py) || matchPrefix(pyi)) {
+            return ALIAS_PINYIN_PREFIX_BOOST;
+        }
+    }
+
+    return 0;
+}
+
 /**
  * 单词/多词组合评分：标题×8（前缀+3）/ 别名×6（前缀+2）/ 标签×4 / 分类×4 / 摘要×2。
  * 单词走快速路径；空格/多维标点分隔的多词执行跨字段 AND 匹配并累加各词得分（ADR 0036 / T-0063 / T-0117）。
+ * 集成别名与拼音全阶梯加权（ADR 0084 / T-0144）。
  */
 export function matchEntry(entry: SearchEntry, rawQuery: string): Omit<ScoredResult, "order"> | null {
     const tokens = splitSearchTokens(rawQuery);
     if (tokens.length === 0) return null;
 
+    let totalScore = 0;
+    let matchedBy = "none";
+
     if (tokens.length === 1) {
         const token = tokens[0];
         if (!token) return null;
         const res = matchSingleToken(entry, token);
-        return res ? {entry, score: res.score, matchedBy: res.matchedBy} : null;
-    }
-
-    let totalScore = 0;
-    const matchedBys = new Set<string>();
-    for (const token of tokens) {
-        const res = matchSingleToken(entry, token);
-        if (!res || res.score <= 0) {
-            // AND 语义：任意一个关键词未命中任何字段，整个条目视为不匹配
-            return null;
+        if (!res) return null;
+        totalScore = res.score;
+        matchedBy = res.matchedBy;
+    } else {
+        const matchedBys = new Set<string>();
+        for (const token of tokens) {
+            const res = matchSingleToken(entry, token);
+            if (!res || res.score <= 0) {
+                // AND 语义：任意一个关键词未命中任何字段，整个条目视为不匹配
+                return null;
+            }
+            totalScore += res.score;
+            matchedBys.add(res.matchedBy);
         }
-        totalScore += res.score;
-        matchedBys.add(res.matchedBy);
+        matchedBy = matchedBys.size === 1 ? (Array.from(matchedBys)[0] ?? "multi") : "multi";
     }
 
-    const matchedBy = matchedBys.size === 1 ? (Array.from(matchedBys)[0] ?? "multi") : "multi";
+    // ADR 0084 / T-0144: 别名专属打分加权体系 (Raycast / Alfred 别名置顶体验)
+    const aliasBoost = calculateAliasBoost(entry, rawQuery, tokens);
+    totalScore += aliasBoost;
+
     return {entry, score: totalScore, matchedBy};
 }
 

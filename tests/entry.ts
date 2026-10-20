@@ -46,6 +46,9 @@ import * as variableMemory from "../src/model/variable-memory";
 import * as variableForm from "../src/ui/variable-form";
 import * as healthDoctor from "../src/model/health-doctor";
 import * as usageInsights from "../src/model/usage-insights";
+import * as batchOps from "../src/model/batch-ops";
+import * as exportSanitizer from "../src/model/export-sanitizer";
+import * as exportSanitizerModal from "../src/ui/export-sanitizer-modal";
 
 export {
     item,
@@ -92,4 +95,7 @@ export {
     variableForm,
     healthDoctor,
     usageInsights,
+    batchOps,
+    exportSanitizer,
+    exportSanitizerModal,
 };
