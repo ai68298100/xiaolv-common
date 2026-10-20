@@ -17,6 +17,8 @@ import {collectTags} from "../model/search";
 import {PROMPT_PACK_MD} from "../service/prompt-pack";
 import type {SavedDiscoveryScope, SavedDiscoveryView} from "../model/storage";
 import {openCsvTsvImportWizard} from "./csv-tsv-wizard";
+import {diagnoseLibraryHealth, type HealthDoctorItem} from "../model/health-doctor";
+import {calculateUsageInsights, type UsageItemMeta} from "../model/usage-insights";
 
 type TFn = (key: string, ...args: string[]) => string;
 
@@ -218,6 +220,7 @@ export function openSettingsDialog(ctx: SettingsUiContext): void {
     buildInsertSection(ctx, root);
     buildSearchSection(ctx, root);
     buildSavedViewsSection(ctx, root, () => dialog.destroy());
+    buildHealthSection(ctx, root);
     buildProviderSection(ctx, root);
     buildDataSection(ctx, root);
     body.appendChild(root);
@@ -465,12 +468,63 @@ function buildInsertSection(ctx: SettingsUiContext, root: HTMLElement): void {
     summary.dataset.xlcControl = "settings.usage.summary";
     summary.setAttribute("role", "status");
     summary.setAttribute("aria-live", "polite");
+
+    const insightsBox = document.createElement("div");
+    insightsBox.className = "xlc-usage-insights";
+    insightsBox.dataset.xlcControl = "settings.usage.insights";
+
+    const paintInsights = async (): Promise<void> => {
+        insightsBox.replaceChildren();
+        const usage = ctx.state.usage;
+        const total = Object.values(usage).reduce((sum, u) => sum + (u.count || 0), 0);
+        if (total === 0) return;
+
+        let items: UsageItemMeta[] = [];
+        try {
+            const index = await ctx.library.ensureIndex();
+            items = index.entries.map((e) => ({
+                id: e.id,
+                title: e.title || e.id,
+                contentLength: e.summary ? e.summary.length * 3 : 25,
+            }));
+        } catch {
+            items = [];
+        }
+
+        const insights = calculateUsageInsights(usage, items, Date.now());
+        const grid = document.createElement("div");
+        grid.className = "xlc-insights-grid";
+
+        const mkMetric = (numText: string, labelText: string): HTMLElement => {
+            const card = document.createElement("div");
+            card.className = "xlc-insights-metric";
+            const val = document.createElement("strong");
+            val.className = "xlc-insights-val";
+            val.textContent = numText;
+            const cap = document.createElement("span");
+            cap.className = "xlc-insights-cap";
+            cap.textContent = labelText;
+            card.append(val, cap);
+            return card;
+        };
+
+        grid.append(
+            mkMetric(String(insights.totalCalls), "累计调用 (次)"),
+            mkMetric(String(insights.totalSavedKeystrokes), "节省击键 (字符)"),
+            mkMetric(insights.formattedTimeSaved, "估算节省时间"),
+            mkMetric(String(insights.activeItems7Days), "7天活跃条目"),
+        );
+        insightsBox.appendChild(grid);
+    };
+
     const paintSummary = (): void => {
         const current = summarizeUsage(ctx.state.usage);
         summary.textContent = t("usageStatsSummary", String(current.totalCount), String(current.trackedItems));
+        void paintInsights();
     };
     paintSummary();
     sec.appendChild(summary);
+    sec.appendChild(insightsBox);
     root.appendChild(sec);
 }
 
@@ -1552,6 +1606,147 @@ function buildSavedViewsSection(ctx: SettingsUiContext, root: HTMLElement, befor
     root.appendChild(sec);
 }
 
+/** 常用内容库健康体检中心（G26 / ADR 0078 / ADR 0079） */
+function buildHealthSection(ctx: SettingsUiContext, root: HTMLElement): void {
+    const t = ctx.t;
+    const sec = document.createElement("div");
+    sec.className = "xlc-form-field xlc-card xlc-health-card";
+
+    const label = document.createElement("span");
+    label.className = "xlc-form-label";
+    label.textContent = t("healthSection");
+    sec.appendChild(label);
+
+    const desc = document.createElement("div");
+    desc.className = "xlc-form-hint";
+    desc.textContent = t("healthDesc");
+    sec.appendChild(desc);
+
+    const statusRow = document.createElement("div");
+    statusRow.className = "xlc-health-status";
+    statusRow.hidden = true;
+    statusRow.dataset.xlcControl = "settings.health.summary";
+    statusRow.setAttribute("role", "status");
+    statusRow.setAttribute("aria-live", "polite");
+    sec.appendChild(statusRow);
+
+    const issuesContainer = document.createElement("div");
+    issuesContainer.className = "xlc-health-issues";
+    issuesContainer.dataset.xlcControl = "settings.health.list";
+    issuesContainer.hidden = true;
+    sec.appendChild(issuesContainer);
+
+    const btnRow = document.createElement("div");
+    btnRow.style.display = "flex";
+    btnRow.style.gap = "8px";
+    btnRow.style.marginTop = "8px";
+
+    const runBtn = document.createElement("button");
+    runBtn.type = "button";
+    runBtn.className = "b3-button xlc-btn-primary";
+    runBtn.dataset.xlcControl = "settings.health.run";
+    runBtn.textContent = t("healthRunBtn");
+    btnRow.appendChild(runBtn);
+    sec.appendChild(btnRow);
+
+    let isScanning = false;
+    runBtn.addEventListener("click", async () => {
+        if (isScanning) return;
+        isScanning = true;
+        runBtn.disabled = true;
+        runBtn.setAttribute("aria-busy", "true");
+        statusRow.hidden = false;
+        statusRow.replaceChildren();
+        const scanHint = document.createElement("span");
+        scanHint.className = "xlc-form-hint";
+        scanHint.textContent = t("healthScanning");
+        statusRow.appendChild(scanHint);
+        issuesContainer.hidden = true;
+        issuesContainer.replaceChildren();
+
+        try {
+            const index = await ctx.library.ensureIndex();
+            const entries = index.entries;
+            if (entries.length === 0) {
+                statusRow.textContent = t("healthEmpty");
+                return;
+            }
+
+            const items: HealthDoctorItem[] = [];
+            for (const entry of entries) {
+                const kdReceipt = await ctx.library.getItemKramdown({
+                    id: entry.id,
+                    blockId: entry.blockId,
+                    libraryDocId: entry.libraryDocId,
+                    itemType: entry.itemType,
+                } as CommonItem);
+                items.push({
+                    id: entry.id,
+                    title: entry.title,
+                    content: kdReceipt.ok ? kdReceipt.data : (entry.summary || ""),
+                    itemType: entry.itemType,
+                    url: entry.url,
+                });
+            }
+
+            const result = diagnoseLibraryHealth(items);
+            statusRow.replaceChildren();
+
+            const summaryBadge = document.createElement("span");
+            summaryBadge.className = result.hasErrors ? "xlc-form-error" : (result.warningCount > 0 ? "xlc-badge-warn" : "xlc-form-hint");
+            summaryBadge.style.fontWeight = "600";
+            if (result.issues.length === 0) {
+                summaryBadge.textContent = `✓ ${t("healthClean")} (${result.totalScanned}/${result.totalScanned})`;
+            } else {
+                summaryBadge.textContent = t(
+                    "healthSummary",
+                    String(result.totalScanned),
+                    String(result.healthyCount),
+                    String(result.errorCount),
+                    String(result.warningCount),
+                );
+            }
+            statusRow.appendChild(summaryBadge);
+
+            if (result.issues.length > 0) {
+                issuesContainer.hidden = false;
+                issuesContainer.replaceChildren();
+                for (const issue of result.issues) {
+                    const row = document.createElement("div");
+                    row.className = `xlc-health-issue xlc-health-issue--${issue.severity}`;
+
+                    const pill = document.createElement("span");
+                    pill.className = `xlc-health-pill xlc-health-pill--${issue.severity}`;
+                    pill.textContent = issue.severity === "error" ? t("healthErrorBadge") : t("healthWarnBadge");
+
+                    const titleSpan = document.createElement("strong");
+                    titleSpan.className = "xlc-health-title";
+                    titleSpan.textContent = issue.itemTitle || issue.itemId;
+
+                    const msgSpan = document.createElement("span");
+                    msgSpan.className = "xlc-health-msg";
+                    msgSpan.textContent = issue.message;
+
+                    row.append(pill, titleSpan, msgSpan);
+                    issuesContainer.appendChild(row);
+                }
+            }
+        } catch (err) {
+            statusRow.replaceChildren();
+            const errSpan = document.createElement("span");
+            errSpan.className = "xlc-form-error";
+            errSpan.textContent = t("kernelError", toErrorMessage(err));
+            statusRow.appendChild(errSpan);
+        } finally {
+            isScanning = false;
+            runBtn.disabled = false;
+            runBtn.removeAttribute("aria-busy");
+        }
+    });
+
+    root.appendChild(sec);
+}
+
 function buildDataSection(ctx: SettingsUiContext, root: HTMLElement): void {
     const t = ctx.t;
     // 数据区：当前库 + 重建索引 + 清空最近 + 标签体检 + 导出/导入
@@ -2075,7 +2270,7 @@ async function runTagAudit(ctx: SettingsUiContext): Promise<"empty" | "shown"> {
 /** 导入策略确认（导入前校验已过；策略三选 → importBundleText → 汇总回执）。导出供渲染 harness 取证。 */
 export function openImportPolicyDialog(
     ctx: SettingsUiContext,
-    parsed: {items: Array<{id: string; title: string}>; pack?: {name: string; vars: string[]; snippets?: string[]; missingSnippets?: string[]}},
+    parsed: {items: Array<{id: string; title: string}>; pack?: {name: string; vars: string[]; snippets?: string[]; missingSnippets?: string[]; dependencyMap?: Record<string, string[]>}},
     issues: ImportIssue[],
     source: {kind: "json"; text: string} | {kind: "markdown-pack"; items: ExportedItem[]} | {kind: "espanso"; items: ExportedItem[]} | {kind: "csv-tsv"; items: ExportedItem[]},
 ): void {
@@ -2127,6 +2322,36 @@ export function openImportPolicyDialog(
     preview.className = "xlc-form-hint";
     preview.textContent = t("importPreview", String(parsed.items.length), String(issues.length));
     wrap.appendChild(preview);
+
+    // G29 / T-0141: 模板包片段嵌套关系树可视化
+    if (parsed.pack?.dependencyMap && Object.keys(parsed.pack.dependencyMap).length > 0) {
+        const depWrap = document.createElement("div");
+        depWrap.className = "xlc-import-dep-wrap";
+        const depHead = document.createElement("div");
+        depHead.className = "xlc-form-label";
+        depHead.textContent = "🌲 " + (t("packDepTreeTitle") || "嵌套片段依赖关系：");
+        depWrap.appendChild(depHead);
+
+        const depTree = document.createElement("div");
+        depTree.className = "xlc-import-dep-tree";
+        depTree.dataset.xlcControl = "import.pack.dep-tree";
+
+        for (const [parentTitle, children] of Object.entries(parsed.pack.dependencyMap)) {
+            const row = document.createElement("div");
+            row.className = "xlc-dep-row";
+            const pSpan = document.createElement("strong");
+            pSpan.textContent = parentTitle;
+            const arrow = document.createElement("span");
+            arrow.className = "xlc-dep-arrow";
+            arrow.textContent = " → 引用：";
+            const cList = document.createElement("span");
+            cList.textContent = children.join("、");
+            row.append(pSpan, arrow, cList);
+            depTree.appendChild(row);
+        }
+        depWrap.appendChild(depTree);
+        wrap.appendChild(depWrap);
+    }
     if (parsed.pack?.missingSnippets && parsed.pack.missingSnippets.length > 0) {
         const missingHint = document.createElement("p");
         missingHint.className = "xlc-form-hint xlc-form-error";

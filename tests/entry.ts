@@ -44,6 +44,8 @@ import * as clipboard from "../src/model/clipboard";
 import * as calculator from "../src/model/calculator";
 import * as variableMemory from "../src/model/variable-memory";
 import * as variableForm from "../src/ui/variable-form";
+import * as healthDoctor from "../src/model/health-doctor";
+import * as usageInsights from "../src/model/usage-insights";
 
 export {
     item,
@@ -88,4 +90,6 @@ export {
     calculator,
     variableMemory,
     variableForm,
+    healthDoctor,
+    usageInsights,
 };

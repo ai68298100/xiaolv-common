@@ -854,6 +854,42 @@
 - [x] 视觉与体验闭环：`src/styles/index.scss` 适配紧凑虚线预览框，`dialog.ts` 读取条目内容后直接向变量卡注入 `templateText`，移动端自适应。
 - [x] 决策见 [ADR 0076](docs/adr/0076-live-variable-expansion-preview.md)；新增 `tests/r282-live-variable-preview.test.cjs` 专项断言（单元门禁 653/653 全部通过），并通过故意破坏求值结果的严格负向验证。
 
+## T-0136 / R283（2026-10-20 正则提取与文本动态替换安全过滤器）
+
+- [x] `src/model/placeholders.ts` 纯函数 `isDangerousRegex` 与 `applyRegexFilter`：严格拦截嵌套量词 ReDoS 危险正则并实施 64 字符上限防御；支持正则单项/首组提取（extract）与全局替换（replace，支持 $1/$2 引用）。
+- [x] 占位符解析扩展：支持 `{{xlc:regex|extract|PATTERN|TEXT}}`、`{{xlc:regex|replace|PATTERN|REPLACE|TEXT}}` 与冒号兼容语法；`PLACEHOLDER_PATTERN` 升级为非贪婪闭合到连续 `}}`，完美支持正则内部花括号量词（如 `\d{8}`）。
+- [x] 决策见 [ADR 0077](docs/adr/0077-safe-regex-filters.md)；新增 `tests/r283-regex-filters.test.cjs` 专项断言（单元门禁 660/660 全部通过），并通过故意改写提取分支的严格负向验证。
+
+## T-0137 / R284（2026-10-20 常用内容库健康度与语法体检中心）
+
+- [x] `src/model/health-doctor.ts` 纯函数诊断引擎：`detectSnippetCycles` 基于 DFS 探查嵌套片段死循环成环路径（A -> B -> A 及自循环）；`checkPlaceholderIntegrity` 检出未闭合双花括号、损坏参数与空 ask 字段名；检出缺失子片段依赖、非法非 http(s) URL 与 B-006 多块写前受限结构。
+- [x] 结构化诊断模型与零副作用：分级输出 `error` 与 `warning`、健康条目计数与明细建议，纯只读静态分析，绝不产生破坏性写入。
+- [x] 决策见 [ADR 0078](docs/adr/0078-library-health-doctor.md)；新增 `tests/r284-health-doctor.test.cjs` 专项断言（单元门禁 666/666 全部通过），并通过故意禁用成环检测的严格负向验证。
+
+## T-0138 / R285（2026-10-20 设置面板健康体检中心卡片与交互呈现）
+
+- [x] `src/ui/settings-dialog.ts` 新增「条目健康体检中心」卡片（`buildHealthSection`）：支持「一键全面体检」异步扫描，展示实时忙态指示与健康度评分徽标（如健康率 100% 或错误/警告数量）。
+- [x] 可视化分级折叠清单：展示红色错误药丸（`error`）与黄色警告药丸（`warning`），详细列出条目标题、成环路径与损坏占位符建议，纯文本安全防注入。
+- [x] 多语言与无障碍支持：中英文 i18n 资源对齐，赋予 `settings.health.run`、`settings.health.summary` 与 `settings.health.list` 稳定控件，生产 UI 冒烟测试扩展至 13 项断言并完成负向验证。
+- [x] 决策见 [ADR 0079](docs/adr/0079-settings-health-doctor-ui.md)。
+
+## T-0139 / R286（2026-10-20 唯一别名精确匹配快捷直达与缩写极速插入）
+
+- [x] `src/model/search.ts` 纯函数 `findExactAliasMatch`：精确查找全局唯一匹配别名（不区分大小写与空白），存在多条同名别名时返回 null 隔离歧义。
+- [x] 交互与视觉闭环：命中时列表行标题旁浮现金色闪电直达微徽标 `.xlc-badge--direct`；输入框内按 Tab 键优先闪电直达插入该项，严格 IME 组词隔离。
+- [x] 决策见 [ADR 0080](docs/adr/0080-alias-quick-recall.md)。
+
+## T-0140 / R287（2026-10-20 常用语使用热力透视与打字时间节省计算看板）
+
+- [x] `src/model/usage-insights.ts` 统计引擎：科学建模每分钟 200 字符打字速度与单次 6 击键呼出成本，量化累计调用次数、节省按键量与节省打字工时；统计 7 天活跃条目与 Top 5 高频榜单。
+- [x] 设置面板看板组件：渲染紧凑四格指标卡（`.xlc-usage-insights`），与侧车使用字典联动，清空统计时即时重置归零。
+- [x] 决策见 [ADR 0081](docs/adr/0081-usage-insights-calculator.md)。
+
+## T-0141 / R288（2026-10-20 模板包片段嵌套依赖树形图谱分析与导入策略可视化）
+
+- [x] `src/service/import-markdown.ts` 纯函数 `buildPackDependencyMap`：遍历提取包内条目的片段嵌套依赖关系，装配至 `MarkdownPackManifest.dependencyMap`。
+- [x] 导入策略卡片增强：在 `openImportPolicyDialog` 渲染 `.xlc-import-dep-tree` 树状关系图谱，直观呈现父条目与被引用子片段脉络。
+
 ## T-0086–T-0092 / R233–R239（2026-10-18 审计、示例调研与多块保护）
 
 - [x] 完成源码、原型、Chrome UI、功能边界、GitHub issue/CI/release/附件和安全状态审计；证据见 [状态审计](docs/status-audit-2026-10-18.md) 与 [UI 审计目录](docs/design/audit-2026-10-18/)。
@@ -885,3 +921,8 @@
 - [x] **G22 变量历史填写值记忆与智能预填**：（已在 T-0133 实现）对标 TextExpander Form History / Raycast，侧车纯本地记忆用户对变量最近填写值（LRU 200 项、防超长、空值不记），二次使用自动预填，支持单项抹除与全部清空。
 - [x] **G23 光标选区包裹模式（Surround Selection with Snippet）**：（已在 T-0134 实现）对标 VSCode Surround With / Raycast Snippets，支持 `{{xlc:selection}}` 与 `{{xlc:selection|默认内容}}`，在思源编辑器中划选文本即可一键包裹进代码围栏、引用块或提示模板，无选区时优雅回退。
 - [x] **G24 模板变量填写卡交互式实时求值与动态预览**：（已在 T-0135 实现）对标 Raycast Live Snippet Preview / TextExpander，变量填写卡底部实时防抖求值并展示展开后预览效果，所见即所得，纯文本防 XSS 与超长截断保护。
+- [x] **G25 正则提取与文本动态替换安全过滤器**：（已在 T-0136 实现）对标 Espanso Regex / TextExpander，实现纯函数正则过滤器，支持正则提取与全局安全替换，双花括号定界兼容花括号量词，防 ReDoS 灾难性回溯与语法错误安全隔离。
+- [x] **G26 常用内容库健康度与语法体检中心**：（已在 T-0137/T-0138 实现）对标 PhraseExpress Macro Checker，实现纯函数诊断引擎与设置面板交互卡片，一键异步扫描全库，精准探查嵌套片段成环、缺失依赖、损坏占位符、非法 URL 协议与 B-006 写前受限结构，分级输出诊断报告与可视化药丸。
+- [x] **G27 唯一别名精确匹配快捷直达与缩写极速插入**：（已在 T-0139 实现）对标 Alfred Snippets Keyword / Raycast，输入词与别名完全吻合且全局唯一时，行内呈现金色 ⚡Tab直达 徽标，输入框按 Tab 闪电插入，心流毫无停顿，严格 IME 组词隔离。
+- [x] **G28 常用语使用热力透视与打字时间节省计算看板**：（已在 T-0140 实现）对标 Raycast Usage Insights / TextExpander Statistics，建立打字速度与按键节省计算模型，在设置面板量化呈现累计调用、节省击键、工时收益与 7 天活跃指标，纯本地侧车计算。
+- [x] **G29 模板包片段嵌套依赖树形图谱分析与导入策略可视化**：（已在 T-0141 实现）解析并构建 Markdown 模板包内片段引用关系网，在导入策略对话框展示直观的层级依赖树，依赖脉络一览无余。

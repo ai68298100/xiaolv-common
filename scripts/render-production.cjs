@@ -378,11 +378,15 @@ fs.writeFileSync(path.join(OUT, "harness.html"), html);
             const btn = Array.from(document.querySelectorAll("button")).find((b) => (b.textContent ?? "").includes("导入常用内容示例"));
             return !!btn && (btn.closest(".xlc-card")?.querySelector(".xlc-form-label")?.textContent ?? "").includes("数据与模板");
         })(),
+        healthCard: (() => {
+            const btn = document.querySelector("[data-xlc-control='settings.health.run']");
+            return !!btn && (document.body.textContent || "").includes("条目健康体检中心");
+        })(),
     }));
     if (Object.values(settingsAssertions).some((v) => !v)) {
         throw new Error("settings smoke failed: " + JSON.stringify(settingsAssertions));
     }
-    console.log("  smoke ✓ settings: 12 assertions");
+    console.log("  smoke ✓ settings: 13 assertions");
     await page.screenshot({path: path.join(OUT, "production-settings-light.png")});
     // 模板包导出对话框（R71/F6，原型屏 8 右帧：分类筛选 / 包名 / 内容清单）
     await page.evaluate(() => {

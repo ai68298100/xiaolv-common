@@ -424,3 +424,30 @@ export function collectCategories(entries: readonly SearchEntry[]): string[] {
     for (const e of entries) if (e.category) categories.add(e.category);
     return Array.from(categories).sort((a, b) => a.localeCompare(b, "zh-Hans-CN"));
 }
+
+/**
+ * 唯一别名精确匹配查找（G27 / ADR 0080 / T-0139）
+ * 当查询词与某条目的别名（去首尾空白、不区分大小写）完全相同时：
+ * 若命中且全局唯一，则返回该条目；若有多条同名别名或无命中，则返回 null（避免歧义误插）。
+ */
+export function findExactAliasMatch(
+    entries: readonly SearchEntry[],
+    queryText: string,
+): SearchEntry | null {
+    const clean = (queryText ?? "").trim().toLowerCase();
+    if (!clean) return null;
+    let matched: SearchEntry | null = null;
+    let matchCount = 0;
+    for (const entry of entries) {
+        const alias = (entry.alias ?? "").trim().toLowerCase();
+        if (alias && alias === clean) {
+            matchCount++;
+            if (matchCount === 1) {
+                matched = entry;
+            } else {
+                return null; // 存在多条同名别名，产生歧义，放弃直达
+            }
+        }
+    }
+    return matched;
+}

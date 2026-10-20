@@ -24,6 +24,10 @@
 //   {{xlc:calc|100*1.13}} {{xlc:calc|round(100/3, 2)}} {{xlc:calc|(50+30)*0.8}}
 // 选区包裹模式（T-0134 / R281 / G23）：
 //   {{xlc:selection}} {{xlc:selection|默认内容}} (无选区时回退默认内容或空串)
+// 正则提取与替换过滤器（T-0136 / R283 / G25）：
+//   {{xlc:regex|extract|\d+|TEXT}} (提取首个匹配或第一捕获组)
+//   {{xlc:regex|replace|旧|新|TEXT}} (全局正则替换)
+//   兼容冒号子命令形态：{{xlc:regex:extract|\d+|TEXT}} {{xlc:regex:replace|旧|新|TEXT}}
 
 import {evaluateMathExpression} from "./calculator";
 // 随机选择（R160）：{{xlc:random|a,b,c}} —— 每次替换随机取一项（每选项前后空白忽略）。
@@ -35,10 +39,11 @@ import {evaluateMathExpression} from "./calculator";
 // {{xlc:cursor}} 与 {{xlc:ask:…}} 不在本模型：分别见 variables.ts（插入路径专用）。
 // 替换时机：插入/复制时（executor 输出载荷）；条目存储内容永远保留模板原文。
 
-export type PlaceholderKind = "date" | "time" | "datetime" | "weekday" | "title" | "path" | "doc" | "random" | "uuid" | "id" | "case" | "calc" | "selection";
+export type PlaceholderKind = "date" | "time" | "datetime" | "weekday" | "title" | "path" | "doc" | "random" | "uuid" | "id" | "case" | "calc" | "selection" | "regex";
 
 // 带参形态只接受 | 分隔：: 分隔会撞 Lute emoji 短代码（:date:→📅，R161 真机实证），永不支持。
-export const PLACEHOLDER_PATTERN = /\{\{xlc:(date|time|datetime|weekday|title|path|doc|random|uuid|id|calc|selection|case(?::[a-zA-Z0-9_-]+)?)(?:\|([^}]+))?\}\}/g;
+// 参数段匹配直到连续双右花括号 }} 为止，允许正则或表达式中包含单个花括号量词（如 {\d+}）。
+export const PLACEHOLDER_PATTERN = /\{\{xlc:(date|time|datetime|weekday|title|path|doc|random|uuid|id|calc|selection|case(?::[a-zA-Z0-9_-]+)?|regex(?::[a-zA-Z0-9_-]+)?)(?:\|((?:(?!\}\})[\s\S])+))?\}\}/g;
 
 export type PlaceholderResolver = (kind: PlaceholderKind) => string;
 
@@ -460,6 +465,81 @@ export function resolveCaseArg(rawArg: string, subStyle?: string): string | null
     return transformCase(content, style);
 }
 
+const DANGEROUS_QUANTIFIER_PATTERN = /(\+|\*|\{\d+,?\d*\})\s*(\+|\*|\{\d+,?\d*\})|\([^)]*(\+|\*)[^)]*\)\s*(\+|\*)/;
+
+/** 检查正则表达式是否存在灾难性回溯（ReDoS）危险特征或超出安全长度 */
+export function isDangerousRegex(pattern: string): boolean {
+    if (!pattern || pattern.length > 64) return true;
+    return DANGEROUS_QUANTIFIER_PATTERN.test(pattern);
+}
+
+/**
+ * 安全应用正则过滤器（提取或替换）
+ * 纯函数、零副作用、防 ReDoS 灾难性回溯
+ */
+export function applyRegexFilter(
+    action: "extract" | "replace",
+    patternStr: string,
+    text: string,
+    replacement?: string,
+): string | null {
+    if (typeof text !== "string" || !patternStr || isDangerousRegex(patternStr)) {
+        return null;
+    }
+    const safeText = text.slice(0, 4000);
+    try {
+        if (action === "extract") {
+            const re = new RegExp(patternStr);
+            const match = re.exec(safeText);
+            if (!match) return "";
+            return match[1] !== undefined ? match[1] : match[0];
+        }
+        if (action === "replace") {
+            const re = new RegExp(patternStr, "g");
+            return safeText.replace(re, replacement ?? "");
+        }
+        return null;
+    } catch {
+        return null;
+    }
+}
+
+/** 解析 regex 语法参数 */
+export function resolveRegexArg(rawArg: string, subAction?: string): string | null {
+    const trimmed = rawArg.trim();
+    let action = subAction?.trim().toLowerCase();
+    let rest = trimmed;
+
+    if (!action) {
+        const firstPipe = trimmed.indexOf("|");
+        if (firstPipe === -1) return null;
+        action = trimmed.slice(0, firstPipe).trim().toLowerCase();
+        rest = trimmed.slice(firstPipe + 1);
+    }
+
+    if (action === "extract") {
+        const pipe = rest.indexOf("|");
+        if (pipe === -1) return null;
+        const pattern = rest.slice(0, pipe).trim();
+        const text = rest.slice(pipe + 1);
+        return applyRegexFilter("extract", pattern, text);
+    }
+
+    if (action === "replace") {
+        const firstPipe = rest.indexOf("|");
+        if (firstPipe === -1) return null;
+        const pattern = rest.slice(0, firstPipe).trim();
+        const afterPattern = rest.slice(firstPipe + 1);
+        const secondPipe = afterPattern.indexOf("|");
+        if (secondPipe === -1) return null;
+        const replacement = afterPattern.slice(0, secondPipe);
+        const text = afterPattern.slice(secondPipe + 1);
+        return applyRegexFilter("replace", pattern, text, replacement);
+    }
+
+    return null;
+}
+
 export function renderPlaceholder(kind: PlaceholderKind, now: Date, doc?: {title: string; path: string; selection?: string} | null): string {
     switch (kind) {
         case "date": return renderDate(now);
@@ -475,6 +555,7 @@ export function renderPlaceholder(kind: PlaceholderKind, now: Date, doc?: {title
         case "case": return "";
         case "calc": return "";
         case "selection": return doc?.selection ?? "";
+        case "regex": return "";
     }
 }
 
@@ -489,10 +570,16 @@ export function resolvePlaceholder(
 ): string | null {
     let kind = rawKind as PlaceholderKind;
     let subStyle: string | undefined;
+    let subAction: string | undefined;
     if (rawKind.startsWith("case")) {
         kind = "case";
         if (rawKind.includes(":")) {
             subStyle = rawKind.split(":")[1];
+        }
+    } else if (rawKind.startsWith("regex")) {
+        kind = "regex";
+        if (rawKind.includes(":")) {
+            subAction = rawKind.split(":")[1];
         }
     }
     if (kind === "random") return arg ? pickRandomOption(arg) : null;
@@ -505,6 +592,7 @@ export function resolvePlaceholder(
     if (kind === "case") return arg ? resolveCaseArg(arg, subStyle) : null;
     if (kind === "calc") return arg ? evaluateMathExpression(arg) : null;
     if (kind === "selection") return (doc?.selection && doc.selection.length > 0) ? doc.selection : (arg ?? "");
+    if (kind === "regex") return arg ? resolveRegexArg(arg, subAction) : null;
     if (arg) return null;
     return renderPlaceholder(kind, now, doc);
 }
@@ -522,7 +610,11 @@ export function listPlaceholders(text: string): PlaceholderKind[] {
     const kinds: PlaceholderKind[] = [];
     for (const match of text.matchAll(PLACEHOLDER_PATTERN)) {
         const rawKind = match[1]!;
-        const kind = (rawKind.startsWith("case") ? "case" : rawKind) as PlaceholderKind;
+        const kind = (rawKind.startsWith("case")
+            ? "case"
+            : rawKind.startsWith("regex")
+                ? "regex"
+                : rawKind) as PlaceholderKind;
         if (!kinds.includes(kind)) kinds.push(kind);
     }
     return kinds;

@@ -1212,6 +1212,7 @@
   &--structure { color: var(--xlc-badge-md); background-color: var(--xlc-badge-md-bg); }
   &--warn      { color: var(--xlc-badge-warn); background-color: var(--xlc-badge-warn-bg); }
   &--ai        { color: var(--b3-theme-primary); background-color: var(--xlc-badge-md-bg); }
+  &--direct    { color: #9a6700; background-color: rgba(245, 158, 11, 0.16); border: 1px solid rgba(245, 158, 11, 0.35); font-size: var(--xlc-font-2xs); font-weight: 600; }
   &--var       { color: var(--xlc-var); background-color: var(--xlc-var-tint); font-family: var(--mono, inherit); font-weight: var(--xlc-weight-medium); letter-spacing: 0; }
   &--cat {
     max-width: 84px;
@@ -1811,6 +1812,131 @@
   display: inline-flex;
   flex: 0 0 auto;
   gap: var(--xlc-space-1);
+}
+
+// ---------- 常用内容库健康体检中心（G26 / ADR 0079）----------
+.xlc-health-card {
+  .xlc-health-status {
+    margin-top: var(--xlc-space-2);
+    font-size: var(--xlc-font-sm);
+  }
+
+  .xlc-health-issues {
+    display: flex;
+    flex-direction: column;
+    gap: var(--xlc-space-1);
+    max-height: 220px;
+    overflow-y: auto;
+    margin-top: var(--xlc-space-2);
+    padding: var(--xlc-space-2);
+    border: 1px solid var(--b3-border-color);
+    border-radius: var(--xlc-radius-sm);
+    background-color: var(--b3-theme-surface);
+  }
+
+  .xlc-health-issue {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+    font-size: var(--xlc-font-xs);
+    padding: var(--xlc-space-1) 0;
+    border-bottom: 1px dashed color-mix(in srgb, var(--b3-border-color) 60%, transparent);
+
+    &:last-child {
+      border-bottom: none;
+    }
+  }
+
+  .xlc-health-pill {
+    display: inline-flex;
+    align-items: center;
+    padding: 1px 6px;
+    border-radius: 4px;
+    font-size: 11px;
+    font-weight: 600;
+    line-height: 1.4;
+
+    &--error {
+      color: #d1242f;
+      background-color: rgba(209, 36, 47, 0.12);
+      border: 1px solid rgba(209, 36, 47, 0.25);
+    }
+
+    &--warning {
+      color: #9a6700;
+      background-color: rgba(154, 103, 0, 0.12);
+      border: 1px solid rgba(154, 103, 0, 0.25);
+    }
+  }
+
+  .xlc-health-title {
+    color: var(--b3-theme-on-background);
+  }
+
+  .xlc-health-msg {
+    color: var(--b3-theme-on-surface);
+  }
+}
+
+// ---------- 常用语使用数据透视（G28 / ADR 0081）----------
+.xlc-usage-insights {
+  margin-top: var(--xlc-space-2);
+
+  .xlc-insights-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(88px, 1fr));
+    gap: var(--xlc-space-2);
+  }
+
+  .xlc-insights-metric {
+    display: flex;
+    flex-direction: column;
+    padding: var(--xlc-space-2);
+    border-radius: var(--xlc-radius-sm);
+    background-color: var(--b3-theme-surface);
+    border: 1px solid var(--b3-border-color);
+    text-align: center;
+
+    .xlc-insights-val {
+      font-size: var(--xlc-font-md);
+      font-weight: 700;
+      color: var(--b3-theme-primary);
+    }
+
+    .xlc-insights-cap {
+      font-size: 11px;
+      color: var(--b3-theme-on-surface);
+      margin-top: 2px;
+    }
+  }
+}
+
+// ---------- 模板包片段嵌套关系树（G29 / T-0141）----------
+.xlc-import-dep-wrap {
+  margin-top: var(--xlc-space-1);
+
+  .xlc-import-dep-tree {
+    max-height: 110px;
+    overflow-y: auto;
+    padding: var(--xlc-space-2);
+    border: 1px solid var(--b3-border-color);
+    border-radius: var(--xlc-radius-sm);
+    background-color: var(--b3-theme-surface);
+    font-size: var(--xlc-font-xs);
+    line-height: var(--xlc-leading-normal);
+
+    .xlc-dep-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 4px;
+      padding: 2px 0;
+    }
+
+    .xlc-dep-arrow {
+      color: var(--xlc-muted, #7d8085);
+    }
+  }
 }
 
 // ---------- 变量填充卡片（F1，原型屏 4）----------

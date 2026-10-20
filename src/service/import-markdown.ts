@@ -30,6 +30,8 @@ export interface MarkdownPackManifest {
     vars: string[];
     snippets?: string[];
     missingSnippets?: string[];
+    /** 片段依赖图谱（G29 / T-0141）：父条目标题 -> 依赖子片段标题列表 */
+    dependencyMap?: Record<string, string[]>;
 }
 
 export interface MarkdownPackParseResult {
@@ -51,6 +53,19 @@ function parsePackManifest(md: string, firstItemAt: number): MarkdownPackManifes
     const snippets = (fields.get("snippets") ?? "").split(",").map((s) => s.trim()).filter(Boolean).slice(0, 16);
     if (!name) return undefined;
     return {name, vars, ...(snippets.length > 0 ? {snippets} : {})};
+}
+
+/** 构建包内条目的片段依赖映射表（G29 / T-0141） */
+export function buildPackDependencyMap(items: readonly ExportedItem[]): Record<string, string[]> {
+    const map: Record<string, string[]> = {};
+    for (const it of items) {
+        if (it.itemType === "code") continue;
+        const refs = listSnippetRefs(it.kramdown);
+        if (refs.length > 0) {
+            map[it.title || it.id] = refs;
+        }
+    }
+    return map;
 }
 
 /** 解析 items.md → 可导入条目。无 xlc-item 注释的内容一律忽略（不吞外来文本）。 */
@@ -178,6 +193,13 @@ export function parseMarkdownPack(md: string): MarkdownPackParseResult {
         finalPack = finalPack
             ? {...finalPack, missingSnippets}
             : {name: "", vars: [], missingSnippets};
+    }
+
+    const dependencyMap = buildPackDependencyMap(items);
+    if (Object.keys(dependencyMap).length > 0) {
+        finalPack = finalPack
+            ? {...finalPack, dependencyMap}
+            : {name: "", vars: [], dependencyMap};
     }
 
     return {items, issues, pack: finalPack};

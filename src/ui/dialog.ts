@@ -8,7 +8,7 @@ import {Dialog} from "siyuan";
 import {getDialogBody} from "./dialog-dom";
 import {ITEM_TYPES, ItemType, getCategoryColorVariant} from "../model/item";
 import {toErrorMessage} from "../model/errors";
-import {SearchEntry, SearchQuery, splitSearchTokens} from "../model/search";
+import {SearchEntry, SearchQuery, splitSearchTokens, findExactAliasMatch} from "../model/search";
 import {InsertMode} from "../model/actions";
 import {TransformKind} from "../service/ai";
 import {ProviderRow} from "../model/provider-section";
@@ -1252,6 +1252,15 @@ export class CommonSearchDialog {
             catBadge.title = `${this.deps.t("category")}：${entry.category.trim()}`;
             catBadge.setAttribute("aria-label", `${this.deps.t("category")}：${entry.category.trim()}`);
             title.appendChild(catBadge);
+        }
+        // G27 / ADR 0080: 唯一别名精确匹配金色直达徽标
+        const cleanQuery = this.lastQueryText.trim().toLowerCase();
+        if (cleanQuery && entry.alias && entry.alias.trim().toLowerCase() === cleanQuery) {
+            const directBadge = document.createElement("span");
+            directBadge.className = "xlc-badge xlc-badge--direct";
+            directBadge.textContent = "⚡ Tab直达";
+            directBadge.title = "唯一别名精确匹配：按 Tab 或 Enter 极速插入";
+            title.appendChild(directBadge);
         }
         const titleText = document.createElement("span");
         titleText.className = "xlc-row-titletext";
@@ -2930,9 +2939,16 @@ export class CommonSearchDialog {
             const last = focusables[focusables.length - 1];
             const active = document.activeElement as HTMLElement | null;
 
-            // 搜索输入框按 Tab 时，若右侧预览操作区有可用操作，直达预览区首个可用按钮
+            // 搜索输入框按 Tab 时：
             const input = root.querySelector<HTMLInputElement>(".xlc-search-input");
-            if (active === input && !e.shiftKey) {
+            if (input && active === input && !e.shiftKey) {
+                // G27 / ADR 0080: 若输入框存在唯一精确别名匹配项，按 Tab 闪电直达插入
+                const exactMatch = findExactAliasMatch(this.results, input.value);
+                if (exactMatch && !this.primaryBusy && !this.varFormOpen) {
+                    e.preventDefault();
+                    await this.runPrimary(exactMatch);
+                    return;
+                }
                 const previewAction = root.querySelector<HTMLElement>(".xlc-pane-foot button:not([disabled])");
                 if (previewAction && focusables.includes(previewAction)) {
                     e.preventDefault();
