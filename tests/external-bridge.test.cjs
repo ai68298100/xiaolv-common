@@ -20,7 +20,22 @@ function makeService() {
     const state = {schemaVersion: 2, favorites: [], recents: [], sort: "manual", uiPrefs: {lastTypeFilter: "", lastTagFilter: ""}, providers: [], ai: {enabled: false, shareContent: false}};
     return new XiaolvCommonService({
         library: lib,
-        executor: {run: async () => ({ok: true, mode: "insert", message: "inserted", downgraded: false, pendingVerification: []}), openSource: async () => ({ok: true, mode: "open-source", message: "opened", downgraded: false, pendingVerification: []})},
+        executor: {
+            run: async () => ({ok: true, mode: "insert", message: "inserted", downgraded: false, pendingVerification: []}),
+            openSource: async () => ({ok: true, mode: "open-source", message: "opened", downgraded: false, pendingVerification: []}),
+            renderForInsert: async (text, item, fills) => {
+                let res = text;
+                if (fills) {
+                    for (const [k, v] of Object.entries(fills)) {
+                        res = res.replaceAll(`{{xlc:ask:${k}}}`, v);
+                        res = res.replaceAll(`{{xlc:ask:${k}=尊敬的客户}}`, v);
+                    }
+                }
+                res = res.replaceAll("{{xlc:ask:客户姓名=尊敬的客户}}", "尊敬的客户");
+                res = res.replaceAll("{{xlc:ask:工单号}}", "");
+                return res;
+            },
+        },
         registry: new ProviderRegistry(),
         ai: new AiAssistant({request: async () => ({code: 0, data: null})}, state.ai),
         state,
@@ -32,7 +47,7 @@ test("桥形状：protocol/protocolName/capabilities 只读能力；写方法不
     const bridge = externalBridge.buildXlcBridge(makeService());
     assert.equal(bridge.protocol, 1);
     assert.equal(bridge.protocolName, "xiaolv-common");
-    assert.deepEqual(bridge.capabilities, ["search", "get", "getBatch", "recent", "favorites", "categories", "tags"]);
+    assert.deepEqual(bridge.capabilities, ["search", "get", "getBatch", "resolve", "recent", "favorites", "categories", "tags"]);
     // 负向验证：写面不挂桥——意外扩面会让本断言失败
     for (const forbidden of ["save", "update", "remove", "insert", "copy", "openSource", "reindex"]) {
         assert.equal(bridge[forbidden], undefined, `写能力 ${forbidden} 不得出现在只读桥`);
@@ -40,6 +55,7 @@ test("桥形状：protocol/protocolName/capabilities 只读能力；写方法不
     assert.equal(typeof bridge.search, "function");
     assert.equal(typeof bridge.get, "function");
     assert.equal(typeof bridge.getBatch, "function");
+    assert.equal(typeof bridge.resolve, "function");
     assert.equal(typeof bridge.getRecent, "function");
     assert.equal(typeof bridge.getFavorites, "function");
     assert.equal(typeof bridge.getCategories, "function");
@@ -138,4 +154,48 @@ test("挂载：已存在同名桥时不覆盖（先到先得）", () => {
     assert.equal(host.xiaolvCommon.existing, true, "既有桥未被覆盖");
     dispose();
     assert.ok(host.xiaolvCommon, "无主 disposer 不动既有桥");
+});
+
+test("bridge.resolve：支持外部无 UI 纯求值条目正文与动态变量解析", async () => {
+    const svc = makeService();
+    // mock getItem 与 getItemKramdown
+    svc.get = async (id) => {
+        if (id === "entry-1") {
+            return {
+                ok: true,
+                data: {
+                    id: "entry-1",
+                    itemType: "text",
+                    title: "问候模板",
+                },
+            };
+        }
+        return {ok: false, reason: "not-found", message: "item not found"};
+    };
+    svc.deps.library.getItemKramdown = async () => ({
+        ok: true,
+        data: "你好，{{xlc:ask:客户姓名=尊敬的客户}}！本次工单号为：{{xlc:ask:工单号}}",
+    });
+
+    const bridge = externalBridge.buildXlcBridge(svc);
+
+    // 1. 不传 fills 时取默认值
+    const r1 = await bridge.resolve("entry-1");
+    assert.equal(r1.ok, true);
+    assert.equal(r1.data.id, "entry-1");
+    assert.equal(r1.data.hasVariables, true);
+    assert.equal(r1.data.variables.length, 2);
+    assert.equal(r1.data.variables[0].name, "客户姓名");
+    assert.equal(r1.data.variables[0].defaultValue, "尊敬的客户");
+    assert.ok(r1.data.resolvedText.includes("你好，尊敬的客户！"));
+
+    // 2. 传入 fills 时覆盖填参
+    const r2 = await bridge.resolve("entry-1", {"客户姓名": "张经理", "工单号": "WO-9988"});
+    assert.equal(r2.ok, true);
+    assert.ok(r2.data.resolvedText.includes("你好，张经理！本次工单号为：WO-9988"));
+
+    // 3. 不存在的条目诚实报错
+    const r3 = await bridge.resolve("not-exist");
+    assert.equal(r3.ok, false);
+    assert.equal(r3.reason, "not-found");
 });

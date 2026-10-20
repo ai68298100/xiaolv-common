@@ -7,6 +7,7 @@ import {CommonItem, isItemType} from "../model/item";
 import {toErrorMessage} from "../model/errors";
 import {PluginState} from "../model/storage";
 import {EVENTS, PROTOCOL_VERSION} from "../constants";
+import {listAskFields} from "../model/variables";
 import {ActionExecutor, type EditorInsertTargetSnapshot} from "./commands";
 import {AiAssistant} from "./ai";
 import {LibraryService, NewItemInput} from "./library";
@@ -22,6 +23,21 @@ export interface ServiceDeps {
     onStateChange: () => void;
     /** 库块发生外部写入时通知当前 UI；可选以兼容独立协议测试/宿主。 */
     onLibraryChange?: () => void;
+}
+
+export interface ResolvedItemData {
+    id: string;
+    title: string;
+    itemType: string;
+    resolvedText: string;
+    rawKramdown: string;
+    hasVariables: boolean;
+    variables: Array<{
+        name: string;
+        kind: string;
+        options?: string[];
+        defaultValue?: string;
+    }>;
 }
 
 function toRef(item: Pick<CommonItem, "id" | "itemType" | "title">): CommonItemRef {
@@ -128,6 +144,50 @@ export class XiaolvCommonService {
     async get(itemId: string): Promise<ActionResult<CommonItem>> {
         const got = await this.deps.library.getItem(String(itemId ?? ""));
         return got.ok ? successEnvelope(got.data) : failureEnvelope(got.reason === "timeout" ? "timeout" : got.reason === "not-found" ? "not-found" : "kernel-error", got.message);
+    }
+
+    /**
+     * Headless 纯求值接口（供外部 Quicker、兄弟插件或自动化脚本无 UI 展开条目与变量）：
+     * 1. 自动递归展开嵌套片段（{{xlc:snippet:...}}）；
+     * 2. 若传入 fills，用实际填入值替换 {{xlc:ask:...}}；若未传入，自动填入默认值；
+     * 3. 动态计算日期、时间、UUID、范式转换、安全算术等所有动态占位符；
+     * 4. 统计并输出条目中含有的 ask 变量元数据（变量名、类型、选项、默认值），方便外部界面收集用户输入。
+     */
+    async resolve(itemId: string, fills?: Record<string, string>): Promise<ActionResult<ResolvedItemData>> {
+        const got = await this.get(itemId);
+        if (!got.ok || !got.data) {
+            return failureEnvelope(got.reason === "timeout" ? "timeout" : got.reason === "kernel-error" ? "kernel-error" : "not-found", got.message);
+        }
+        const item = got.data;
+        const kdRes = await this.deps.library.getItemKramdown(item);
+        if (!kdRes.ok) {
+            return failureEnvelope(kdRes.reason === "timeout" ? "timeout" : "kernel-error", kdRes.message);
+        }
+        const rawKramdown = kdRes.data ?? "";
+
+        // 提取变量字段（code 条目保留字面值，不解析变量）
+        const expandedForVars = await this.deps.library.expandSnippetRefs(rawKramdown);
+        const askFields = item.itemType === "code" ? [] : listAskFields(expandedForVars);
+
+        // 展开与求值
+        const resolvedText = typeof this.deps.executor.renderForInsert === "function"
+            ? await this.deps.executor.renderForInsert(rawKramdown, item, fills)
+            : rawKramdown;
+
+        return successEnvelope({
+            id: item.id,
+            title: item.title,
+            itemType: item.itemType,
+            resolvedText,
+            rawKramdown,
+            hasVariables: askFields.length > 0,
+            variables: askFields.map((f) => ({
+                name: f.name,
+                kind: f.kind,
+                options: f.options,
+                defaultValue: f.defaultValue,
+            })),
+        });
     }
 
     async save(input: unknown): Promise<ActionResult<CommonItemRef>> {

@@ -1213,6 +1213,7 @@
   &--warn      { color: var(--xlc-badge-warn); background-color: var(--xlc-badge-warn-bg); }
   &--ai        { color: var(--b3-theme-primary); background-color: var(--xlc-badge-md-bg); }
   &--direct    { color: #9a6700; background-color: rgba(245, 158, 11, 0.16); border: 1px solid rgba(245, 158, 11, 0.35); font-size: var(--xlc-font-2xs); font-weight: 600; }
+  &--omni      { color: #0284c7; background-color: rgba(2, 132, 199, 0.12); border: 1px solid rgba(2, 132, 199, 0.28); font-size: var(--xlc-font-2xs); font-weight: 600; }
   &--var       { color: var(--xlc-var); background-color: var(--xlc-var-tint); font-family: var(--mono, inherit); font-weight: var(--xlc-weight-medium); letter-spacing: 0; }
   &--cat {
     max-width: 84px;
@@ -3314,4 +3315,212 @@
 
 .xlc-row--selected {
   background-color: var(--xlc-list-selected, rgba(53, 117, 240, 0.08)) !important;
+}
+
+// ---------- 同步差异比对与冲突合并模态框（ADR 0085 / G33）----------
+.xlc-sync-diff-modal {
+  display: flex;
+  flex-direction: column;
+  width: 90vw;
+  max-width: 880px;
+  max-height: 85vh;
+  box-sizing: border-box;
+
+  .xlc-sync-summary-cards {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    padding: 10px 16px;
+    background-color: var(--b3-theme-surface);
+    border-bottom: 1px solid var(--b3-border-color);
+
+    .xlc-summary-card {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 6px 12px;
+      border-radius: var(--b3-border-radius);
+      background-color: var(--b3-theme-background);
+      border: 1px solid var(--b3-border-color);
+      min-width: 72px;
+
+      .xlc-card-label {
+        font-size: 11px;
+        color: var(--b3-theme-on-surface);
+        opacity: 0.75;
+      }
+
+      .xlc-card-value {
+        font-size: 14px;
+        font-weight: 600;
+        color: var(--b3-theme-on-background);
+      }
+
+      &.xlc-card-identical .xlc-card-value { color: var(--b3-theme-primary); }
+      &.xlc-card-added .xlc-card-value { color: #2e7d32; }
+      &.xlc-card-modified .xlc-card-value { color: #0288d1; }
+      &.xlc-card-conflict .xlc-card-value { color: #d32f2f; }
+      &.xlc-card-removed .xlc-card-value { color: #757575; }
+    }
+  }
+
+  .xlc-sync-diff-controls {
+    padding: 12px 16px;
+    background-color: var(--b3-theme-background);
+    border-bottom: 1px solid var(--b3-border-color);
+
+    .xlc-sync-strategy-row {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      flex-wrap: wrap;
+
+      .xlc-field-label {
+        font-size: 12px;
+        font-weight: 600;
+        color: var(--b3-theme-on-background);
+      }
+
+      .xlc-sync-strategy-select {
+        min-width: 220px;
+        font-size: 12px;
+      }
+
+      .xlc-mirror-checkbox-label {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 12px;
+        cursor: pointer;
+      }
+    }
+
+    .xlc-strategy-hint {
+      margin-top: 6px;
+      font-size: 11px;
+      color: var(--b3-theme-on-surface);
+      opacity: 0.8;
+      line-height: 1.4;
+    }
+  }
+
+  .xlc-sync-diff-table-container {
+    flex: 1 1 auto;
+    overflow-y: auto;
+    min-height: 240px;
+    max-height: 48vh;
+    padding: 0 16px;
+
+    .xlc-sync-diff-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 12px;
+
+      th {
+        position: sticky;
+        top: 0;
+        background-color: var(--b3-theme-background);
+        border-bottom: 2px solid var(--b3-border-color);
+        padding: 8px 6px;
+        text-align: left;
+        font-weight: 600;
+        z-index: 1;
+      }
+
+      td {
+        padding: 6px;
+        border-bottom: 1px solid var(--b3-border-color);
+        vertical-align: middle;
+      }
+
+      tr.xlc-diff-row:hover {
+        background-color: rgba(0, 0, 0, 0.03);
+      }
+
+      .xlc-type-badge {
+        display: inline-block;
+        padding: 1px 6px;
+        font-size: 10px;
+        border-radius: 3px;
+        background-color: var(--b3-theme-surface);
+        border: 1px solid var(--b3-border-color);
+      }
+
+      .xlc-item-title {
+        font-weight: 500;
+        max-width: 280px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .xlc-item-id {
+        font-size: 10px;
+        color: var(--b3-theme-on-surface);
+        opacity: 0.6;
+        font-family: monospace;
+      }
+
+      .xlc-status-badge {
+        display: inline-block;
+        padding: 2px 6px;
+        border-radius: 4px;
+        font-size: 11px;
+        font-weight: 500;
+
+        &.xlc-status-identical { background: #e8f5e9; color: #2e7d32; }
+        &.xlc-status-added { background: #e0f2f1; color: #00796b; }
+        &.xlc-status-modified { background: #e3f2fd; color: #1565c0; }
+        &.xlc-status-conflict { background: #ffebee; color: #c62828; }
+        &.xlc-status-removed { background: #eeeeee; color: #616161; }
+      }
+
+      .xlc-field-badge {
+        display: inline-block;
+        padding: 1px 4px;
+        margin: 1px;
+        border-radius: 3px;
+        font-size: 10px;
+        background: var(--b3-theme-surface);
+        border: 1px solid var(--b3-border-color);
+      }
+
+      .xlc-action-badge {
+        display: inline-block;
+        padding: 2px 6px;
+        border-radius: 4px;
+        font-size: 11px;
+
+        &.xlc-action-create { background: #e8f5e9; color: #2e7d32; font-weight: 600; }
+        &.xlc-action-update { background: #e3f2fd; color: #1565c0; font-weight: 600; }
+        &.xlc-action-fork { background: #fff3e0; color: #e65100; font-weight: 600; }
+        &.xlc-action-delete { background: #ffebee; color: #c62828; font-weight: 600; }
+        &.xlc-action-noop { background: #f5f5f5; color: #9e9e9e; }
+      }
+
+      .xlc-empty-diff {
+        text-align: center;
+        padding: 32px 0;
+        color: var(--b3-theme-on-surface);
+        opacity: 0.7;
+      }
+    }
+  }
+
+  .b3-dialog__action {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    padding: 10px 16px;
+    border-top: 1px solid var(--b3-border-color);
+    background-color: var(--b3-theme-surface);
+
+    .xlc-plan-stat-hint {
+      margin-right: auto;
+      font-size: 12px;
+      color: var(--b3-theme-on-surface);
+      opacity: 0.8;
+    }
+  }
 }

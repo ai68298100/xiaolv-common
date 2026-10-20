@@ -5,7 +5,7 @@
 // 检索结果无缝复用 SearchEntry 模型，支持就地语法高亮预览、快捷插入、复制及一键收录为常用语。
 
 import type {IKernelClient} from "../kernel/client";
-import {parseChildBlocks, parseBatchKramdowns, parseDocSearch} from "../kernel/client";
+import {parseChildBlocks, parseBatchKramdowns, parseDocSearch, parseFullTextSearch, IBlockSearchHit} from "../kernel/client";
 import {SearchEntry, splitSearchTokens} from "../model/search";
 import {deriveTitle, deriveSummary, inferItemType, isBlockId, ItemType} from "../model/item";
 import {inferTypeFromText} from "../ui/capture";
@@ -14,6 +14,57 @@ import {bodyWriteRestriction} from "../model/kramdown";
 export interface OmniSearchOptions {
     maxCurrentDocBlocks?: number;
     maxAllNotesDocs?: number;
+    maxAllNotesBlocks?: number;
+}
+
+/** 清除思源搜索结果中的高亮 <mark> 标签并还原常见 HTML 转义字符 */
+export function cleanSearchHighlight(raw: string): string {
+    if (!raw) return "";
+    return raw
+        .replace(/<mark>/gi, "")
+        .replace(/<\/mark>/gi, "")
+        .replace(/&lt;/g, "<")
+        .replace(/&gt;/g, ">")
+        .replace(/&amp;/g, "&")
+        .replace(/&quot;/g, '"')
+        .replace(/&#39;/g, "'")
+        .trim();
+}
+
+/** 将官方 fullTextSearchBlock 返回的命中块转换为小驴常用统一 SearchEntry 模型 */
+export function blockHitToSearchEntry(hit: IBlockSearchHit): SearchEntry {
+    const cleanContent = cleanSearchHighlight(hit.content);
+    const summary = deriveSummary(cleanContent);
+    const inferredType: ItemType = inferItemType(hit.type, hit.subType || "", cleanContent);
+
+    // 标题：若块类型为 heading (h)，直接取正文；否则若有文档路径取路径最后一段+正文前缀
+    let title = "";
+    if (hit.type === "h") {
+        title = deriveTitle(cleanContent, inferredType, {});
+    } else {
+        const docName = hit.hPath ? hit.hPath.split("/").pop()?.replace(/\.sy$/, "") || "" : "";
+        const snippet = cleanContent.slice(0, 30).replace(/\s+/g, " ");
+        title = docName ? `${docName}: ${snippet}` : deriveTitle(cleanContent, inferredType, {});
+    }
+
+    return {
+        id: `xlc-omni-${hit.id}`,
+        blockId: hit.id,
+        libraryDocId: hit.rootId || hit.id,
+        title,
+        summary: summary || cleanContent.slice(0, 80),
+        content: cleanContent,
+        isOmni: true,
+        itemType: inferredType,
+        category: hit.hPath || "全库内容",
+        tags: ["全库块"],
+        alias: "",
+        createdAt: 0,
+        updatedAt: hit.updated ? Number(hit.updated) || 0 : 0,
+        sourceDocId: hit.rootId || hit.id,
+        sourceBlockId: hit.id,
+        targetBlockId: hit.id,
+    };
 }
 
 /** 纯函数：在给定块集合中进行关键词检索打分并返回命中的条目列表 */
@@ -164,6 +215,53 @@ export async function searchAllNotesDocuments(
     });
 }
 
+/** 检索全库思源内容块（走官方 fullTextSearchBlock 端点，零 SQL） */
+export async function searchAllNotesBlocks(
+    kernel: IKernelClient,
+    keyword: string,
+    options: OmniSearchOptions = {},
+): Promise<SearchEntry[]> {
+    const k = keyword.trim();
+    if (!k) return [];
+
+    const limit = options.maxAllNotesBlocks ?? 30;
+    const raw = await kernel.request("fullTextSearchBlock", {
+        query: k,
+        method: 0, // 0 = 关键词普通检索（零 SQL）
+        orderBy: 0, // 相关度排序
+        page: 1,
+        pageSize: limit,
+    }, {
+        latest: true,
+        raceKey: "omni.allNotes.blocks",
+    });
+
+    const hits = parseFullTextSearch(raw);
+    return hits.map(blockHitToSearchEntry);
+}
+
+/** 全库统一检索：块内容优先，文档为辅 */
+export async function searchAllNotesUnified(
+    kernel: IKernelClient,
+    keyword: string,
+    options: OmniSearchOptions = {},
+): Promise<SearchEntry[]> {
+    const k = keyword.trim();
+    if (!k) return [];
+
+    // 并行请求块级检索与文档检索
+    const [blockEntries, docEntries] = await Promise.all([
+        searchAllNotesBlocks(kernel, k, options).catch(() => []),
+        searchAllNotesDocuments(kernel, k, options).catch(() => []),
+    ]);
+
+    // 块结果优先，若块结果不足或有匹配文档，将文档放在块之后（且去重已存在的根文档）
+    const seenBlockRoots = new Set(blockEntries.map((b) => b.sourceDocId));
+    const supplementalDocs = docEntries.filter((d) => !seenBlockRoots.has(d.sourceDocId));
+
+    return [...blockEntries, ...supplementalDocs];
+}
+
 /** 校验全域块内容更新（遵循 B-006 写前安全约束，防止多行结构损坏思源块层级） */
 export function validateOmniBlockUpdate(content: string): {valid: boolean; error?: string} {
     const err = bodyWriteRestriction(content);
@@ -215,7 +313,15 @@ export class OmniSearchService {
     }
 
     async searchInAllNotes(keyword: string): Promise<SearchEntry[]> {
+        return searchAllNotesUnified(this.kernel, keyword);
+    }
+
+    async searchInAllNotesDocs(keyword: string): Promise<SearchEntry[]> {
         return searchAllNotesDocuments(this.kernel, keyword);
+    }
+
+    async searchInAllNotesBlocks(keyword: string): Promise<SearchEntry[]> {
+        return searchAllNotesBlocks(this.kernel, keyword);
     }
 
     async updateBlockContent(blockId: string, newContent: string): Promise<{success: boolean; error?: string}> {

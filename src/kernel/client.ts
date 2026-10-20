@@ -83,6 +83,7 @@ export const ENDPOINTS = {
     removeNotebook: "/api/notebook/removeNotebook",
     listDocsByPath: "/api/filetree/listDocsByPath",
     searchDocs: "/api/filetree/searchDocs",
+    fullTextSearchBlock: "/api/search/fullTextSearchBlock",
     createDocWithMd: "/api/filetree/createDocWithMd",
     removeDoc: "/api/filetree/removeDoc",
     getHPathByID: "/api/filetree/getHPathByID",
@@ -410,6 +411,48 @@ export function parseDocSearch(data: unknown): IDocSearchHit[] {
             name: typeof obj.name === "string" ? obj.name : "",
         });
         if (out.length >= 30) break;
+    }
+    return out;
+}
+
+export interface IBlockSearchHit {
+    id: string;
+    rootId: string;
+    parentId?: string;
+    content: string;
+    hPath: string;
+    type: string;
+    subType?: string;
+    updated?: string;
+}
+
+/**
+ * fullTextSearchBlock 响应解析：
+ * 官方标准响应为 {blocks: [{id, rootID, parentID, content, hPath, type, subType, updated}], matchedBlockCount, ...}
+ * 防御处理 blocks 为空、坏条目以及非标准包装。
+ */
+export function parseFullTextSearch(data: unknown): IBlockSearchHit[] {
+    if (!data || typeof data !== "object") return [];
+    const obj = data as Record<string, unknown>;
+    const blocksRaw = Array.isArray(obj.blocks) ? obj.blocks : (Array.isArray(data) ? data : []);
+    const out: IBlockSearchHit[] = [];
+    for (const raw of blocksRaw) {
+        if (!raw || typeof raw !== "object") continue;
+        const b = raw as Record<string, unknown>;
+        const id = typeof b.id === "string" ? b.id : "";
+        if (!/^\d{14}-[0-9a-z]{7}$/.test(id)) continue;
+        const rootId = typeof b.rootID === "string" ? b.rootID : (typeof b.rootId === "string" ? b.rootId : id);
+        out.push({
+            id,
+            rootId,
+            parentId: typeof b.parentID === "string" ? b.parentID : (typeof b.parentId === "string" ? b.parentId : undefined),
+            content: typeof b.content === "string" ? b.content : "",
+            hPath: typeof b.hPath === "string" ? b.hPath : "",
+            type: typeof b.type === "string" ? b.type : "p",
+            subType: typeof b.subType === "string" ? b.subType : undefined,
+            updated: typeof b.updated === "string" ? b.updated : undefined,
+        });
+        if (out.length >= 60) break;
     }
     return out;
 }

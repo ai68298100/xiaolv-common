@@ -10,6 +10,8 @@
 | `/api/notebook/createNotebook` | 创建 Issue #1 独立笔记本 | L150；请求 `{name}`，回包 `data.notebook.id` | 离线契约✓ / 真机待 B-005 |
 | `/api/notebook/removeNotebook` | 独立笔记本创建失败时补偿删除 | L150；请求 `{notebook}`，成功回包 `data=null` | 离线契约✓ / 真机待 B-005 |
 | `/api/filetree/listDocsByPath` | notebook/tree 模式列文档 | L184 | 结构✓ / 真机待 |
+| `/api/filetree/searchDocs` | 文档标题与路径搜索（Omni-Search 文档域） | L186 | 结构✓ / 真机待 |
+| `/api/search/fullTextSearchBlock` | 全域思源内容块全文检索（Omni-Search 全库块域，只读，零SQL） | L251 | 结构✓ / 真机待 |
 | `/api/filetree/createDocWithMd` | 创建库文档（先 confirm） | L193 | 结构✓ / 真机待 |
 | `/api/block/getChildBlocks` | 库文档有序遍历（无 SQL） | L286 | 结构✓ / 真机待 |
 | `/api/block/getBlockKramdown` | 条目正文现场取用 | L284 | 结构✓ / 真机待 |

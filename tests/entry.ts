@@ -49,6 +49,8 @@ import * as usageInsights from "../src/model/usage-insights";
 import * as batchOps from "../src/model/batch-ops";
 import * as exportSanitizer from "../src/model/export-sanitizer";
 import * as exportSanitizerModal from "../src/ui/export-sanitizer-modal";
+import * as syncDiff from "../src/model/sync-diff";
+import * as syncDiffModal from "../src/ui/sync-diff-modal";
 
 export {
     item,
@@ -98,4 +100,6 @@ export {
     batchOps,
     exportSanitizer,
     exportSanitizerModal,
+    syncDiff,
+    syncDiffModal,
 };

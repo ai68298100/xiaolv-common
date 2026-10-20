@@ -63,3 +63,70 @@ test("scoreAndFilterBlocks：空块内容自动跳过", () => {
     assert.strictEqual(result.length, 1);
     assert.ok(result[0].id.includes("ccccccc"));
 });
+
+test("cleanSearchHighlight：清除 <mark> 标签并还原 HTML 实体", () => {
+    const raw = "这是 <mark>财务</mark> &amp; <mark>报销</mark> &lt;规范&gt; &#39;test&#39; &quot;ok&quot;";
+    const cleaned = omniSearch.cleanSearchHighlight(raw);
+    assert.strictEqual(cleaned, "这是 财务 & 报销 <规范> 'test' \"ok\"");
+});
+
+test("blockHitToSearchEntry：结构化转换为 SearchEntry", () => {
+    const hit = {
+        id: "20240101120000-abcdefg",
+        rootId: "20240101120000-root123",
+        content: "### <mark>项目启动会</mark>",
+        hPath: "/工作/规划",
+        type: "h",
+        subType: "h3",
+        updated: "1700000000",
+    };
+    const entry = omniSearch.blockHitToSearchEntry(hit);
+    assert.strictEqual(entry.id, "xlc-omni-20240101120000-abcdefg");
+    assert.strictEqual(entry.blockId, "20240101120000-abcdefg");
+    assert.strictEqual(entry.libraryDocId, "20240101120000-root123");
+    assert.strictEqual(entry.title, "项目启动会");
+    assert.strictEqual(entry.content, "### 项目启动会");
+    assert.strictEqual(entry.isOmni, true);
+    assert.strictEqual(entry.tags[0], "全库块");
+    assert.strictEqual(entry.updatedAt, 1700000000);
+});
+
+test("searchAllNotesBlocks & searchAllNotesUnified：走 fullTextSearchBlock 端点调用", async () => {
+    const calls = [];
+    const mockKernel = {
+        request: async (endpoint, payload) => {
+            calls.push({endpoint, payload});
+            if (endpoint === "fullTextSearchBlock") {
+                return {
+                    blocks: [
+                        {
+                            id: "20240101120000-blk1111",
+                            rootID: "20240101120000-doc1111",
+                            content: "<mark>发票</mark>报销审批流程",
+                            hPath: "/财务/报销制度",
+                            type: "p",
+                        },
+                    ],
+                };
+            }
+            if (endpoint === "searchDocs") {
+                return [
+                    {
+                        path: "/20240101120000-doc2222.sy",
+                        hPath: "/财务/2024发票预算",
+                        box: "box-1",
+                    },
+                ];
+            }
+            return null;
+        },
+    };
+
+    const unified = await omniSearch.searchAllNotesUnified(mockKernel, "发票", {maxAllNotesBlocks: 10});
+    assert.strictEqual(unified.length, 2, "应包含块检索结果和文档检索结果");
+    assert.strictEqual(unified[0].id, "xlc-omni-20240101120000-blk1111");
+    assert.strictEqual(unified[0].content, "发票报销审批流程");
+    assert.strictEqual(unified[1].id, "xlc-omni-20240101120000-doc2222");
+
+    assert.ok(calls.some((c) => c.endpoint === "fullTextSearchBlock" && c.payload.query === "发票" && c.payload.method === 0));
+});

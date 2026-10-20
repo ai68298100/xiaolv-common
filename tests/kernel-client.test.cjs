@@ -51,6 +51,44 @@ test("解析器：形状不符时返回安全空值", () => {
     assert.equal(client.parseNotebookId("20240101123456"), null);
     assert.equal(client.parseVoid(null), true);
     assert.equal(client.parseVoid({}), false);
+    // parseFullTextSearch
+    assert.deepEqual(client.parseFullTextSearch("invalid"), []);
+    assert.deepEqual(client.parseFullTextSearch({}), []);
+    assert.deepEqual(client.parseFullTextSearch({blocks: null}), []);
+    const ftsSample = {
+        blocks: [
+            {
+                id: "20240101120000-abcdefg",
+                rootID: "20240101120000-root123",
+                content: "这是<mark>关键词</mark>内容",
+                hPath: "/日常/笔记",
+                type: "p",
+            },
+            {
+                id: "bad-id",
+                content: "非法ID",
+            },
+        ],
+    };
+    const parsedFts = client.parseFullTextSearch(ftsSample);
+    assert.equal(parsedFts.length, 1);
+    assert.equal(parsedFts[0].id, "20240101120000-abcdefg");
+    assert.equal(parsedFts[0].rootId, "20240101120000-root123");
+    assert.equal(parsedFts[0].content, "这是<mark>关键词</mark>内容");
+});
+
+test("fullTextSearchBlock 端点已登记白名单且只读请求可正常分派", async () => {
+    let sentUrl = "";
+    let sentData = null;
+    const kernel = client.createKernelClient({syncPost: async (url, data) => {
+        sentUrl = url;
+        sentData = data;
+        return {code: 0, data: {blocks: []}};
+    }});
+    const res = await kernel.request("fullTextSearchBlock", {query: "test", method: 0});
+    assert.equal(sentUrl, "/api/search/fullTextSearchBlock");
+    assert.deepEqual(sentData, {query: "test", method: 0});
+    assert.deepEqual(res, {blocks: []});
 });
 
 test("独立笔记本端点已登记且写请求按原样发送", async () => {

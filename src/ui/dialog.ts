@@ -254,8 +254,16 @@ export class CommonSearchDialog {
         });
         input.addEventListener("input", () => {
             syncQMark();
-            this.currentScope = "all";
-            this.syncScopeChips(); // 输入即重置范围，chip 选中态必须同步（R138）
+            const rawVal = input.value.trim();
+            // 穿透前缀识别：输入以 @ 或 / 或 sy: 开头，自动切换为全库笔记范围 (all-notes)
+            if (rawVal.startsWith("@") || rawVal.startsWith("/") || rawVal.startsWith("sy:")) {
+                this.currentScope = "all-notes";
+            } else if (this.currentScope === "all-notes" && !rawVal) {
+                this.currentScope = "all";
+            } else if (this.currentScope !== "current-doc" && this.currentScope !== "all-notes") {
+                this.currentScope = "all";
+            }
+            this.syncScopeChips(); // 范围切换后同步 chip 选中态（R138）
             // 真实手动输入时退出历史回退态
             if (!this.navigatingHistory) {
                 this.historyCursor = -1;
@@ -1041,7 +1049,8 @@ export class CommonSearchDialog {
                 this.aiResults = false;
                 if (aiBanner) aiBanner.style.display = "none";
             } else if (this.currentScope === "all-notes" && this.deps.searchAllNotes) {
-                const entries = await this.deps.searchAllNotes(query.text);
+                const cleanKeyword = query.text.replace(/^(@|\/|sy:)/, "").trim();
+                const entries = await this.deps.searchAllNotes(cleanKeyword);
                 if (seq !== this.searchSeq) return;
                 this.results = entries;
                 total = entries.length;
@@ -1288,6 +1297,13 @@ export class CommonSearchDialog {
         badge.title = this.deps.t(`type.${entry.itemType}`);
         badge.setAttribute("aria-label", this.deps.t(`type.${entry.itemType}`));
         title.appendChild(badge);
+        if (entry.isOmni) {
+            const omniBadge = document.createElement("span");
+            omniBadge.className = "xlc-badge xlc-badge--omni";
+            omniBadge.textContent = entry.tags?.includes("全库块") ? "思源块" : (entry.tags?.includes("当前文档") ? "本文档" : "思源");
+            omniBadge.title = "思源全库检索条目，可直接复用或一键收录为常用语 (Alt+S)";
+            title.appendChild(omniBadge);
+        }
         if (entry.category && entry.category.trim()) {
             const catBadge = document.createElement("span");
             const variant = getCategoryColorVariant(entry.category);
@@ -2997,6 +3013,14 @@ export class CommonSearchDialog {
                     await this.runPrimary(exactMatch);
                     return;
                 }
+                // 无匹配项且在 all 模式下，按 Tab 极速穿透到全库笔记检索
+                if (this.currentScope === "all" && this.results.length === 0 && input.value.trim() && this.deps.searchAllNotes) {
+                    e.preventDefault();
+                    this.currentScope = "all-notes";
+                    this.syncScopeChips();
+                    void this.refresh().then(() => this.restoreFocusToSearch());
+                    return;
+                }
                 const previewAction = root.querySelector<HTMLElement>(".xlc-pane-foot button:not([disabled])");
                 if (previewAction && focusables.includes(previewAction)) {
                     e.preventDefault();
@@ -3012,6 +3036,14 @@ export class CommonSearchDialog {
             } else if (!e.shiftKey && active === last) {
                 e.preventDefault();
                 first?.focus();
+            }
+        } else if ((e.altKey || ((e.ctrlKey || e.metaKey) && e.shiftKey)) && (e.key === "s" || e.key === "S")) {
+            // 一键收录快捷键（Alt+S / Ctrl+Shift+S）：如果是全域结果则快速收录入库
+            const entry = this.results[this.activeIndex];
+            if (entry?.isOmni && this.deps.createFromOmni) {
+                e.preventDefault();
+                await this.deps.createFromOmni(entry);
+                return;
             }
         } else if ((e.ctrlKey || e.metaKey || e.altKey) && (e.key === "e" || e.key === "E")) {
             if (e.repeat) return;

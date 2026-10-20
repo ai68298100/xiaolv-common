@@ -337,6 +337,28 @@ export default class XiaolvCommonPlugin extends Plugin {
             const itemId = (payload as {itemId?: string})?.itemId ?? "";
             return this.service.openSource(itemId);
         };
+        // 供 Quicker、外部脚本或兄弟插件无 UI 纯数据调用的 Headless 接口
+        this.protocolCommands["xiaolv.common.search"] = async (payload) => {
+            const raw = payload as {keyword?: string; text?: string; limit?: number} | undefined;
+            const query = typeof raw?.keyword === "string" ? raw.keyword : (typeof raw?.text === "string" ? raw.text : "");
+            return this.service.search({text: query});
+        };
+        this.protocolCommands["xiaolv.common.get"] = async (payload) => {
+            const itemId = (payload as {itemId?: string; id?: string})?.itemId ?? (payload as {itemId?: string; id?: string})?.id ?? "";
+            return this.service.get(itemId);
+        };
+        this.protocolCommands["xiaolv.common.resolve"] = async (payload) => {
+            const raw = payload as {itemId?: string; id?: string; fills?: Record<string, string>} | undefined;
+            const itemId = raw?.itemId ?? raw?.id ?? "";
+            return this.service.resolve(itemId, raw?.fills);
+        };
+        this.protocolCommands["xiaolv.common.recent"] = async (payload) => {
+            const limit = (payload as {limit?: number})?.limit;
+            return this.service.getRecent(limit);
+        };
+        this.protocolCommands["xiaolv.common.favorites"] = async () => {
+            return this.service.getFavorites();
+        };
         // 按需发现协议面：提供当前文档/笔记本扫描、候选预览、收录与批次撤销。
         this.protocolCommands["xiaolv.common.discoverCurrentDocument"] = async () => this.discoverCurrentDocument();
         this.protocolCommands["xiaolv.common.discoverCurrentNotebook"] = async () => this.discoverCurrentNotebook();
