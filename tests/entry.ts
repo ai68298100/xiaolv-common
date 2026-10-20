@@ -40,6 +40,10 @@ import * as previewRenderer from "../src/ui/preview-renderer";
 import * as hierarchy from "../src/model/hierarchy";
 import * as omniSearch from "../src/service/omni-search";
 import * as quickEdit from "../src/ui/quick-edit";
+import * as clipboard from "../src/model/clipboard";
+import * as calculator from "../src/model/calculator";
+import * as variableMemory from "../src/model/variable-memory";
+import * as variableForm from "../src/ui/variable-form";
 
 export {
     item,
@@ -80,4 +84,8 @@ export {
     hierarchy,
     omniSearch,
     quickEdit,
+    clipboard,
+    calculator,
+    variableMemory,
+    variableForm,
 };

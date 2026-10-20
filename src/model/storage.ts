@@ -2,6 +2,7 @@
 // 版本化 + 归一化 + 容量上限 + 损坏降级。侧车永远不是内容真源，可随时从库文档重建索引。
 import {LIMITS, STATE_SCHEMA_VERSION} from "../constants";
 import {isBlockId, isItemType, ItemType} from "./item";
+import {normalizeVariableMemory, VariableMemory} from "./variable-memory";
 
 // ---- 库配置 ----
 
@@ -230,6 +231,8 @@ export interface PluginState {
     ai: AiPrefs;
     search: SearchPrefs;
     insert: InsertPrefs;
+    /** 变量填写值记忆（ADR 0074 / G22 / T-0133）：只存侧车，绝不出域 */
+    variableMemory: VariableMemory;
 }
 
 export function normalizeState(raw: unknown): PluginState {
@@ -332,6 +335,7 @@ export function normalizeState(raw: unknown): PluginState {
             promptVariables: !(insertRaw.promptVariables === false),
             recordUsage: !(insertRaw.recordUsage === false),
         },
+        variableMemory: normalizeVariableMemory(obj.variableMemory),
     };
 }
 

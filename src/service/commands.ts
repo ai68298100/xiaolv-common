@@ -8,6 +8,7 @@ import {applyPlaceholders, listPlaceholders} from "../model/placeholders";
 import {applyAskDefaults, expandAsks, stripCursorToken} from "../model/variables";
 import {CommonItem} from "../model/item";
 import {LibraryService, SourceHealth} from "./library";
+import {isMarkdownFormattingPresent, renderSafeHtmlFromMarkdown, writeRichClipboard} from "../model/clipboard";
 
 /** 占位符应用钩子：由入口注入（读设置 + 当前时间 + 当前文档 + 剪贴板）；未注入则原样保留 */
 export interface IPlaceholderHook {
@@ -17,6 +18,8 @@ export interface IPlaceholderHook {
     currentDoc(): Promise<{title: string; path: string} | null>;
     /** 系统剪贴板文本（{{xlc:clipboard}}）；读取失败/拒绝返回空串（语义同无文档） */
     clipboard?(): Promise<string>;
+    /** 当前活动选区文本（{{xlc:selection}}）；无选区返回空串（G23 / ADR 0075） */
+    selection?(): Promise<string> | string;
 }
 
 export interface IHostBridge {
@@ -27,8 +30,8 @@ export interface IHostBridge {
     captureInsertTarget(): EditorInsertTargetSnapshot;
     canInsertAtTarget(target: EditorInsertTargetSnapshot | null): boolean;
     releaseInsertTarget(target: EditorInsertTargetSnapshot | null): void;
-    /** 系统剪贴板写文本 */
-    writeClipboard(text: string): Promise<boolean>;
+    /** 系统剪贴板写文本，支持可选富文本 HTML 双载荷（G18） */
+    writeClipboard(text: string, html?: string): Promise<boolean>;
     /** 打开文档/块（openTab） */
     openDoc(docId: string, blockId?: string): boolean;
     /** 打开资源（openTab asset） */
@@ -125,28 +128,8 @@ export class HostBridge implements IHostBridge {
         }
     }
 
-    async writeClipboard(text: string): Promise<boolean> {
-        try {
-            if (navigator.clipboard && window.isSecureContext) {
-                await navigator.clipboard.writeText(text);
-                return true;
-            }
-        } catch {
-            // 落到 execCommand 降级
-        }
-        try {
-            const ta = document.createElement("textarea");
-            ta.value = text;
-            ta.style.position = "fixed";
-            ta.style.opacity = "0";
-            document.body.appendChild(ta);
-            ta.select();
-            const okFlag = document.execCommand("copy");
-            ta.remove();
-            return okFlag;
-        } catch {
-            return false;
-        }
+    async writeClipboard(text: string, html?: string): Promise<boolean> {
+        return writeRichClipboard(text, html);
     }
 
     openDoc(docId: string, blockId?: string): boolean {
@@ -258,8 +241,19 @@ export class ActionExecutor {
         if (!this.placeholders) return text;
         try {
             if (!this.placeholders.enabled()) return text;
-            const needsDoc = listPlaceholders(text).some((k) => k === "title" || k === "path" || k === "doc");
-            const doc = needsDoc ? await this.placeholders.currentDoc() : null;
+            const needsDoc = listPlaceholders(text).some((k) => k === "title" || k === "path" || k === "doc" || k === "selection");
+            const docInfo = needsDoc ? await this.placeholders.currentDoc() : null;
+            let selectionText = "";
+            if (needsDoc && this.placeholders.selection) {
+                try {
+                    selectionText = (await this.placeholders.selection()) ?? "";
+                } catch {
+                    selectionText = "";
+                }
+            }
+            const doc = docInfo
+                ? {...docInfo, selection: selectionText.slice(0, 4000)}
+                : (selectionText ? {title: "", path: "", selection: selectionText.slice(0, 4000)} : null);
             let output = applyPlaceholders(text, this.placeholders.now(), true, doc);
             if (output.includes("{{xlc:clipboard}}") && this.placeholders.clipboard) {
                 let clipboardText = "";
@@ -380,7 +374,11 @@ export class ActionExecutor {
         // 移动端插入未验证：诚实降级为复制（B-002 解除后复核）
         if ((plan.mode === "insert" || plan.mode === "insert-content" || plan.mode === "insert-ref" || plan.mode === "insert-embed") && this.host.isMobile()) {
             const text = (await insertRender(plan.markdown)) ?? "";
-            const copied = text ? await this.host.writeClipboard(text) : false;
+            let html: string | undefined;
+            if (item.itemType === "markdown" || (item.itemType === "text" && isMarkdownFormattingPresent(text))) {
+                html = renderSafeHtmlFromMarkdown(text);
+            }
+            const copied = text ? await this.host.writeClipboard(text, html) : false;
             if (copied) {
                 this.noteUsed(item);
             }
@@ -401,7 +399,11 @@ export class ActionExecutor {
                 ? this.host.canInsertAtTarget(editorTarget)
                 : this.host.hasActiveEditor();
             if (!targetAvailable) {
-                const copied = await this.host.writeClipboard(md);
+                let html: string | undefined;
+                if (item.itemType === "markdown" || (item.itemType === "text" && isMarkdownFormattingPresent(md))) {
+                    html = renderSafeHtmlFromMarkdown(md);
+                }
+                const copied = await this.host.writeClipboard(md, html);
                 if (copied) {
                     this.noteUsed(item);
                 }
@@ -430,7 +432,11 @@ export class ActionExecutor {
         }
         if (plan.mode === "copy" || plan.mode === "copy-content") {
             const text = (await this.applyOutput(plan.clipboardText, item)) ?? "";
-            const copied = await this.host.writeClipboard(text);
+            let html: string | undefined;
+            if (item.itemType === "markdown" || (item.itemType === "text" && isMarkdownFormattingPresent(text))) {
+                html = renderSafeHtmlFromMarkdown(text);
+            }
+            const copied = await this.host.writeClipboard(text, html);
             // F3 口径：复制成功同样计使用（最近 + 计数）
             if (copied) {
                 this.noteUsed(item);

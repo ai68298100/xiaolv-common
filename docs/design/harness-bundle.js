@@ -652,6 +652,14 @@
   });
 
   // src/ui/variable-form.ts
+  function renderLivePreviewText(templateText, fills, maxChars = 1e3) {
+    if (!templateText) return "";
+    const expanded = stripCursorToken(expandAsks(templateText, fills));
+    if (expanded.length > maxChars) {
+      return expanded.slice(0, maxChars) + "\u2026";
+    }
+    return expanded;
+  }
   function openVariableFillCard(options) {
     var _a, _b;
     const t = options.t;
@@ -728,7 +736,10 @@
         wrap.appendChild(datalist);
       }
       input.dataset.xlcVarField = field.name;
-      if (field.defaultValue) {
+      const memoryValue = options.defaults ? options.defaults[field.name] : void 0;
+      if (memoryValue !== void 0 && memoryValue.length > 0) {
+        input.value = memoryValue;
+      } else if (field.defaultValue) {
         input.value = field.defaultValue;
       }
       wrap.appendChild(input);
@@ -736,6 +747,44 @@
       fieldsWrap.appendChild(wrap);
     }
     root.appendChild(fieldsWrap);
+    const collect = () => {
+      var _a2;
+      const fills = {};
+      for (const input of inputs) {
+        const name = (_a2 = input.dataset.xlcVarField) != null ? _a2 : "";
+        if (name) fills[name] = input.value;
+      }
+      return fills;
+    };
+    let previewBox = null;
+    let liveDebounceTimer = null;
+    if (options.templateText) {
+      const previewWrap = document.createElement("div");
+      previewWrap.className = "xlc-varform-preview-wrap";
+      const previewHead = document.createElement("div");
+      previewHead.className = "xlc-varform-preview-head";
+      previewHead.textContent = "\u{1F50D} \u5B9E\u65F6\u5C55\u5F00\u9884\u89C8\uFF1A";
+      previewBox = document.createElement("div");
+      previewBox.className = "xlc-varform-preview";
+      previewBox.setAttribute("role", "region");
+      previewBox.setAttribute("aria-label", "\u5B9E\u65F6\u5C55\u5F00\u9884\u89C8");
+      previewWrap.append(previewHead, previewBox);
+      root.appendChild(previewWrap);
+      const updatePreview = () => {
+        if (!previewBox || !options.templateText) return;
+        const text = renderLivePreviewText(options.templateText, collect());
+        previewBox.textContent = text;
+      };
+      const scheduleLiveUpdate = () => {
+        if (liveDebounceTimer) clearTimeout(liveDebounceTimer);
+        liveDebounceTimer = setTimeout(updatePreview, 30);
+      };
+      updatePreview();
+      for (const input of inputs) {
+        input.addEventListener("input", scheduleLiveUpdate);
+        input.addEventListener("change", scheduleLiveUpdate);
+      }
+    }
     const foot = document.createElement("div");
     foot.className = "xlc-varform-foot";
     const kbdHint = document.createElement("span");
@@ -753,17 +802,9 @@
     foot.appendChild(insertBtn);
     root.appendChild(foot);
     body.appendChild(root);
-    const collect = () => {
-      var _a2;
-      const fills = {};
-      for (const input of inputs) {
-        const name = (_a2 = input.dataset.xlcVarField) != null ? _a2 : "";
-        if (name) fills[name] = input.value;
-      }
-      return fills;
-    };
     let settled = false;
     const confirm3 = () => {
+      if (liveDebounceTimer) clearTimeout(liveDebounceTimer);
       if (settled) return;
       settled = true;
       dialog.destroy();
@@ -772,6 +813,7 @@
     insertBtn.addEventListener("click", confirm3);
     cancelBtn.addEventListener("click", () => {
       var _a2;
+      if (liveDebounceTimer) clearTimeout(liveDebounceTimer);
       if (settled) return;
       settled = true;
       dialog.destroy();
@@ -1140,6 +1182,13 @@
     }
   });
 
+  // src/model/variable-memory.ts
+  var init_variable_memory = __esm({
+    "src/model/variable-memory.ts"() {
+      "use strict";
+    }
+  });
+
   // src/model/storage.ts
   function summarizeUsage(usage) {
     let totalCount = 0;
@@ -1159,6 +1208,7 @@
       "use strict";
       init_constants();
       init_item();
+      init_variable_memory();
       CONFIG_VERSION = 1;
     }
   });
@@ -9120,6 +9170,9 @@ ${exception.mark.snippet}`;
       this.activeIndex = 0;
       this.searchSeq = 0;
       this.previewSeq = 0;
+      this.quickLookOpen = false;
+      this.quickLookSeq = 0;
+      this.quickLookReturnFocus = null;
       this.currentScope = "all";
       this.lastPreviewId = null;
       /** 空状态文案（refresh 计算后交 renderList 渲染大空态；瞬态/错误仍走 status 行） */
@@ -9195,7 +9248,7 @@ ${exception.mark.snippet}`;
     buildDom(isMobile) {
       var _a, _b, _c, _d, _e, _f;
       const root = document.createElement("div");
-      root.className = "xlc-dialog" + (isMobile ? " xlc-dialog--mobile" : "");
+      root.className = "xlc-search xlc-dialog" + (isMobile ? " xlc-dialog--mobile" : "");
       const top = document.createElement("div");
       top.className = "xlc-top";
       const topMain = document.createElement("div");
@@ -11129,8 +11182,10 @@ ${exception.mark.snippet}`;
       }
       let fields = [];
       let previewFailed = false;
+      let templateText = "";
       try {
         const content = await this.deps.preview(entry.id);
+        templateText = content || "";
         fields = entry.itemType === "code" || !content ? [] : listAskFields(content);
       } catch {
         fields = [];
@@ -11159,14 +11214,23 @@ ${exception.mark.snippet}`;
       }
       this.varFormOpen = true;
       this.syncPaneActions();
+      const labels = fields.map((f) => f.name);
+      const defaults = this.deps.getVariableDefaults ? this.deps.getVariableDefaults(labels) : void 0;
       openVariableFillCard({
         t: this.deps.t,
         itemType: entry.itemType,
         title: entry.title,
         fields,
+        defaults,
+        templateText,
         onConfirm: (fills) => {
+          var _a2, _b2;
           this.varFormOpen = false;
           this.syncPaneActions();
+          try {
+            (_b2 = (_a2 = this.deps).rememberVariables) == null ? void 0 : _b2.call(_a2, fills);
+          } catch {
+          }
           const execution = perform(fills);
           if (options == null ? void 0 : options.beforePerform) options.beforePerform();
           else this.destroy();
@@ -11579,9 +11643,25 @@ ${exception.mark.snippet}`;
       var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k, _l, _m, _n, _o;
       if (e.isComposing || e.keyCode === 229) return;
       const list = (_a = this.dialog) == null ? void 0 : _a.element.querySelector(".xlc-list");
-      if (!list) return;
       const input = (_b = this.dialog) == null ? void 0 : _b.element.querySelector(".xlc-search-input");
       const isInputFocused = e.target === input || document.activeElement === input;
+      if (e.key === " " && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        if (this.quickLookOpen) {
+          e.preventDefault();
+          this.closeQuickLook();
+          return;
+        }
+        if (!list) return;
+        if (!isInputFocused && this.hasActiveEntry() && this.openQuickLook()) {
+          e.preventDefault();
+          return;
+        }
+      }
+      if (this.quickLookOpen && e.key === "Escape") {
+        e.preventDefault();
+        this.closeQuickLook();
+        return;
+      }
       const isHistoryDown = e.altKey && e.key === "ArrowDown" || e.key === "ArrowDown" && isInputFocused && this.historyCursor >= 0;
       if (isHistoryDown && input) {
         e.preventDefault();
@@ -11746,9 +11826,95 @@ ${exception.mark.snippet}`;
         }
       }
     }
+    /** 是否有选中条目（空格极速预览入口前置判定） */
+    hasActiveEntry() {
+      return this.activeIndex >= 0 && this.activeIndex < this.results.length;
+    }
     getActiveEntry() {
       var _a;
       return (_a = this.results[this.activeIndex]) != null ? _a : null;
+    }
+    /** 空格键极速大卡片预览的开关入口（供弹窗与测试共用） */
+    toggleQuickLookPublic() {
+      return this.toggleQuickLook();
+    }
+    /**
+     * 空格键极速大卡片预览（G21 / ADR 0073）
+     * 仅非输入态可用：搜索框打字中的空格一律归还输入框。
+     */
+    toggleQuickLook() {
+      if (this.quickLookOpen) {
+        this.closeQuickLook();
+        return true;
+      }
+      return this.openQuickLook();
+    }
+    isQuickLookOpen() {
+      return this.quickLookOpen;
+    }
+    closeQuickLook() {
+      var _a, _b;
+      if (!this.quickLookOpen) return;
+      this.quickLookOpen = false;
+      this.quickLookSeq++;
+      (_b = (_a = this.dialog) == null ? void 0 : _a.element.querySelector(".xlc-quicklook")) == null ? void 0 : _b.remove();
+      const back = this.quickLookReturnFocus;
+      this.quickLookReturnFocus = null;
+      if (back && typeof back.focus === "function" && back.isConnected) {
+        back.focus();
+      }
+    }
+    openQuickLook() {
+      var _a, _b, _c, _d, _e;
+      const root = (_a = this.dialog) == null ? void 0 : _a.element;
+      const entry = this.getActiveEntry();
+      if (!root || !entry || this.quickLookOpen) return false;
+      this.quickLookOpen = true;
+      const seq = ++this.quickLookSeq;
+      const active2 = (_b = root.ownerDocument) == null ? void 0 : _b.activeElement;
+      this.quickLookReturnFocus = active2 && active2 !== root ? active2 : null;
+      const host = (_e = (_d = root.querySelector(".xlc-root")) != null ? _d : (_c = root.querySelector(".xlc-search-input")) == null ? void 0 : _c.closest(".xlc-search")) != null ? _e : root;
+      const overlay = document.createElement("div");
+      overlay.className = "xlc-quicklook";
+      overlay.setAttribute("role", "dialog");
+      overlay.setAttribute("aria-modal", "true");
+      overlay.setAttribute("aria-label", entry.title || "");
+      const card = document.createElement("div");
+      card.className = "xlc-quicklook-card";
+      const head = document.createElement("div");
+      head.className = "xlc-quicklook-head";
+      const title = document.createElement("strong");
+      title.className = "xlc-quicklook-title";
+      title.textContent = entry.title || "";
+      const meta = document.createElement("span");
+      meta.className = "xlc-quicklook-meta";
+      meta.textContent = entry.itemType || "";
+      const hints = document.createElement("span");
+      hints.className = "xlc-quicklook-hints";
+      hints.textContent = "Space / Esc \u5173\u95ED\u3000Enter \u63D2\u5165\u3000Alt+C \u590D\u5236";
+      head.append(title, meta, hints);
+      const body = document.createElement("div");
+      body.className = "xlc-quicklook-body";
+      const loading = document.createElement("div");
+      loading.className = "xlc-quicklook-loading";
+      loading.textContent = "\u52A0\u8F7D\u4E2D\u2026";
+      body.appendChild(loading);
+      card.append(head, body);
+      overlay.appendChild(card);
+      overlay.addEventListener("pointerdown", (ev) => {
+        ev.preventDefault();
+        this.closeQuickLook();
+      });
+      host.appendChild(overlay);
+      const id = entry.id;
+      void this.deps.preview(id).then((text) => {
+        if (this.quickLookSeq !== seq || !this.quickLookOpen) return;
+        loading.remove();
+        renderSafePreview(body, text, entry.itemType === "code" ? "code" : entry.itemType);
+      }).catch(() => {
+        loading.textContent = "\u9884\u89C8\u52A0\u8F7D\u5931\u8D25";
+      });
+      return true;
     }
     destroy() {
       var _a, _b, _c, _d;
@@ -13753,9 +13919,237 @@ ${details.join("\n")}` : ""}`;
   init_constants();
   init_actions();
 
+  // src/model/calculator.ts
+  var SUPPORTED_FUNCTIONS = {
+    round: (val, digits = 0) => {
+      const factor = Math.pow(10, digits);
+      return Math.round(val * factor) / factor;
+    },
+    floor: (val) => Math.floor(val),
+    ceil: (val) => Math.ceil(val),
+    abs: (val) => Math.abs(val)
+  };
+  function tokenize(expr) {
+    const tokens = [];
+    let i = 0;
+    const len = expr.length;
+    while (i < len) {
+      const ch = expr[i];
+      if (/\s/.test(ch)) {
+        i++;
+        continue;
+      }
+      if (/[0-9]/.test(ch) || ch === "." && i + 1 < len && /[0-9]/.test(expr[i + 1])) {
+        let start = i;
+        let dotCount = 0;
+        while (i < len && (/[0-9]/.test(expr[i]) || expr[i] === ".")) {
+          if (expr[i] === ".") dotCount++;
+          if (dotCount > 1) return null;
+          i++;
+        }
+        const numStr = expr.slice(start, i);
+        const numVal = Number(numStr);
+        if (Number.isNaN(numVal)) return null;
+        tokens.push({ type: "NUMBER", value: numStr, numValue: numVal });
+        continue;
+      }
+      if (/[a-zA-Z_]/.test(ch)) {
+        let start = i;
+        while (i < len && /[a-zA-Z0-9_]/.test(expr[i])) {
+          i++;
+        }
+        const ident = expr.slice(start, i).toLowerCase();
+        tokens.push({ type: "IDENT", value: ident });
+        continue;
+      }
+      switch (ch) {
+        case "+":
+          tokens.push({ type: "PLUS", value: "+" });
+          i++;
+          break;
+        case "-":
+          tokens.push({ type: "MINUS", value: "-" });
+          i++;
+          break;
+        case "*":
+          tokens.push({ type: "STAR", value: "*" });
+          i++;
+          break;
+        case "/":
+          tokens.push({ type: "SLASH", value: "/" });
+          i++;
+          break;
+        case "%":
+          tokens.push({ type: "PERCENT", value: "%" });
+          i++;
+          break;
+        case "(":
+          tokens.push({ type: "LPAREN", value: "(" });
+          i++;
+          break;
+        case ")":
+          tokens.push({ type: "RPAREN", value: ")" });
+          i++;
+          break;
+        case ",":
+        case "\uFF0C":
+          tokens.push({ type: "COMMA", value: "," });
+          i++;
+          break;
+        default:
+          return null;
+      }
+    }
+    tokens.push({ type: "EOF", value: "" });
+    return tokens;
+  }
+  var MathParser = class {
+    constructor(tokens) {
+      this.tokens = tokens;
+      this.pos = 0;
+    }
+    peek() {
+      var _a;
+      return (_a = this.tokens[this.pos]) != null ? _a : { type: "EOF", value: "" };
+    }
+    consume(expected) {
+      const cur = this.peek();
+      if (expected && cur.type !== expected) return null;
+      this.pos++;
+      return cur;
+    }
+    /** expr = term (('+' | '-') term)* */
+    parseExpr() {
+      let left = this.parseTerm();
+      if (left === null) return null;
+      while (true) {
+        const tok = this.peek();
+        if (tok.type === "PLUS") {
+          this.consume();
+          const right = this.parseTerm();
+          if (right === null) return null;
+          left += right;
+        } else if (tok.type === "MINUS") {
+          this.consume();
+          const right = this.parseTerm();
+          if (right === null) return null;
+          left -= right;
+        } else {
+          break;
+        }
+      }
+      return left;
+    }
+    /** term = unary (('*' | '/' | '%') unary)* */
+    parseTerm() {
+      let left = this.parseUnary();
+      if (left === null) return null;
+      while (true) {
+        const tok = this.peek();
+        if (tok.type === "STAR") {
+          this.consume();
+          const right = this.parseUnary();
+          if (right === null) return null;
+          left *= right;
+        } else if (tok.type === "SLASH") {
+          this.consume();
+          const right = this.parseUnary();
+          if (right === null || Math.abs(right) < 1e-15) return null;
+          left /= right;
+        } else if (tok.type === "PERCENT") {
+          this.consume();
+          const right = this.parseUnary();
+          if (right === null || Math.abs(right) < 1e-15) return null;
+          left %= right;
+        } else {
+          break;
+        }
+      }
+      return left;
+    }
+    /** unary = ('+' | '-')? factor */
+    parseUnary() {
+      const tok = this.peek();
+      if (tok.type === "PLUS") {
+        this.consume();
+        return this.parseUnary();
+      }
+      if (tok.type === "MINUS") {
+        this.consume();
+        const val = this.parseUnary();
+        return val !== null ? -val : null;
+      }
+      return this.parseFactor();
+    }
+    /** factor = NUMBER | IDENT '(' argList ')' | '(' expr ')' */
+    parseFactor() {
+      var _a;
+      const tok = this.peek();
+      if (tok.type === "NUMBER") {
+        this.consume();
+        return (_a = tok.numValue) != null ? _a : null;
+      }
+      if (tok.type === "LPAREN") {
+        this.consume();
+        const val = this.parseExpr();
+        if (val === null) return null;
+        if (!this.consume("RPAREN")) return null;
+        return val;
+      }
+      if (tok.type === "IDENT") {
+        const funcName = tok.value;
+        this.consume();
+        if (!this.consume("LPAREN")) return null;
+        const args = [];
+        if (this.peek().type !== "RPAREN") {
+          while (true) {
+            const arg = this.parseExpr();
+            if (arg === null) return null;
+            args.push(arg);
+            if (this.peek().type === "COMMA") {
+              this.consume();
+            } else {
+              break;
+            }
+          }
+        }
+        if (!this.consume("RPAREN")) return null;
+        const fn = SUPPORTED_FUNCTIONS[funcName];
+        if (!fn) return null;
+        try {
+          return fn(...args);
+        } catch {
+          return null;
+        }
+      }
+      return null;
+    }
+    isComplete() {
+      return this.peek().type === "EOF";
+    }
+  };
+  function formatCalculationResult(num) {
+    if (!Number.isFinite(num)) return "";
+    const rounded = Math.round(num * 1e10) / 1e10;
+    return String(rounded);
+  }
+  function evaluateMathExpression(expr) {
+    if (!expr || !expr.trim()) return null;
+    const tokens = tokenize(expr);
+    if (!tokens || tokens.length <= 1) return null;
+    const parser = new MathParser(tokens);
+    const result = parser.parseExpr();
+    if (result === null || !parser.isComplete()) return null;
+    if (!Number.isFinite(result)) return null;
+    return formatCalculationResult(result);
+  }
+
   // src/model/placeholders.ts
-  var PLACEHOLDER_PATTERN = /\{\{xlc:(date|time|datetime|weekday|title|path|doc|random)(?:\|([^}]+))?\}\}/g;
+  var PLACEHOLDER_PATTERN = /\{\{xlc:(date|time|datetime|weekday|title|path|doc|random|uuid|id|calc|selection|case(?::[a-zA-Z0-9_-]+)?)(?:\|([^}]+))?\}\}/g;
   var WEEKDAYS_ZH = ["\u5468\u65E5", "\u5468\u4E00", "\u5468\u4E8C", "\u5468\u4E09", "\u5468\u56DB", "\u5468\u4E94", "\u5468\u516D"];
+  var WEEKDAYS_FULL_ZH = ["\u661F\u671F\u65E5", "\u661F\u671F\u4E00", "\u661F\u671F\u4E8C", "\u661F\u671F\u4E09", "\u661F\u671F\u56DB", "\u661F\u671F\u4E94", "\u661F\u671F\u516D"];
+  var WEEKDAYS_EN = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+  var WEEKDAYS_SHORT_EN = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
   var ZH_RELATIVE_DAYS = {
     \u4ECA\u5929: 0,
     \u660E\u5929: 1,
@@ -13792,6 +14186,7 @@ ${details.join("\n")}` : ""}`;
     \u4E0B\u793C\u62DC\u5929: 0
   };
   var RELATIVE_ARG = /^([+-])(\d{1,4})([dwmy])$/;
+  var RELATIVE_TIME_ARG = /^([+-])(\d{1,4})([hms])$/i;
   var NEXT_WEEKDAY_ARG = /^next_(monday|tuesday|wednesday|thursday|friday|saturday|sunday)$/;
   var WEEKDAY_INDEX = {
     sunday: 0,
@@ -13802,11 +14197,71 @@ ${details.join("\n")}` : ""}`;
     friday: 5,
     saturday: 6
   };
+  var FORMAT_TOKEN_PATTERN = /YYYY|YY|MM|M|DD|D|HH|H|hh|h|mm|m|ss|s|dddd|ddd|A|a/g;
   function pad(n) {
     return String(n).padStart(2, "0");
   }
   function renderDate(now) {
     return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+  }
+  function formatDateTime(date, pattern) {
+    return pattern.replace(FORMAT_TOKEN_PATTERN, (token) => {
+      var _a, _b;
+      switch (token) {
+        case "YYYY":
+          return String(date.getFullYear());
+        case "YY":
+          return String(date.getFullYear()).slice(-2);
+        case "MM":
+          return pad(date.getMonth() + 1);
+        case "M":
+          return String(date.getMonth() + 1);
+        case "DD":
+          return pad(date.getDate());
+        case "D":
+          return String(date.getDate());
+        case "HH":
+          return pad(date.getHours());
+        case "H":
+          return String(date.getHours());
+        case "hh":
+          return pad(date.getHours() % 12 || 12);
+        case "h":
+          return String(date.getHours() % 12 || 12);
+        case "mm":
+          return pad(date.getMinutes());
+        case "m":
+          return String(date.getMinutes());
+        case "ss":
+          return pad(date.getSeconds());
+        case "s":
+          return String(date.getSeconds());
+        case "dddd":
+          return (_a = WEEKDAYS_FULL_ZH[date.getDay()]) != null ? _a : "";
+        case "ddd":
+          return (_b = WEEKDAYS_ZH[date.getDay()]) != null ? _b : "";
+        case "A":
+          return date.getHours() < 12 ? "\u4E0A\u5348" : "\u4E0B\u5348";
+        case "a":
+          return date.getHours() < 12 ? "am" : "pm";
+        default:
+          return token;
+      }
+    });
+  }
+  function isValidFormatPattern(pattern) {
+    if (!pattern || !pattern.trim()) return false;
+    let matchCount = 0;
+    const stripped = pattern.replace(FORMAT_TOKEN_PATTERN, () => {
+      matchCount++;
+      return "";
+    });
+    if (matchCount === 0) return false;
+    const remainingLetters = stripped.replace(/[TZ]/g, "");
+    if (/[A-Za-z]/.test(remainingLetters)) {
+      return false;
+    }
+    return true;
   }
   function addMonthsClamped(base, months) {
     const y = base.getFullYear();
@@ -13814,20 +14269,20 @@ ${details.join("\n")}` : ""}`;
     const lastDay = new Date(y, m + 1, 0).getDate();
     return new Date(y, m, Math.min(base.getDate(), lastDay));
   }
-  function resolveDateArg(now, rawArg) {
+  function calculateDateOffset(now, rawArg) {
     const arg = rawArg.trim().toLowerCase();
     if (Object.prototype.hasOwnProperty.call(ZH_RELATIVE_DAYS, arg)) {
       const offset = ZH_RELATIVE_DAYS[arg];
       const next = new Date(now);
       next.setDate(next.getDate() + offset);
-      return renderDate(next);
+      return next;
     }
     if (Object.prototype.hasOwnProperty.call(ZH_NEXT_WEEKDAY, arg)) {
       const target2 = ZH_NEXT_WEEKDAY[arg];
       const ahead = (target2 - now.getDay() + 7) % 7 || 7;
       const next = new Date(now);
       next.setDate(next.getDate() + ahead);
-      return renderDate(next);
+      return next;
     }
     const rel = RELATIVE_ARG.exec(arg);
     if (rel) {
@@ -13840,7 +14295,7 @@ ${details.join("\n")}` : ""}`;
       } else {
         next = addMonthsClamped(now, sign * n * (rel[3] === "y" ? 12 : 1));
       }
-      return renderDate(next);
+      return next;
     }
     const wd = NEXT_WEEKDAY_ARG.exec(arg);
     const dayName = wd == null ? void 0 : wd[1];
@@ -13849,7 +14304,104 @@ ${details.join("\n")}` : ""}`;
       const ahead = (target - now.getDay() + 7) % 7 || 7;
       const next = new Date(now);
       next.setDate(next.getDate() + ahead);
-      return renderDate(next);
+      return next;
+    }
+    return null;
+  }
+  function calculateTimeOffset(now, rawArg) {
+    const rel = RELATIVE_TIME_ARG.exec(rawArg.trim());
+    if (!rel) return null;
+    const sign = rel[1] === "+" ? 1 : -1;
+    const n = Number(rel[2]);
+    const unit = rel[3].toLowerCase();
+    const next = new Date(now);
+    if (unit === "h") {
+      next.setHours(next.getHours() + sign * n);
+    } else if (unit === "m") {
+      next.setMinutes(next.getMinutes() + sign * n);
+    } else if (unit === "s") {
+      next.setSeconds(next.getSeconds() + sign * n);
+    }
+    return next;
+  }
+  function resolveDateArg(now, rawArg) {
+    const trimmed = rawArg.trim();
+    if (trimmed.includes("|")) {
+      const firstPipeIndex = trimmed.indexOf("|");
+      const offsetPart = trimmed.slice(0, firstPipeIndex).trim();
+      const formatPart = trimmed.slice(firstPipeIndex + 1).trim();
+      const targetDate2 = calculateDateOffset(now, offsetPart);
+      if (targetDate2 && isValidFormatPattern(formatPart)) {
+        return formatDateTime(targetDate2, formatPart);
+      }
+      return null;
+    }
+    const targetDate = calculateDateOffset(now, trimmed);
+    if (targetDate) {
+      return renderDate(targetDate);
+    }
+    if (isValidFormatPattern(trimmed)) {
+      return formatDateTime(now, trimmed);
+    }
+    return null;
+  }
+  function resolveTimeArg(now, rawArg) {
+    const trimmed = rawArg.trim();
+    if (trimmed.includes("|")) {
+      const firstPipeIndex = trimmed.indexOf("|");
+      const offsetPart = trimmed.slice(0, firstPipeIndex).trim();
+      const formatPart = trimmed.slice(firstPipeIndex + 1).trim();
+      const targetTime2 = calculateTimeOffset(now, offsetPart);
+      if (targetTime2 && isValidFormatPattern(formatPart)) {
+        return formatDateTime(targetTime2, formatPart);
+      }
+      return null;
+    }
+    const targetTime = calculateTimeOffset(now, trimmed);
+    if (targetTime) {
+      return `${pad(targetTime.getHours())}:${pad(targetTime.getMinutes())}`;
+    }
+    if (isValidFormatPattern(trimmed)) {
+      return formatDateTime(now, trimmed);
+    }
+    return null;
+  }
+  function resolveDatetimeArg(now, rawArg) {
+    const trimmed = rawArg.trim();
+    if (trimmed.includes("|")) {
+      const firstPipeIndex = trimmed.indexOf("|");
+      const offsetPart = trimmed.slice(0, firstPipeIndex).trim();
+      const formatPart = trimmed.slice(firstPipeIndex + 1).trim();
+      const target2 = calculateDateOffset(now, offsetPart) || calculateTimeOffset(now, offsetPart);
+      if (target2 && isValidFormatPattern(formatPart)) {
+        return formatDateTime(target2, formatPart);
+      }
+      return null;
+    }
+    const target = calculateDateOffset(now, trimmed) || calculateTimeOffset(now, trimmed);
+    if (target) {
+      return `${renderDate(target)} ${pad(target.getHours())}:${pad(target.getMinutes())}`;
+    }
+    if (isValidFormatPattern(trimmed)) {
+      return formatDateTime(now, trimmed);
+    }
+    return null;
+  }
+  function resolveWeekdayArg(now, rawArg) {
+    var _a, _b, _c, _d;
+    const arg = rawArg.trim().toLowerCase();
+    const day = now.getDay();
+    if (arg === "full" || arg === "dddd") {
+      return (_a = WEEKDAYS_FULL_ZH[day]) != null ? _a : "";
+    }
+    if (arg === "short" || arg === "ddd") {
+      return (_b = WEEKDAYS_ZH[day]) != null ? _b : "";
+    }
+    if (arg === "en") {
+      return (_c = WEEKDAYS_EN[day]) != null ? _c : "";
+    }
+    if (arg === "en_short") {
+      return (_d = WEEKDAYS_SHORT_EN[day]) != null ? _d : "";
     }
     return null;
   }
@@ -13859,8 +14411,144 @@ ${details.join("\n")}` : ""}`;
     if (options.length === 0) return null;
     return (_a = options[Math.floor(Math.random() * options.length)]) != null ? _a : null;
   }
+  function generateUuidV4() {
+    if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+      try {
+        return crypto.randomUUID().toLowerCase();
+      } catch {
+      }
+    }
+    return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => {
+      const r = Math.random() * 16 | 0;
+      const v = c === "x" ? r : r & 3 | 8;
+      return v.toString(16);
+    });
+  }
+  var UNAMBIGUOUS_CHARS = "23456789abcdefghjkmnpqrstuvwxyzABCDEFGHJKMNPQRSTUVWXYZ";
+  function generateShortId(length = 8, uppercase = false) {
+    const validLen = Math.max(4, Math.min(32, length || 8));
+    let result = "";
+    for (let i = 0; i < validLen; i++) {
+      const idx = Math.floor(Math.random() * UNAMBIGUOUS_CHARS.length);
+      result += UNAMBIGUOUS_CHARS[idx];
+    }
+    return uppercase ? result.toUpperCase() : result;
+  }
+  function resolveUuidArg(rawArg) {
+    const tokens = rawArg.split(/[,，|]/).map((s) => s.trim().toLowerCase()).filter(Boolean);
+    if (tokens.length === 0) return generateUuidV4();
+    let isUpper = false;
+    let isSimple = false;
+    for (const tok of tokens) {
+      if (tok === "upper" || tok === "uppercase") {
+        isUpper = true;
+      } else if (tok === "simple" || tok === "compact") {
+        isSimple = true;
+      } else {
+        return null;
+      }
+    }
+    let uuid = generateUuidV4();
+    if (isSimple) {
+      uuid = uuid.replace(/-/g, "");
+    }
+    if (isUpper) {
+      uuid = uuid.toUpperCase();
+    }
+    return uuid;
+  }
+  function resolveIdArg(rawArg) {
+    const tokens = rawArg.split(/[,，|]/).map((s) => s.trim().toLowerCase()).filter(Boolean);
+    if (tokens.length === 0) return generateShortId(8, false);
+    let length = 8;
+    let isUpper = false;
+    for (const tok of tokens) {
+      if (/^\d{1,2}$/.test(tok)) {
+        const num = Number(tok);
+        if (num < 4 || num > 32) return null;
+        length = num;
+      } else if (tok === "upper" || tok === "uppercase") {
+        isUpper = true;
+      } else {
+        return null;
+      }
+    }
+    return generateShortId(length, isUpper);
+  }
+  function splitWords(text) {
+    if (!text || !text.trim()) return [];
+    const matches = text.match(/[A-Z]+(?![a-z])|[A-Z]?[a-z]+|\d+|[\u4e00-\u9fa5]+/g);
+    return matches ? matches.map((w) => w.trim()).filter(Boolean) : [];
+  }
+  function transformCase(text, style) {
+    if (typeof text !== "string") return null;
+    if (!text) return "";
+    const normStyle = style.trim().toLowerCase();
+    switch (normStyle) {
+      case "upper":
+      case "uppercase":
+        return text.toUpperCase();
+      case "lower":
+      case "lowercase":
+        return text.toLowerCase();
+      case "title":
+      case "capitalize": {
+        const words = splitWords(text);
+        if (words.length === 0) return text;
+        return words.map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(" ");
+      }
+      case "camel":
+      case "camelcase": {
+        const words = splitWords(text);
+        if (words.length === 0) return text;
+        return words.map((w, idx) => {
+          const lower = w.toLowerCase();
+          return idx === 0 ? lower : lower.charAt(0).toUpperCase() + lower.slice(1);
+        }).join("");
+      }
+      case "pascal":
+      case "pascalcase": {
+        const words = splitWords(text);
+        if (words.length === 0) return text;
+        return words.map((w) => {
+          const lower = w.toLowerCase();
+          return lower.charAt(0).toUpperCase() + lower.slice(1);
+        }).join("");
+      }
+      case "snake":
+      case "snakecase": {
+        const words = splitWords(text);
+        if (words.length === 0) return text;
+        return words.map((w) => w.toLowerCase()).join("_");
+      }
+      case "kebab":
+      case "kebabcase": {
+        const words = splitWords(text);
+        if (words.length === 0) return text;
+        return words.map((w) => w.toLowerCase()).join("-");
+      }
+      case "constant": {
+        const words = splitWords(text);
+        if (words.length === 0) return text;
+        return words.map((w) => w.toUpperCase()).join("_");
+      }
+      default:
+        return null;
+    }
+  }
+  function resolveCaseArg(rawArg, subStyle) {
+    if (subStyle) {
+      return transformCase(rawArg, subStyle);
+    }
+    const trimmed = rawArg.trim();
+    const firstPipe = trimmed.indexOf("|");
+    if (firstPipe === -1) return null;
+    const style = trimmed.slice(0, firstPipe).trim();
+    const content = trimmed.slice(firstPipe + 1);
+    return transformCase(content, style);
+  }
   function renderPlaceholder(kind, now, doc) {
-    var _a, _b, _c;
+    var _a, _b, _c, _d;
     switch (kind) {
       case "date":
         return renderDate(now);
@@ -13877,11 +14565,38 @@ ${details.join("\n")}` : ""}`;
         return (_c = doc == null ? void 0 : doc.path) != null ? _c : "";
       case "random":
         return "";
+      case "uuid":
+        return generateUuidV4();
+      case "id":
+        return generateShortId(8, false);
+      case "case":
+        return "";
+      case "calc":
+        return "";
+      case "selection":
+        return (_d = doc == null ? void 0 : doc.selection) != null ? _d : "";
     }
   }
-  function resolvePlaceholder(kind, arg, now, doc) {
+  function resolvePlaceholder(rawKind, arg, now, doc) {
+    var _a;
+    let kind = rawKind;
+    let subStyle;
+    if (rawKind.startsWith("case")) {
+      kind = "case";
+      if (rawKind.includes(":")) {
+        subStyle = rawKind.split(":")[1];
+      }
+    }
     if (kind === "random") return arg ? pickRandomOption(arg) : null;
-    if (kind === "date" && arg) return resolveDateArg(now, arg);
+    if (kind === "date") return arg ? resolveDateArg(now, arg) : renderDate(now);
+    if (kind === "time") return arg ? resolveTimeArg(now, arg) : `${pad(now.getHours())}:${pad(now.getMinutes())}`;
+    if (kind === "datetime") return arg ? resolveDatetimeArg(now, arg) : `${renderDate(now)} ${pad(now.getHours())}:${pad(now.getMinutes())}`;
+    if (kind === "weekday") return arg ? resolveWeekdayArg(now, arg) : (_a = WEEKDAYS_ZH[now.getDay()]) != null ? _a : "";
+    if (kind === "uuid") return arg ? resolveUuidArg(arg) : generateUuidV4();
+    if (kind === "id") return arg ? resolveIdArg(arg) : generateShortId(8, false);
+    if (kind === "case") return arg ? resolveCaseArg(arg, subStyle) : null;
+    if (kind === "calc") return arg ? evaluateMathExpression(arg) : null;
+    if (kind === "selection") return (doc == null ? void 0 : doc.selection) && doc.selection.length > 0 ? doc.selection : arg != null ? arg : "";
     if (arg) return null;
     return renderPlaceholder(kind, now, doc);
   }
@@ -13895,7 +14610,8 @@ ${details.join("\n")}` : ""}`;
   function listPlaceholders(text) {
     const kinds = [];
     for (const match of text.matchAll(PLACEHOLDER_PATTERN)) {
-      const kind = match[1];
+      const rawKind = match[1];
+      const kind = rawKind.startsWith("case") ? "case" : rawKind;
       if (!kinds.includes(kind)) kinds.push(kind);
     }
     return kinds;
@@ -13903,6 +14619,133 @@ ${details.join("\n")}` : ""}`;
 
   // src/service/commands.ts
   init_variables();
+
+  // src/model/clipboard.ts
+  function escapeHtml(text) {
+    return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+  }
+  function isMarkdownFormattingPresent(text) {
+    if (!text || !text.trim()) return false;
+    return /(\*\*|__)[^\s].*?(\*\*|__)/.test(text) || // 粗体
+    /~~[^\s].*?~~/.test(text) || // 删除线
+    /`[^`\n]+`/.test(text) || // 行内代码
+    /```[\s\S]*?```/.test(text) || // 代码块
+    /^#{1,6}\s+/m.test(text) || // 标题
+    /^>\s+/m.test(text) || // 引用
+    /^[-*+]\s+/m.test(text) || // 无序列表
+    /^\d+\.\s+/m.test(text) || // 有序列表
+    /\[([^\]]+)\]\((https?:\/\/[^\s)]+|mailto:[^\s)]+)\)/.test(text);
+  }
+  function renderSafeHtmlFromMarkdown(markdown) {
+    var _a;
+    if (!markdown || !markdown.trim()) return "";
+    const codeBlocks = [];
+    const inlineCodes = [];
+    let raw = markdown.replace(/\r\n/g, "\n");
+    raw = raw.replace(/(?:^|\n)```([a-zA-Z0-9_-]*)\n([\s\S]*?)\n```(?:\n|$)/g, (_match, lang, code) => {
+      const escapedCode = escapeHtml(code);
+      const langAttr = lang ? ` data-language="${escapeHtml(lang)}"` : "";
+      const html = `<pre${langAttr} style="background-color: #f6f8fa; padding: 12px; border-radius: 6px; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 12px; line-height: 1.5; overflow-x: auto; margin: 0.8em 0;"><code>${escapedCode}</code></pre>`;
+      const placeholder = `XLCCODEBLOCK${codeBlocks.length}XLC`;
+      codeBlocks.push(html);
+      return `
+
+${placeholder}
+
+`;
+    });
+    let safe = escapeHtml(raw);
+    safe = safe.replace(/`([^`\n]+)`/g, (_match, code) => {
+      const html = `<code style="background-color: rgba(175, 184, 193, 0.2); padding: 0.2em 0.4em; border-radius: 4px; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 85%;">${code}</code>`;
+      const placeholder = `XLCINLINECODE${inlineCodes.length}XLC`;
+      inlineCodes.push(html);
+      return placeholder;
+    });
+    safe = safe.replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+|mailto:[^\s)]+)\)/g, (_match, text, href) => {
+      return `<a href="${href}" target="_blank" rel="noopener noreferrer" style="color: #0969da; text-decoration: underline;">${text}</a>`;
+    });
+    safe = safe.replace(/(\*\*|__)(.*?)\1/g, "<strong>$2</strong>");
+    safe = safe.replace(/~~(.*?)~~/g, "<del>$1</del>");
+    safe = safe.replace(/(?<![*_])(\*|_)(?![*_])(.*?)\1(?![*_])/g, "<em>$2</em>");
+    const rawParagraphs = safe.split(/\n{2,}/);
+    const htmlParagraphs = [];
+    for (const para of rawParagraphs) {
+      const trimmed = para.trim();
+      if (!trimmed) continue;
+      if (/^XLCCODEBLOCK\d+XLC$/.test(trimmed)) {
+        htmlParagraphs.push(trimmed);
+        continue;
+      }
+      const hMatch = /^(#{1,6})\s+(.*)$/.exec(trimmed);
+      if (hMatch && !trimmed.includes("\n")) {
+        const level = hMatch[1].length;
+        const content = hMatch[2];
+        const sizeMap = { 1: "1.6em", 2: "1.4em", 3: "1.2em", 4: "1.1em", 5: "1em", 6: "0.9em" };
+        htmlParagraphs.push(`<h${level} style="font-size: ${(_a = sizeMap[level]) != null ? _a : "1.1em"}; font-weight: 600; margin: 0.8em 0 0.4em 0;">${content}</h${level}>`);
+        continue;
+      }
+      const lines = trimmed.split("\n");
+      if (lines.every((line) => line.startsWith("&gt;") || line.trim() === "")) {
+        const quoteContent = lines.map((line) => line.replace(/^&gt;\s?/, "")).join("<br>");
+        htmlParagraphs.push(`<blockquote style="margin: 0.8em 0; padding: 0.4em 0.8em; border-left: 3px solid #d0d7de; color: #57606a; background-color: #f6f8fa;">${quoteContent}</blockquote>`);
+        continue;
+      }
+      let currentListType = null;
+      let currentListItems = [];
+      const flushList = () => {
+        if (currentListType && currentListItems.length > 0) {
+          const tag = currentListType;
+          const itemsHtml = currentListItems.map((li) => `  <li style="margin: 0.2em 0;">${li}</li>`).join("\n");
+          htmlParagraphs.push(`<${tag} style="margin: 0.6em 0; padding-left: 1.5em;">
+${itemsHtml}
+</${tag}>`);
+          currentListType = null;
+          currentListItems = [];
+        }
+      };
+      const currentParaLines = [];
+      const flushPara = () => {
+        if (currentParaLines.length > 0) {
+          htmlParagraphs.push(`<p style="margin: 0.6em 0; line-height: 1.6;">${currentParaLines.join("<br>")}</p>`);
+          currentParaLines.length = 0;
+        }
+      };
+      for (const line of lines) {
+        const ulMatch = /^[-*]\s+(.*)$/.exec(line);
+        const olMatch = /^\d+\.\s+(.*)$/.exec(line);
+        if (ulMatch) {
+          flushPara();
+          if (currentListType !== "ul") flushList();
+          currentListType = "ul";
+          currentListItems.push(ulMatch[1]);
+        } else if (olMatch) {
+          flushPara();
+          if (currentListType !== "ol") flushList();
+          currentListType = "ol";
+          currentListItems.push(olMatch[1]);
+        } else {
+          flushList();
+          currentParaLines.push(line);
+        }
+      }
+      flushList();
+      flushPara();
+    }
+    let finalHtml = htmlParagraphs.join("\n");
+    finalHtml = finalHtml.replace(/XLCINLINECODE(\d+)XLC/g, (_m, idxStr) => {
+      var _a2;
+      return (_a2 = inlineCodes[Number(idxStr)]) != null ? _a2 : "";
+    });
+    finalHtml = finalHtml.replace(/XLCCODEBLOCK(\d+)XLC/g, (_m, idxStr) => {
+      var _a2;
+      return (_a2 = codeBlocks[Number(idxStr)]) != null ? _a2 : "";
+    });
+    return `<div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif; font-size: 14px; line-height: 1.6; color: #24292f;">
+${finalHtml}
+</div>`;
+  }
+
+  // src/service/commands.ts
   var ActionExecutor = class {
     constructor(library, host, notify, onItemUsed, placeholders) {
       this.library = library;
@@ -13935,19 +14778,28 @@ ${details.join("\n")}` : ""}`;
       return (_a = await this.applyOutput(payload, item)) != null ? _a : payload;
     }
     async applyOutput(text, item) {
-      var _a;
+      var _a, _b;
       if (text === void 0) return void 0;
       if ((item == null ? void 0 : item.itemType) === "code") return text;
       if (!this.placeholders) return text;
       try {
         if (!this.placeholders.enabled()) return text;
-        const needsDoc = listPlaceholders(text).some((k) => k === "title" || k === "path" || k === "doc");
-        const doc = needsDoc ? await this.placeholders.currentDoc() : null;
+        const needsDoc = listPlaceholders(text).some((k) => k === "title" || k === "path" || k === "doc" || k === "selection");
+        const docInfo = needsDoc ? await this.placeholders.currentDoc() : null;
+        let selectionText = "";
+        if (needsDoc && this.placeholders.selection) {
+          try {
+            selectionText = (_a = await this.placeholders.selection()) != null ? _a : "";
+          } catch {
+            selectionText = "";
+          }
+        }
+        const doc = docInfo ? { ...docInfo, selection: selectionText.slice(0, 4e3) } : selectionText ? { title: "", path: "", selection: selectionText.slice(0, 4e3) } : null;
         let output = applyPlaceholders(text, this.placeholders.now(), true, doc);
         if (output.includes("{{xlc:clipboard}}") && this.placeholders.clipboard) {
           let clipboardText = "";
           try {
-            clipboardText = (_a = await this.placeholders.clipboard()) != null ? _a : "";
+            clipboardText = (_b = await this.placeholders.clipboard()) != null ? _b : "";
           } catch {
             clipboardText = "";
           }
@@ -14049,7 +14901,11 @@ ${details.join("\n")}` : ""}`;
       };
       if ((plan.mode === "insert" || plan.mode === "insert-content" || plan.mode === "insert-ref" || plan.mode === "insert-embed") && this.host.isMobile()) {
         const text = (_a = await insertRender(plan.markdown)) != null ? _a : "";
-        const copied = text ? await this.host.writeClipboard(text) : false;
+        let html;
+        if (item.itemType === "markdown" || item.itemType === "text" && isMarkdownFormattingPresent(text)) {
+          html = renderSafeHtmlFromMarkdown(text);
+        }
+        const copied = text ? await this.host.writeClipboard(text, html) : false;
         if (copied) {
           this.noteUsed(item);
         }
@@ -14068,7 +14924,11 @@ ${details.join("\n")}` : ""}`;
         }
         const targetAvailable = editorTarget !== void 0 ? this.host.canInsertAtTarget(editorTarget) : this.host.hasActiveEditor();
         if (!targetAvailable) {
-          const copied = await this.host.writeClipboard(md);
+          let html;
+          if (item.itemType === "markdown" || item.itemType === "text" && isMarkdownFormattingPresent(md)) {
+            html = renderSafeHtmlFromMarkdown(md);
+          }
+          const copied = await this.host.writeClipboard(md, html);
           if (copied) {
             this.noteUsed(item);
           }
@@ -14095,7 +14955,11 @@ ${details.join("\n")}` : ""}`;
       }
       if (plan.mode === "copy" || plan.mode === "copy-content") {
         const text = (_c = await this.applyOutput(plan.clipboardText, item)) != null ? _c : "";
-        const copied = await this.host.writeClipboard(text);
+        let html;
+        if (item.itemType === "markdown" || item.itemType === "text" && isMarkdownFormattingPresent(text)) {
+          html = renderSafeHtmlFromMarkdown(text);
+        }
+        const copied = await this.host.writeClipboard(text, html);
         if (copied) {
           this.noteUsed(item);
         }
@@ -16835,6 +17699,9 @@ ${details.join("\n")}` : ""}`;
         input.dispatchEvent(new Event("input"));
       }
       return dialog;
+    },
+    currentDialog() {
+      return lastSearchDialog;
     },
     triggerAccessIssue(kind = "auth") {
       const key = kind === "auth" ? "kernelAuthRequired" : "kernelPermissionDenied";

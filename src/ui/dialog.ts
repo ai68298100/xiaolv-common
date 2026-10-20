@@ -42,6 +42,10 @@ export interface DialogDeps {
     runAction: (itemId: string, mode: InsertMode) => Promise<{ok: boolean; message: string}>;
     /** 变量填充：填充值随动作进入执行层（F1） */
     runActionWithFills: (itemId: string, mode: InsertMode, fills?: Record<string, string>) => Promise<{ok: boolean; message: string}>;
+    /** 获取变量记忆预填值（ADR 0074 / G22 / T-0133） */
+    getVariableDefaults?: (labels: string[]) => Record<string, string>;
+    /** 记录变量填写值（ADR 0074 / G22 / T-0133） */
+    rememberVariables?: (fills: Record<string, string>) => void;
     openSource: (itemId: string) => Promise<{ok: boolean; message: string}>;
     editItem: (itemId: string) => Promise<void>;
     deleteItem: (itemId: string) => Promise<void>;
@@ -112,6 +116,9 @@ export class CommonSearchDialog {
     private activeIndex = 0;
     private searchSeq = 0;
     private previewSeq = 0;
+    private quickLookOpen = false;
+    private quickLookSeq = 0;
+    private quickLookReturnFocus: HTMLElement | null = null;
     private currentScope: SearchScope = "all";
     private lastPreviewId: string | null = null;
     /** 空状态文案（refresh 计算后交 renderList 渲染大空态；瞬态/错误仍走 status 行） */
@@ -185,7 +192,7 @@ export class CommonSearchDialog {
 
     private buildDom(isMobile: boolean): HTMLElement {
         const root = document.createElement("div");
-        root.className = "xlc-dialog" + (isMobile ? " xlc-dialog--mobile" : "");
+        root.className = "xlc-search xlc-dialog" + (isMobile ? " xlc-dialog--mobile" : "");
 
         // 顶部：搜索框。把普通搜索与 ? 语义搜索拆成可读提示，避免用户只看到一个神秘符号。
         const top = document.createElement("div");
@@ -2289,8 +2296,10 @@ export class CommonSearchDialog {
         }
         let fields: AskField[] = [];
         let previewFailed = false;
+        let templateText = "";
         try {
             const content = await this.deps.preview(entry.id);
+            templateText = content || "";
             fields = entry.itemType === "code" || !content ? [] : listAskFields(content);
         } catch {
             fields = [];
@@ -2321,14 +2330,23 @@ export class CommonSearchDialog {
         }
         this.varFormOpen = true;
         this.syncPaneActions();
+        const labels = fields.map((f) => f.name);
+        const defaults = this.deps.getVariableDefaults ? this.deps.getVariableDefaults(labels) : undefined;
         openVariableFillCard({
             t: this.deps.t,
             itemType: entry.itemType,
             title: entry.title,
             fields,
+            defaults,
+            templateText,
             onConfirm: (fills) => {
                 this.varFormOpen = false;
                 this.syncPaneActions();
+                try {
+                    this.deps.rememberVariables?.(fills);
+                } catch {
+                    // 记忆写入失败不得阻断条目插入
+                }
                 // 主列表保留原行为；动作菜单传入 beforePerform，让取消填写时搜索上下文仍在。
                 const execution = perform(fills);
                 if (options?.beforePerform) options.beforePerform();
@@ -2770,10 +2788,31 @@ export class CommonSearchDialog {
     private async onKeydown(e: KeyboardEvent): Promise<void> {
         // IME 组合态（中文组词）：Enter/方向键属选词与候选导航，不得触发插入或移动选中（R138）
         if (e.isComposing || e.keyCode === 229) return;
+        // 键盘可能在搜索框、结果行或列表容器任一层触发：统一由 this.dialog 根节点定位
         const list = this.dialog?.element.querySelector<HTMLElement>(".xlc-list");
-        if (!list) return;
         const input = this.dialog?.element.querySelector<HTMLInputElement>(".xlc-search-input");
         const isInputFocused = e.target === input || document.activeElement === input;
+
+        // 空格键极速大卡片预览（G21 / ADR 0073）：浮层已开时空格关闭；
+        // 非输入态且有条目选中时空格打开；输入框内打空格一律归还输入（不拦截）。
+        if (e.key === " " && !e.ctrlKey && !e.metaKey && !e.altKey) {
+            if (this.quickLookOpen) {
+                e.preventDefault();
+                this.closeQuickLook();
+                return;
+            }
+            if (!list) return;
+            if (!isInputFocused && this.hasActiveEntry() && this.openQuickLook()) {
+                e.preventDefault();
+                return;
+            }
+        }
+        // 极速预览浮层优先吞下 Esc，避免误关整个搜索弹窗
+        if (this.quickLookOpen && e.key === "Escape") {
+            e.preventDefault();
+            this.closeQuickLook();
+            return;
+        }
 
         // 历史回溯向下回退（ADR 0043）：支持 Alt+ArrowDown 或在历史态中向下
         const isHistoryDown = (e.altKey && e.key === "ArrowDown") || (e.key === "ArrowDown" && isInputFocused && this.historyCursor >= 0);
@@ -2960,8 +2999,106 @@ export class CommonSearchDialog {
         }
     }
 
+    /** 是否有选中条目（空格极速预览入口前置判定） */
+    hasActiveEntry(): boolean {
+        return this.activeIndex >= 0 && this.activeIndex < this.results.length;
+    }
+
     getActiveEntry(): SearchEntry | null {
         return this.results[this.activeIndex] ?? null;
+    }
+
+    /** 空格键极速大卡片预览的开关入口（供弹窗与测试共用） */
+    toggleQuickLookPublic(): boolean {
+        return this.toggleQuickLook();
+    }
+
+    /**
+     * 空格键极速大卡片预览（G21 / ADR 0073）
+     * 仅非输入态可用：搜索框打字中的空格一律归还输入框。
+     */
+    toggleQuickLook(): boolean {
+        if (this.quickLookOpen) {
+            this.closeQuickLook();
+            return true;
+        }
+        return this.openQuickLook();
+    }
+
+    isQuickLookOpen(): boolean {
+        return this.quickLookOpen;
+    }
+
+    closeQuickLook(): void {
+        if (!this.quickLookOpen) return;
+        this.quickLookOpen = false;
+        this.quickLookSeq++;
+        this.dialog?.element.querySelector(".xlc-quicklook")?.remove();
+        const back = this.quickLookReturnFocus;
+        this.quickLookReturnFocus = null;
+        if (back && typeof back.focus === "function" && back.isConnected) {
+            back.focus();
+        }
+    }
+
+    private openQuickLook(): boolean {
+        const root = this.dialog?.element;
+        const entry = this.getActiveEntry();
+        if (!root || !entry || this.quickLookOpen) return false;
+
+        this.quickLookOpen = true;
+        const seq = ++this.quickLookSeq;
+        const active = root.ownerDocument?.activeElement as HTMLElement | null;
+        this.quickLookReturnFocus = active && active !== root ? active : null;
+
+        const host = root.querySelector<HTMLElement>(".xlc-root") ?? root.querySelector<HTMLElement>(".xlc-search-input")?.closest<HTMLElement>(".xlc-search") ?? root;
+        const overlay = document.createElement("div");
+        overlay.className = "xlc-quicklook";
+        overlay.setAttribute("role", "dialog");
+        overlay.setAttribute("aria-modal", "true");
+        overlay.setAttribute("aria-label", entry.title || "");
+
+        const card = document.createElement("div");
+        card.className = "xlc-quicklook-card";
+
+        const head = document.createElement("div");
+        head.className = "xlc-quicklook-head";
+        const title = document.createElement("strong");
+        title.className = "xlc-quicklook-title";
+        title.textContent = entry.title || "";
+        const meta = document.createElement("span");
+        meta.className = "xlc-quicklook-meta";
+        meta.textContent = entry.itemType || "";
+        const hints = document.createElement("span");
+        hints.className = "xlc-quicklook-hints";
+        hints.textContent = "Space / Esc 关闭　Enter 插入　Alt+C 复制";
+        head.append(title, meta, hints);
+
+        const body = document.createElement("div");
+        body.className = "xlc-quicklook-body";
+        const loading = document.createElement("div");
+        loading.className = "xlc-quicklook-loading";
+        loading.textContent = "加载中…";
+        body.appendChild(loading);
+
+        card.append(head, body);
+        overlay.appendChild(card);
+        // 阻止遮罩上的指针事件把键盘焦点从列表抢走
+        overlay.addEventListener("pointerdown", (ev) => {
+            ev.preventDefault();
+            this.closeQuickLook();
+        });
+        host.appendChild(overlay);
+
+        const id = entry.id;
+        void this.deps.preview(id).then((text) => {
+            if (this.quickLookSeq !== seq || !this.quickLookOpen) return;
+            loading.remove();
+            renderSafePreview(body, text, entry.itemType === "code" ? "code" : entry.itemType);
+        }).catch(() => {
+            loading.textContent = "预览加载失败";
+        });
+        return true;
     }
 
     destroy(): void {

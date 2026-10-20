@@ -796,6 +796,64 @@
 - [x] 构建多叉层级树 `buildHierarchyTree` 与聚合计数，在搜索面板 UI 筛选下拉框中支持树状缩进与分支指引符展示（`flattenHierarchyTree`）。
 - [x] 决策见 [ADR 0063](docs/adr/0063-hierarchical-tags-and-categories.md)；新增 `tests/r269-hierarchy.test.cjs` 专项断言（单元门禁 577/577 全部通过），并通过故意移除斜杠边界判断的严格负向验证。
 
+## T-0127 / R274（2026-10-20 自定义日期时间格式化与算术组合引擎）
+
+- [x] `src/model/placeholders.ts` 纯函数格式化引擎 `formatDateTime`：支持 `YYYY`/`YY`/`MM`/`M`/`DD`/`D`/`HH`/`H`/`hh`/`h`/`mm`/`m`/`ss`/`s`/`dddd`/`ddd`/`A`/`a`。
+- [x] 复合语法解析策略：`{{xlc:date|...}}` 支持日期偏移、自定义模式及两者复合（如 `{{xlc:date|+3d|YYYY年MM月DD日}}`、`{{xlc:date|明天|YYYY/MM/DD}}`）；`{{xlc:time|...}}` 支持时间偏移与格式化（`+1h`、`HH:mm:ss`）；`{{xlc:datetime|...}}` 支持完整格式化；`{{xlc:weekday|...}}` 支持中文完整星期与英文星期。
+- [x] 未知 token 与非法模式严格返回 `null`，保持原始占位符不被吞噬；100% 保持既有单测行为向下兼容。
+- [x] 决策见 [ADR 0068](docs/adr/0068-date-time-formatters-and-math.md)；新增 `tests/r274-datetime-formatters.test.cjs` 专项断言（单元门禁 611/611 全部通过），并通过故意改写年份映射的严格负向验证。
+
+## T-0128 / R275（2026-10-20 RFC 4122 UUID 与紧凑唯一定位符生成引擎）
+
+- [x] `src/model/placeholders.ts` 实现 RFC 4122 v4 规范的 `generateUuidV4`（原生 `crypto.randomUUID()` 优先，支持安全回退）；支持去歧义字符集短 ID 生成器 `generateShortId`（4~32 位，排除 `0/O`, `1/l/I`）。
+- [x] 占位符扩展：`{{xlc:uuid}}`（小写 36 字符）、`{{xlc:uuid|upper}}`（大写）、`{{xlc:uuid|simple}}`/`compact`（32 字符无连字符）、`{{xlc:uuid|upper,simple}}` 复合；`{{xlc:id}}`（默认 8 位）、`{{xlc:id|12}}`（指定位数）、`{{xlc:id|upper}}`（大写）。
+- [x] 决策见 [ADR 0069](docs/adr/0069-uuid-and-unique-id-placeholders.md)；新增 `tests/r275-uuid-placeholders.test.cjs` 专项断言（单元门禁 617/617 全部通过），并通过故意返回非法 UUID 的严格负向验证。
+
+## T-0129 / R276（2026-10-20 跨应用富文本剪贴板双载荷输出）
+
+- [x] `src/model/clipboard.ts` 零注入安全轻量 Markdown 转 HTML 纯函数 `renderSafeHtmlFromMarkdown` 与实体转义 `escapeHtml`：全面转义 `<>`/`&`/`"` 彻底杜绝 XSS 注入；转换加粗、斜体、删除线、行内/围栏代码、超链接（严格过滤伪协议）与混排列表。
+- [x] 剪贴板双载荷写入器 `writeRichClipboard`：优先注入 `text/plain` 与 `text/html` 双 MIMETYPE，权限受限或不支持时平滑安全降级至纯文本复制。
+- [x] 执行层透明接入：`ActionExecutor`、定向插入降级及主搜索全域条目复制透明携带富文本 HTML 载荷，粘贴至邮件/外部应用呈现排版。
+- [x] 决策见 [ADR 0070](docs/adr/0070-rich-text-clipboard-matrix.md)；新增 `tests/r276-rich-clipboard.test.cjs` 专项断言（单元门禁 625/625 全部通过），并通过故意破坏粗体标签的严格负向验证。
+
+## T-0130 / R277（2026-10-20 文本大小写与命名范式转换器）
+
+- [x] `src/model/placeholders.ts` 实现分词函数 `splitWords` 与转换器 `transformCase`：支持 `upper`、`lower`、`title`/`capitalize`、`camel`、`pascal`、`snake`、`kebab`、`constant` 8 种主流命名范式。
+- [x] 占位符解析扩展：支持 `{{xlc:case|STYLE|TEXT}}` 管道语法与 `{{xlc:case:STYLE|TEXT}}` 兼容语法；未知风格或非法表达式严格防吞隔离并保留原文。
+- [x] 决策见 [ADR 0071](docs/adr/0071-text-case-transformers.md)；新增 `tests/r277-case-transformers.test.cjs` 专项断言（单元门禁 631/631 全部通过），并通过故意篡改 upper 输出的严格负向验证。
+
+## T-0131 / R278（2026-10-20 安全内联算术计算占位符引擎）
+
+- [x] `src/model/calculator.ts` 零 eval / 零 Function 纯函数数学求值引擎 `evaluateMathExpression`：基于受限词法与递归下降解析器，支持 `+`, `-`, `*`, `/`, `%`、括号优先级以及安全内置函数 `round`, `floor`, `ceil`, `abs`。
+- [x] 占位符解析扩展：支持 `{{xlc:calc|EXPR}}`；浮点精度修剪防御；除以零与语法错误严格防吞并保留原文。
+- [x] 决策见 [ADR 0072](docs/adr/0072-safe-inline-math-calculator.md)；新增 `tests/r278-calculator.test.cjs` 专项断言（单元门禁 637/637 全部通过），并通过故意改写加法逻辑的严格负向验证。
+
+## T-0132 / R279（2026-10-20 条目空格键极速大卡片预览浮层）
+
+- [x] `src/ui/dialog.ts` 新增 `toggleQuickLook`/`openQuickLook`/`closeQuickLook`：居中大卡片（最大 720px × 80vh）复兴渲染，`role=dialog` + `aria-modal`，加载中占位与预览失败降级文案。
+- [x] `onKeydown` 空格分支：非输入态且有选中条目时空格唤起，浮层打开时空格/Esc 关闭，搜索框内敲空格完全归还输入（不拦截）；焦点关闭后还原。
+- [x] `src/styles/index.scss` 新增 `.xlc-quicklook` 样式：窄屏自适应、减动效与强制色彩兼容。
+- [x] 新增交互审计 K17/K18/K19 三项用例（交互门禁 77/77 全通），并通过禁用空格分支的严格负向验证。
+
+## T-0133 / R280（2026-10-20 变量历史填写值记忆与智能预填）
+
+- [x] `src/model/variable-memory.ts` 纯函数记忆模型：`normalizeVariableMemory` 安全过滤与 200 项 LRU 淘汰；大小写不敏感读写 `getRememberedValue` / `rememberValue`；空值严格不记忆防污染。
+- [x] 侧车存储扩展：`PluginState` 与 `normalizeState` 接入 `variableMemory`，纯本地侧车持久化，绝不出域，提供单字段抹除与全部清空。
+- [x] 交互与执行闭环：`VariableFillOptions` 扩展 `defaults`；`variable-form.ts` 预填优先采用记忆值并回退至声明默认值；`dialog.ts` 确认提交时异步更新记忆，写入失败不阻断插入。
+- [x] 决策见 [ADR 0074](docs/adr/0074-variable-memory-prefill.md)；新增 `tests/r280-variable-memory.test.cjs` 专项断言（单元门禁 644/644 全部通过），并通过故意允许空值写入的严格负向验证。
+
+## T-0134 / R281（2026-10-20 光标选区包裹模式与选区占位符）
+
+- [x] `src/model/placeholders.ts` 扩展 `PlaceholderKind` 与正则：支持 `{{xlc:selection}}` 与 `{{xlc:selection|默认内容}}`；有活动选区时直接展开，无选区时回退默认内容或空串兜底（不残留占位符在正文中）。
+- [x] 宿主执行层闭环：`IPlaceholderHook` 扩展 `selection`；`commands.ts` 与 `index.ts` 现场捕获 `window.getSelection()?.toString()`（限长 4000 字符防假死）；Protyle 原生行为插入时直接包裹替换当前选区。
+- [x] 决策见 [ADR 0075](docs/adr/0075-surround-selection-snippet.md)；新增 `tests/r281-selection-placeholder.test.cjs` 专项断言（单元门禁 649/649 全部通过），并通过故意破坏空选区兜底的严格负向验证。
+
+## T-0135 / R282（2026-10-20 模板变量填写卡交互式实时求值与动态预览）
+
+- [x] `src/ui/variable-form.ts` 实现 `renderLivePreviewText` 与实时预览容器 `.xlc-varform-preview-wrap`：输入变化时 30ms 轻量防抖求值，未填字段遵循 `__字段__` 兜底，已填字段所见即所得，自动剔除光标标记与 1000 字符截断保护。
+- [x] 视觉与体验闭环：`src/styles/index.scss` 适配紧凑虚线预览框，`dialog.ts` 读取条目内容后直接向变量卡注入 `templateText`，移动端自适应。
+- [x] 决策见 [ADR 0076](docs/adr/0076-live-variable-expansion-preview.md)；新增 `tests/r282-live-variable-preview.test.cjs` 专项断言（单元门禁 653/653 全部通过），并通过故意破坏求值结果的严格负向验证。
+
 ## T-0086–T-0092 / R233–R239（2026-10-18 审计、示例调研与多块保护）
 
 - [x] 完成源码、原型、Chrome UI、功能边界、GitHub issue/CI/release/附件和安全状态审计；证据见 [状态审计](docs/status-audit-2026-10-18.md) 与 [UI 审计目录](docs/design/audit-2026-10-18/)。
@@ -818,3 +876,12 @@
 - [x] **G13 批量导入 CSV/TSV 字段映射向导**：（已在 T-0124 实现）交互式列映射下拉框 + 智能推断按钮 + 实时预览，支持自定义列覆盖 API 扩展。
 - [x] **G14 全域搜索终端动作闭环与就地快速修改**：（已在 T-0126 实现）全域条目即时 DOM 预览与复制/插入动作闭环，当前文档块支持「就地修改块内容...」（实时计数与 B-006 写前校验），动作菜单提供带表单「编辑并收录...」通道。
 - [x] **G15 性能优化与资源减负**：（已在 T-0125 实现）统一防抖/节流工具集，零侵入式优化，确保高频事件有规范节流机制。
+- [x] **G16 自定义日期时间格式化与算术组合引擎**：（已在 T-0127 实现）对标 Espanso / TextExpander / Quicker，支持任意日期时间模式自定义（YYYY/YY/MM/M/DD/D/HH/H/hh/h/mm/m/ss/s/dddd/ddd/A/a）、相对时间偏移（+1h/-30m）及算术复合（如 {{xlc:date|+3d|YYYY年MM月DD日}}、{{xlc:time|+2h|HH:mm:ss}}），完整中英文星期与严格防吞负向隔离。
+- [x] **G17 唯一标识与 UUID 动态占位符引擎**：（已在 T-0128 实现）对标 Espanso / Raycast / TextExpander，实现原生 RFC 4122 v4 UUID 生成器（标准 36 字符、大写 upper、无短横线 simple/compact）及无歧义字符集短 ID 生成（4~32 位指定长度与大写），未知参数严格防吞隔离。
+- [x] **G18 跨应用富文本剪贴板双载荷输出**：（已在 T-0129 实现）对标 Quicker / TextExpander / PhraseExpress，复制 Markdown 常用语时透明携带 text/plain 与安全 text/html 双 MIMETYPE 载荷，外部应用粘贴自动保持粗体、列表、引用及超链接结构，强 XSS 免疫与环境降级保障。
+- [x] **G19 文本大小写与命名范式转换器**：（已在 T-0130 实现）对标 Espanso / Raycast / TextExpander，实现全大写 upper、全小写 lower、首字母大写 title/capitalize、小驼峰 camel、大驼峰 pascal、蛇形 snake、短横线 kebab 与常量大写 constant 8 种代码/文本风格转换引擎，未知样式严格防吞隔离。
+- [x] **G20 安全内联算术计算占位符引擎**：（已在 T-0131 实现）对标 Quicker / Raycast / Espanso，基于零 eval 递归下降数学求值引擎，支持加减乘除模、优先级括号与 round/floor/ceil/abs 安全函数，浮点精度归整与除零安全隔离。
+- [x] **G21 条目空格键极速大卡片预览浮层（Space Quick Look）**：（已在 T-0132 实现）对标 macOS Finder Quick Look / Raycast，非输入态按空格即弹出居中 720px 沉浸式大卡片预览，再按空格或 Esc 关闭并还原焦点，长文与长代码阅读不再受右侧窄栏限制。
+- [x] **G22 变量历史填写值记忆与智能预填**：（已在 T-0133 实现）对标 TextExpander Form History / Raycast，侧车纯本地记忆用户对变量最近填写值（LRU 200 项、防超长、空值不记），二次使用自动预填，支持单项抹除与全部清空。
+- [x] **G23 光标选区包裹模式（Surround Selection with Snippet）**：（已在 T-0134 实现）对标 VSCode Surround With / Raycast Snippets，支持 `{{xlc:selection}}` 与 `{{xlc:selection|默认内容}}`，在思源编辑器中划选文本即可一键包裹进代码围栏、引用块或提示模板，无选区时优雅回退。
+- [x] **G24 模板变量填写卡交互式实时求值与动态预览**：（已在 T-0135 实现）对标 Raycast Live Snippet Preview / TextExpander，变量填写卡底部实时防抖求值并展示展开后预览效果，所见即所得，纯文本防 XSS 与超长截断保护。

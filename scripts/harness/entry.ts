@@ -466,6 +466,9 @@ function makeDeps(overrides: {aiEnabled?: boolean; missing?: boolean; mobile?: b
         }
         return dialog;
     },
+    currentDialog(): CommonSearchDialog | null {
+        return lastSearchDialog;
+    },
     triggerAccessIssue(kind: "auth" | "permission" = "auth"): void {
         const key = kind === "auth" ? "kernelAuthRequired" : "kernelPermissionDenied";
         lastSearchDialog?.showKernelAccessIssue(kind, T(key));

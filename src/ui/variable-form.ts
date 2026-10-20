@@ -4,7 +4,7 @@
 // 安全：字段名/选项一律 textContent 注入，绝不 innerHTML。
 import {Dialog} from "siyuan";
 import {getDialogBody} from "./dialog-dom";
-import {AskField, askFieldTag} from "../model/variables";
+import {AskField, askFieldTag, expandAsks, stripCursorToken} from "../model/variables";
 import {ItemType} from "../model/item";
 
 const TYPE_BADGES: Partial<Record<ItemType, string>> = {
@@ -17,10 +17,27 @@ export interface VariableFillOptions {
     itemType: ItemType;
     title: string;
     fields: AskField[];
+    /** 字段初值预填表（字段名 -> 预填值，由记忆表提供，ADR 0074） */
+    defaults?: Record<string, string>;
+    /** 模板原始内容（用于交互式实时展开预览，G24 / ADR 0076） */
+    templateText?: string;
     /** 确认：收集到的填充值（键=字段名；空值字段已由展开层兜底为 __名称__） */
     onConfirm: (fills: Record<string, string>) => void;
     /** 取消/关闭回调（缺省仅销毁） */
     onCancel?: () => void;
+}
+
+/**
+ * 纯函数：根据当前已收集填充值渲染实时展开预览文本（G24 / ADR 0076）
+ * 自动剥离光标标记，纯文本防 XSS，支持超长安全截断
+ */
+export function renderLivePreviewText(templateText: string, fills: Record<string, string>, maxChars = 1000): string {
+    if (!templateText) return "";
+    const expanded = stripCursorToken(expandAsks(templateText, fills));
+    if (expanded.length > maxChars) {
+        return expanded.slice(0, maxChars) + "…";
+    }
+    return expanded;
 }
 
 export function openVariableFillCard(options: VariableFillOptions): void {
@@ -109,7 +126,11 @@ export function openVariableFillCard(options: VariableFillOptions): void {
             wrap.appendChild(datalist);
         }
         input.dataset.xlcVarField = field.name;
-        if (field.defaultValue) {
+        // 初值预填逻辑（ADR 0074）：记忆值优先，无记忆值时回退至模板声明的 defaultValue
+        const memoryValue = options.defaults ? options.defaults[field.name] : undefined;
+        if (memoryValue !== undefined && memoryValue.length > 0) {
+            input.value = memoryValue;
+        } else if (field.defaultValue) {
             input.value = field.defaultValue;
         }
         wrap.appendChild(input);
@@ -117,6 +138,54 @@ export function openVariableFillCard(options: VariableFillOptions): void {
         fieldsWrap.appendChild(wrap);
     }
     root.appendChild(fieldsWrap);
+
+    const collect = (): Record<string, string> => {
+        const fills: Record<string, string> = {};
+        for (const input of inputs) {
+            const name = input.dataset.xlcVarField ?? "";
+            if (name) fills[name] = input.value;
+        }
+        return fills;
+    };
+
+    let previewBox: HTMLElement | null = null;
+    let liveDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+
+    if (options.templateText) {
+        const previewWrap = document.createElement("div");
+        previewWrap.className = "xlc-varform-preview-wrap";
+
+        const previewHead = document.createElement("div");
+        previewHead.className = "xlc-varform-preview-head";
+        previewHead.textContent = "🔍 实时展开预览：";
+
+        previewBox = document.createElement("div");
+        previewBox.className = "xlc-varform-preview";
+        previewBox.setAttribute("role", "region");
+        previewBox.setAttribute("aria-label", "实时展开预览");
+
+        previewWrap.append(previewHead, previewBox);
+        root.appendChild(previewWrap);
+
+        const updatePreview = () => {
+            if (!previewBox || !options.templateText) return;
+            const text = renderLivePreviewText(options.templateText, collect());
+            previewBox.textContent = text;
+        };
+
+        const scheduleLiveUpdate = () => {
+            if (liveDebounceTimer) clearTimeout(liveDebounceTimer);
+            liveDebounceTimer = setTimeout(updatePreview, 30);
+        };
+
+        // 初始预览渲染
+        updatePreview();
+
+        for (const input of inputs) {
+            input.addEventListener("input", scheduleLiveUpdate);
+            input.addEventListener("change", scheduleLiveUpdate);
+        }
+    }
 
     const foot = document.createElement("div");
     foot.className = "xlc-varform-foot";
@@ -138,18 +207,11 @@ export function openVariableFillCard(options: VariableFillOptions): void {
 
     body.appendChild(root);
 
-    const collect = (): Record<string, string> => {
-        const fills: Record<string, string> = {};
-        for (const input of inputs) {
-            const name = input.dataset.xlcVarField ?? "";
-            if (name) fills[name] = input.value;
-        }
-        return fills;
-    };
     // 结算语义（R138）：按钮确认/取消即「已结算」；未结算时的销毁（Esc/点遮罩）才视为取消。
     // 修复：此前确认路径也会先触发 onCancel、点取消会触发两次（destroyCallback + 显式调用）。
     let settled = false;
     const confirm = (): void => {
+        if (liveDebounceTimer) clearTimeout(liveDebounceTimer);
         if (settled) return;
         settled = true;
         dialog.destroy();
@@ -157,6 +219,7 @@ export function openVariableFillCard(options: VariableFillOptions): void {
     };
     insertBtn.addEventListener("click", confirm);
     cancelBtn.addEventListener("click", () => {
+        if (liveDebounceTimer) clearTimeout(liveDebounceTimer);
         if (settled) return;
         settled = true;
         dialog.destroy();

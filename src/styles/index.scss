@@ -1900,6 +1900,37 @@
     }
   }
 
+  // 实时动态展开预览卡（G24 / ADR 0076）
+  .xlc-varform-preview-wrap {
+    display: flex;
+    flex-direction: column;
+    gap: var(--xlc-space-1);
+    margin-top: var(--xlc-space-1);
+
+    .xlc-varform-preview-head {
+      font-size: var(--xlc-font-xs);
+      color: var(--b3-theme-on-surface);
+      display: flex;
+      align-items: center;
+      gap: var(--xlc-space-1);
+    }
+
+    .xlc-varform-preview {
+      max-height: 110px;
+      overflow-y: auto;
+      padding: var(--xlc-space-2) var(--xlc-space-3);
+      border-radius: var(--xlc-radius-sm);
+      border: 1px dashed var(--b3-border-color);
+      background-color: var(--b3-theme-surface);
+      color: var(--b3-theme-on-background);
+      font-size: var(--xlc-font-xs);
+      line-height: var(--xlc-leading-normal);
+      white-space: pre-wrap;
+      word-break: break-word;
+      user-select: text;
+    }
+  }
+
   .xlc-varform-foot {
     display: flex;
     align-items: center;
@@ -2521,6 +2552,92 @@
   }
 
   .xlc-ct-del { min-height: 32px; }
+}
+
+// ---------- 空格键极速大卡片预览（G21 / ADR 0073）：与右侧窄栏互补，长文/长代码阅读 ----------
+.xlc-quicklook {
+  position: absolute;
+  inset: 0;
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--xlc-space-4);
+  background-color: var(--xlc-overlay-bg, rgba(0, 0, 0, 0.35));
+
+  .xlc-quicklook-card {
+    display: flex;
+    flex-direction: column;
+    box-sizing: border-box;
+    width: 100%;
+    max-width: 720px;
+    max-height: 80vh;
+    overflow: hidden;
+    border: 1px solid var(--xlc-border-strong, var(--b3-border-color));
+    border-radius: var(--xlc-radius-3);
+    background-color: var(--xlc-surface-raised, var(--b3-theme-background));
+    box-shadow: var(--xlc-shadow-3, 0 12px 32px rgba(0, 0, 0, 0.24));
+  }
+
+  .xlc-quicklook-head {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--xlc-space-2);
+    align-items: baseline;
+    padding: var(--xlc-space-3) var(--xlc-space-4);
+    border-bottom: 1px solid var(--xlc-border-subtle, var(--b3-border-color));
+  }
+
+  .xlc-quicklook-title {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    font-size: var(--xlc-font-size-3);
+    font-weight: 600;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .xlc-quicklook-meta {
+    color: var(--xlc-text-muted);
+    font-size: var(--xlc-font-size-1);
+  }
+
+  .xlc-quicklook-hints {
+    flex: 0 0 auto;
+    color: var(--xlc-text-muted);
+    font-size: var(--xlc-font-size-1);
+  }
+
+  .xlc-quicklook-body {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow: auto;
+    padding: var(--xlc-space-4);
+    line-height: var(--xlc-line-height-2, 1.6);
+    overscroll-behavior: contain;
+  }
+
+  .xlc-quicklook-loading {
+    color: var(--xlc-text-muted);
+    font-size: var(--xlc-font-size-2);
+  }
+}
+
+// 窄屏：卡片尽量占满可用区域，横滚留给正文本身
+@media (max-width: 620px) {
+  .xlc-quicklook {
+    padding: var(--xlc-space-2);
+
+    .xlc-quicklook-card {
+      max-width: none;
+      max-height: 85vh;
+    }
+
+    .xlc-quicklook-hints {
+      display: none;
+    }
+  }
 }
 
 // ---------- 减动效偏好（无障碍）：关闭弹层动画与过渡，信息不依赖动效传达 ----------

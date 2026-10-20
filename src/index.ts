@@ -15,6 +15,8 @@ import {CommonItem, isBlockId, isItemType, isSafeHttpUrl, resolveBlockRefTarget}
 import {toErrorMessage} from "./model/errors";
 import {getSingleDocTreeDiscoveryTarget} from "./model/discovery-target";
 import {buildBlockRef, buildEmbedBlock} from "./model/actions";
+import {isMarkdownFormattingPresent, renderSafeHtmlFromMarkdown} from "./model/clipboard";
+import {collectDefaults, rememberValues} from "./model/variable-memory";
 import {ExportedItem, buildBundle, validateImport, ConflictPolicy, ImportReceipt} from "./model/transfer";
 import {importBundle as importBundleCore} from "./service/importer";
 import {importMarkdownBundle} from "./service/import-markdown";
@@ -206,6 +208,14 @@ export default class XiaolvCommonPlugin extends Plugin {
                     // 权限/平台限制：诚实降级为空串（占位符语义与无文档一致）
                 }
                 return "";
+            },
+            selection: () => {
+                try {
+                    const sel = window.getSelection();
+                    return sel ? sel.toString() : "";
+                } catch {
+                    return "";
+                }
             },
         });
         this.service = new XiaolvCommonService({
@@ -1269,7 +1279,8 @@ export default class XiaolvCommonPlugin extends Plugin {
                     else this.notify("error", this.i18nFn()("insertFailed"));
                     return inserted;
                 }
-                const copied = await this.host.writeClipboard(rendered);
+                const html = isMarkdownFormattingPresent(rendered) ? renderSafeHtmlFromMarkdown(rendered) : undefined;
+                const copied = await this.host.writeClipboard(rendered, html);
                 const message = this.host.isMobile()
                     ? this.i18nFn()("insertPendingMobile")
                     : editorTarget?.editor ? this.i18nFn()("insertTargetUnavailableCopied") : this.i18nFn()("insertNoEditor");
@@ -1277,7 +1288,9 @@ export default class XiaolvCommonPlugin extends Plugin {
                 return copied;
             }),
             copyProviderPayload: async (payload) => {
-                const ok = await this.host.writeClipboard((payload ?? "").trim());
+                const text = (payload ?? "").trim();
+                const html = isMarkdownFormattingPresent(text) ? renderSafeHtmlFromMarkdown(text) : undefined;
+                const ok = await this.host.writeClipboard(text, html);
                 if (!ok) this.notify("error", this.i18nFn()("copyFailed"));
                 return ok;
             },
@@ -1368,6 +1381,11 @@ export default class XiaolvCommonPlugin extends Plugin {
                 return {ok: receipt.ok, message: msg};
             }),
             promptVariables: () => this.state.insert.promptVariables,
+            getVariableDefaults: (labels) => collectDefaults(this.state.variableMemory, labels),
+            rememberVariables: (fills) => {
+                this.state.variableMemory = rememberValues(this.state.variableMemory, fills, Date.now());
+                this.persistSoon();
+            },
             getUsage: () => this.state.usage,
             resetItemUsage: (itemId: string) => this.resetItemUsage(itemId),
             newItem: (titleCandidate?: string) => this.capture.newManual(titleCandidate),
@@ -1409,7 +1427,8 @@ export default class XiaolvCommonPlugin extends Plugin {
                     this.notify(inserted ? "info" : "error", inserted ? this.i18nFn()("aiOriginalPreserved") : this.i18nFn()("insertFailed"));
                     return inserted;
                 }
-                const copied = await this.host.writeClipboard(trimmed);
+                const html = isMarkdownFormattingPresent(trimmed) ? renderSafeHtmlFromMarkdown(trimmed) : undefined;
+                const copied = await this.host.writeClipboard(trimmed, html);
                 const message = this.host.isMobile()
                     ? this.i18nFn()("insertPendingMobile")
                     : editorTarget?.editor ? this.i18nFn()("insertTargetUnavailableCopied") : this.i18nFn()("insertNoEditor");
@@ -1417,7 +1436,8 @@ export default class XiaolvCommonPlugin extends Plugin {
                 return copied;
             }),
             copyText: async (text) => {
-                const ok = await this.host.writeClipboard(text);
+                const html = isMarkdownFormattingPresent(text) ? renderSafeHtmlFromMarkdown(text) : undefined;
+                const ok = await this.host.writeClipboard(text, html);
                 // 剪贴板写入失败不得静默（系统拒绝/权限受限时用户必须知道，R138）
                 if (!ok) this.notify("error", this.i18nFn()("copyFailed"));
                 return ok;

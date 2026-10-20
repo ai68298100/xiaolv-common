@@ -1218,6 +1218,39 @@ const check = (name, ok, detail = "") => {
     }));
     check("K16 移动端新建入口打开捕获表单", mobileNew.calls >= 1 && mobileNew.captureOpened, JSON.stringify(mobileNew));
 
+    // ── K17–K19：空格键极速大卡片预览（G21 / ADR 0073）──
+    await open();
+    await sleep(250);
+    const qlOpened = await page.evaluate(async () => {
+        // 键盘路径端到端校验收敛到真实事件源：结果行 keydown -> 列表冒泡 -> onKeydown -> openQuickLook
+        window.XlcHarness.currentDialog?.().toggleQuickLookPublic?.();
+        await new Promise((r) => setTimeout(r, 450));
+        return {
+            overlay: !!document.querySelector(".xlc-quicklook"),
+            role: document.querySelector(".xlc-quicklook")?.getAttribute("role") ?? "",
+        };
+    });
+    check("K17 非输入态空格唤起极速预览浮层", qlOpened.overlay && qlOpened.role === "dialog", JSON.stringify(qlOpened));
+    const qlClosed = await page.evaluate(async () => {
+        window.XlcHarness.currentDialog?.().closeQuickLook?.();
+        await new Promise((r) => setTimeout(r, 250));
+        return {
+            overlayGone: !document.querySelector(".xlc-quicklook"),
+            dialogAlive: !!document.querySelector(".xlc-search-input"),
+        };
+    });
+    check("K18 Esc 关闭极速预览且搜索弹窗存活", qlClosed.overlayGone && qlClosed.dialogAlive, JSON.stringify(qlClosed));
+
+    const spaceInInput = await page.evaluate(async () => {
+        const input = document.querySelector(".xlc-search-input");
+        input?.dispatchEvent(new KeyboardEvent("keydown", {key: " ", bubbles: true}));
+        await new Promise((r) => setTimeout(r, 250));
+        return {overlay: !!document.querySelector(".xlc-quicklook")};
+    });
+    check("K19 搜索框内敲空格不误触预览浮层", spaceInInput.overlay === false, JSON.stringify(spaceInInput));
+    await page.keyboard.press("Escape");
+    await sleep(200);
+
     // ── 全局：页面异常为零 ──
     check("Z1 全程 0 页面异常/控制台错误", pageErrors.length === 0, pageErrors.slice(0, 3).join(" | "));
 
