@@ -46,6 +46,7 @@ import type {SettingsUiContext} from "./ui/settings-dialog";
 import {buildVariableBar} from "./ui/variable-form";
 import type {TransformKind} from "./service/ai";
 import {mountXlcBridge} from "./service/external-bridge";
+import {queryEcosystemItems} from "./service/ecosystem";
 
 declare let __webpack_public_path__: string;
 
@@ -1272,6 +1273,20 @@ export default class XiaolvCommonPlugin extends Plugin {
                             this.notify("error", this.i18nFn()("providerUnavailable", provider.record.displayName) + ` (${toErrorMessage(err)})`);
                         }
                     }
+                }
+                // 小驴家族生态兄弟插件只读适配联动（零依赖、渐进增强）
+                try {
+                    const ecoHits = await queryEcosystemItems(query);
+                    for (const hit of ecoHits) {
+                        rows.push({
+                            providerId: "xiaolv-family-ecosystem",
+                            providerName: hit.providerName,
+                            title: hit.title,
+                            payload: hit.payload,
+                        });
+                    }
+                } catch {
+                    // 静默
                 }
                 return buildProviderRows(rows);
             },

@@ -357,6 +357,7 @@ export class CommonSearchDialog {
                 {key: `${isApple ? "⌥" : "Alt"} + 1-9`, action: this.deps.t("kbdQuickInsert")},
                 {key: `${isApple ? "⌥ + ⇧" : "Alt + Shift"} + 1-9`, action: this.deps.t("kbdQuickCopy")},
                 {key: `${isApple ? "⌥" : "Alt"} + S`, action: "收录全库块"},
+                {key: `${isApple ? "⌥" : "Alt"} + C`, action: "复制并关闭"},
                 {key: `${isApple ? "⌥" : "Alt"} + T`, action: "轮转范围"},
                 {key: "@ /", action: "全库穿透"},
                 {key: `${isApple ? "⌥" : "Alt"} + F`, action: this.deps.t("kbdFavorite")},
@@ -513,6 +514,12 @@ export class CommonSearchDialog {
             filters.insertBefore(targetBanner, filters.firstChild);
         }
         root.appendChild(filters);
+
+        // 热门标签快速筛选胶囊行（桌面与平板快捷直达）
+        const quickPills = document.createElement("div");
+        quickPills.className = "xlc-quick-filter-pills";
+        quickPills.style.display = "none";
+        root.appendChild(quickPills);
 
         // 状态行（aria-live）
         const status = document.createElement("div");
@@ -976,6 +983,36 @@ export class CommonSearchDialog {
         if (changed) {
             this.deps.setFilters({type: current.type, tag: nextTag, category: nextCategory});
         }
+
+        // 渲染热门标签快捷筛选胶囊
+        const quickPillsHost = this.dialog?.element.querySelector<HTMLElement>(".xlc-quick-filter-pills");
+        if (quickPillsHost) {
+            quickPillsHost.replaceChildren();
+            const topTags = tags.filter(Boolean).slice(0, 6);
+            if (topTags.length > 0) {
+                const label = document.createElement("span");
+                label.className = "xlc-quick-pill-label";
+                label.textContent = "常用标签:";
+                quickPillsHost.appendChild(label);
+
+                for (const t of topTags) {
+                    const btn = document.createElement("button");
+                    btn.type = "button";
+                    const isSelected = nextTag === t;
+                    btn.className = "xlc-quick-pill" + (isSelected ? " xlc-quick-pill--on" : "");
+                    btn.textContent = `#${t}`;
+                    btn.title = isSelected ? `清除 #${t} 过滤` : `按 #${t} 过滤`;
+                    btn.addEventListener("click", () => {
+                        this.filterByTag(t);
+                    });
+                    quickPillsHost.appendChild(btn);
+                }
+                quickPillsHost.style.display = "flex";
+            } else {
+                quickPillsHost.style.display = "none";
+            }
+        }
+
         return changed;
     }
 
@@ -3111,6 +3148,23 @@ export class CommonSearchDialog {
             }
             const entry = this.results[this.activeIndex];
             if (entry) await this.deps.runAction(entry.id, "copy");
+        } else if ((e.altKey && !e.ctrlKey && !e.metaKey && (e.key === "c" || e.key === "C")) || (e.key === "Enter" && (e.ctrlKey || e.metaKey) && e.shiftKey)) {
+            // Alt+C / Ctrl+Shift+Enter: 快捷复制并自动关闭弹窗（Copy & Auto-Close，便于跨窗口直接粘贴）
+            e.preventDefault();
+            if (this.activeProvider >= 0) {
+                const row = this.providerRows[this.activeProvider];
+                if (row) {
+                    await this.deps.copyProviderPayload(row.payload);
+                    this.destroy();
+                }
+                return;
+            }
+            const entry = this.results[this.activeIndex];
+            if (entry) {
+                this.destroy();
+                await this.deps.runAction(entry.id, "copy");
+            }
+            return;
         } else if (e.key === "Escape") {
             e.preventDefault();
             if (this.multiSelectMode) {

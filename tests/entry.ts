@@ -51,6 +51,7 @@ import * as exportSanitizer from "../src/model/export-sanitizer";
 import * as exportSanitizerModal from "../src/ui/export-sanitizer-modal";
 import * as syncDiff from "../src/model/sync-diff";
 import * as syncDiffModal from "../src/ui/sync-diff-modal";
+import * as ecosystem from "../src/service/ecosystem";
 
 export {
     item,
@@ -102,4 +103,5 @@ export {
     exportSanitizerModal,
     syncDiff,
     syncDiffModal,
+    ecosystem,
 };

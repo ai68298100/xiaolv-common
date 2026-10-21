@@ -19,6 +19,7 @@ import type {SavedDiscoveryScope, SavedDiscoveryView} from "../model/storage";
 import {openCsvTsvImportWizard} from "./csv-tsv-wizard";
 import {diagnoseLibraryHealth, type HealthDoctorItem} from "../model/health-doctor";
 import {calculateUsageInsights, type UsageItemMeta} from "../model/usage-insights";
+import {detectEcosystem} from "../service/ecosystem";
 
 type TFn = (key: string, ...args: string[]) => string;
 
@@ -1803,6 +1804,39 @@ function buildExternalIntegrationSection(ctx: SettingsUiContext, root: HTMLEleme
         });
     });
     sec.appendChild(copyBtn);
+
+    // 小驴家族生态联动矩阵
+    const ecoTitle = document.createElement("div");
+    ecoTitle.style.cssText = "font-weight:600; font-size:12px; margin-top:14px; margin-bottom:4px; color:var(--b3-theme-on-background);";
+    ecoTitle.textContent = "小驴家族全家桶协同状态（零强依赖，自动感知）：";
+    sec.appendChild(ecoTitle);
+
+    const ecoDesc = document.createElement("div");
+    ecoDesc.className = "xlc-form-hint";
+    ecoDesc.textContent = "本插件完全独立运行，零外部依赖。若检测到宿主环境中已安装的小驴系列兄弟插件，将自动激活只读数据联动；未安装时静默跳过，无任何性能开销。";
+    sec.appendChild(ecoDesc);
+
+    const ecoStatus = detectEcosystem();
+    const ecoList = document.createElement("div");
+    ecoList.style.cssText = "display:flex; flex-direction:column; gap:6px; margin-top:8px;";
+
+    for (const p of ecoStatus.plugins) {
+        const row = document.createElement("div");
+        row.style.cssText = "display:flex; align-items:center; justify-content:space-between; padding:6px 10px; background:var(--b3-theme-surface); border:1px solid var(--b3-border-color); border-radius:var(--b3-border-radius); font-size:12px;";
+
+        const left = document.createElement("div");
+        left.innerHTML = `<strong>${p.name}</strong> <span style="opacity:0.75; font-size:11px;">(${p.description})</span>`;
+
+        const badge = document.createElement("span");
+        badge.className = "xlc-badge " + (p.installed ? "xlc-badge--ai" : "xlc-badge--text");
+        badge.textContent = p.installed ? `✓ 已就绪 · ${p.capability}` : "未安装 (可单独使用)";
+        badge.style.fontSize = "11px";
+
+        row.appendChild(left);
+        row.appendChild(badge);
+        ecoList.appendChild(row);
+    }
+    sec.appendChild(ecoList);
 
     root.appendChild(sec);
 }
