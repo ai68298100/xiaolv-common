@@ -29,6 +29,8 @@ export interface SyncDiffModalInstance {
     element: HTMLElement | any;
     getCurrentStrategy: () => MergeStrategy;
     setStrategy: (strategy: MergeStrategy) => void;
+    getStatusFilter?: () => string | null;
+    setStatusFilter?: (status: string | null) => void;
     getCurrentPlan: () => SyncPlan;
     applySync: () => Promise<SyncReceipt>;
     close: () => void;
@@ -165,6 +167,7 @@ export const STRATEGY_DESCRIPTIONS: Record<MergeStrategy, string> = {
 export function openSyncDiffModal(props: SyncDiffModalProps): SyncDiffModalInstance {
     let currentStrategy: MergeStrategy = props.initialStrategy ?? "smart-merge";
     let mirrorDelete = props.mirrorDelete ?? false;
+    let currentStatusFilter: string | null = null;
 
     // 计算当前合并计划
     let currentPlan = planLibrarySync(props.report, currentStrategy, {mirrorDelete});
@@ -172,34 +175,31 @@ export function openSyncDiffModal(props: SyncDiffModalProps): SyncDiffModalInsta
     const isBrowser = typeof document !== "undefined" && typeof document.createElement === "function";
 
     // 渲染骨架
-    const renderSummaryHeaderHtml = (report: LibraryDiffReport): string => {
+    const renderSummaryHeaderHtml = (report: LibraryDiffReport, activeFilter?: string | null): string => {
+        const isAct = (s: string | null) => (activeFilter === s ? "xlc-summary-card--active" : "");
         return `
             <div class="xlc-sync-summary-cards">
-                <div class="xlc-summary-card">
-                    <span class="xlc-card-label">本地总计</span>
-                    <span class="xlc-card-value">${report.totalLocal}</span>
+                <div class="xlc-summary-card ${isAct(null)}" data-status="" role="button" tabindex="0" title="点击查看全部明细">
+                    <span class="xlc-card-label">总计对比</span>
+                    <span class="xlc-card-value">${report.totalLocal} / ${report.totalRemote}</span>
                 </div>
-                <div class="xlc-summary-card">
-                    <span class="xlc-card-label">远端总计</span>
-                    <span class="xlc-card-value">${report.totalRemote}</span>
-                </div>
-                <div class="xlc-summary-card xlc-card-identical">
+                <div class="xlc-summary-card xlc-card-identical ${isAct("identical")}" data-status="identical" role="button" tabindex="0" title="点击仅筛选一致项">
                     <span class="xlc-card-label">一致项</span>
                     <span class="xlc-card-value">${report.identicalCount}</span>
                 </div>
-                <div class="xlc-summary-card xlc-card-added">
+                <div class="xlc-summary-card xlc-card-added ${isAct("added")}" data-status="added" role="button" tabindex="0" title="点击仅筛选远端新增">
                     <span class="xlc-card-label">远端新增</span>
                     <span class="xlc-card-value">${report.addedCount}</span>
                 </div>
-                <div class="xlc-summary-card xlc-card-modified">
+                <div class="xlc-summary-card xlc-card-modified ${isAct("modified")}" data-status="modified" role="button" tabindex="0" title="点击仅筛选字段变动">
                     <span class="xlc-card-label">字段变动</span>
                     <span class="xlc-card-value">${report.modifiedCount}</span>
                 </div>
-                <div class="xlc-summary-card xlc-card-conflict">
-                    <span class="xlc-card-label">冲突项</span>
+                <div class="xlc-summary-card xlc-card-conflict ${isAct("conflict")}" data-status="conflict" role="button" tabindex="0" title="点击仅筛选冲突项">
+                    <span class="xlc-card-label">冲突待解</span>
                     <span class="xlc-card-value">${report.conflictCount}</span>
                 </div>
-                <div class="xlc-summary-card xlc-card-removed">
+                <div class="xlc-summary-card xlc-card-removed ${isAct("removed")}" data-status="removed" role="button" tabindex="0" title="点击仅筛选远端缺失">
                     <span class="xlc-card-label">远端缺失</span>
                     <span class="xlc-card-value">${report.removedCount}</span>
                 </div>
@@ -235,17 +235,21 @@ export function openSyncDiffModal(props: SyncDiffModalProps): SyncDiffModalInsta
         `;
     };
 
-    const renderDiffRowsHtml = (report: LibraryDiffReport, plan: SyncPlan): string => {
+    const renderDiffRowsHtml = (report: LibraryDiffReport, plan: SyncPlan, activeFilter?: string | null): string => {
         const actionMap = new Map<string, SyncPlannedItem>();
         for (const item of plan.items) {
             actionMap.set(item.id, item);
         }
 
-        if (report.diffs.length === 0) {
-            return `<tr><td colspan="5" class="xlc-empty-diff">两端内容库完全一致，无任何变动项。</td></tr>`;
+        const candidateDiffs = activeFilter
+            ? report.diffs.filter((d) => d.status === activeFilter)
+            : report.diffs;
+
+        if (candidateDiffs.length === 0) {
+            return `<tr><td colspan="5" class="xlc-empty-diff">${activeFilter ? "当前状态筛选下无匹配项（点击上方卡片可取消筛选）。" : "两端内容库完全一致，无任何变动项。"}</td></tr>`;
         }
 
-        return report.diffs
+        return candidateDiffs
             .map((diff) => {
                 const target = diff.remote || diff.local;
                 const title = escapeHtml(target?.title || "未命名条目");
@@ -349,7 +353,7 @@ export function openSyncDiffModal(props: SyncDiffModalProps): SyncDiffModalInsta
 
             const tbody = container.querySelector(".xlc-sync-diff-tbody");
             if (tbody) {
-                tbody.innerHTML = renderDiffRowsHtml(props.report, currentPlan);
+                tbody.innerHTML = renderDiffRowsHtml(props.report, currentPlan, currentStatusFilter);
             }
 
             const statHint = container.querySelector(".xlc-plan-stat-hint");
@@ -367,6 +371,20 @@ export function openSyncDiffModal(props: SyncDiffModalProps): SyncDiffModalInsta
                 confirmBtn.textContent = `确认执行合并 (${actionableCount} 项)`;
             }
         };
+
+        // 绑定状态卡片点击筛选事件（G45）
+        const cards = container.querySelectorAll<HTMLElement>(".xlc-summary-card");
+        cards.forEach((card) => {
+            card.addEventListener("click", () => {
+                const status = card.dataset.status || null;
+                currentStatusFilter = currentStatusFilter === status ? null : status;
+                cards.forEach((c) => {
+                    const cStat = c.dataset.status || null;
+                    c.classList.toggle("xlc-summary-card--active", cStat === currentStatusFilter);
+                });
+                updateView();
+            });
+        });
 
         const strategySelect = container.querySelector(".xlc-sync-strategy-select") as HTMLSelectElement | null;
         strategySelect?.addEventListener("change", () => {
@@ -396,6 +414,15 @@ export function openSyncDiffModal(props: SyncDiffModalProps): SyncDiffModalInsta
             setStrategy: (strategy: MergeStrategy) => {
                 currentStrategy = strategy;
                 if (strategySelect) strategySelect.value = strategy;
+                updateView();
+            },
+            getStatusFilter: () => currentStatusFilter,
+            setStatusFilter: (status: string | null) => {
+                currentStatusFilter = status;
+                cards.forEach((c) => {
+                    const cStat = c.dataset.status || null;
+                    c.classList.toggle("xlc-summary-card--active", cStat === currentStatusFilter);
+                });
                 updateView();
             },
             getCurrentPlan: () => currentPlan,
@@ -459,6 +486,11 @@ export function openSyncDiffModal(props: SyncDiffModalProps): SyncDiffModalInsta
         setStrategy: (strategy: MergeStrategy) => {
             currentStrategy = strategy;
             strategySelect.value = strategy;
+            updateMock();
+        },
+        getStatusFilter: () => currentStatusFilter,
+        setStatusFilter: (status: string | null) => {
+            currentStatusFilter = status;
             updateMock();
         },
         getCurrentPlan: () => currentPlan,

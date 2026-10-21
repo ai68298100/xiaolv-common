@@ -1461,6 +1461,13 @@ export class CommonSearchDialog {
             catBadge.setAttribute("aria-label", `${this.deps.t("category")}：${entry.category.trim()}`);
             title.appendChild(catBadge);
         }
+        if ((entry.varCount ?? 0) > 0) {
+            const varBadge = document.createElement("span");
+            varBadge.className = "xlc-badge xlc-badge--var";
+            varBadge.textContent = `{${entry.varCount}} 变量`;
+            varBadge.title = `此条目含有 ${entry.varCount} 个动态填参字段`;
+            title.appendChild(varBadge);
+        }
         // G27 / ADR 0080: 唯一别名精确匹配金色直达徽标
         const cleanQuery = this.lastQueryText.trim().toLowerCase();
         if (cleanQuery && entry.alias && entry.alias.trim().toLowerCase() === cleanQuery) {
@@ -3443,7 +3450,7 @@ export class CommonSearchDialog {
         title.textContent = entry.title || "";
         const meta = document.createElement("span");
         meta.className = "xlc-quicklook-meta";
-        meta.textContent = entry.itemType || "";
+        meta.textContent = `${entry.itemType}${entry.varCount ? ` · {${entry.varCount}} 变量` : ""}${entry.alias ? ` · 别名: ${entry.alias}` : ""}`;
         const hints = document.createElement("span");
         hints.className = "xlc-quicklook-hints";
         hints.textContent = entry.isOmni

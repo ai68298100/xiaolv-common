@@ -38,8 +38,8 @@ export function renderSafeHtmlFromMarkdown(markdown: string): string {
     const codeBlocks: string[] = [];
     const inlineCodes: string[] = [];
 
-    // 1. 统一换行符
-    let raw = markdown.replace(/\r\n/g, "\n");
+    // 1. 统一换行符并清洗 Kramdown 属性标记（如 {: id="xxx" }）
+    let raw = markdown.replace(/\r\n/g, "\n").replace(/\{:[^}]*\}/g, "");
 
     // 2. 提取并保护围栏代码块 ```lang ... ```
     raw = raw.replace(/(?:^|\n)```([a-zA-Z0-9_-]*)\n([\s\S]*?)\n```(?:\n|$)/g, (_match, lang: string, code: string) => {
@@ -114,7 +114,7 @@ export function renderSafeHtmlFromMarkdown(markdown: string): string {
         const flushList = () => {
             if (currentListType && currentListItems.length > 0) {
                 const tag = currentListType;
-                const itemsHtml = currentListItems.map((li) => `  <li style="margin: 0.2em 0;">${li}</li>`).join("\n");
+                const itemsHtml = currentListItems.map((li) => li.startsWith("<li") ? `  ${li}` : `  <li style="margin: 0.2em 0;">${li}</li>`).join("\n");
                 htmlParagraphs.push(`<${tag} style="margin: 0.6em 0; padding-left: 1.5em;">\n${itemsHtml}\n</${tag}>`);
                 currentListType = null;
                 currentListItems = [];
@@ -130,18 +130,27 @@ export function renderSafeHtmlFromMarkdown(markdown: string): string {
         };
 
         for (const line of lines) {
+            const taskMatch = /^[-*]\s+\[([ xX])\]\s+(.*)$/.exec(line);
             const ulMatch = /^[-*]\s+(.*)$/.exec(line);
             const olMatch = /^\d+\.\s+(.*)$/.exec(line);
-            if (ulMatch) {
+            if (taskMatch) {
                 flushPara();
                 if (currentListType !== "ul") flushList();
                 currentListType = "ul";
-                currentListItems.push(ulMatch[1]!);
+                const isDone = taskMatch[1]!.toLowerCase() === "x";
+                const itemBody = taskMatch[2]!;
+                const rendered = isDone ? `<del>${itemBody}</del>` : itemBody;
+                currentListItems.push(`<li style="list-style-type: none; margin: 0.25em 0;"><input type="checkbox" ${isDone ? "checked" : ""} disabled style="margin-right: 6px; vertical-align: -1px;">${rendered}</li>`);
+            } else if (ulMatch) {
+                flushPara();
+                if (currentListType !== "ul") flushList();
+                currentListType = "ul";
+                currentListItems.push(`<li style="margin: 0.2em 0;">${ulMatch[1]!}</li>`);
             } else if (olMatch) {
                 flushPara();
                 if (currentListType !== "ol") flushList();
                 currentListType = "ol";
-                currentListItems.push(olMatch[1]!);
+                currentListItems.push(`<li style="margin: 0.2em 0;">${olMatch[1]!}</li>`);
             } else {
                 flushList();
                 currentParaLines.push(line);

@@ -134,6 +134,38 @@ export function openVariableFillCard(options: VariableFillOptions): void {
             input.value = field.defaultValue;
         }
         wrap.appendChild(input);
+
+        // 快捷候选项胶囊行（快速单点填充并联动实时预览，对标移动端与参考图交互 · G45）
+        const candidateOptions = new Set<string>();
+        if (field.options && Array.isArray(field.options)) {
+            for (const opt of field.options) {
+                if (opt && opt.trim()) candidateOptions.add(opt.trim());
+            }
+        }
+        if (field.defaultValue && field.defaultValue.trim()) {
+            candidateOptions.add(field.defaultValue.trim());
+        }
+        if (candidateOptions.size > 0) {
+            const pillsWrap = document.createElement("div");
+            pillsWrap.className = "xlc-varform-quick-options";
+            for (const opt of Array.from(candidateOptions).slice(0, 8)) {
+                const optBtn = document.createElement("button");
+                optBtn.type = "button";
+                optBtn.className = "xlc-quick-option-pill";
+                optBtn.textContent = opt;
+                optBtn.title = `点击填入 "${opt}"`;
+                optBtn.addEventListener("click", (e) => {
+                    e.preventDefault();
+                    input.value = opt;
+                    input.dispatchEvent(new Event("input", {bubbles: true}));
+                    input.dispatchEvent(new Event("change", {bubbles: true}));
+                    input.focus();
+                });
+                pillsWrap.appendChild(optBtn);
+            }
+            wrap.appendChild(pillsWrap);
+        }
+
         inputs.push(input);
         fieldsWrap.appendChild(wrap);
     }

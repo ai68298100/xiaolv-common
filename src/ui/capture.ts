@@ -430,7 +430,10 @@ export class CaptureDialog {
             if (it === defaultType) opt.selected = true;
             typeSelect.appendChild(opt);
         }
-        typeWrap.appendChild(typeSelect);
+        let userExplicitlySetType = Boolean(defaultType && defaultType !== "text");
+        typeSelect.addEventListener("change", () => {
+            userExplicitlySetType = true;
+        });
         metaRow.appendChild(typeWrap);
 
         const contentEl = field(t("contentLabel"), defaultText, true, "xlc-form-content");
@@ -500,6 +503,21 @@ export class CaptureDialog {
             contentEl.removeAttribute("aria-describedby");
             contentError.hidden = true;
             contentError.textContent = "";
+
+            // 智能正文类型与标题实时感知（G45）
+            const val = (contentEl as HTMLTextAreaElement).value.trim();
+            if (val && !userExplicitlySetType) {
+                const detected = inferTypeFromText(val);
+                if (detected !== typeSelect.value) {
+                    typeSelect.value = detected;
+                }
+            }
+            if (!(titleEl as HTMLInputElement).value.trim() && val) {
+                const firstLine = val.replace(/^#+\s*/, "").split("\n")[0]?.trim() || "";
+                if (firstLine) {
+                    (titleEl as HTMLInputElement).placeholder = `推荐标题: ${firstLine.slice(0, 30)}`;
+                }
+            }
         });
 
         // AI 草稿行（启用 AI 时展示）：描述 → 生成草稿填入内容

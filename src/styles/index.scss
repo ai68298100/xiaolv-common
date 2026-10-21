@@ -2180,6 +2180,34 @@
       }
     }
 
+    // 快捷候选项胶囊行（G45）
+    .xlc-varform-quick-options {
+      display: flex;
+      flex-wrap: wrap;
+      gap: var(--xlc-space-1);
+      margin-top: 4px;
+
+      .xlc-quick-option-pill {
+        display: inline-flex;
+        align-items: center;
+        border: 1px solid var(--b3-border-color);
+        background-color: var(--b3-theme-surface);
+        color: var(--b3-theme-on-surface);
+        font-size: var(--xlc-font-2xs);
+        padding: 1px 8px;
+        border-radius: var(--xlc-radius-pill, 9999px);
+        cursor: pointer;
+        transition: all var(--xlc-dur-fast) var(--xlc-ease);
+
+        &:hover {
+          border-color: var(--xlc-lilac, #6c63ff);
+          background-color: var(--xlc-lilac-soft, rgba(108, 99, 255, 0.12));
+          color: var(--xlc-lilac-ink, #4e46e5);
+          transform: scale(1.03);
+        }
+      }
+    }
+
     // 多行文本变量（R160）：可纵向拉伸，行高放宽便于长文编辑
     textarea.b3-text-field {
       resize: vertical;
@@ -3523,6 +3551,21 @@
       background-color: var(--b3-theme-background);
       border: 1px solid var(--b3-border-color);
       min-width: 72px;
+      cursor: pointer;
+      transition: all var(--xlc-dur-fast) var(--xlc-ease);
+
+      &:hover {
+        transform: translateY(-1px);
+        border-color: var(--b3-theme-primary);
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+      }
+
+      &--active {
+        border-color: var(--b3-theme-primary) !important;
+        background-color: var(--b3-theme-surface) !important;
+        box-shadow: 0 0 0 2px rgba(53, 117, 240, 0.25) !important;
+        font-weight: 600;
+      }
 
       .xlc-card-label {
         font-size: 11px;

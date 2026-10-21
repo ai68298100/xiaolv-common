@@ -50,6 +50,17 @@ test("renderSafeHtmlFromMarkdown: 列表与块引用结构渲染", () => {
     assert.ok(html.includes("寄回商品</li>"));
 });
 
+test("renderSafeHtmlFromMarkdown: 任务列表复选框与 Kramdown IAL 标记清洗", () => {
+    const md = "任务清单：\n- [ ] 未完成待办\n- [x] 已完成事项\n\n{: id=\"20240101-abcdef\" }";
+    const html = cb.renderSafeHtmlFromMarkdown(md);
+
+    assert.ok(html.includes("<input type=\"checkbox\"  disabled"), "未完成项应为未勾选 checkbox");
+    assert.ok(html.includes("未完成待办"), "未完成项文字");
+    assert.ok(html.includes("<input type=\"checkbox\" checked disabled"), "已完成项应为已勾选 checkbox");
+    assert.ok(html.includes("<del>已完成事项</del>"), "已完成项文字应带有删除线");
+    assert.ok(!html.includes("{: id="), "Kramdown 属性应被干净过滤");
+});
+
 test("renderSafeHtmlFromMarkdown: 代码块与行内代码安全高亮", () => {
     const md = "使用 `npm install` 安装，示例脚本：\n\n```javascript\nconsole.log(\"Hello <world>\");\n```";
     const html = cb.renderSafeHtmlFromMarkdown(md);

@@ -181,4 +181,11 @@ test("SyncDiffModal UI: Mock 交互生命周期与策略切换", async () => {
     // 触发应用合并
     const receipt = await modal.applySync();
     assert.ok(receipt.success > 0);
+
+    // 状态筛选器交互测试 (G45)
+    assert.equal(modal.getStatusFilter(), null);
+    modal.setStatusFilter("conflict");
+    assert.equal(modal.getStatusFilter(), "conflict");
+    modal.setStatusFilter(null);
+    assert.equal(modal.getStatusFilter(), null);
 });
