@@ -1768,12 +1768,12 @@ function buildExternalIntegrationSection(ctx: SettingsUiContext, root: HTMLEleme
 
     const apiCard = document.createElement("div");
     apiCard.className = "xlc-api-code-block";
-    apiCard.style.cssText = "background:var(--b3-theme-surface); border:1px solid var(--b3-border-color); border-radius:var(--b3-border-radius); padding:10px 12px; margin:8px 0; font-family:var(--b3-font-family-code); font-size:12px; line-height:1.5;";
 
     apiCard.innerHTML = `
-        <div style="color:var(--b3-theme-primary); font-weight:600; margin-bottom:4px;">开放协议命令（思源内部命令 / WebSocket / 窗口桥）：</div>
+        <div class="xlc-api-title">开放协议命令（思源内部命令 / WebSocket / 窗口桥）：</div>
         <div>• <strong>xiaolv.common.resolve</strong>: 条目纯求值（自动展开嵌套片段并计算宏变量，支持填参 fills）</div>
-        <div>• <strong>xiaolv.common.search</strong>: 按关键词检索常用条目清单（含标题、类型、别名、标签）</div>
+        <div>• <strong>xiaolv.common.recall</strong>: 别名闪电直达（输入别名或拼音缩写一步取回展开正文）</div>
+        <div>• <strong>xiaolv.common.search</strong>: 按关键词检索常用条目清单（含别名/标签/分类/变量数）</div>
         <div>• <strong>xiaolv.common.recent</strong>: 获取最近使用过的常用条目</div>
         <div>• <strong>xiaolv.common.get</strong>: 获取条目完整定义与元数据</div>
     `;
@@ -1782,18 +1782,18 @@ function buildExternalIntegrationSection(ctx: SettingsUiContext, root: HTMLEleme
     const copyBtn = document.createElement("button");
     copyBtn.type = "button";
     copyBtn.className = "b3-button xlc-btn-ghost";
-    copyBtn.style.marginTop = "4px";
     copyBtn.textContent = "复制 Quicker 动作调用配置与参数示例";
     copyBtn.addEventListener("click", () => {
         const examplePayload = JSON.stringify({
             target: "xiaolv-common",
             protocol: "xiaolv-common/v1",
             operations: {
+                recall: { command: "xiaolv.common.recall", params: { alias: "yq", fills: { "客户姓名": "张经理" } } },
                 search: { command: "xiaolv.common.search", params: { keyword: "退款", limit: 20 } },
                 resolve: { command: "xiaolv.common.resolve", params: { itemId: "条目ID", fills: { "客户姓名": "张经理" } } },
                 recent: { command: "xiaolv.common.recent", params: { limit: 15 } }
             },
-            quickerNote: "向思源内核 POST /api/command 发送上述指令，获取 resolve 结果中的 resolvedText 即可由 Quicker 写入剪贴板并模拟 Ctrl+V 喷射。"
+            quickerNote: "向思源内核 POST /api/command 发送上述指令，获取 recall/resolve 结果中的 resolvedText 即可由 Quicker 写入剪贴板并模拟 Ctrl+V 喷射。"
         }, null, 2);
 
         void navigator.clipboard.writeText(examplePayload).then(() => {
@@ -1807,7 +1807,7 @@ function buildExternalIntegrationSection(ctx: SettingsUiContext, root: HTMLEleme
 
     // 小驴家族生态联动矩阵
     const ecoTitle = document.createElement("div");
-    ecoTitle.style.cssText = "font-weight:600; font-size:12px; margin-top:14px; margin-bottom:4px; color:var(--b3-theme-on-background);";
+    ecoTitle.className = "xlc-eco-matrix-title";
     ecoTitle.textContent = "小驴家族全家桶协同状态（零强依赖，自动感知）：";
     sec.appendChild(ecoTitle);
 
@@ -1818,19 +1818,18 @@ function buildExternalIntegrationSection(ctx: SettingsUiContext, root: HTMLEleme
 
     const ecoStatus = detectEcosystem();
     const ecoList = document.createElement("div");
-    ecoList.style.cssText = "display:flex; flex-direction:column; gap:6px; margin-top:8px;";
+    ecoList.className = "xlc-eco-matrix-list";
 
     for (const p of ecoStatus.plugins) {
         const row = document.createElement("div");
-        row.style.cssText = "display:flex; align-items:center; justify-content:space-between; padding:6px 10px; background:var(--b3-theme-surface); border:1px solid var(--b3-border-color); border-radius:var(--b3-border-radius); font-size:12px;";
+        row.className = "xlc-eco-row";
 
         const left = document.createElement("div");
-        left.innerHTML = `<strong>${p.name}</strong> <span style="opacity:0.75; font-size:11px;">(${p.description})</span>`;
+        left.innerHTML = `<strong>${p.name}</strong><span class="xlc-eco-desc">(${p.description})</span>`;
 
         const badge = document.createElement("span");
         badge.className = "xlc-badge " + (p.installed ? "xlc-badge--ai" : "xlc-badge--text");
         badge.textContent = p.installed ? `✓ 已就绪 · ${p.capability}` : "未安装 (可单独使用)";
-        badge.style.fontSize = "11px";
 
         row.appendChild(left);
         row.appendChild(badge);

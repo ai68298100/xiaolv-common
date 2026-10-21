@@ -627,15 +627,19 @@
     min-height: 44px;
     cursor: pointer;
     border-bottom: 1px solid var(--b3-border-color);
-    transition: background-color var(--xlc-dur-fast) var(--xlc-ease);
+    transition: background-color var(--xlc-dur-fast) var(--xlc-ease),
+                box-shadow var(--xlc-dur-fast) var(--xlc-ease);
 
     &:last-child { border-bottom: none; }
 
-    &:hover { background-color: var(--b3-list-hover); }
+    &:hover {
+      background-color: var(--b3-list-hover);
+      box-shadow: inset 2px 0 0 rgba(53, 117, 240, 0.4);
+    }
 
     &--active {
-      background-color: var(--b3-list-hover);
-      box-shadow: inset 3px 0 0 var(--b3-theme-primary);
+      background-color: var(--xlc-list-selected, rgba(53, 117, 240, 0.08)) !important;
+      box-shadow: inset 3.5px 0 0 var(--b3-theme-primary) !important;
     }
 
     .xlc-row-main {
@@ -2584,6 +2588,24 @@
     .xlc-kbdrow { display: none; }
   }
 
+  // 窄屏与移动端：热门标签与近期历史横向平滑滑动，防止垂直折行挤占列表视口（CLS 防御）
+  .xlc-quick-filter-pills,
+  .xlc-search-history-bar {
+    flex-wrap: nowrap !important;
+    overflow-x: auto !important;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    &::-webkit-scrollbar { display: none; }
+    padding-bottom: var(--xlc-space-1);
+
+    .xlc-quick-pill,
+    .xlc-history-pill,
+    .xlc-quick-pill-label,
+    .xlc-history-label {
+      flex-shrink: 0;
+    }
+  }
+
   // 捕获/编辑表单在窄弹窗中改为单列，避免固定类型列挤压输入框。
   .xlc-form {
     .xlc-form-row {
@@ -3468,10 +3490,10 @@
       }
 
       &.xlc-card-identical .xlc-card-value { color: var(--b3-theme-primary); }
-      &.xlc-card-added .xlc-card-value { color: #2e7d32; }
-      &.xlc-card-modified .xlc-card-value { color: #0288d1; }
-      &.xlc-card-conflict .xlc-card-value { color: #d32f2f; }
-      &.xlc-card-removed .xlc-card-value { color: #757575; }
+      &.xlc-card-added .xlc-card-value { color: var(--b3-theme-success, #2e7d32); }
+      &.xlc-card-modified .xlc-card-value { color: var(--b3-theme-info, #0288d1); }
+      &.xlc-card-conflict .xlc-card-value { color: var(--b3-theme-error, #d32f2f); }
+      &.xlc-card-removed .xlc-card-value { color: var(--b3-theme-on-surface); opacity: 0.75; }
     }
   }
 
@@ -3579,11 +3601,11 @@
         font-size: 11px;
         font-weight: 500;
 
-        &.xlc-status-identical { background: #e8f5e9; color: #2e7d32; }
-        &.xlc-status-added { background: #e0f2f1; color: #00796b; }
-        &.xlc-status-modified { background: #e3f2fd; color: #1565c0; }
-        &.xlc-status-conflict { background: #ffebee; color: #c62828; }
-        &.xlc-status-removed { background: #eeeeee; color: #616161; }
+        &.xlc-status-identical { background: rgba(46, 125, 50, 0.12); color: var(--b3-theme-success, #2e7d32); }
+        &.xlc-status-added { background: rgba(0, 121, 107, 0.12); color: #00796b; }
+        &.xlc-status-modified { background: rgba(2, 136, 209, 0.12); color: var(--b3-theme-info, #0288d1); }
+        &.xlc-status-conflict { background: rgba(211, 47, 47, 0.12); color: var(--b3-theme-error, #d32f2f); }
+        &.xlc-status-removed { background: rgba(117, 117, 117, 0.12); color: var(--b3-theme-on-surface); opacity: 0.8; }
       }
 
       .xlc-field-badge {
@@ -3633,4 +3655,63 @@
       opacity: 0.8;
     }
   }
+}
+
+// ---------- 外部调用联动与小驴生态全家桶卡片（ADR 0088）----------
+.xlc-api-code-block {
+  background-color: var(--b3-theme-surface);
+  border: 1px solid var(--b3-border-color);
+  border-radius: var(--b3-border-radius);
+  padding: 10px 12px;
+  margin: var(--xlc-space-2) 0;
+  font-family: var(--b3-font-family-code);
+  font-size: var(--xlc-font-xs);
+  line-height: var(--xlc-line-body);
+
+  .xlc-api-title {
+    color: var(--b3-theme-primary);
+    font-weight: var(--xlc-weight-semibold);
+    margin-bottom: var(--xlc-space-1);
+  }
+}
+
+.xlc-eco-matrix-title {
+  font-weight: var(--xlc-weight-semibold);
+  font-size: var(--xlc-font-xs);
+  margin-top: var(--xlc-space-3);
+  margin-bottom: var(--xlc-space-1);
+  color: var(--b3-theme-on-background);
+}
+
+.xlc-eco-matrix-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--xlc-space-1);
+  margin-top: var(--xlc-space-2);
+}
+
+.xlc-eco-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 10px;
+  background-color: var(--b3-theme-surface);
+  border: 1px solid var(--b3-border-color);
+  border-radius: var(--b3-border-radius);
+  font-size: var(--xlc-font-xs);
+
+  .xlc-eco-desc {
+    opacity: 0.75;
+    font-size: 11px;
+    margin-left: 4px;
+  }
+}
+
+.xlc-empty-omni-tips {
+  font-size: var(--xlc-font-2xs);
+  opacity: 0.75;
+  text-align: left;
+  max-width: 320px;
+  margin: var(--xlc-space-2) auto 0 auto;
+  line-height: var(--xlc-line-body);
 }

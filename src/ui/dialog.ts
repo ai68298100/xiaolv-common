@@ -1674,8 +1674,7 @@ export class CommonSearchDialog {
             // 全库搜索无结果时的技巧提示（自愈引导）
             if (this.currentScope === "all-notes" && query) {
                 const tips = document.createElement("div");
-                tips.className = "xlc-empty-hint";
-                tips.style.cssText = "font-size:11px; opacity:0.75; text-align:left; max-width:320px; margin:8px auto 0 auto; line-height:1.6;";
+                tips.className = "xlc-empty-hint xlc-empty-omni-tips";
                 tips.innerHTML = `
                     <div>• 尝试缩短关键词或改用拼音/首字母</div>
                     <div>• 支持 <code>type:code</code> 专门检索代码块</div>
