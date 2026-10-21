@@ -710,6 +710,18 @@ $roots: ".xlc-dialog, .xlc-form, .xlc-varform, .b3-dialog__container.xlc-dialog-
     font-weight: 600;
     user-select: none;
   }
+  .xlc-md-task-item {
+    align-items: center;
+    .xlc-md-task-checkbox {
+      margin: 0 4px 0 0;
+      flex-shrink: 0;
+      vertical-align: middle;
+    }
+    &.xlc-md-task--done {
+      text-decoration: line-through;
+      opacity: 0.65;
+    }
+  }
 
   .xlc-md-p {
     margin: var(--xlc-space-2) 0;

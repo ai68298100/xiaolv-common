@@ -38,6 +38,7 @@ export interface ResolvedItemData {
         options?: string[];
         defaultValue?: string;
     }>;
+    missingVariables: string[];
 }
 
 export type RecallMatchMode = "exact" | "multiple" | "none";
@@ -192,6 +193,16 @@ export class XiaolvCommonService {
             ? await this.deps.executor.renderForInsert(rawKramdown, item, fills)
             : rawKramdown;
 
+        // 计算尚未被填入且没有默认值的缺失变量列表（G46：供外部 Quicker 精准提示用户）
+        const missingVariables: string[] = [];
+        for (const f of askFields) {
+            const hasFill = fills && typeof fills[f.name] === "string" && fills[f.name]!.trim().length > 0;
+            const hasDefault = typeof f.defaultValue === "string" && f.defaultValue.trim().length > 0;
+            if (!hasFill && !hasDefault) {
+                missingVariables.push(f.name);
+            }
+        }
+
         return successEnvelope({
             id: item.id,
             title: item.title,
@@ -205,6 +216,7 @@ export class XiaolvCommonService {
                 options: f.options,
                 defaultValue: f.defaultValue,
             })),
+            missingVariables,
         });
     }
 

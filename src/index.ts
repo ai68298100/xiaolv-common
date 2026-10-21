@@ -1367,6 +1367,10 @@ export default class XiaolvCommonPlugin extends Plugin {
                 this.state.search.recentQueries = pushRecentQuery(this.state.search.recentQueries ?? [], q);
                 this.persistSoon();
             },
+            clearRecentQueries: () => {
+                this.state.search.recentQueries = [];
+                this.persistSoon();
+            },
             preview: async (itemId) => {
                 const cached = this.previewCache.get(itemId);
                 if (cached !== undefined) return cached;

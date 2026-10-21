@@ -186,11 +186,13 @@ test("bridge.resolve：支持外部无 UI 纯求值条目正文与动态变量�
     assert.equal(r1.data.variables.length, 2);
     assert.equal(r1.data.variables[0].name, "客户姓名");
     assert.equal(r1.data.variables[0].defaultValue, "尊敬的客户");
+    assert.deepEqual(r1.data.missingVariables, ["工单号"], "未填写且无默认值的字段应列入 missingVariables");
     assert.ok(r1.data.resolvedText.includes("你好，尊敬的客户！"));
 
     // 2. 传入 fills 时覆盖填参
     const r2 = await bridge.resolve("entry-1", {"客户姓名": "张经理", "工单号": "WO-9988"});
     assert.equal(r2.ok, true);
+    assert.deepEqual(r2.data.missingVariables, [], "所有字段满足时 missingVariables 为空");
     assert.ok(r2.data.resolvedText.includes("你好，张经理！本次工单号为：WO-9988"));
 
     // 3. 不存在的条目诚实报错

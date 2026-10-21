@@ -231,6 +231,24 @@ export function openVariableFillCard(options: VariableFillOptions): void {
     cancelBtn.dataset.xlcControl = "variable.cancel";
     cancelBtn.textContent = t("cancel");
     foot.appendChild(cancelBtn);
+
+    const resetBtn = document.createElement("button");
+    resetBtn.type = "button";
+    resetBtn.className = "b3-button xlc-btn-ghost";
+    resetBtn.dataset.xlcControl = "variable.reset-defaults";
+    resetBtn.textContent = "↺ " + (t("resetDefaults") || "恢复默认");
+    resetBtn.title = "清空当前输入，恢复所有字段到模板初始默认值";
+    resetBtn.addEventListener("click", () => {
+        for (const input of inputs) {
+            const name = input.dataset.xlcVarField ?? "";
+            const field = options.fields.find((f) => f.name === name);
+            input.value = field?.defaultValue ?? "";
+            input.dispatchEvent(new Event("input", {bubbles: true}));
+            input.dispatchEvent(new Event("change", {bubbles: true}));
+        }
+    });
+    foot.appendChild(resetBtn);
+
     const insertBtn = document.createElement("button");
     insertBtn.className = "b3-button xlc-btn-primary";
     insertBtn.textContent = t("insert");
@@ -261,6 +279,12 @@ export function openVariableFillCard(options: VariableFillOptions): void {
     root.addEventListener("keydown", (ev) => {
         // IME 组合态（中文组词候选未上屏）：Enter 属选词，不得触发插入（对齐 dialog.ts 惯例，R138）
         if (ev.isComposing || (ev as KeyboardEvent).keyCode === 229) return;
+        // Ctrl+Enter / Cmd+Enter: 在任何输入控件/多行文本中直接快速确认提交 (G46)
+        if (ev.key === "Enter" && (ev.ctrlKey || ev.metaKey)) {
+            ev.preventDefault();
+            confirm();
+            return;
+        }
         if (ev.key === "Enter" && !ev.altKey && !ev.ctrlKey && !ev.metaKey) {
             if ((ev.target as HTMLElement).tagName === "BUTTON") return;
             // textarea 字段（R160）：Enter=换行，插入只走按钮或 Tab 到按钮后回车

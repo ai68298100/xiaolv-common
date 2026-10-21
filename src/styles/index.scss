@@ -269,6 +269,27 @@
         color: var(--b3-theme-primary);
       }
     }
+
+    .xlc-history-clear {
+      display: inline-flex;
+      align-items: center;
+      background: transparent;
+      border: none;
+      color: var(--b3-theme-on-surface);
+      opacity: 0.6;
+      font-size: 10px;
+      padding: 1px 5px;
+      border-radius: var(--b3-border-radius);
+      cursor: pointer;
+      line-height: var(--xlc-line-control);
+      transition: all var(--xlc-dur-fast) var(--xlc-ease);
+
+      &:hover {
+        opacity: 1;
+        color: var(--b3-theme-error);
+        background-color: rgba(211, 47, 47, 0.1);
+      }
+    }
   }
 
   .xlc-kbdrow {
@@ -1457,6 +1478,22 @@
     color: var(--xlc-badge-warn);
     font-size: var(--xlc-font-xs);
     line-height: var(--xlc-leading-normal);
+  }
+
+  .xlc-form-counter {
+    display: block;
+    text-align: right;
+    font-size: var(--xlc-font-2xs);
+    color: var(--b3-theme-on-surface);
+    opacity: 0.65;
+    margin-top: 2px;
+    font-variant-numeric: tabular-nums;
+
+    &--over {
+      color: var(--b3-theme-error) !important;
+      font-weight: 600;
+      opacity: 1;
+    }
   }
 
   // 设置数据动作的统一反馈槽：不会因 toast 消失而让用户失去上下文，

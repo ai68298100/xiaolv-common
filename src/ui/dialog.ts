@@ -62,6 +62,7 @@ export interface DialogDeps {
     /** 最近搜索历史队列（ADR 0043 / T-0070） */
     getRecentQueries?: () => string[];
     addRecentQuery?: (q: string) => void;
+    clearRecentQueries?: () => void;
     /** 定向插入目标（文档树入口；设置后 Enter/点按插入到该文档而非活动编辑器） */
     insertTarget?: {docId: string; hPath: string} | null;
     toggleFavorite: (itemId: string) => boolean;
@@ -333,6 +334,20 @@ export class CommonSearchDialog {
                     input.focus();
                 });
                 historyBar.appendChild(pill);
+            }
+
+            if (this.deps.clearRecentQueries) {
+                const clearBtn = document.createElement("button");
+                clearBtn.type = "button";
+                clearBtn.className = "xlc-history-clear";
+                clearBtn.textContent = "清空";
+                clearBtn.title = "清空搜索历史";
+                clearBtn.addEventListener("click", (e) => {
+                    e.stopPropagation();
+                    this.deps.clearRecentQueries?.();
+                    updateHistoryBar();
+                });
+                historyBar.appendChild(clearBtn);
             }
             historyBar.style.display = "flex";
         };

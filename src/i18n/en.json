@@ -310,6 +310,7 @@
   "paneSnippetsLabel": "Includes %s snippets:",
   "insertVariable": "Insert variable:",
   "varFormTitle": "Fill variables",
+  "resetDefaults": "Reset Defaults",
   "varFormSub": "This item has %s variables; they are filled once for this insert only and never written back.",
   "varFormHint": "Tab next field · Enter to insert",
   "varFormHintMultiline": "Tab next field · Enter = newline in multiline box · button to insert",

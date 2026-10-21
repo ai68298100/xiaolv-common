@@ -451,6 +451,10 @@ export class CaptureDialog {
         multiBlockHint.setAttribute("role", "note");
         multiBlockHint.textContent = t("multiBlockPendingHint");
         contentWrap.appendChild(multiBlockHint);
+        const counterEl = document.createElement("span");
+        counterEl.className = "xlc-form-counter";
+        counterEl.textContent = `${(contentEl as HTMLTextAreaElement).value.length} / ${LIMITS.contentChars}`;
+        contentWrap.appendChild(counterEl);
         // 变量快捷插入条（F1 捕获侧，原型屏 3）：点选在内容光标处插入变量语法
         const varbar = buildVariableBar(t, () => contentEl as HTMLTextAreaElement);
         (contentEl.parentElement as HTMLElement).after(varbar);
@@ -503,6 +507,10 @@ export class CaptureDialog {
             contentEl.removeAttribute("aria-describedby");
             contentError.hidden = true;
             contentError.textContent = "";
+
+            const curLen = (contentEl as HTMLTextAreaElement).value.length;
+            counterEl.textContent = `${curLen} / ${LIMITS.contentChars}`;
+            counterEl.classList.toggle("xlc-form-counter--over", curLen > LIMITS.contentChars);
 
             // 智能正文类型与标题实时感知（G45）
             const val = (contentEl as HTMLTextAreaElement).value.trim();
@@ -763,6 +771,14 @@ export class CaptureDialog {
             });
         };
         [titleEl, aliasEl, tagsEl, categoryEl].forEach((el) => submitOnEnter(el as HTMLInputElement));
+        form.addEventListener("keydown", (ev) => {
+            if (ev.isComposing || (ev as KeyboardEvent).keyCode === 229) return;
+            // Ctrl+Enter / Cmd+Enter: 全局快捷保存 (G46)
+            if (ev.key === "Enter" && (ev.ctrlKey || ev.metaKey)) {
+                ev.preventDefault();
+                saveBtn.click();
+            }
+        });
         saveBtn.addEventListener("click", () => {
             if (closed || saving) return;
             const contentValue = (contentEl as HTMLTextAreaElement).value;

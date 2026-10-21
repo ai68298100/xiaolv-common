@@ -310,6 +310,7 @@
   "paneSnippetsLabel": "嵌套 %s 个片段：",
   "insertVariable": "插入变量：",
   "varFormTitle": "填写变量",
+  "resetDefaults": "恢复默认",
   "varFormSub": "本条目含 %s 个变量，填写后一次性插入；填写值仅用于本次，不回写库。",
   "varFormHint": "Tab 下一项 · Enter 插入",
   "varFormHintMultiline": "Tab 下一项 · 多行框内 Enter 换行，点按钮插入",

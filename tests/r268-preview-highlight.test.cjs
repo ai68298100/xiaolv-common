@@ -98,6 +98,19 @@ SELECT * FROM users WHERE active = 1;
     assert.strictEqual(blocks[8].rawText, "这是普通段落。");
 });
 
+test("parseMarkdownBlocks：支持待办任务项复选框解析 (- [ ] 与 - [x])", () => {
+    const md = `- [ ] 待审核需求\n- [x] 已上线发布功能`;
+    const blocks = previewRenderer.parseMarkdownBlocks(md);
+    assert.strictEqual(blocks.length, 2);
+    assert.strictEqual(blocks[0].type, "task-item");
+    assert.strictEqual(blocks[0].rawText, "待审核需求");
+    assert.strictEqual(blocks[0].isDone, false);
+
+    assert.strictEqual(blocks[1].type, "task-item");
+    assert.strictEqual(blocks[1].rawText, "已上线发布功能");
+    assert.strictEqual(blocks[1].isDone, true);
+});
+
 test("renderSafePreview：纯 DOM 零注入安全防护（防 XSS 注入攻击）", () => {
     // 构造轻量虚拟 DOM 节点，用于在 node 单元测试环境下验证绝对无 innerHTML
     class MockNode {

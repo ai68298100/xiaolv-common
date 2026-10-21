@@ -25,6 +25,7 @@ export type MarkdownBlockType =
     | "quote"
     | "list-bullet"
     | "list-ordered"
+    | "task-item"
     | "hr"
     | "code-fence"
     | "p";
@@ -40,6 +41,7 @@ export interface MarkdownBlock {
     rawText: string;
     inlines: MarkdownInlineToken[];
     lang?: string;
+    isDone?: boolean;
 }
 
 // 常见多语言关键字集合（JS/TS, Python, SQL, Go, Rust, Shell 等）
@@ -306,6 +308,20 @@ export function parseMarkdownBlocks(text: string): MarkdownBlock[] {
             continue;
         }
 
+        // 任务列表项（- [ ] 或 - [x]）
+        const taskMatch = /^[-*+]\s+\[([ xX])\]\s+(.*)$/.exec(trimmed);
+        if (taskMatch) {
+            const isDone = taskMatch[1]!.toLowerCase() === "x";
+            const content = taskMatch[2]!;
+            blocks.push({
+                type: "task-item",
+                rawText: content,
+                inlines: tokenizeMarkdownInlines(content),
+                isDone,
+            });
+            continue;
+        }
+
         // 无序列表项
         if (/^[-*+]\s+/.test(trimmed)) {
             const content = trimmed.replace(/^[-*+]\s+/, "");
@@ -495,6 +511,15 @@ export function renderSafePreview(
             num.className = "xlc-md-ordered-num";
             num.textContent = "›";
             el.appendChild(num);
+        } else if (block.type === "task-item") {
+            el = doc.createElement("div");
+            el.className = "xlc-md-list-item xlc-md-task-item" + (block.isDone ? " xlc-md-task--done" : "");
+            const checkbox = doc.createElement("input");
+            checkbox.type = "checkbox";
+            checkbox.className = "xlc-md-task-checkbox";
+            checkbox.disabled = true;
+            if (block.isDone) checkbox.checked = true;
+            el.appendChild(checkbox);
         } else {
             el = doc.createElement("p");
             el.className = "xlc-md-p";
