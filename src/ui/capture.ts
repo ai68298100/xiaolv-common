@@ -9,6 +9,7 @@ import {buildVariableBar} from "./variable-form";
 import {bodyWriteRestriction} from "../model/kramdown";
 import {LIMITS} from "../constants";
 import type {SearchEntry} from "../model/search";
+import {deriveOmniItemMetadata} from "../service/omni-search";
 
 /** 块引用目标校验（官方 data-id 属性值） */
 export function isBlockRefTarget(blockId: string): boolean {
@@ -335,11 +336,11 @@ export class CaptureDialog {
         if (!this.ensureConfigured()) return;
         const text = (entry.content || entry.summary || "").trim();
         const title = entry.title || this.deps.t("unknownType");
-        const isCurrentDoc = entry.tags?.includes("当前文档");
+        const meta = deriveOmniItemMetadata(entry);
         this.openForm(text, entry.itemType, null, {
             title,
-            tags: ["全域收录", ...(isCurrentDoc ? ["文档收集"] : ["笔记收集"])],
-            category: isCurrentDoc ? "文档收集" : "笔记收集",
+            tags: meta.tags,
+            category: meta.category,
             docId: entry.sourceDocId,
             targetBlockId: entry.targetBlockId,
             sourceType: "block",

@@ -898,6 +898,12 @@
     top: 0;
     z-index: var(--xlc-layer-local);
     user-select: none;
+
+    &--omni {
+      color: var(--b3-theme-primary);
+      background-color: var(--xlc-list-selected, rgba(53, 117, 240, 0.06));
+      border-top: 1px dashed var(--b3-border-color);
+    }
   }
 
   // 预览窗格变量提示行（F1，原型屏 1）

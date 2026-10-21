@@ -130,3 +130,49 @@ test("searchAllNotesBlocks & searchAllNotesUnified：走 fullTextSearchBlock 端
 
     assert.ok(calls.some((c) => c.endpoint === "fullTextSearchBlock" && c.payload.query === "发票" && c.payload.method === 0));
 });
+
+test("normalizeBlockKramdown：代码块、标题与引述结构保真规范化", () => {
+    // 1. 代码块补齐语言围栏
+    const codeNorm = omniSearch.normalizeBlockKramdown("c", "typescript", "const x = 1;");
+    assert.strictEqual(codeNorm, "```typescript\nconst x = 1;\n```");
+
+    // 2. 已有围栏不重复包裹
+    const codeExisting = omniSearch.normalizeBlockKramdown("c", "js", "```js\nconsole.log(1);\n```");
+    assert.strictEqual(codeExisting, "```js\nconsole.log(1);\n```");
+
+    // 3. 标题块补齐层级
+    const h2Norm = omniSearch.normalizeBlockKramdown("h", "h2", "二级标题");
+    assert.strictEqual(h2Norm, "## 二级标题");
+
+    // 4. 引述块补齐引用符号
+    const bNorm = omniSearch.normalizeBlockKramdown("b", "", "这是重要结论");
+    assert.strictEqual(bNorm, "> 这是重要结论");
+
+    // 5. 数学公式块
+    const mNorm = omniSearch.normalizeBlockKramdown("m", "", "E = mc^2");
+    assert.strictEqual(mNorm, "$$\nE = mc^2\n$$");
+});
+
+test("deriveOmniItemMetadata：智能从多层文档路径推导分类与溯源标签", () => {
+    const entry1 = {
+        id: "omni-1",
+        title: "接口鉴权方案",
+        category: "/工作/技术规范/微服务指南.sy",
+        tags: ["后端", "全库块"],
+    };
+    const meta1 = omniSearch.deriveOmniItemMetadata(entry1);
+    assert.strictEqual(meta1.category, "微服务指南", "应提取末级文档名作为分类");
+    assert.ok(meta1.tags.includes("思源收录"), "应包含基础收录标签");
+    assert.ok(meta1.tags.includes("后端"), "应继承原有效标签");
+    assert.ok(!meta1.tags.includes("全库块"), "应过滤内部临时全库块标签");
+
+    const entry2 = {
+        id: "omni-2",
+        title: "随笔",
+        category: "",
+        tags: [],
+    };
+    const meta2 = omniSearch.deriveOmniItemMetadata(entry2);
+    assert.strictEqual(meta2.category, "思源收录", "空路径安全兜底");
+    assert.deepStrictEqual(meta2.tags, ["思源收录"]);
+});

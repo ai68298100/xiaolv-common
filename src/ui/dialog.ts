@@ -1089,6 +1089,33 @@ export class CommonSearchDialog {
                 loadError = result.error;
                 this.aiResults = false;
                 if (aiBanner) aiBanner.style.display = "none";
+
+                // 自适应级联穿透：在全部范围（all）、无特定筛选且有查询词时，
+                // 若常用库匹配结果较少（< 4 条），自动轻量追加全库思源笔记块
+                const trimmedQuery = query.text.trim();
+                const canCascade = this.currentScope === "all"
+                    && !query.itemType
+                    && !query.tag
+                    && !query.category
+                    && trimmedQuery.length >= 2
+                    && this.results.length < 4
+                    && Boolean(this.deps.searchAllNotes);
+
+                if (canCascade && this.deps.searchAllNotes) {
+                    try {
+                        const omniHits = await this.deps.searchAllNotes(trimmedQuery);
+                        if (seq === this.searchSeq && omniHits.length > 0) {
+                            const existingIds = new Set(this.results.map((r) => r.id));
+                            const supplemental = omniHits.filter((o) => !existingIds.has(o.id)).slice(0, 6);
+                            if (supplemental.length > 0) {
+                                this.results = [...this.results, ...supplemental];
+                                total = this.results.length;
+                            }
+                        }
+                    } catch {
+                        // 级联失败安全静默，绝不破坏常用库主结果
+                    }
+                }
             }
         } catch (err) {
             if (seq !== this.searchSeq) return;
@@ -1763,6 +1790,7 @@ export class CommonSearchDialog {
             };
             renderWindow();
         } else {
+            let omniHeaderPlaced = false;
             for (let i = 0; i < this.results.length; i++) {
                 while (headCursor + 1 < groupLabels.length && i === headStarts[headCursor + 1]) {
                     headCursor++;
@@ -1770,6 +1798,14 @@ export class CommonSearchDialog {
                     if (head) placeGroupHead(head.label, head.count);
                 }
                 const entry = this.results[i];
+                if (entry && entry.isOmni && !omniHeaderPlaced && this.results.some((r) => !r.isOmni)) {
+                    omniHeaderPlaced = true;
+                    const omniHead = document.createElement("div");
+                    omniHead.className = "xlc-group-head xlc-group-head--omni";
+                    const omniCount = this.results.filter((r) => r.isOmni).length;
+                    omniHead.textContent = `🔍 思源全库匹配内容块 (${omniCount})`;
+                    list.appendChild(omniHead);
+                }
                 if (entry) list.appendChild(this.createEntryRow(entry, i));
             }
         }
@@ -3235,7 +3271,9 @@ export class CommonSearchDialog {
         meta.textContent = entry.itemType || "";
         const hints = document.createElement("span");
         hints.className = "xlc-quicklook-hints";
-        hints.textContent = "Space / Esc 关闭　Enter 插入　Alt+C 复制";
+        hints.textContent = entry.isOmni
+            ? "Space / Esc 关闭　Enter 插入　Alt+S 收录到常用库"
+            : "Space / Esc 关闭　Enter 插入　Alt+C 复制";
         head.append(title, meta, hints);
 
         const body = document.createElement("div");
@@ -3254,14 +3292,20 @@ export class CommonSearchDialog {
         });
         host.appendChild(overlay);
 
-        const id = entry.id;
-        void this.deps.preview(id).then((text) => {
-            if (this.quickLookSeq !== seq || !this.quickLookOpen) return;
+        if (entry.isOmni) {
             loading.remove();
+            const text = entry.content || entry.summary || "";
             renderSafePreview(body, text, entry.itemType === "code" ? "code" : entry.itemType);
-        }).catch(() => {
-            loading.textContent = "预览加载失败";
-        });
+        } else {
+            const id = entry.id;
+            void this.deps.preview(id).then((text) => {
+                if (this.quickLookSeq !== seq || !this.quickLookOpen) return;
+                loading.remove();
+                renderSafePreview(body, text, entry.itemType === "code" ? "code" : entry.itemType);
+            }).catch(() => {
+                loading.textContent = "预览加载失败";
+            });
+        }
         return true;
     }
 

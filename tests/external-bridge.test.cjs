@@ -199,3 +199,41 @@ test("bridge.resolve：支持外部无 UI 纯求值条目正文与动态变量�
     assert.equal(r3.ok, false);
     assert.equal(r3.reason, "not-found");
 });
+
+test("search / toRef：CommonItemRef 丰富元数据支持（alias, tags, category, varCount）供外部快速列表渲染", async () => {
+    const svc = makeService();
+    svc.deps.library.ensureIndex = async () => ({
+        entries: [
+            {
+                id: "entry-rich",
+                title: "客户退款指引",
+                itemType: "markdown",
+                alias: "tk",
+                tags: ["客服", "售后"],
+                category: "退款规范",
+                varCount: 2,
+                summary: "请确认订单状态与退款金额",
+                createdAt: 1000,
+                updatedAt: 2000,
+                libraryDocId: "doc-1",
+                blockId: "b-1",
+            },
+        ],
+        items: new Map(),
+        errors: [],
+        truncated: false,
+    });
+
+    const bridge = externalBridge.buildXlcBridge(svc);
+    const res = await bridge.search({text: "退款"});
+    assert.equal(res.ok, true);
+    assert.equal(res.data.length, 1);
+    const item = res.data[0];
+    assert.equal(item.id, "entry-rich");
+    assert.equal(item.title, "客户退款指引");
+    assert.equal(item.alias, "tk", "应包含别名");
+    assert.deepEqual(item.tags, ["客服", "售后"], "应包含标签数组");
+    assert.equal(item.category, "退款规范", "应包含分类");
+    assert.equal(item.varCount, 2, "应包含变量统计数");
+    assert.equal(item.summary, "请确认订单状态与退款金额", "应包含摘要");
+});

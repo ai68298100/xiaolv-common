@@ -36,7 +36,7 @@ import {AiAssistant, AiUnavailableError, SearchMetaEntry, type AiEndpointName} f
 import {ProviderRegistry} from "./service/providers";
 import {XiaolvCommonService} from "./service/service";
 import {DiscoveryService, type DiscoveryReceipt, type DiscoverySessionView} from "./service/discovery";
-import {OmniSearchService} from "./service/omni-search";
+import {OmniSearchService, deriveOmniItemMetadata} from "./service/omni-search";
 import {CommonSearchDialog} from "./ui/dialog";
 import {openDiscoveryDialog, type DiscoveryDialogController} from "./ui/discovery-dialog";
 import {CaptureDialog, confirmDelete, classifyLinkTarget} from "./ui/capture";
@@ -1111,13 +1111,13 @@ export default class XiaolvCommonPlugin extends Plugin {
             createFromOmni: async (entry: SearchEntry) => {
                 const content = (entry.content || entry.summary || "").trim();
                 if (!content) return false;
-                const isCurrentDoc = entry.tags?.includes("当前文档");
+                const meta = deriveOmniItemMetadata(entry);
                 const created = await this.library.createItem({
                     itemType: entry.itemType,
                     markdown: content,
                     title: entry.title,
-                    tags: ["全域收录", ...(isCurrentDoc ? ["文档收集"] : ["笔记收集"])],
-                    category: isCurrentDoc ? "文档收集" : "笔记收集",
+                    tags: meta.tags,
+                    category: meta.category,
                     source: {
                         sourceDocId: entry.sourceDocId,
                         sourceBlockId: entry.targetBlockId || entry.sourceBlockId,

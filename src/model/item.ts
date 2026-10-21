@@ -82,6 +82,11 @@ export interface CommonItemRef {
     id: string;
     itemType?: ItemType;
     title?: string;
+    alias?: string;
+    tags?: readonly string[];
+    category?: string;
+    varCount?: number;
+    summary?: string;
 }
 
 const LOGICAL_ID_RE = /^xlc-[0-9a-z]{10,40}$/;

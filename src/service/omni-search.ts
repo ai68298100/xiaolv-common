@@ -17,6 +17,46 @@ export interface OmniSearchOptions {
     maxAllNotesBlocks?: number;
 }
 
+/**
+ * 智能推导从全域思源块/文档收录为常用语条目时的分类与标签治理元数据
+ */
+export function deriveOmniItemMetadata(entry: SearchEntry): { category: string; tags: string[] } {
+    const rawPath = (entry.category || "").replace(/^\/+/, "").replace(/\.sy$/, "");
+    const segments = rawPath.split("/").map((s) => s.trim()).filter(Boolean);
+
+    // 分类：优先取倒数第二层目录或末级文档名
+    let category = "思源收录";
+    if (segments.length >= 2) {
+        category = segments[segments.length - 1] || "思源收录";
+    } else if (segments.length === 1) {
+        category = segments[0] || "思源收录";
+    }
+
+    const tagsSet = new Set<string>();
+    tagsSet.add("思源收录");
+
+    // 将文档短名称作为溯源标签
+    if (segments.length > 0) {
+        const docName = segments[segments.length - 1];
+        if (docName && docName.length <= 20 && docName !== category) {
+            tagsSet.add(docName);
+        }
+    }
+
+    if (entry.tags && Array.isArray(entry.tags)) {
+        for (const t of entry.tags) {
+            if (t && t !== "全库块" && t !== "全库笔记" && t !== "当前文档") {
+                tagsSet.add(t);
+            }
+        }
+    }
+
+    return {
+        category,
+        tags: Array.from(tagsSet).slice(0, 8),
+    };
+}
+
 /** 清除思源搜索结果中的高亮 <mark> 标签并还原常见 HTML 转义字符 */
 export function cleanSearchHighlight(raw: string): string {
     if (!raw) return "";
@@ -31,16 +71,58 @@ export function cleanSearchHighlight(raw: string): string {
         .trim();
 }
 
+/**
+ * 根据思源块类型与子类型规整 Kramdown 正文，保证在预览与插入时结构和语法着色保真
+ */
+export function normalizeBlockKramdown(type: string, subType: string | undefined, content: string): string {
+    const trimmed = content.trim();
+    if (!trimmed) return "";
+
+    // 1. 代码块：确保包裹标准语言围栏
+    if (type === "c") {
+        if (/^```[\w+#.-]*\s*\n[\s\S]*\n```\s*$/.test(trimmed)) {
+            return trimmed;
+        }
+        const lang = (subType || "").toLowerCase().trim();
+        return `\`\`\`${lang}\n${trimmed}\n\`\`\``;
+    }
+
+    // 2. 标题块：若未带 # 标记，根据 subType (h1~h6) 补齐
+    if (type === "h") {
+        if (/^#{1,6}\s+/.test(trimmed)) {
+            return trimmed;
+        }
+        const levelMatch = (subType || "").match(/^h([1-6])$/i);
+        const level = levelMatch ? Number(levelMatch[1]) : 2;
+        return `${"#".repeat(level)} ${trimmed}`;
+    }
+
+    // 3. 引述块：若未带 > 标记，自动增加引述前缀
+    if (type === "b") {
+        if (trimmed.startsWith(">")) return trimmed;
+        return trimmed.split("\n").map((line) => `> ${line}`).join("\n");
+    }
+
+    // 4. 数学公式块
+    if (type === "m") {
+        if (trimmed.startsWith("$$") && trimmed.endsWith("$$")) return trimmed;
+        return `$$\n${trimmed}\n$$`;
+    }
+
+    return trimmed;
+}
+
 /** 将官方 fullTextSearchBlock 返回的命中块转换为小驴常用统一 SearchEntry 模型 */
 export function blockHitToSearchEntry(hit: IBlockSearchHit): SearchEntry {
     const cleanContent = cleanSearchHighlight(hit.content);
+    const normalizedKramdown = normalizeBlockKramdown(hit.type, hit.subType, cleanContent);
     const summary = deriveSummary(cleanContent);
     const inferredType: ItemType = inferItemType(hit.type, hit.subType || "", cleanContent);
 
     // 标题：若块类型为 heading (h)，直接取正文；否则若有文档路径取路径最后一段+正文前缀
     let title = "";
     if (hit.type === "h") {
-        title = deriveTitle(cleanContent, inferredType, {});
+        title = deriveTitle(cleanContent.replace(/^#{1,6}\s*/, ""), inferredType, {});
     } else {
         const docName = hit.hPath ? hit.hPath.split("/").pop()?.replace(/\.sy$/, "") || "" : "";
         const snippet = cleanContent.slice(0, 30).replace(/\s+/g, " ");
@@ -53,7 +135,7 @@ export function blockHitToSearchEntry(hit: IBlockSearchHit): SearchEntry {
         libraryDocId: hit.rootId || hit.id,
         title,
         summary: summary || cleanContent.slice(0, 80),
-        content: cleanContent,
+        content: normalizedKramdown,
         isOmni: true,
         itemType: inferredType,
         category: hit.hPath || "全库内容",

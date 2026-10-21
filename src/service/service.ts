@@ -40,8 +40,18 @@ export interface ResolvedItemData {
     }>;
 }
 
-function toRef(item: Pick<CommonItem, "id" | "itemType" | "title">): CommonItemRef {
-    return {id: item.id, itemType: item.itemType, title: item.title};
+function toRef(item: Partial<CommonItem> & Pick<CommonItem, "id">): CommonItemRef {
+    const ref: CommonItemRef = {
+        id: item.id,
+        itemType: item.itemType,
+        title: item.title,
+    };
+    if (item.alias) ref.alias = item.alias;
+    if (item.tags && item.tags.length > 0) ref.tags = item.tags;
+    if (item.category) ref.category = item.category;
+    if (typeof item.varCount === "number") ref.varCount = item.varCount;
+    if (item.summary) ref.summary = item.summary;
+    return ref;
 }
 
 export class XiaolvCommonService {
