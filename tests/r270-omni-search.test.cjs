@@ -88,7 +88,7 @@ test("blockHitToSearchEntry：结构化转换为 SearchEntry", () => {
     assert.strictEqual(entry.content, "### 项目启动会");
     assert.strictEqual(entry.isOmni, true);
     assert.strictEqual(entry.tags[0], "全库块");
-    assert.strictEqual(entry.updatedAt, 1700000000);
+    assert.strictEqual(entry.updatedAt, 1700000000000, "秒级时间戳应自动归一为毫秒戳");
 });
 
 test("searchAllNotesBlocks & searchAllNotesUnified：走 fullTextSearchBlock 端点调用", async () => {
@@ -175,4 +175,47 @@ test("deriveOmniItemMetadata：智能从多层文档路径推导分类与溯源�
     const meta2 = omniSearch.deriveOmniItemMetadata(entry2);
     assert.strictEqual(meta2.category, "思源收录", "空路径安全兜底");
     assert.deepStrictEqual(meta2.tags, ["思源收录"]);
+});
+
+test("parseOmniQueryScope：支持 in:路径 / path:路径 / book:笔记本 语法提取", () => {
+    // 1. in:路径 提取
+    const r1 = omniSearch.parseOmniQueryScope("in:工作/项目 架构设计方案");
+    assert.strictEqual(r1.keyword, "架构设计方案");
+    assert.deepStrictEqual(r1.paths, ["/工作/项目"]);
+    assert.strictEqual(r1.notebook, undefined);
+
+    // 2. path:路径 与 book:笔记本 组合
+    const r2 = omniSearch.parseOmniQueryScope("book:日记本 path:/2026/10月 总结");
+    assert.strictEqual(r2.keyword, "总结");
+    assert.deepStrictEqual(r2.paths, ["/2026/10月"]);
+    assert.strictEqual(r2.notebook, "日记本");
+
+    // 3. 无修饰符时原样保留
+    const r3 = omniSearch.parseOmniQueryScope("普通 搜索 词");
+    assert.strictEqual(r3.keyword, "普通 搜索 词");
+    assert.deepStrictEqual(r3.paths, []);
+    assert.strictEqual(r3.notebook, undefined);
+});
+
+test("parseSiYuanTimestamp：14位 YYYYMMDDHHmmss、毫秒戳与秒级戳安全归一", () => {
+    // 1. 14 位 YYYYMMDDHHmmss
+    const ts14 = omniSearch.parseSiYuanTimestamp("20261021123045");
+    assert.ok(ts14 > 1700000000000, "14 位时间字符串应成功转换为毫秒时间戳");
+    const d = new Date(ts14);
+    assert.strictEqual(d.getFullYear(), 2026);
+    assert.strictEqual(d.getMonth(), 9); // 10月为 index 9
+    assert.strictEqual(d.getDate(), 21);
+
+    // 2. 毫秒时间戳保持
+    const now = Date.now();
+    assert.strictEqual(omniSearch.parseSiYuanTimestamp(String(now)), now);
+
+    // 3. 秒级时间戳自动乘 1000
+    const sec = 1700000000;
+    assert.strictEqual(omniSearch.parseSiYuanTimestamp(String(sec)), sec * 1000);
+
+    // 4. 空值与非法输入安全返回 0
+    assert.strictEqual(omniSearch.parseSiYuanTimestamp(""), 0);
+    assert.strictEqual(omniSearch.parseSiYuanTimestamp(undefined), 0);
+    assert.strictEqual(omniSearch.parseSiYuanTimestamp("invalid"), 0);
 });

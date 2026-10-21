@@ -188,8 +188,9 @@ export function fuzzyMatchHaystack(haystack: string, needle: string, maxDistance
     return {matched: bestDist <= maxDistance, distance: bestDist};
 }
 
-function normalizeText(s: string): string {
-    return s.toLowerCase().replace(/\s+/g, " ").trim();
+function normalizeText(s: string | undefined | null): string {
+    if (!s) return "";
+    return String(s).toLowerCase().replace(/\s+/g, " ").trim();
 }
 
 function scoreHaystack(haystack: string, needle: string, weight: number, prefixWeight?: number): number {
@@ -212,8 +213,9 @@ function matchSingleToken(entry: SearchEntry, token: string): {score: number; ma
     const summary = normalizeText(entry.summary);
     let aliasPy = "";
     let aliasPyi = "";
-    if (entry.alias) {
-        const anno = getPinyinAdapter().annotate({title: "", alias: entry.alias});
+    const adapter = getPinyinAdapter();
+    if (entry.alias && typeof adapter?.annotate === "function") {
+        const anno = adapter.annotate({title: "", alias: entry.alias});
         if (anno) {
             aliasPy = normalizeText(anno.py);
             aliasPyi = normalizeText(anno.pyi);
@@ -287,6 +289,72 @@ export const ALIAS_PREFIX_MATCH_BOOST = 200;
 export const ALIAS_PINYIN_EXACT_BOOST = 150;
 export const ALIAS_PINYIN_PREFIX_BOOST = 100;
 
+export const TITLE_ACRONYM_EXACT_BOOST = 1.5;
+export const TITLE_ACRONYM_PREFIX_BOOST = 0.8;
+export const TITLE_PINYIN_EXACT_BOOST = 1.0;
+export const TITLE_PINYIN_PREFIX_BOOST = 0.5;
+
+/**
+ * 标题拼音全拼与首字母缩写专属打分加权体系（对标 Alfred / Raycast 极速首字母直达体验）
+ * 1. 标题首字母缩写完全匹配：+120
+ * 2. 标题全拼完全匹配：+100
+ * 3. 标题首字母缩写前缀匹配（长度>=2）：+80
+ * 4. 标题全拼前缀匹配（长度>=3）：+60
+ * 仅取最高阶梯加权，不重复累加。未命中返回 0。
+ */
+export function calculateTitlePinyinBoost(entry: SearchEntry, rawQuery: string, tokens: readonly string[]): number {
+    let py = normalizeText(entry.py);
+    let pyi = normalizeText(entry.pyi);
+    const adapter = getPinyinAdapter();
+    if (!py && !pyi && typeof adapter?.annotate === "function") {
+        // 若条目未带注解，尝试通过适配器临时注解（开销受限只注标题）
+        const anno = adapter.annotate({title: entry.title, alias: ""});
+        if (anno) {
+            py = normalizeText(anno.py);
+            pyi = normalizeText(anno.pyi);
+        }
+    }
+    if (!py && !pyi) return 0;
+
+    const cleanQuery = normalizeText(rawQuery);
+    const cleanTokens = tokens.map(normalizeText).filter(Boolean);
+    if (!cleanQuery && cleanTokens.length === 0) return 0;
+
+    const matchExact = (target: string): boolean => {
+        if (!target) return false;
+        if (cleanQuery && target === cleanQuery) return true;
+        return cleanTokens.some((t) => t === target);
+    };
+
+    const matchPrefix = (target: string, minLen: number): boolean => {
+        if (!target) return false;
+        if (cleanQuery && cleanQuery.length >= minLen && target.startsWith(cleanQuery)) return true;
+        return cleanTokens.some((t) => t.length >= minLen && target.startsWith(t));
+    };
+
+    // 1. 首字母完全吻合 (+120)
+    if (pyi && matchExact(pyi)) {
+        return TITLE_ACRONYM_EXACT_BOOST;
+    }
+
+    // 2. 全拼完全吻合 (+100)
+    if (py && matchExact(py)) {
+        return TITLE_PINYIN_EXACT_BOOST;
+    }
+
+    // 3. 首字母前缀吻合 (+80)
+    if (pyi && matchPrefix(pyi, 2)) {
+        return TITLE_ACRONYM_PREFIX_BOOST;
+    }
+
+    // 4. 全拼前缀吻合 (+60)
+    if (py && matchPrefix(py, 3)) {
+        return TITLE_PINYIN_PREFIX_BOOST;
+    }
+
+    return 0;
+}
+
 /**
  * 别名专属打分加权体系（ADR 0084 / T-0144）
  * 建立与 Raycast / Alfred 等业界顶尖启动器一致的别名优先体验：
@@ -328,19 +396,22 @@ export function calculateAliasBoost(entry: SearchEntry, rawQuery: string, tokens
     }
 
     // 拼音专属加权（仅在拼音适配器具备能力时计算）
-    const anno = getPinyinAdapter().annotate({title: "", alias: entry.alias});
-    if (anno) {
-        const py = normalizeText(anno.py);
-        const pyi = normalizeText(anno.pyi);
+    const adapter = getPinyinAdapter();
+    if (typeof adapter?.annotate === "function") {
+        const anno = adapter.annotate({title: "", alias: entry.alias});
+        if (anno) {
+            const py = normalizeText(anno.py);
+            const pyi = normalizeText(anno.pyi);
 
-        // 3. 别名拼音完全吻合 (+150)
-        if (matchExact(py) || matchExact(pyi)) {
-            return ALIAS_PINYIN_EXACT_BOOST;
-        }
+            // 3. 别名拼音完全吻合 (+150)
+            if (matchExact(py) || matchExact(pyi)) {
+                return ALIAS_PINYIN_EXACT_BOOST;
+            }
 
-        // 4. 别名拼音前缀吻合 (+100)
-        if (matchPrefix(py) || matchPrefix(pyi)) {
-            return ALIAS_PINYIN_PREFIX_BOOST;
+            // 4. 别名拼音前缀吻合 (+100)
+            if (matchPrefix(py) || matchPrefix(pyi)) {
+                return ALIAS_PINYIN_PREFIX_BOOST;
+            }
         }
     }
 
@@ -383,6 +454,10 @@ export function matchEntry(entry: SearchEntry, rawQuery: string): Omit<ScoredRes
     // ADR 0084 / T-0144: 别名专属打分加权体系 (Raycast / Alfred 别名置顶体验)
     const aliasBoost = calculateAliasBoost(entry, rawQuery, tokens);
     totalScore += aliasBoost;
+
+    // 标题拼音全拼与首字母缩写专属打分加权体系 (Raycast 标题首字母直达)
+    const titlePinyinBoost = calculateTitlePinyinBoost(entry, rawQuery, tokens);
+    totalScore += titlePinyinBoost;
 
     return {entry, score: totalScore, matchedBy};
 }

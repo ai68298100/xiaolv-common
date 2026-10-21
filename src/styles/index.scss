@@ -234,6 +234,43 @@
     text-overflow: ellipsis;
   }
 
+  .xlc-search-history-bar {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+    padding: 3px 0 1px 0;
+    font-size: var(--xlc-font-2xs);
+    color: var(--b3-theme-on-surface);
+
+    .xlc-history-label {
+      opacity: 0.7;
+      margin-right: 2px;
+      font-size: 11px;
+    }
+
+    .xlc-history-pill {
+      display: inline-flex;
+      align-items: center;
+      background-color: var(--b3-theme-surface);
+      border: 1px solid var(--b3-border-color);
+      color: var(--b3-theme-on-surface);
+      font-size: 11px;
+      padding: 1px 7px;
+      border-radius: var(--b3-border-radius);
+      cursor: pointer;
+      line-height: var(--xlc-line-control);
+      transition: background-color var(--xlc-dur-fast) var(--xlc-ease),
+                  border-color var(--xlc-dur-fast) var(--xlc-ease);
+
+      &:hover {
+        background-color: var(--xlc-list-selected, rgba(53, 117, 240, 0.12));
+        border-color: var(--b3-theme-primary);
+        color: var(--b3-theme-primary);
+      }
+    }
+  }
+
   .xlc-kbdrow {
     display: flex;
     align-items: center;

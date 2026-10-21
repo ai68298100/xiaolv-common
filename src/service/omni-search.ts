@@ -17,6 +17,49 @@ export interface OmniSearchOptions {
     maxAllNotesBlocks?: number;
 }
 
+export interface ParsedOmniQuery {
+    keyword: string;
+    paths: string[];
+    notebook?: string;
+}
+
+/**
+ * 纯函数：从搜索输入中解析范围限定语法（in:路径 / path:路径 / book:笔记本）
+ */
+export function parseOmniQueryScope(query: string): ParsedOmniQuery {
+    const raw = query.trim();
+    if (!raw) return {keyword: "", paths: []};
+
+    const tokens = raw.split(/\s+/);
+    const paths: string[] = [];
+    let notebook: string | undefined;
+    const cleanTokens: string[] = [];
+
+    for (const token of tokens) {
+        if (/^(?:in|path):(.+)$/i.test(token)) {
+            const m = token.match(/^(?:in|path):(.+)$/i);
+            if (m && m[1]) {
+                const p = m[1].trim().replace(/^['"]|['"]$/g, "");
+                if (p) paths.push(p.startsWith("/") ? p : `/${p}`);
+            }
+        } else if (/^(?:book|box):(.+)$/i.test(token)) {
+            const m = token.match(/^(?:book|box):(.+)$/i);
+            if (m && m[1]) {
+                const b = m[1].trim().replace(/^['"]|['"]$/g, "");
+                if (b) notebook = b;
+            }
+        } else {
+            cleanTokens.push(token);
+        }
+    }
+
+    return {
+        keyword: cleanTokens.join(" ").trim(),
+        paths,
+        notebook,
+    };
+}
+
 /**
  * 智能推导从全域思源块/文档收录为常用语条目时的分类与标签治理元数据
  */
@@ -112,6 +155,27 @@ export function normalizeBlockKramdown(type: string, subType: string | undefined
     return trimmed;
 }
 
+/** 解析思源 14 位 YYYYMMDDHHmmss 或秒/毫秒时间戳为标准毫秒时间戳 */
+export function parseSiYuanTimestamp(raw: string | undefined): number {
+    if (!raw) return 0;
+    const str = raw.trim();
+    if (/^\d{14}$/.test(str)) {
+        const year = Number(str.slice(0, 4));
+        const month = Number(str.slice(4, 6)) - 1;
+        const day = Number(str.slice(6, 8));
+        const hour = Number(str.slice(8, 10));
+        const min = Number(str.slice(10, 12));
+        const sec = Number(str.slice(12, 14));
+        const date = new Date(year, month, day, hour, min, sec);
+        return date.getTime();
+    }
+    const num = Number(str);
+    if (Number.isFinite(num) && num > 0) {
+        return num > 1e11 ? num : num * 1000;
+    }
+    return 0;
+}
+
 /** 将官方 fullTextSearchBlock 返回的命中块转换为小驴常用统一 SearchEntry 模型 */
 export function blockHitToSearchEntry(hit: IBlockSearchHit): SearchEntry {
     const cleanContent = cleanSearchHighlight(hit.content);
@@ -142,7 +206,7 @@ export function blockHitToSearchEntry(hit: IBlockSearchHit): SearchEntry {
         tags: ["全库块"],
         alias: "",
         createdAt: 0,
-        updatedAt: hit.updated ? Number(hit.updated) || 0 : 0,
+        updatedAt: parseSiYuanTimestamp(hit.updated),
         sourceDocId: hit.rootId || hit.id,
         sourceBlockId: hit.id,
         targetBlockId: hit.id,
@@ -265,7 +329,10 @@ export async function searchAllNotesDocuments(
     const k = keyword.trim();
     if (!k) return [];
 
-    const raw = await kernel.request("searchDocs", {k}, {
+    const parsed = parseOmniQueryScope(k);
+    const actualQuery = parsed.keyword || k;
+
+    const raw = await kernel.request("searchDocs", {k: actualQuery}, {
         latest: true,
         raceKey: "omni.allNotes.docs",
     });
@@ -306,14 +373,25 @@ export async function searchAllNotesBlocks(
     const k = keyword.trim();
     if (!k) return [];
 
+    const parsed = parseOmniQueryScope(k);
+    const actualQuery = parsed.keyword || k;
     const limit = options.maxAllNotesBlocks ?? 30;
-    const raw = await kernel.request("fullTextSearchBlock", {
-        query: k,
+
+    const payload: Record<string, unknown> = {
+        query: actualQuery,
         method: 0, // 0 = 关键词普通检索（零 SQL）
         orderBy: 0, // 相关度排序
         page: 1,
         pageSize: limit,
-    }, {
+    };
+    if (parsed.paths.length > 0) {
+        payload.paths = parsed.paths;
+    }
+    if (parsed.notebook) {
+        payload.notebook = parsed.notebook;
+    }
+
+    const raw = await kernel.request("fullTextSearchBlock", payload, {
         latest: true,
         raceKey: "omni.allNotes.blocks",
     });

@@ -240,6 +240,7 @@ export class CommonSearchDialog {
         clearBtn.addEventListener("click", () => {
             input.value = "";
             syncQMark();
+            updateHistoryBar();
             input.focus();
             if (this.inputDebounce) {
                 clearTimeout(this.inputDebounce);
@@ -255,6 +256,7 @@ export class CommonSearchDialog {
         });
         input.addEventListener("input", () => {
             syncQMark();
+            updateHistoryBar();
             const rawVal = input.value.trim();
             // 穿透前缀识别：输入以 @ 或 / 或 sy: 开头，自动切换为全库笔记范围 (all-notes)
             if (rawVal.startsWith("@") || rawVal.startsWith("/") || rawVal.startsWith("sy:")) {
@@ -298,6 +300,43 @@ export class CommonSearchDialog {
         searchHint.className = "xlc-search-hint";
         searchHint.textContent = this.deps.t("searchHint");
         searchBlock.appendChild(searchHint);
+
+        const historyBar = document.createElement("div");
+        historyBar.className = "xlc-search-history-bar";
+        const updateHistoryBar = (): void => {
+            const hasText = input.value.trim().length > 0;
+            if (hasText) {
+                historyBar.style.display = "none";
+                return;
+            }
+            const history = (this.deps.getRecentQueries?.() ?? []).slice(0, 5);
+            if (history.length === 0) {
+                historyBar.style.display = "none";
+                return;
+            }
+            historyBar.replaceChildren();
+            const lbl = document.createElement("span");
+            lbl.className = "xlc-history-label";
+            lbl.textContent = "🕐 历史:";
+            historyBar.appendChild(lbl);
+
+            for (const word of history) {
+                const pill = document.createElement("button");
+                pill.type = "button";
+                pill.className = "xlc-history-pill";
+                pill.textContent = word;
+                pill.title = `点击检索「${word}」`;
+                pill.addEventListener("click", () => {
+                    input.value = word;
+                    input.dispatchEvent(new Event("input", {bubbles: true}));
+                    input.focus();
+                });
+                historyBar.appendChild(pill);
+            }
+            historyBar.style.display = "flex";
+        };
+        updateHistoryBar();
+        searchBlock.appendChild(historyBar);
         topMain.appendChild(searchBlock);
         let kbdRow: HTMLDivElement | null = null;
         // 头部快捷键提示（桌面；每项都写清按键对应动作，避免只显示符号）
@@ -318,6 +357,7 @@ export class CommonSearchDialog {
                 {key: `${isApple ? "⌥" : "Alt"} + 1-9`, action: this.deps.t("kbdQuickInsert")},
                 {key: `${isApple ? "⌥ + ⇧" : "Alt + Shift"} + 1-9`, action: this.deps.t("kbdQuickCopy")},
                 {key: `${isApple ? "⌥" : "Alt"} + S`, action: "收录全库块"},
+                {key: `${isApple ? "⌥" : "Alt"} + T`, action: "轮转范围"},
                 {key: "@ /", action: "全库穿透"},
                 {key: `${isApple ? "⌥" : "Alt"} + F`, action: this.deps.t("kbdFavorite")},
                 {key: "Tab", action: this.deps.t("kbdTabActions")},
@@ -3168,6 +3208,23 @@ export class CommonSearchDialog {
                 await this.deps.duplicateItem(entry.id);
                 await this.refresh();
             }
+        } else if (e.altKey && !e.ctrlKey && !e.metaKey && (e.key === "t" || e.key === "T")) {
+            // Alt+T 轮转搜索范围 (all -> favorites -> recent -> current-doc -> all-notes -> all)
+            e.preventDefault();
+            const scopeOrder: SearchScope[] = ["all", "favorites", "recent", "current-doc", "all-notes"];
+            const currentIdx = scopeOrder.indexOf(this.currentScope);
+            const nextIdx = (currentIdx + 1) % scopeOrder.length;
+            this.currentScope = scopeOrder[nextIdx] ?? "all";
+            this.syncScopeChips();
+            void this.refresh().then(() => this.restoreFocusToSearch());
+            return;
+        } else if (e.altKey && !e.ctrlKey && !e.metaKey && e.key === "0") {
+            // Alt+0 重置全部范围
+            e.preventDefault();
+            this.currentScope = "all";
+            this.syncScopeChips();
+            void this.refresh().then(() => this.restoreFocusToSearch());
+            return;
         } else if (
             (e.altKey && (e.key === "Delete" || e.key === "Backspace")) ||
             (!e.ctrlKey && !e.metaKey && !e.altKey && e.key === "Delete" && !(document.activeElement as HTMLElement | null)?.matches("input, textarea"))

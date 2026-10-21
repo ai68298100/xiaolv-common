@@ -155,3 +155,39 @@ test("Raycast / Alfred 启动器体验契约：别名匹配条目稳居搜索第
     assert.strictEqual(resPrefix[0].entry.id, "entry-a", "别名前缀匹配必须排在首位");
     assert.ok(resPrefix[0].score > 200);
 });
+
+test("calculateTitlePinyinBoost：标题首字母缩写(+120/+80)与全拼(+100/+60)专属打分加权契约", () => {
+    const adapter = pinyinTiny.createTinyPinyinAdapter();
+    pinyin.setPinyinAdapter(adapter);
+
+    const entry = {
+        id: "entry-title-py",
+        blockId: "b-title",
+        libraryDocId: "doc-1",
+        itemType: "markdown",
+        title: "财务报销审批流",
+        alias: "",
+        tags: ["财务"],
+        category: "通用",
+        summary: "这是审批流说明",
+        createdAt: 1000,
+        updatedAt: 2000,
+    };
+
+    const { calculateTitlePinyinBoost } = search;
+
+    // 1. 标题首字母缩写完全匹配 (cwbxspl) -> 1.5
+    assert.strictEqual(calculateTitlePinyinBoost(entry, "cwbxspl", ["cwbxspl"]), 1.5);
+
+    // 2. 标题首字母缩写前缀匹配 (cwbx, 前缀>=2) -> 0.8
+    assert.strictEqual(calculateTitlePinyinBoost(entry, "cwbx", ["cwbx"]), 0.8);
+
+    // 3. 标题全拼完全匹配 (caiwubaoxiaoshenpiliu) -> 1.0
+    assert.strictEqual(calculateTitlePinyinBoost(entry, "caiwubaoxiaoshenpiliu", ["caiwubaoxiaoshenpiliu"]), 1.0);
+
+    // 4. 标题全拼前缀匹配 (caiwu, 前缀>=3) -> 0.5
+    assert.strictEqual(calculateTitlePinyinBoost(entry, "caiwu", ["caiwu"]), 0.5);
+
+    // 5. 单字母前缀不享受前缀加权（防过度误伤）
+    assert.strictEqual(calculateTitlePinyinBoost(entry, "c", ["c"]), 0);
+});
