@@ -131,3 +131,22 @@ test("normalizeUnknownItem：协议输入的宽松归一化", () => {
     assert.equal(item.normalizeUnknownItem(null), null);
     assert.equal(item.normalizeUnknownItem({id: "not-xlc"}), null);
 });
+
+test("deriveSmartSummary：智能上下文窗口截取，长文本关键词后部命中自动居中截取", () => {
+    // 1. 短文本：直接完整返回
+    const shortText = "短文本简介";
+    assert.strictEqual(item.deriveSmartSummary(shortText, ["文本"]), "短文本简介");
+
+    // 2. 长文本且关键词在前部：从头截取并带省略号
+    const prefixLong = "关于退款审批流程的详细说明，" + "后面的补充正文内容".repeat(15);
+    const sum1 = item.deriveSmartSummary(prefixLong, ["退款"], 60);
+    assert.ok(sum1.startsWith("关于退款审批流程"));
+    assert.ok(sum1.endsWith("…"));
+
+    // 3. 长文本且关键词在深处（如第 150 字符处）：以关键词为中心前后开窗
+    const deepLong = "前面是无关的开场白和冗长背景说明".repeat(10) + "此处是核心财务报销审核要点规范" + "后面的注意事项和结尾".repeat(10);
+    const sum2 = item.deriveSmartSummary(deepLong, ["财务报销"], 50);
+    assert.ok(sum2.includes("财务报销"), "摘要中必须包含命中关键词");
+    assert.ok(sum2.startsWith("…"), "前方截断应包含前置省略号");
+    assert.ok(sum2.endsWith("…"), "后方截断应包含后置省略号");
+});

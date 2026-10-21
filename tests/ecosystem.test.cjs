@@ -1,7 +1,7 @@
 // 小驴家族生态轻量探测与只读联动契约测试（Ecosystem Adapter）
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { ecosystem } = require("./.build/entry.cjs");
+const { ecosystem, commands, library } = require("./.build/entry.cjs");
 
 const { detectEcosystem, queryEcosystemItems } = ecosystem;
 
@@ -111,4 +111,42 @@ test("queryEcosystemItems：异常隔离防御（外部插件报错不影响主�
     // 应该吞下错误并返回空，绝不抛出异常
     const hits = await queryEcosystemItems("打卡", brokenHost);
     assert.deepStrictEqual(hits, []);
+});
+
+test("生态占位符：{{xlc:checkin:today}} 宏解析与优雅降级", async () => {
+    const { ActionExecutor } = commands;
+    const { LibraryService } = library;
+
+    const mockLib = new LibraryService({ request: async () => null });
+    const mockHost = {
+        isMobile: () => false,
+        hasActiveEditor: () => true,
+    };
+    const placeholders = {
+        enabled: () => true,
+        now: () => Date.now(),
+        currentDoc: async () => null,
+    };
+
+    const executor = new ActionExecutor(mockLib, mockHost, () => {}, undefined, placeholders);
+
+    // 1. 无打卡插件时：安全降级为空串
+    global.window = {};
+    const out1 = await executor.renderForInsert("状态：{{xlc:checkin:today}}已就绪");
+    assert.strictEqual(out1, "状态：已就绪");
+
+    // 2. 有打卡插件时：解析出今日打卡项统计
+    global.window = {
+        siyuanCheckin: {
+            getItems: () => [
+                {id: "1", name: "读书", archived: false},
+                {id: "2", name: "健身", archived: false},
+            ],
+        },
+    };
+    const out2 = await executor.renderForInsert("状态：{{xlc:checkin:today}}");
+    assert.strictEqual(out2, "状态：今日打卡（2项）");
+
+    // 清理全局
+    delete global.window;
 });

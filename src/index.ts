@@ -1087,6 +1087,7 @@ export default class XiaolvCommonPlugin extends Plugin {
         this.searchDialog?.destroy();
         this.searchDialog = new CommonSearchDialog({
             t: this.i18nFn(),
+            notify: (kind, msg) => this.notify(kind, msg),
             search: async (query) => {
                 const loading = !this.library.getIndex();
                 // SWR：索引超过 5 分钟透明重建（重建期间弹窗状态行显示「正在构建索引…」）

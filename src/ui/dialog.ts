@@ -6,7 +6,7 @@
 // AI：? 前缀语义找条目（默认仅元数据出域）；动作菜单 AI 变换（预览后选插入，原文永不被改写）。
 import {Dialog} from "siyuan";
 import {getDialogBody} from "./dialog-dom";
-import {ITEM_TYPES, ItemType, getCategoryColorVariant} from "../model/item";
+import {ITEM_TYPES, ItemType, getCategoryColorVariant, deriveSmartSummary} from "../model/item";
 import {toErrorMessage} from "../model/errors";
 import {SearchEntry, SearchQuery, splitSearchTokens, findExactAliasMatch} from "../model/search";
 import {BatchTagCategoryPatch, BatchOperationReceipt} from "../model/batch-ops";
@@ -22,6 +22,7 @@ import {buildHierarchyTree, flattenHierarchyTree} from "../model/hierarchy";
 
 export interface DialogDeps {
     t: (key: string, ...args: string[]) => string;
+    notify?: (kind: "info" | "error", message: string) => void;
     search: (query: SearchQuery) => Promise<{entries: SearchEntry[]; truncated: boolean; total: number; loading?: boolean; error?: string}>;
     /** 文档搜索（插入到指定文档的选择器） */
     searchDocs: (k: string) => Promise<Array<{id: string; hPath: string; name: string}>>;
@@ -1058,6 +1059,10 @@ export class CommonSearchDialog {
         this.dialog?.element.querySelectorAll<HTMLElement>(".xlc-scope-chip").forEach((chip) => {
             chip.classList.toggle("xlc-chip--on", chip.dataset.scope === this.currentScope);
         });
+        const searchBox = this.dialog?.element.querySelector<HTMLElement>(".xlc-search");
+        if (searchBox) {
+            searchBox.classList.toggle("xlc-search--omni-mode", this.currentScope === "all-notes");
+        }
         const input = this.dialog?.element.querySelector<HTMLInputElement>(".xlc-search-input");
         if (input) {
             let ph = this.deps.t("searchPlaceholder");
@@ -1517,10 +1522,12 @@ export class CommonSearchDialog {
         }
 
         const useCount = this.usageCounts.get(entry.id) ?? 0;
-        if (entry.summary) {
+        const sourceTextForSummary = entry.content || entry.summary || "";
+        if (sourceTextForSummary) {
             const summarySpan = document.createElement("span");
             summarySpan.className = "xlc-row-summary";
-            const summaryText = entry.summary.length > 100 ? entry.summary.slice(0, 100) + "…" : entry.summary;
+            const tokens = this.lastQueryText ? splitSearchTokens(this.lastQueryText) : [];
+            const summaryText = deriveSmartSummary(sourceTextForSummary, tokens, 90);
             const prefix = (shownTags.length > 0 || (entry.isOmni && entry.category)) ? " · " : "";
             if (prefix) summarySpan.appendChild(document.createTextNode(prefix));
             if (this.lastQueryText && !this.lastQueryText.startsWith("?") && !this.aiResults) {
@@ -3156,6 +3163,7 @@ export class CommonSearchDialog {
                 if (row) {
                     await this.deps.copyProviderPayload(row.payload);
                     this.destroy();
+                    this.deps.notify?.("info", "已复制到剪贴板，可直接在外部窗口粘贴 (Ctrl+V)");
                 }
                 return;
             }
@@ -3163,6 +3171,7 @@ export class CommonSearchDialog {
             if (entry) {
                 this.destroy();
                 await this.deps.runAction(entry.id, "copy");
+                this.deps.notify?.("info", "已复制到剪贴板，可直接在外部窗口粘贴 (Ctrl+V)");
             }
             return;
         } else if (e.key === "Escape") {

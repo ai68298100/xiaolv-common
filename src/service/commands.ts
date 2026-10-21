@@ -264,6 +264,23 @@ export class ActionExecutor {
                 }
                 output = output.replaceAll("{{xlc:clipboard}}", clipboardText.slice(0, 4000));
             }
+            if (output.includes("{{xlc:checkin:today}}")) {
+                let checkinText = "";
+                try {
+                    const host = typeof window !== "undefined" ? (window as any) : null;
+                    const checkin = host?.siyuanCheckin;
+                    if (checkin && typeof checkin.getItems === "function") {
+                        const items = checkin.getItems();
+                        if (Array.isArray(items)) {
+                            const active = items.filter((it: any) => !it.archived);
+                            checkinText = `今日打卡（${active.length}项）`;
+                        }
+                    }
+                } catch {
+                    checkinText = "";
+                }
+                output = output.replaceAll("{{xlc:checkin:today}}", checkinText);
+            }
             return output;
         } catch {
             return text;

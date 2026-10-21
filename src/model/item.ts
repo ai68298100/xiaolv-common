@@ -263,6 +263,40 @@ export function deriveSummary(kramdown: string): string {
     return text.slice(0, LIMITS.summary);
 }
 
+/**
+ * 智能上下文窗口摘要（Smart Snippet Windowing · G39）
+ * 当检索词出现在长正文后部时，自动以首个命中词为中心截取前后上下文，
+ * 避免盲目截取首部导致摘要看不到命中词。
+ */
+export function deriveSmartSummary(content: string, tokens: readonly string[] = [], maxLen = 90): string {
+    const plain = kramdownToPlainText(content).replace(/\s+/g, " ").trim();
+    if (!plain) return "";
+    if (plain.length <= maxLen || !tokens || tokens.length === 0) {
+        return plain.slice(0, maxLen) + (plain.length > maxLen ? "…" : "");
+    }
+    const lower = plain.toLowerCase();
+    let firstIdx = -1;
+    for (const t of tokens) {
+        const cleanT = t.trim().toLowerCase();
+        if (!cleanT) continue;
+        const at = lower.indexOf(cleanT);
+        if (at !== -1 && (firstIdx === -1 || at < firstIdx)) {
+            firstIdx = at;
+        }
+    }
+    // 若未命中或命中在前部 30 字符内，直接取前部
+    if (firstIdx === -1 || firstIdx <= 30) {
+        return plain.slice(0, maxLen) + (plain.length > maxLen ? "…" : "");
+    }
+    // 以命中位置为锚点，往前保留约 20 个字符，往后延伸
+    const lead = 20;
+    const start = Math.max(0, firstIdx - lead);
+    const end = Math.min(plain.length, start + maxLen);
+    const prefix = start > 0 ? "…" : "";
+    const suffix = end < plain.length ? "…" : "";
+    return prefix + plain.slice(start, end).trim() + suffix;
+}
+
 // 协议/导入等外部输入的宽松归一化：形状不可信时返回 null
 export function normalizeUnknownItem(raw: unknown): CommonItem | null {
     if (!raw || typeof raw !== "object") return null;
