@@ -595,6 +595,18 @@ export class CommonSearchDialog {
         this.attachLongPress(list, isMobile);
         bodyWrap.appendChild(list);
 
+        // 参考图同款：移动端右下角深色悬浮快捷新建加号键（FAB）
+        if (isMobile) {
+            const fabNew = document.createElement("button");
+            fabNew.type = "button";
+            fabNew.className = "xlc-fab-new";
+            fabNew.setAttribute("aria-label", this.deps.t("quickNew"));
+            fabNew.title = this.deps.t("quickNew");
+            fabNew.textContent = "＋";
+            fabNew.addEventListener("click", () => this.deps.newItem());
+            bodyWrap.appendChild(fabNew);
+        }
+
         if (!isMobile) {
             const pane = document.createElement("div");
             pane.className = "xlc-pane";

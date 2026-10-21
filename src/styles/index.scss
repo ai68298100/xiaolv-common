@@ -730,24 +730,23 @@
       display: inline-flex;
       align-items: center;
       justify-content: center;
-      width: 16px;
-      height: 16px;
-      border-radius: var(--xlc-radius-sm);
+      width: 18px;
+      height: 18px;
+      border-radius: var(--xlc-radius-circle, 9999px);
       font-size: var(--xlc-font-2xs);
       font-weight: var(--xlc-weight-semibold);
       color: var(--b3-theme-on-surface);
       background-color: var(--b3-theme-surface);
       border: 1px solid var(--b3-border-color);
       flex-shrink: 0;
-      transition: color var(--xlc-dur-fast) var(--xlc-ease),
-                  border-color var(--xlc-dur-fast) var(--xlc-ease),
-                  background-color var(--xlc-dur-fast) var(--xlc-ease);
+      transition: all var(--xlc-dur-fast) var(--xlc-ease);
     }
 
     &--active .xlc-row-ordinal {
-      color: var(--b3-theme-primary);
-      border-color: var(--b3-theme-primary-light);
-      background-color: var(--b3-theme-background);
+      color: #ffffff;
+      border-color: var(--b3-theme-primary);
+      background-color: var(--b3-theme-primary);
+      box-shadow: 0 0 0 2px rgba(53, 117, 240, 0.25);
     }
 
     .xlc-row-meta {
@@ -1083,11 +1082,18 @@
     // 占位文案（暂无预览 / AI 处理中）降调，真内容永远比占位醒目
     &--muted { color: var(--b3-theme-on-surface); }
 
-    // 代码条目预览：等宽字体（仍为纯文本渲染，仅观感）
+    // 代码条目预览：参考图同款深邃暗夜便当盒卡片背景（极高对比度、圆角精致）
     &--code {
       font-family: var(--mono, ui-monospace, monospace);
       font-size: var(--xlc-font-sm);
       line-height: var(--xlc-leading-relaxed);
+      background-color: var(--xlc-dark-card, #1e1e24);
+      color: #f0eef8;
+      border-radius: var(--xlc-radius-bento, 16px);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      margin: var(--xlc-space-2) var(--xlc-space-4);
+      padding: var(--xlc-space-3);
+      box-shadow: inset 0 2px 6px rgba(0, 0, 0, 0.2);
     }
   }
 
@@ -1918,7 +1924,10 @@
       transition: transform var(--xlc-dur-fast) var(--xlc-ease);
     }
 
-    &:checked { background-color: var(--b3-theme-primary); }
+    &:checked {
+      background-color: var(--xlc-mango, #ff9800);
+      box-shadow: 0 1px 4px rgba(255, 152, 0, 0.35);
+    }
 
     &:checked::after { transform: translateX(14px); }
 
@@ -3754,7 +3763,39 @@
   line-height: var(--xlc-line-body);
 }
 
-// ---------- Bento Grid 双色数据卡片（对标参考图 · G44）----------
+// ---------- 参考图同款：深色悬浮快捷新建加号键 (FAB) ----------
+.xlc-fab-new {
+  position: absolute;
+  right: 20px;
+  bottom: 22px;
+  width: 44px;
+  height: 44px;
+  border-radius: var(--xlc-radius-circle, 9999px);
+  background-color: var(--xlc-dark-card, #1e1e24);
+  color: #ffffff;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.22);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 24px;
+  font-weight: 300;
+  cursor: pointer;
+  z-index: var(--xlc-layer-local, 20);
+  transition: transform var(--xlc-dur-fast) var(--xlc-ease),
+              box-shadow var(--xlc-dur-fast) var(--xlc-ease),
+              background-color var(--xlc-dur-fast) var(--xlc-ease);
+
+  &:hover {
+    transform: scale(1.08);
+    background-color: var(--b3-theme-primary);
+    box-shadow: 0 6px 18px rgba(53, 117, 240, 0.38);
+  }
+
+  &:active {
+    transform: scale(0.95);
+  }
+}
 .xlc-bento-deck {
   display: grid;
   grid-template-columns: 1fr 1fr;
