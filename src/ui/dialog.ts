@@ -13,7 +13,7 @@ import {BatchTagCategoryPatch, BatchOperationReceipt} from "../model/batch-ops";
 import {InsertMode} from "../model/actions";
 import {TransformKind} from "../service/ai";
 import {ProviderRow} from "../model/provider-section";
-import {AskField, askFieldTag, hasCursorToken, listAskFields, listSnippetRefs} from "../model/variables";
+import {AskField, askFieldTag, hasCursorToken, listAskFields, listSnippetRefs, expandAsks, applyAskDefaults, stripCursorToken} from "../model/variables";
 import {openVariableFillCard} from "./variable-form";
 import {formatScopeFallbackQuery, shouldShowOmniSearchFallback, shouldShowScopeFallback, SearchScope} from "./empty-state";
 import {findPinyinMatches} from "../model/pinyin-tiny";
@@ -1671,6 +1671,20 @@ export class CommonSearchDialog {
                 empty.appendChild(clearScopeBtn);
             }
 
+            // 全库搜索无结果时的技巧提示（自愈引导）
+            if (this.currentScope === "all-notes" && query) {
+                const tips = document.createElement("div");
+                tips.className = "xlc-empty-hint";
+                tips.style.cssText = "font-size:11px; opacity:0.75; text-align:left; max-width:320px; margin:8px auto 0 auto; line-height:1.6;";
+                tips.innerHTML = `
+                    <div>• 尝试缩短关键词或改用拼音/首字母</div>
+                    <div>• 支持 <code>type:code</code> 专门检索代码块</div>
+                    <div>• 支持 <code>type:h</code> 专门检索大纲标题</div>
+                    <div>• 支持 <code>in:目录名</code> 缩小检索范围</div>
+                `;
+                empty.appendChild(tips);
+            }
+
             // 范围限制回退引导（ADR 0046 / T-0073）：
             // 若在收藏/最近等受限范围下搜索无结果，优先提供一键切换到全库范围搜索该词的推荐动作。
             const hasScopeLimitation = shouldShowScopeFallback(query, this.currentScope);
@@ -2534,6 +2548,14 @@ export class CommonSearchDialog {
             const target = this.insertTarget;
             return this.deps.insertToDoc(entry.id, target.docId, target.hPath, fills);
         }
+        if (entry.isOmni) {
+            let finalContent = entry.content || entry.summary || "";
+            if (fills) {
+                finalContent = expandAsks(finalContent, fills);
+            }
+            finalContent = applyAskDefaults(stripCursorToken(finalContent));
+            return this.deps.insertProviderPayload(finalContent);
+        }
         const mode: InsertMode = entry.itemType === "blockref" ? "insert-ref" : "insert";
         return fills
             ? this.deps.runActionWithFills(entry.id, mode, fills)
@@ -2562,7 +2584,7 @@ export class CommonSearchDialog {
         let previewFailed = false;
         let templateText = "";
         try {
-            const content = await this.deps.preview(entry.id);
+            const content = entry.isOmni ? (entry.content || entry.summary || "") : await this.deps.preview(entry.id);
             templateText = content || "";
             fields = entry.itemType === "code" || !content ? [] : listAskFields(content);
         } catch {

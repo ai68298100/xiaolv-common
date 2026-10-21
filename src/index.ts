@@ -1118,6 +1118,7 @@ export default class XiaolvCommonPlugin extends Plugin {
                     itemType: entry.itemType,
                     markdown: content,
                     title: entry.title,
+                    alias: meta.recommendedAlias || undefined,
                     tags: meta.tags,
                     category: meta.category,
                     source: {

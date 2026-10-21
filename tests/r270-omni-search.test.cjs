@@ -165,6 +165,7 @@ test("deriveOmniItemMetadata：智能从多层文档路径推导分类与溯源�
     assert.ok(meta1.tags.includes("思源收录"), "应包含基础收录标签");
     assert.ok(meta1.tags.includes("后端"), "应继承原有效标签");
     assert.ok(!meta1.tags.includes("全库块"), "应过滤内部临时全库块标签");
+    assert.ok(typeof meta1.recommendedAlias === "string", "应推导出推荐别名");
 
     const entry2 = {
         id: "omni-2",
@@ -175,6 +176,15 @@ test("deriveOmniItemMetadata：智能从多层文档路径推导分类与溯源�
     const meta2 = omniSearch.deriveOmniItemMetadata(entry2);
     assert.strictEqual(meta2.category, "思源收录", "空路径安全兜底");
     assert.deepStrictEqual(meta2.tags, ["思源收录"]);
+
+    const entryEn = {
+        id: "omni-3",
+        title: "Quick Start Guide",
+        category: "/doc",
+        tags: [],
+    };
+    const metaEn = omniSearch.deriveOmniItemMetadata(entryEn);
+    assert.strictEqual(metaEn.recommendedAlias, "qsg", "英文标题应提取各词首字母作为别名");
 });
 
 test("parseOmniQueryScope：支持 in:路径 / path:路径 / book:笔记本 语法提取", () => {
@@ -218,4 +228,22 @@ test("parseSiYuanTimestamp：14位 YYYYMMDDHHmmss、毫秒戳与秒级戳安全�
     assert.strictEqual(omniSearch.parseSiYuanTimestamp(""), 0);
     assert.strictEqual(omniSearch.parseSiYuanTimestamp(undefined), 0);
     assert.strictEqual(omniSearch.parseSiYuanTimestamp("invalid"), 0);
+});
+
+test("parseOmniQueryScope：支持 type:code / type:h / type:引述 等块类型限定语法提取", () => {
+    // 1. type:code 提取
+    const r1 = omniSearch.parseOmniQueryScope("type:code 冒泡排序算法");
+    assert.strictEqual(r1.keyword, "冒泡排序算法");
+    assert.deepStrictEqual(r1.types, { c: true });
+
+    // 2. type:h 与 in:路径 复合提取
+    const r2 = omniSearch.parseOmniQueryScope("in:项目文档 type:标题 阶段里程碑");
+    assert.strictEqual(r2.keyword, "阶段里程碑");
+    assert.deepStrictEqual(r2.paths, ["/项目文档"]);
+    assert.deepStrictEqual(r2.types, { h: true });
+
+    // 3. type:quote 提取
+    const r3 = omniSearch.parseOmniQueryScope("type:引用 乔布斯金句");
+    assert.strictEqual(r3.keyword, "乔布斯金句");
+    assert.deepStrictEqual(r3.types, { b: true });
 });

@@ -10,6 +10,7 @@ import {SearchEntry, splitSearchTokens} from "../model/search";
 import {deriveTitle, deriveSummary, inferItemType, isBlockId, ItemType} from "../model/item";
 import {inferTypeFromText} from "../ui/capture";
 import {bodyWriteRestriction} from "../model/kramdown";
+import {getPinyinAdapter} from "../model/pinyin";
 
 export interface OmniSearchOptions {
     maxCurrentDocBlocks?: number;
@@ -21,10 +22,11 @@ export interface ParsedOmniQuery {
     keyword: string;
     paths: string[];
     notebook?: string;
+    types?: Record<string, boolean>;
 }
 
 /**
- * 纯函数：从搜索输入中解析范围限定语法（in:路径 / path:路径 / book:笔记本）
+ * 纯函数：从搜索输入中解析范围限定语法（in:路径 / path:路径 / book:笔记本 / type:块类型）
  */
 export function parseOmniQueryScope(query: string): ParsedOmniQuery {
     const raw = query.trim();
@@ -33,6 +35,7 @@ export function parseOmniQueryScope(query: string): ParsedOmniQuery {
     const tokens = raw.split(/\s+/);
     const paths: string[] = [];
     let notebook: string | undefined;
+    const types: Record<string, boolean> = {};
     const cleanTokens: string[] = [];
 
     for (const token of tokens) {
@@ -48,6 +51,26 @@ export function parseOmniQueryScope(query: string): ParsedOmniQuery {
                 const b = m[1].trim().replace(/^['"]|['"]$/g, "");
                 if (b) notebook = b;
             }
+        } else if (/^type:(.+)$/i.test(token)) {
+            const m = token.match(/^type:(.+)$/i);
+            if (m && m[1]) {
+                const rawType = m[1].trim().toLowerCase().replace(/^['"]|['"]$/g, "");
+                if (rawType === "code" || rawType === "c" || rawType === "代码") {
+                    types["c"] = true;
+                } else if (rawType === "heading" || rawType === "h" || rawType === "标题") {
+                    types["h"] = true;
+                } else if (rawType === "quote" || rawType === "b" || rawType === "引述" || rawType === "引用") {
+                    types["b"] = true;
+                } else if (rawType === "math" || rawType === "m" || rawType === "公式") {
+                    types["m"] = true;
+                } else if (rawType === "table" || rawType === "t" || rawType === "表格") {
+                    types["t"] = true;
+                } else if (rawType === "list" || rawType === "l" || rawType === "列表") {
+                    types["l"] = true;
+                } else if (rawType === "doc" || rawType === "d" || rawType === "文档") {
+                    types["d"] = true;
+                }
+            }
         } else {
             cleanTokens.push(token);
         }
@@ -57,13 +80,14 @@ export function parseOmniQueryScope(query: string): ParsedOmniQuery {
         keyword: cleanTokens.join(" ").trim(),
         paths,
         notebook,
+        ...(Object.keys(types).length > 0 ? {types} : {}),
     };
 }
 
 /**
  * 智能推导从全域思源块/文档收录为常用语条目时的分类与标签治理元数据
  */
-export function deriveOmniItemMetadata(entry: SearchEntry): { category: string; tags: string[] } {
+export function deriveOmniItemMetadata(entry: SearchEntry): { category: string; tags: string[]; recommendedAlias: string } {
     const rawPath = (entry.category || "").replace(/^\/+/, "").replace(/\.sy$/, "");
     const segments = rawPath.split("/").map((s) => s.trim()).filter(Boolean);
 
@@ -94,9 +118,32 @@ export function deriveOmniItemMetadata(entry: SearchEntry): { category: string; 
         }
     }
 
+    // 智能推导推荐别名：若无别名，根据标题自动提取拼音首字母缩写
+    let recommendedAlias = (entry.alias || "").trim();
+    if (!recommendedAlias && entry.title) {
+        try {
+            const adapter = getPinyinAdapter();
+            if (typeof adapter?.annotate === "function") {
+                const anno = adapter.annotate({title: entry.title, alias: ""});
+                if (anno && anno.pyi) {
+                    recommendedAlias = anno.pyi.toLowerCase().slice(0, 8);
+                }
+            }
+        } catch {
+            recommendedAlias = "";
+        }
+        if (!recommendedAlias) {
+            const words = entry.title.split(/[\s_-]+/).filter(Boolean);
+            if (words.length >= 2 && words.every((w) => /^[a-zA-Z]/.test(w))) {
+                recommendedAlias = words.map((w) => w[0]?.toLowerCase()).join("").slice(0, 8);
+            }
+        }
+    }
+
     return {
         category,
         tags: Array.from(tagsSet).slice(0, 8),
+        recommendedAlias,
     };
 }
 
@@ -389,6 +436,9 @@ export async function searchAllNotesBlocks(
     }
     if (parsed.notebook) {
         payload.notebook = parsed.notebook;
+    }
+    if (parsed.types && Object.keys(parsed.types).length > 0) {
+        payload.types = parsed.types;
     }
 
     const raw = await kernel.request("fullTextSearchBlock", payload, {

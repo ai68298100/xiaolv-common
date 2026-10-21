@@ -339,6 +339,7 @@ export class CaptureDialog {
         const meta = deriveOmniItemMetadata(entry);
         this.openForm(text, entry.itemType, null, {
             title,
+            alias: meta.recommendedAlias || undefined,
             tags: meta.tags,
             category: meta.category,
             docId: entry.sourceDocId,
@@ -347,7 +348,7 @@ export class CaptureDialog {
         });
     }
 
-    openForm(defaultText: string, defaultType: ItemType, sourceBlockId: string | null, overrides?: {title?: string; docId?: string; targetBlockId?: string; tags?: string[]; category?: string; sourceType?: "selection" | "block" | "doc-fragment" | "clipboard" | "manual" | "resource"}): void {
+    openForm(defaultText: string, defaultType: ItemType, sourceBlockId: string | null, overrides?: {title?: string; alias?: string; docId?: string; targetBlockId?: string; tags?: string[]; category?: string; sourceType?: "selection" | "block" | "doc-fragment" | "clipboard" | "manual" | "resource"}): void {
         if (this.deps.isConfigured && !this.deps.isConfigured()) {
             this.deps.onNotConfigured?.();
             return;
@@ -454,7 +455,7 @@ export class CaptureDialog {
         titleEl.dataset.xlcControl = "capture.title";
         // 原型顺序：标题下方挂 别名|类型 双栏
         form.appendChild(metaRow);
-        const aliasEl = field(t("alias"), "", false, "xlc-form-alias", metaRow);
+        const aliasEl = field(t("alias"), overrides?.alias ?? "", false, "xlc-form-alias", metaRow);
         aliasEl.dataset.xlcControl = "capture.alias";
         metaRow.insertBefore(aliasEl.parentElement as HTMLElement, typeWrap);
         // 标签 + 分类（原型：双栏行）
