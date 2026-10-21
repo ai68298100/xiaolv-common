@@ -453,6 +453,11 @@ export class CommonSearchDialog {
         filters.appendChild(categorySelect);
 
         const scopes = ["favorites", "recent", "current-doc", "all-notes"] as const;
+        const track = document.createElement("div");
+        track.className = "xlc-segmented-track";
+        track.setAttribute("role", "radiogroup");
+        track.setAttribute("aria-label", "搜索作用域切换");
+
         for (const scope of scopes) {
             const chip = document.createElement("button");
             chip.className = "xlc-chip xlc-scope-chip";
@@ -469,8 +474,9 @@ export class CommonSearchDialog {
                 this.syncScopeChips();
                 void this.refresh();
             });
-            filters.appendChild(chip);
+            track.appendChild(chip);
         }
+        filters.appendChild(track);
         // AI 语义结果横幅（? 查询命中时显示；原型顺序=筛选行首位）
         const aiBanner = document.createElement("span");
         aiBanner.className = "xlc-chip xlc-ai-banner";

@@ -496,12 +496,47 @@
     }
 
     &--on {
-      background-color: var(--b3-theme-primary-lighter);
-      border-color: transparent;
-      color: var(--b3-theme-primary);
+      background-color: var(--xlc-lilac-soft, rgba(108, 99, 255, 0.12));
+      border-color: var(--xlc-lilac, #6c63ff);
+      color: var(--xlc-lilac-ink, #4e46e5);
       font-weight: var(--xlc-weight-semibold);
+      box-shadow: 0 1px 3px rgba(108, 99, 255, 0.15);
 
-      &:hover { border-color: transparent; }
+      &:hover { border-color: var(--xlc-lilac, #6c63ff); }
+    }
+  }
+
+  // 参考图同款：分段胶囊沉浸底槽（Segmented Pill Controller）
+  .xlc-segmented-track {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    padding: 2px 3px;
+    background-color: var(--xlc-soft, #f1f1f9);
+    border: 1px solid var(--b3-border-color);
+    border-radius: var(--xlc-radius-pill, 9999px);
+
+    .xlc-scope-chip {
+      border: none;
+      background: transparent;
+      height: 24px;
+      min-height: 24px;
+      padding: 0 10px;
+      font-size: var(--xlc-font-2xs);
+      border-radius: var(--xlc-radius-pill, 9999px);
+      transition: all var(--xlc-dur-fast) var(--xlc-ease);
+
+      &:hover {
+        background-color: rgba(0, 0, 0, 0.04);
+        color: var(--b3-theme-on-background);
+      }
+
+      &--on {
+        background-color: var(--b3-theme-background) !important;
+        color: var(--b3-theme-primary) !important;
+        box-shadow: 0 1px 4px rgba(0, 0, 0, 0.1) !important;
+        font-weight: 600;
+      }
     }
   }
 
@@ -758,22 +793,25 @@
         background: var(--xlc-soft);
         color: var(--xlc-muted);
         font-size: var(--xlc-font-2xs);
-        padding: 0 var(--xlc-space-1);
-        border-radius: var(--xlc-radius-sm);
+        padding: 1px 7px;
+        border-radius: var(--xlc-radius-pill, 9999px);
         line-height: var(--xlc-line-control);
         font-family: inherit;
         cursor: pointer;
         transition: background-color var(--xlc-dur-fast) var(--xlc-ease),
-                    color var(--xlc-dur-fast) var(--xlc-ease);
+                    color var(--xlc-dur-fast) var(--xlc-ease),
+                    transform var(--xlc-dur-fast) var(--xlc-ease);
 
         &:hover {
-          background: var(--xlc-lavender);
-          color: var(--xlc-lavender-ink);
+          background: var(--xlc-lilac-soft, var(--xlc-lavender));
+          color: var(--xlc-lilac-ink, var(--xlc-lavender-ink));
+          transform: scale(1.04);
         }
 
         &--on {
           background: var(--b3-theme-primary);
           color: #fff;
+          font-weight: 600;
         }
 
         &--more {
@@ -1330,13 +1368,13 @@
   &--omni      { color: #0284c7; background-color: rgba(2, 132, 199, 0.12); border: 1px solid rgba(2, 132, 199, 0.28); font-size: var(--xlc-font-2xs); font-weight: 600; }
   &--var       { color: var(--xlc-var); background-color: var(--xlc-var-tint); font-family: var(--mono, inherit); font-weight: var(--xlc-weight-medium); letter-spacing: 0; }
   &--cat {
-    max-width: 84px;
+    max-width: 96px;
     overflow: hidden;
     text-overflow: ellipsis;
     font-size: var(--xlc-font-2xs);
     font-weight: var(--xlc-weight-medium);
-    padding: var(--xlc-space-0) var(--xlc-space-1);
-    border-radius: var(--xlc-radius-sm);
+    padding: 1px 8px;
+    border-radius: var(--xlc-radius-pill, 9999px);
     letter-spacing: 0;
 
     &.xlc-cat--business {
@@ -3714,4 +3752,61 @@
   max-width: 320px;
   margin: var(--xlc-space-2) auto 0 auto;
   line-height: var(--xlc-line-body);
+}
+
+// ---------- Bento Grid 双色数据卡片（对标参考图 · G44）----------
+.xlc-bento-deck {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--xlc-space-2);
+  margin: var(--xlc-space-2) 0;
+
+  .xlc-bento-card {
+    display: flex;
+    flex-direction: column;
+    padding: 10px 14px;
+    border-radius: var(--xlc-radius-bento, 16px);
+    border: 1px solid transparent;
+    transition: transform var(--xlc-dur-fast) var(--xlc-ease);
+
+    &:hover { transform: translateY(-1px); }
+
+    .xlc-bento-head {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: var(--xlc-font-2xs);
+      font-weight: 600;
+      letter-spacing: .3px;
+      margin-bottom: 4px;
+    }
+
+    .xlc-bento-value {
+      font-size: var(--xlc-font-xl);
+      font-weight: 700;
+      line-height: var(--xlc-line-heading);
+    }
+
+    .xlc-bento-sub {
+      font-size: var(--xlc-font-2xs);
+      opacity: 0.75;
+      margin-top: 2px;
+    }
+
+    &--mango {
+      background: linear-gradient(135deg, rgba(255, 152, 0, 0.16) 0%, rgba(255, 179, 0, 0.08) 100%);
+      border-color: rgba(255, 152, 0, 0.25);
+      color: var(--xlc-mango-ink, #b45309);
+
+      .xlc-bento-value { color: var(--xlc-mango, #ff9800); }
+    }
+
+    &--lilac {
+      background: linear-gradient(135deg, rgba(108, 99, 255, 0.15) 0%, rgba(138, 132, 255, 0.08) 100%);
+      border-color: rgba(108, 99, 255, 0.25);
+      color: var(--xlc-lilac-ink, #4e46e5);
+
+      .xlc-bento-value { color: var(--xlc-lilac, #6c63ff); }
+    }
+  }
 }

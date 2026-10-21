@@ -1,0 +1,34 @@
+# ADR 0092：参考图设计语言融合（Bento Grid 双色便当盒数据卡片与分段胶囊滑动控制器）
+
+## 状态
+已接受，T-0156 / R292（2026-10-21，用户指令立项：仔细研究参考图并深度优化 UI）。
+
+## 背景与上下文
+用户提供了现代高质感移动/桌面设计参考图，通过对参考图的系统分析，提炼出三大具有降维打击级价值的视觉设计语言：
+1. **调色板（Dual Accent Palette）**：以香芋柔紫（`--xlc-lilac: #6c63ff`）为主强调色，以芒果日落暖橙（`--xlc-mango: #ff9800`）为活力色，搭配全胶囊圆角（`9999px`）与大圆角便当盒卡片（`16px`）；
+2. **分段胶囊控制器（Segmented Pill Controller）**：参考图中顶部的 `All | Friends Alarms | My Alarms` 采用沉浸底槽 + 悬浮胶囊滑块设计，相比离散按钮更具整体感与流动感；
+3. **Bento Grid 双色主数据卡片**：参考图中的 `Best Streak 12 days`（暖橙）与 `Most Recent 6:15 AM`（柔紫）并列排布，视觉冲击力与成就感极强；
+4. **Achievements 徽标胶囊化**：圆角胶囊 Pill 徽章搭配微型图标前缀，色彩柔和克制。
+
+## 决策
+
+### 1. 注入参考图设计系统令牌 (`tokens-r187.scss` & `index.scss`)
+- 新增 `--xlc-lilac`（#6c63ff / #8a84ff）、`--xlc-mango`（#ff9800 / #ffa726）、`--xlc-radius-pill`（9999px）与 `--xlc-radius-bento`（16px）；
+- 完整覆盖明亮模式、暗黑模式与系统高对比度模式（forced-colors）。
+
+### 2. 重塑顶部作用域为参考图同款分段胶囊控制器 (`.xlc-segmented-track`)
+- 将分散的范围过滤 Chips 重构为 `.xlc-segmented-track` 沉浸底槽；
+- 激活态赋予白底微阴影悬浮胶囊，未激活项悬停微亮，键盘 `Alt+T` 轮转时流动感极佳。
+
+### 3. 全表面标签与分类 Pill 胶囊化
+- 列表项中的标签 Pills（`.xlc-tag-pill`）和分类徽标（`.xlc-badge--cat`）全量采用 9999px 胶囊圆角，hover 时轻微缩放微动效（`scale(1.04)`），视觉对标 Achievements 勋章区。
+
+### 4. 设置面板落地 Bento Grid 双色数据卡片 (`.xlc-bento-deck`)
+- 左侧暖橙卡片：`🔥 累计调用次数`，大号粗体数值 + 节省击键说明；
+- 右侧柔紫卡片：`⚡ 效率增益沉淀`，大号格式化时间 + 7天活跃统计；
+- 瞬间让数据统计充满现代感与视觉享受。
+
+## 结果与证据
+- 单元测试维持 715/715 项全数通过；
+- 样式满足 WCAG 4.5:1 对比度与 forced-colors 门禁；
+- 全套工程门禁（check, scan, check:errors, check:package, build）全数通过。

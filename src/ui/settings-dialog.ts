@@ -494,6 +494,30 @@ function buildInsertSection(ctx: SettingsUiContext, root: HTMLElement): void {
         }
 
         const insights = calculateUsageInsights(usage, items, Date.now());
+
+        // 参考图同款：Bento Grid 双色数据看板卡片
+        const bentoDeck = document.createElement("div");
+        bentoDeck.className = "xlc-bento-deck";
+
+        const mangoCard = document.createElement("div");
+        mangoCard.className = "xlc-bento-card xlc-bento-card--mango";
+        mangoCard.innerHTML = `
+            <div class="xlc-bento-head">🔥 累计调用</div>
+            <div class="xlc-bento-value">${insights.totalCalls} <span style="font-size:12px; font-weight:normal;">次</span></div>
+            <div class="xlc-bento-sub">节省约 ${insights.totalSavedKeystrokes} 字符</div>
+        `;
+
+        const lilacCard = document.createElement("div");
+        lilacCard.className = "xlc-bento-card xlc-bento-card--lilac";
+        lilacCard.innerHTML = `
+            <div class="xlc-bento-head">⚡ 效率增益</div>
+            <div class="xlc-bento-value">${insights.formattedTimeSaved}</div>
+            <div class="xlc-bento-sub">近7天活跃 ${insights.activeItems7Days} 项</div>
+        `;
+
+        bentoDeck.append(mangoCard, lilacCard);
+        insightsBox.appendChild(bentoDeck);
+
         const grid = document.createElement("div");
         grid.className = "xlc-insights-grid";
 
