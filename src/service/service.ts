@@ -1,7 +1,7 @@
 // XiaolvCommonService：xiaolv-common/v1 对外服务接口（跨插件协议面）。
 // 不抛异常：全部返回 ActionResult；内部组装 library/executor/registry/sidecar。
 import {CAPABILITIES, ActionResult, CapabilityDescriptor, CommonItemRef, ProviderDescriptor, envelope, failureEnvelope, negotiateProtocol, normalizeSaveInput, successEnvelope} from "../model/protocol";
-import {SearchQuery, SearchContext, searchEntries, listByScope} from "../model/search";
+import {SearchQuery, SearchContext, SearchEntry, searchEntries, listByScope} from "../model/search";
 import {InsertMode} from "../model/actions";
 import {CommonItem, isItemType} from "../model/item";
 import {toErrorMessage} from "../model/errors";
@@ -38,6 +38,14 @@ export interface ResolvedItemData {
         options?: string[];
         defaultValue?: string;
     }>;
+}
+
+export type RecallMatchMode = "exact" | "multiple" | "none";
+
+export interface RecallResult {
+    matched: RecallMatchMode;
+    item?: ResolvedItemData;
+    candidates?: CommonItemRef[];
 }
 
 function toRef(item: Partial<CommonItem> & Pick<CommonItem, "id">): CommonItemRef {
@@ -198,6 +206,81 @@ export class XiaolvCommonService {
                 defaultValue: f.defaultValue,
             })),
         });
+    }
+
+    /**
+     * 别名闪电直达接口（Flash Recall by Alias · G41）：
+     * 专为外部 Quicker 动作与全局热键设计，输入别名或拼音缩写一步到位取回展开文本。
+     * - 若唯一匹配：直接计算并返回展开后的 ResolvedItemData；
+     * - 若多条匹配：返回候选列表供外部选择；
+     * - 若未命中：返回 not-found 错误信封。
+     */
+    async recall(aliasOrKeyword: string, fills?: Record<string, string>): Promise<ActionResult<RecallResult>> {
+        const key = (aliasOrKeyword ?? "").trim().toLowerCase();
+        if (!key) return failureEnvelope("invalid-input", "alias or keyword must not be empty");
+
+        let idx;
+        try {
+            idx = await this.deps.library.ensureIndex();
+        } catch (err) {
+            return failureEnvelope("kernel-error", toErrorMessage(err));
+        }
+
+        // 1. 查找别名完全匹配项
+        const exactAliasMatches: SearchEntry[] = [];
+        for (const entry of idx.entries) {
+            if (entry.alias && entry.alias.trim().toLowerCase() === key) {
+                exactAliasMatches.push(entry);
+            }
+        }
+
+        if (exactAliasMatches.length === 1) {
+            const target = exactAliasMatches[0];
+            if (target) {
+                const resolved = await this.resolve(target.id, fills);
+                if (resolved.ok && resolved.data) {
+                    return successEnvelope({ matched: "exact" as const, item: resolved.data });
+                }
+            }
+        } else if (exactAliasMatches.length > 1) {
+            return successEnvelope({ matched: "multiple" as const, candidates: exactAliasMatches.map(toRef) });
+        }
+
+        // 2. 查找标题拼音首字母缩写完全匹配项（如 qjsp 对应 财务报销审批流）
+        const acronymMatches: SearchEntry[] = [];
+        for (const entry of idx.entries) {
+            if (entry.pyi && entry.pyi.toLowerCase() === key) {
+                acronymMatches.push(entry);
+            }
+        }
+
+        if (acronymMatches.length === 1) {
+            const target = acronymMatches[0];
+            if (target) {
+                const resolved = await this.resolve(target.id, fills);
+                if (resolved.ok && resolved.data) {
+                    return successEnvelope({ matched: "exact" as const, item: resolved.data });
+                }
+            }
+        } else if (acronymMatches.length > 1) {
+            return successEnvelope({ matched: "multiple" as const, candidates: acronymMatches.map(toRef) });
+        }
+
+        // 3. 降级走普通搜索前缀召回
+        const searchResults = searchEntries(idx.entries, { text: key, scope: "all" }, this.searchCtx(), 5);
+        if (searchResults.length === 1) {
+            const target = searchResults[0]?.entry;
+            if (target) {
+                const resolved = await this.resolve(target.id, fills);
+                if (resolved.ok && resolved.data) {
+                    return successEnvelope({ matched: "exact" as const, item: resolved.data });
+                }
+            }
+        } else if (searchResults.length > 1) {
+            return successEnvelope({ matched: "multiple" as const, candidates: searchResults.map((r) => toRef(r.entry)) });
+        }
+
+        return failureEnvelope("not-found", `no matching item found for alias or keyword: "${key}"`);
     }
 
     async save(input: unknown): Promise<ActionResult<CommonItemRef>> {

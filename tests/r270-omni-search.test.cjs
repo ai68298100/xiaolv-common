@@ -247,3 +247,24 @@ test("parseOmniQueryScope：支持 type:code / type:h / type:引述 等块类型
     assert.strictEqual(r3.keyword, "乔布斯金句");
     assert.deepStrictEqual(r3.types, { b: true });
 });
+
+test("rerankBlockHits：标题与核心正文密集匹配多词的块在二次重排后优先置顶", () => {
+    const hits = [
+        {
+            id: "blk-scattered",
+            type: "p",
+            content: "我们在日常工作中要按规范提交代码，财务相关制度后续发布",
+            hPath: "/规范/说明",
+        },
+        {
+            id: "blk-title-match",
+            type: "h",
+            content: "财务报销审批规范流程说明",
+            hPath: "/财务/报销",
+        },
+    ];
+
+    const reranked = omniSearch.rerankBlockHits(hits, "财务 报销");
+    assert.strictEqual(reranked.length, 2);
+    assert.strictEqual(reranked[0].id, "blk-title-match", "标题密集命中全部 token 且为标题块应排在首位");
+});

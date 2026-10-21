@@ -27,12 +27,10 @@ function makeService() {
                 let res = text;
                 if (fills) {
                     for (const [k, v] of Object.entries(fills)) {
-                        res = res.replaceAll(`{{xlc:ask:${k}}}`, v);
-                        res = res.replaceAll(`{{xlc:ask:${k}=尊敬的客户}}`, v);
+                        res = res.replace(new RegExp(`\\{\\{xlc:ask:${k}(?:=[^|}]+)?(?:\\|[^}]*)?\\}\\}`, "g"), v);
                     }
                 }
-                res = res.replaceAll("{{xlc:ask:客户姓名=尊敬的客户}}", "尊敬的客户");
-                res = res.replaceAll("{{xlc:ask:工单号}}", "");
+                res = res.replace(/\{\{xlc:ask:([^|=]+)(?:=([^|}]+))?(?:\|[^}]*)?\}\}/g, (_, name, def) => def || "");
                 return res;
             },
         },
@@ -47,7 +45,7 @@ test("桥形状：protocol/protocolName/capabilities 只读能力；写方法不
     const bridge = externalBridge.buildXlcBridge(makeService());
     assert.equal(bridge.protocol, 1);
     assert.equal(bridge.protocolName, "xiaolv-common");
-    assert.deepEqual(bridge.capabilities, ["search", "get", "getBatch", "resolve", "recent", "favorites", "categories", "tags"]);
+    assert.deepEqual(bridge.capabilities, ["search", "get", "getBatch", "resolve", "recall", "recent", "favorites", "categories", "tags"]);
     // 负向验证：写面不挂桥——意外扩面会让本断言失败
     for (const forbidden of ["save", "update", "remove", "insert", "copy", "openSource", "reindex"]) {
         assert.equal(bridge[forbidden], undefined, `写能力 ${forbidden} 不得出现在只读桥`);
@@ -56,6 +54,7 @@ test("桥形状：protocol/protocolName/capabilities 只读能力；写方法不
     assert.equal(typeof bridge.get, "function");
     assert.equal(typeof bridge.getBatch, "function");
     assert.equal(typeof bridge.resolve, "function");
+    assert.equal(typeof bridge.recall, "function");
     assert.equal(typeof bridge.getRecent, "function");
     assert.equal(typeof bridge.getFavorites, "function");
     assert.equal(typeof bridge.getCategories, "function");
@@ -236,4 +235,62 @@ test("search / toRef：CommonItemRef 丰富元数据支持（alias, tags, catego
     assert.equal(item.category, "退款规范", "应包含分类");
     assert.equal(item.varCount, 2, "应包含变量统计数");
     assert.equal(item.summary, "请确认订单状态与退款金额", "应包含摘要");
+});
+
+test("bridge.recall：别名闪电直达测试（唯一匹配一步返回展开正文，未命中返回not-found）", async () => {
+    const svc = makeService();
+    svc.deps.library.ensureIndex = async () => ({
+        entries: [
+            {
+                id: "e-yq",
+                title: "商务延期致歉",
+                alias: "yq",
+                tags: ["商务"],
+                category: "模板",
+                pyi: "yqzq",
+                createdAt: 1000,
+                updatedAt: 1000,
+            },
+        ],
+        items: new Map(),
+        errors: [],
+        truncated: false,
+    });
+
+    svc.get = async (id) => {
+        if (id === "e-yq") {
+            return {
+                ok: true,
+                data: {
+                    id: "e-yq",
+                    title: "商务延期致歉",
+                    itemType: "text",
+                },
+            };
+        }
+        return {ok: false, reason: "not-found", message: "item not found"};
+    };
+    svc.deps.library.getItemKramdown = async () => ({
+        ok: true,
+        data: "尊敬的{{xlc:ask:客户姓名=客户}}，因不可抗力导致项目延期。",
+    });
+
+    const bridge = externalBridge.buildXlcBridge(svc);
+
+    // 1. 唯一别名精确直达并计算展开文本
+    const r1 = await bridge.recall("yq", {"客户姓名": "李总"});
+    assert.equal(r1.ok, true);
+    assert.equal(r1.data.matched, "exact");
+    assert.ok(r1.data.item.resolvedText.includes("尊敬的李总"));
+
+    // 2. 标题拼音首字母唯一直达
+    const r2 = await bridge.recall("yqzq");
+    assert.equal(r2.ok, true);
+    assert.equal(r2.data.matched, "exact");
+    assert.ok(r2.data.item.resolvedText.includes("尊敬的客户"));
+
+    // 3. 不存在的别名返回 not-found 错误信封
+    const r3 = await bridge.recall("not-exist-alias");
+    assert.equal(r3.ok, false);
+    assert.equal(r3.reason, "not-found");
 });

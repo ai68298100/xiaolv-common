@@ -411,6 +411,50 @@ export async function searchAllNotesDocuments(
     });
 }
 
+/**
+ * 纯函数：对思源全文本搜索返回的块列表进行多关键词相关度二次重排（Secondary Re-ranking · G42）
+ * 标题与大纲块密集匹配优先，多词全部命中间距紧密优先，保持稳定原序。
+ */
+export function rerankBlockHits(hits: IBlockSearchHit[], query: string): IBlockSearchHit[] {
+    const tokens = splitSearchTokens(query).map((t) => t.toLowerCase());
+    if (tokens.length === 0 || hits.length <= 1) return hits;
+
+    const scored = hits.map((hit, originalIndex) => {
+        const cleanContent = cleanSearchHighlight(hit.content).toLowerCase();
+        const docName = (hit.hPath || "").split("/").pop()?.replace(/\.sy$/, "").toLowerCase() || "";
+        let score = 0;
+
+        let titleMatchCount = 0;
+        let contentMatchCount = 0;
+
+        for (const t of tokens) {
+            if (hit.type === "h" && cleanContent.includes(t)) {
+                titleMatchCount++;
+            } else if (docName.includes(t)) {
+                titleMatchCount++;
+            }
+            if (cleanContent.includes(t)) {
+                contentMatchCount++;
+            }
+        }
+
+        if (titleMatchCount === tokens.length) score += 50;
+        else score += titleMatchCount * 20;
+
+        if (contentMatchCount === tokens.length) score += 30;
+        else score += contentMatchCount * 10;
+
+        // 标题块本身具有概括性权重
+        if (hit.type === "h") score += 10;
+        if (hit.type === "c") score += 5;
+
+        return { hit, score, originalIndex };
+    });
+
+    scored.sort((a, b) => b.score - a.score || a.originalIndex - b.originalIndex);
+    return scored.map((s) => s.hit);
+}
+
 /** 检索全库思源内容块（走官方 fullTextSearchBlock 端点，零 SQL） */
 export async function searchAllNotesBlocks(
     kernel: IKernelClient,
@@ -447,7 +491,8 @@ export async function searchAllNotesBlocks(
     });
 
     const hits = parseFullTextSearch(raw);
-    return hits.map(blockHitToSearchEntry);
+    const reranked = rerankBlockHits(hits, actualQuery);
+    return reranked.map(blockHitToSearchEntry);
 }
 
 /** 全库统一检索：块内容优先，文档为辅 */

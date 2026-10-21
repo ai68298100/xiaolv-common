@@ -3564,6 +3564,36 @@ export class CommonSearchDialog {
             void this.applyBatchUpdate({setCategory: input.trim()});
         });
 
+        // 全域条目批量一键收录按钮
+        const batchCaptureBtn = document.createElement("button");
+        batchCaptureBtn.type = "button";
+        batchCaptureBtn.className = "b3-button xlc-btn-primary";
+        batchCaptureBtn.dataset.xlcControl = "search.batch.capture-omni";
+        batchCaptureBtn.textContent = "✦ 批量收录";
+        batchCaptureBtn.style.display = "none";
+        batchCaptureBtn.addEventListener("click", async () => {
+            if (this.selectedIds.size === 0 || !this.deps.createFromOmni) return;
+            const omniSelected = this.results.filter((r) => this.selectedIds.has(r.id) && r.isOmni);
+            if (omniSelected.length === 0) return;
+            batchCaptureBtn.disabled = true;
+            batchCaptureBtn.textContent = "正在收录…";
+            let successCount = 0;
+            for (const item of omniSelected) {
+                try {
+                    const ok = await this.deps.createFromOmni(item);
+                    if (ok) {
+                        successCount++;
+                        this.capturedOmniIds.add(item.id);
+                    }
+                } catch {
+                    // 隔离错误
+                }
+            }
+            this.deps.notify?.("info", `已成功批量收录 ${successCount} 项到常用语库`);
+            this.exitMultiSelectMode();
+            await this.refresh();
+        });
+
         const exitBtn = document.createElement("button");
         exitBtn.type = "button";
         exitBtn.className = "b3-button xlc-btn-ghost";
@@ -3571,7 +3601,7 @@ export class CommonSearchDialog {
         exitBtn.textContent = "退出多选 (Esc)";
         exitBtn.addEventListener("click", () => this.exitMultiSelectMode());
 
-        actions.append(addTagBtn, removeTagBtn, setCatBtn, exitBtn);
+        actions.append(batchCaptureBtn, addTagBtn, removeTagBtn, setCatBtn, exitBtn);
         bar.append(countSpan, actions);
         this.batchBarEl = bar;
         return bar;
@@ -3588,6 +3618,18 @@ export class CommonSearchDialog {
         actionBtns.forEach((b) => {
             b.disabled = this.selectedIds.size === 0;
         });
+
+        const batchCaptureBtn = this.batchBarEl.querySelector<HTMLButtonElement>("[data-xlc-control='search.batch.capture-omni']");
+        if (batchCaptureBtn) {
+            const omniSelected = this.results.filter((r) => this.selectedIds.has(r.id) && r.isOmni);
+            if (omniSelected.length > 0) {
+                batchCaptureBtn.style.display = "";
+                batchCaptureBtn.textContent = `✦ 批量收录 (${omniSelected.length}项)`;
+                batchCaptureBtn.disabled = false;
+            } else {
+                batchCaptureBtn.style.display = "none";
+            }
+        }
     }
 
     destroy(): void {

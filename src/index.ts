@@ -353,6 +353,11 @@ export default class XiaolvCommonPlugin extends Plugin {
             const itemId = raw?.itemId ?? raw?.id ?? "";
             return this.service.resolve(itemId, raw?.fills);
         };
+        this.protocolCommands["xiaolv.common.recall"] = async (payload) => {
+            const raw = payload as {alias?: string; keyword?: string; fills?: Record<string, string>} | undefined;
+            const key = raw?.alias ?? raw?.keyword ?? "";
+            return this.service.recall(key, raw?.fills);
+        };
         this.protocolCommands["xiaolv.common.recent"] = async (payload) => {
             const limit = (payload as {limit?: number})?.limit;
             return this.service.getRecent(limit);
