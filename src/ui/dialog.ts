@@ -1610,9 +1610,25 @@ export class CommonSearchDialog {
                 });
                 empty.appendChild(clear);
             }
+            const query = this.lastQueryText.trim();
+            if (this.currentScope === "all-notes" && /(?:in|path|book|box):/i.test(query)) {
+                const clearScopeBtn = document.createElement("button");
+                clearScopeBtn.type = "button";
+                clearScopeBtn.className = "b3-button xlc-btn-primary xlc-empty-action";
+                clearScopeBtn.textContent = "🔍 清除路径限定，在全库无限制搜索";
+                clearScopeBtn.addEventListener("click", () => {
+                    const input = this.dialog?.element.querySelector<HTMLInputElement>(".xlc-search-input");
+                    if (input) {
+                        input.value = query.replace(/(?:in|path|book|box):[^\s]+/gi, "").trim();
+                        input.dispatchEvent(new Event("input", {bubbles: true}));
+                        input.focus();
+                    }
+                });
+                empty.appendChild(clearScopeBtn);
+            }
+
             // 范围限制回退引导（ADR 0046 / T-0073）：
             // 若在收藏/最近等受限范围下搜索无结果，优先提供一键切换到全库范围搜索该词的推荐动作。
-            const query = this.lastQueryText.trim();
             const hasScopeLimitation = shouldShowScopeFallback(query, this.currentScope);
             if (hasScopeLimitation) {
                 const scopeFallback = document.createElement("button");

@@ -14,6 +14,37 @@ A quick-recall content launcher for SiYuan Notes: turn frequently used content �
 
 > **Released: v0.5.0 (2026-10-19)** · [Download the latest release](https://github.com/ai68298100/xiaolv-common/releases/latest) · Enhanced dynamic templates (date arithmetic / Chinese natural language / delimiter normalization / snippet diagnostics), Compact Bundle sharing and dependency preflight, body write boundary protections, and static error handling gate.
 
+## Latest Capabilities (Omni-Search Terminal, Headless Integration & Sync Merge · R273~R292)
+
+Omni-Search Terminal & Full SiYuan Block Search:
+
+- **Full SiYuan Block Search (Zero-SQL)**: Deep integration with the official `/api/search/fullTextSearchBlock` endpoint strictly complying with the zero-SQL baseline; sub-second recall across millions of blocks, automated `<mark>` tag stripping, and Kramdown structure preservation.
+- **Prefix Switching & Scope Filter Syntax**: Instant scope switching via `@`, `/`, or `sy:` prefixes; supports `in:<path>`, `path:<path>`, and `book:<notebook>` syntax for precision directory-level retrieval.
+- **Adaptive Cascading Search**: Automatically recalls matching SiYuan content blocks when common library hits are low (< 4 items), presenting them in elegant section divisions.
+- **Breadcrumb Navigation & Highlighting**: Shows `.xlc-row-breadcrumb` badges with document hierarchy; supports multi-keyword and pinyin smoothing highlights on snippets.
+- **One-Click Asset Capture (Alt+S)**: Hit `Alt+S` or `Ctrl+Shift+S` to capture any note block into the common library with auto-inherited category and provenance tags; button switches instantly to `✓ Saved`.
+- **Quick Look Instant Preview**: Spacebar opens full-document viewport preview for external note blocks with zero latency.
+- **Title Pinyin Acronym Boost**: First-letter pinyin acronyms (e.g. `cwbx` for `财务报销`) receive high-priority boosting for instant recall.
+- **Recent Query History Chips**: Zero-input state presents clickable recent search chips; supports `Alt+T` to cycle scopes and `Alt+0` to reset.
+
+Headless Automation & Quicker Global Integration:
+
+- **Headless Resolve API (`resolve`)**: UI-free expansion engine that recursively evaluates nested snippets `{{xlc:snippet:...}}`, handles `fills` or fallback defaults, and computes dates, UUIDs, case conversions, and arithmetic formulas.
+- **Structured Dynamic Variables Metadata**: Returns `hasVariables: boolean` alongside variable metadata (names, kinds, dropdown options, defaults) so external launchers (e.g. Quicker) can gather user inputs and paste directly into WeChat, Word, QQ, or web browsers.
+- **Enriched Metadata Protocol**: Single query outputs `alias`, `tags`, `category`, `varCount`, and `summary` over `xiaolv.common.*` and `window.xiaolvCommon`.
+- **Settings Integration Center**: Built-in guide and one-click copy button for Quicker action configuration examples.
+
+Multi-Library Sync Diff & Conflict Merge Engine:
+
+- **Deterministic Fingerprinting**: 32-bit FNV-1a hashing with normalized properties to detect five diff states (`identical`, `added`, `removed`, `modified`, `conflict`).
+- **Five Merge Strategies**: Smart merge (`smart-merge`), latest wins (`latest-wins`), fork both (`keep-both`), remote authoritative (`keep-remote`), and local authoritative (`keep-local`).
+- **Visual Diff Modal**: Summary metric cards, item diff table, interactive strategy switching, and optional mirror deletion.
+
+Advanced Templates & Security Suite:
+
+- **Computation & Formatting**: Pure recursive-descent math parser (`{{xlc:calc:...}}`), UUID generator, case converters (camel/snake/kebab/pascal), and cross-application rich-text clipboard payload.
+- **Security & Privacy**: Batch tag and category governance, export privacy sanitizer (phone/email/token masking and placeholder replacement).
+
 ## This release (v0.5.0)
 
 Enhanced dynamic templates & placeholder capabilities:
