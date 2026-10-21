@@ -12,7 +12,7 @@ A quick-recall content launcher for SiYuan Notes: turn frequently used content �
 
 > Runs fully standalone (no dependency on other Lv plugins), and exposes the `xiaolv-common/v1` protocol for sibling plugins.
 
-> **Released: v0.5.0 (2026-10-19)** · [Download the latest release](https://github.com/ai68298100/xiaolv-common/releases/latest) · Enhanced dynamic templates (date arithmetic / Chinese natural language / delimiter normalization / snippet diagnostics), Compact Bundle sharing and dependency preflight, body write boundary protections, and static error handling gate.
+> **Released: v0.6.0 (2026-10-21)** · [Download the latest release](https://github.com/ai68298100/xiaolv-common/releases/latest) · Full SiYuan block search integration (Zero-SQL), Headless automation with Quicker recall/resolve, multi-library sync diff and merge engine, Bento Grid dual-accent visual hierarchy, and power keyboard interactions.
 
 ## Latest Capabilities (Omni-Search Terminal, Headless Integration & Sync Merge · R273~R292)
 
@@ -45,7 +45,34 @@ Advanced Templates & Security Suite:
 - **Computation & Formatting**: Pure recursive-descent math parser (`{{xlc:calc:...}}`), UUID generator, case converters (camel/snake/kebab/pascal), and cross-application rich-text clipboard payload.
 - **Security & Privacy**: Batch tag and category governance, export privacy sanitizer (phone/email/token masking and placeholder replacement).
 
-## This release (v0.5.0)
+## This release (v0.6.0)
+
+Omni-Search Terminal & Full SiYuan Block Search (Zero-SQL):
+
+- **Full block search with Kramdown fidelity**: Leverages official `/api/search/fullTextSearchBlock` with zero SQL; provides sub-second block retrieval, `<mark>` tag stripping, and structure preservation for code fences, quotes, and headers.
+- **Scope prefix switching & block type / path filter syntax**: `@`, `/`, or `sy:` prefix switches instantly to omni mode; supports `type:code` / `type:h` / `type:quote` as well as `in:<path>` and `book:<notebook>` filter parameters.
+- **Smart alias derivation & title acronym boost**: One-click asset capture (`Alt+S`) automatically infers pinyin acronyms or English initials as recommended aliases; pinyin acronyms receive high-priority ranking boost.
+- **Multi-token secondary re-ranking**: Re-ranks FTS results based on title matching, content density, and structural weights for superior relevance.
+
+Headless Automation & Cross-App Integration:
+
+- **Headless resolve and flash recall by alias (`recall` / `resolve`)**: Exposes `window.xiaolvCommon` and SiYuan protocol commands for external launchers (e.g. Quicker) to recall and evaluate items with expanded macros in a single round-trip.
+- **Structured metadata and missing variables contract (`missingVariables`)**: Returns `missingVariables` array so external tools can selectively prompt for required unfilled inputs.
+- **Zero-dependency ecosystem adapter**: Safe read-only probing for Checkin, Contacts, and Glean plugins; supports dynamic macro `{{xlc:checkin:today}}`.
+
+Modern Bento Grid Design System & Power Interactions:
+
+- **Bento Grid dual-accent metrics**: Settings panel introduces sunset mango (`🔥 Total Calls`) and soft lilac (`⚡ Efficiency Boost`) metric cards.
+- **Segmented pill controller & full-surface pill badges**: Replaces scattered chips with a continuous track (`.xlc-segmented-track`); converts badges and tags into 9999px pills.
+- **Power user keyboard workflows**: `Ctrl+Enter` / `Cmd+Enter` instant submit across capture and variable fill forms; quick option pill clicks (`.xlc-varform-quick-options`); list focus halo indicators.
+- **Mobile responsiveness**: Floating Action Button (FAB `+`) on mobile/narrow screens; horizontal scroll-snap for tags and search history chips to eliminate layout shift (CLS).
+
+Sync Diff & Clipboard Enhancements:
+
+- **Interactive status filter tabs**: Modal metric cards support click-to-filter, isolating conflict items instantly.
+- **Task list checkbox rendering & IAL stripping**: Full support for `- [ ]` and `- [x]` disabled checkbox rendering in clipboard export and details preview, with automatic Kramdown IAL tag stripping.
+
+## Previous release (v0.5.0)
 
 Enhanced dynamic templates & placeholder capabilities:
 
