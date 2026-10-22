@@ -105,6 +105,8 @@
   "insertSourceContent": "插入源块正文",
   "insertEmbed": "插入嵌入块",
   "copy": "复制",
+  "copyRawTemplate": "复制模板原文（不展开变量）",
+  "copyRawTemplateDone": "已复制模板原文（含动态变量语法）",
   "openSource": "打开来源",
   "edit": "编辑",
   "delete": "删除",

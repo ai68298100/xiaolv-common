@@ -105,6 +105,8 @@
   "insertSourceContent": "Insert source content",
   "insertEmbed": "Insert embed block",
   "copy": "Copy",
+  "copyRawTemplate": "Copy Raw Template (Unexpanded)",
+  "copyRawTemplateDone": "Copied raw template with dynamic variable syntax",
   "openSource": "Open source",
   "edit": "Edit",
   "delete": "Delete",

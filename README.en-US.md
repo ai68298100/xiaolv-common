@@ -12,7 +12,7 @@ A quick-recall content launcher for SiYuan Notes: turn frequently used content �
 
 > Runs fully standalone (no dependency on other Lv plugins), and exposes the `xiaolv-common/v1` protocol for sibling plugins.
 
-> **Released: v0.6.1 (2026-10-22)** · [Download the latest release](https://github.com/ai68298100/xiaolv-common/releases/latest) · Comprehensive feature optimizations: diff modal real-time search & status filtering, variable option chips with active states, Bento Grid mobile responsive alignment, seamless Quick Look keyboard flow, and SiYuan 3.8.8+ lifecycle contract alignment.
+> **Released: v0.6.2 (2026-10-22)** · [Download the latest release](https://github.com/ai68298100/xiaolv-common/releases/latest) · Inspired by Raycast & TextExpander: conditional toggle blocks, copy raw template action, comprehensive i18n parity, and robust XSS/IME composition defenses.
 
 ## Latest Capabilities (Omni-Search Terminal, Headless Integration & Sync Merge · R273~R292)
 
@@ -45,7 +45,16 @@ Advanced Templates & Security Suite:
 - **Computation & Formatting**: Pure recursive-descent math parser (`{{xlc:calc:...}}`), UUID generator, case converters (camel/snake/kebab/pascal), and cross-application rich-text clipboard payload.
 - **Security & Privacy**: Batch tag and category governance, export privacy sanitizer (phone/email/token masking and placeholder replacement).
 
-## This release (v0.6.1)
+## This release (v0.6.2)
+
+Inspirations from Raycast / TextExpander & Quality Hardening:
+
+- **Conditional toggle blocks (`{{xlc:ask:name=content|toggle}}`)**: Inspired by TextExpander's Optional Text Blocks and Raycast, introducing boolean toggle/checkbox variables. When toggled on, content is rendered; when toggled off, content is cleanly omitted.
+- **Copy raw template action**: Action menu adds `📄 Copy Raw Template (Unexpanded)` for variable items, facilitating easy template sharing and backup.
+- **Full-spectrum i18n parity & XSS hardening**: Automated scan across all TypeScript calls ensuring 100% key parity between English and Chinese; refactored settings Bento metrics into native safe DOM elements.
+- **Global IME composition defenses**: Comprehensive `isComposing` and `keyCode === 229` interception in quick edit, document picker, and discovery dialogs to eliminate accidental submits.
+
+## Previous release (v0.6.1)
 
 Cross-Feature Usability and Experience Optimizations:
 

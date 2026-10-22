@@ -9,7 +9,7 @@
 
 import {LIMITS} from "../constants";
 
-export type AskFieldKind = "text" | "select" | "date" | "textarea";
+export type AskFieldKind = "text" | "select" | "date" | "textarea" | "toggle";
 
 export interface AskField {
     /** 字段名（label；同名去重后只询问一次） */
@@ -38,9 +38,13 @@ export function parseAskField(rawName: string, rawOptions: string | undefined): 
         .map((s) => s.trim().slice(0, LIMITS.tag))
         .filter(Boolean)
         .slice(0, 16);
-    // date/textarea 单选项大小写不敏感：{{xlc:ask:x|DATE}} / {{xlc:ask:x|TextArea}} 语义不变（R139/R160）
-    if (options.length === 1 && options[0]?.toLowerCase() === "date") return {name, kind: "date", options: [], ...(defaultValue ? {defaultValue} : {})};
-    if (options.length === 1 && options[0]?.toLowerCase() === "textarea") return {name, kind: "textarea", options: [], ...(defaultValue ? {defaultValue} : {})};
+    // date/textarea/toggle 单选项大小写不敏感（R139/R160/G49）
+    const firstOpt = options[0]?.toLowerCase() ?? "";
+    if (options.length === 1 && firstOpt === "date") return {name, kind: "date", options: [], ...(defaultValue ? {defaultValue} : {})};
+    if (options.length === 1 && firstOpt === "textarea") return {name, kind: "textarea", options: [], ...(defaultValue ? {defaultValue} : {})};
+    if (options.length === 1 && ["toggle", "checkbox", "switch", "bool", "开关"].includes(firstOpt)) {
+        return {name, kind: "toggle", options: [], ...(defaultValue ? {defaultValue} : {})};
+    }
     if (options.length >= 2) return {name, kind: "select", options, ...(defaultValue ? {defaultValue} : {})};
     if (options.length === 1 && !defaultValue) {
         defaultValue = options[0];
@@ -55,6 +59,7 @@ export function askFieldTag(field: AskField): string {
         : field.name;
     if (field.kind === "text") return field.defaultValue && field.options.length === 0 ? `{{xlc:ask:${nameWithDef}}}` : `{{xlc:ask:${field.name}}}`;
     if (field.kind === "select") return `{{xlc:ask:${field.name}|${field.options.join(",")}}}`;
+    if (field.kind === "toggle") return field.defaultValue ? `{{xlc:ask:${field.name}=${field.defaultValue}|toggle}}` : `{{xlc:ask:${field.name}|toggle}}`;
     return `{{xlc:ask:${field.name}|${field.kind}}}`;
 }
 
@@ -91,6 +96,17 @@ export function expandAsks(text: string, fills: Record<string, string>): string 
     return text.replace(ASK_PATTERN, (_match, rawName: string, rawOptions?: string) => {
         const field = parseAskField(rawName, rawOptions);
         if (!field) return _match;
+        if (field.kind === "toggle") {
+            if (Object.prototype.hasOwnProperty.call(fills, field.name)) {
+                const filled = fills[field.name]?.trim() ?? "";
+                if (filled === "" || filled === "false" || filled === "0" || filled === "否") {
+                    return "";
+                }
+                return cleanFillValue(filled === "true" || filled === "是" ? (field.defaultValue || "是") : filled);
+            }
+            if (field.defaultValue) return cleanFillValue(field.defaultValue);
+            return "";
+        }
         const filled = Object.prototype.hasOwnProperty.call(fills, field.name) ? cleanFillValue(fills[field.name] ?? "") : "";
         if (filled) return filled;
         if (field.defaultValue) return cleanFillValue(field.defaultValue);

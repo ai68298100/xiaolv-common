@@ -135,6 +135,28 @@ export function openVariableFillCard(options: VariableFillOptions): void {
         }
         wrap.appendChild(input);
 
+        if (field.kind === "toggle") {
+            input.style.display = "none";
+            const toggleRow = document.createElement("div");
+            toggleRow.className = "xlc-varform-toggle-row";
+            const toggleSwitch = document.createElement("input");
+            toggleSwitch.type = "checkbox";
+            toggleSwitch.className = "b3-switch xlc-varform-toggle";
+            const defaultVal = field.defaultValue || "是";
+            toggleSwitch.checked = Boolean(input.value && input.value !== "否" && input.value !== "false" && input.value !== "0");
+            const toggleHint = document.createElement("span");
+            toggleHint.className = "xlc-form-hint";
+            toggleHint.textContent = toggleSwitch.checked ? `包含：${defaultVal}` : "关闭：不包含此内容";
+            toggleSwitch.addEventListener("change", () => {
+                input.value = toggleSwitch.checked ? defaultVal : "";
+                toggleHint.textContent = toggleSwitch.checked ? `包含：${defaultVal}` : "关闭：不包含此内容";
+                input.dispatchEvent(new Event("input", {bubbles: true}));
+                input.dispatchEvent(new Event("change", {bubbles: true}));
+            });
+            toggleRow.append(toggleSwitch, toggleHint);
+            wrap.appendChild(toggleRow);
+        }
+
         // 快捷候选项胶囊行（快速单点填充并联动实时预览，对标移动端与参考图交互 · G45）
         const candidateOptions = new Set<string>();
         if (field.options && Array.isArray(field.options)) {

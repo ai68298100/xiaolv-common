@@ -2775,6 +2775,13 @@ export class CommonSearchDialog {
                 // 插入含变量条目同样先弹填充卡（F1）；复制保持模板原样
                 addAction("＋", this.deps.t("insert"), () => this.insertEntryWithVars(entry, (fills) => this.runActionFor(entry, fills), {beforePerform: () => this.destroy()}), "xlc-menu-item", false);
                 addAction("⧉", this.deps.t("copy"), () => this.deps.runAction(entry.id, "copy"));
+                if ((entry.varCount ?? 0) > 0) {
+                    addAction("📄", this.deps.t("copyRawTemplate"), async () => {
+                        const raw = await this.deps.preview(entry.id);
+                        await this.deps.copyProviderPayload(raw || entry.content || "");
+                        this.deps.notify?.("info", this.deps.t("copyRawTemplateDone"));
+                    });
+                }
             }
             menu.appendChild(sec1);
 

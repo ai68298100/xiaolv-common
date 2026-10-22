@@ -2252,6 +2252,13 @@
       }
     }
 
+    .xlc-varform-toggle-row {
+      display: flex;
+      align-items: center;
+      gap: var(--xlc-space-2);
+      margin-top: 4px;
+    }
+
     // 多行文本变量（R160）：可纵向拉伸，行高放宽便于长文编辑
     textarea.b3-text-field {
       resize: vertical;

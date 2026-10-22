@@ -21,6 +21,27 @@ test("ask 解析：文本/下拉/日期三形态，同名去重", () => {
     assert.deepStrictEqual(fields[2], {name: "跟进日期", kind: "date", options: []});
 });
 
+test("ask 解析：支持 toggle/checkbox 开关类型与条件段落展开", () => {
+    const fToggle = variables.parseAskField("加急处理", "toggle");
+    assert.deepStrictEqual(fToggle, {name: "加急处理", kind: "toggle", options: []});
+
+    const fCheckboxWithDef = variables.parseAskField("发票说明=附带增值税专用发票", "checkbox");
+    assert.deepStrictEqual(fCheckboxWithDef, {name: "发票说明", kind: "toggle", options: [], defaultValue: "附带增值税专用发票"});
+
+    const tpl = "订单已完成。{{xlc:ask:加急说明=如有加急请致电专线|toggle}}";
+    // 1. 勾选/传真值
+    assert.strictEqual(variables.expandAsks(tpl, {加急说明: "是"}), "订单已完成。如有加急请致电专线");
+    // 2. 显式关闭/传空值/否
+    assert.strictEqual(variables.expandAsks(tpl, {加急说明: ""}), "订单已完成。");
+    assert.strictEqual(variables.expandAsks(tpl, {加急说明: "否"}), "订单已完成。");
+    assert.strictEqual(variables.expandAsks(tpl, {加急说明: "false"}), "订单已完成。");
+    // 3. 不传 fills 沿用声明的默认值
+    assert.strictEqual(variables.expandAsks(tpl, {}), "订单已完成。如有加急请致电专线");
+    // 4. 无默认值且未填，安全展开为空（不残留 __名称__ 占位符）
+    const tplNoDef = "提醒：{{xlc:ask:附言|toggle}}";
+    assert.strictEqual(variables.expandAsks(tplNoDef, {}), "提醒：");
+});
+
 test("ask 解析：空名/畸形输入安全返回", () => {
     assert.strictEqual(variables.listAskFields("{{xlc:ask:|a,b}}").length, 0);
     assert.strictEqual(variables.listAskFields("没有变量").length, 0);
