@@ -231,19 +231,20 @@ export function normalizeCommonItem(input: {
 }
 
 // 标题派生：title 属性 > 别名 > 首行文本 > 类型标签
-export function deriveTitle(kramdown: string, itemType: ItemType, attrs: Record<string, unknown>): string {
-    const alias = cleanString(attrs[ATTR.alias], LIMITS.alias);
+export function deriveTitle(kramdown: string, itemType: ItemType, attrs: Record<string, unknown> = {}): string {
+    const alias = cleanString(attrs?.[ATTR.alias], LIMITS.alias);
     if (alias) return alias;
     const text = kramdownToPlainText(kramdown);
     const firstLine = text.split("\n").map((l) => l.trim()).find((l) => l.length > 0) ?? "";
     if (firstLine) return firstLine.slice(0, LIMITS.title);
-    if (itemType === "url") return cleanString(attrs[ATTR.url], LIMITS.title) || "URL";
+    if (itemType === "url") return cleanString(attrs?.[ATTR.url], LIMITS.title) || "URL";
     if (itemType === "code") return "Code";
     return itemType;
 }
 
 // kramdown → 纯文本（搜索/摘要用；不追求完整，够索引即可）
 export function kramdownToPlainText(kramdown: string): string {
+    if (!kramdown) return "";
     return kramdown
         .replace(/^```.*$/gm, "")
         .replace(/\{\{.*?\}\}/g, "")

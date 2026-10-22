@@ -214,7 +214,8 @@ export function parseSiYuanTimestamp(raw: string | undefined): number {
         const min = Number(str.slice(10, 12));
         const sec = Number(str.slice(12, 14));
         const date = new Date(year, month, day, hour, min, sec);
-        return date.getTime();
+        const time = date.getTime();
+        return Number.isFinite(time) ? time : 0;
     }
     const num = Number(str);
     if (Number.isFinite(num) && num > 0) {

@@ -1328,6 +1328,7 @@ export class DiscoveryDialog implements DiscoveryDialogController {
                 void this.selectCandidate(candidate.key);
             });
             row.addEventListener("keydown", (event) => {
+                if (event.isComposing || event.keyCode === 229) return;
                 if (event.target !== row || (event.key !== "Enter" && event.key !== " ")) return;
                 event.preventDefault();
                 void this.selectCandidate(candidate.key);

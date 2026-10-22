@@ -86,7 +86,7 @@ export default class XiaolvCommonPlugin extends Plugin {
     private service!: XiaolvCommonService;
     private discovery!: DiscoveryService;
     private omniSearch!: OmniSearchService;
-    private capture!: CaptureDialog;
+    private capture: CaptureDialog | null = null;
     private state!: PluginState;
     private config!: LibraryConfig | null;
     private searchDialog: CommonSearchDialog | null = null;
@@ -335,7 +335,7 @@ export default class XiaolvCommonPlugin extends Plugin {
             return {ok: true};
         };
         this.protocolCommands["xiaolv.common.saveSelection"] = async () => {
-            await this.capture.saveSelection();
+            await this.capture?.saveSelection();
             return {ok: true};
         };
         this.protocolCommands["xiaolv.common.insert"] = async (payload) => {
@@ -1171,7 +1171,7 @@ export default class XiaolvCommonPlugin extends Plugin {
                 }
             },
             captureOmniWithForm: (entry: SearchEntry) => {
-                this.capture.captureOmniWithForm(entry);
+                this.capture?.captureOmniWithForm(entry);
             },
             quickEditBlock: (blockId: string, currentContent: string) => {
                 openQuickEditDialog({
@@ -1474,8 +1474,8 @@ export default class XiaolvCommonPlugin extends Plugin {
             },
             getUsage: () => this.state.usage,
             resetItemUsage: (itemId: string) => this.resetItemUsage(itemId),
-            newItem: (titleCandidate?: string) => this.capture.newManual(titleCandidate),
-            newWithContent: (content: string, options?: {title?: string}) => this.capture.newWithContent(content, options),
+            newItem: (titleCandidate?: string) => this.capture?.newManual(titleCandidate),
+            newWithContent: (content: string, options?: {title?: string}) => this.capture?.newWithContent(content, options),
             openSource: async (itemId) => {
                 const got = await this.library.getItem(itemId);
                 if (!got.ok) {
@@ -2029,7 +2029,12 @@ export default class XiaolvCommonPlugin extends Plugin {
         }
         this.blockRefMenuHandler = null;
         this.linkMenuHandler = null;
+        this.imageMenuHandler = null;
+        this.docTreeMenuHandler = null;
         this.searchDialog?.destroy();
+        this.searchDialog = null;
+        this.capture?.destroy();
+        this.capture = null;
         if (this.saveTimer) clearTimeout(this.saveTimer);
         this.persistSidecar(STORAGE_KEYS.state, this.state, false);
         if (discoveryShutdown) {

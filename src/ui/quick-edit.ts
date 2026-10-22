@@ -114,6 +114,7 @@ export function openQuickEditDialog(
 
     saveBtn.addEventListener("click", () => void doSave());
     textarea.addEventListener("keydown", (e) => {
+        if (e.isComposing || (e as KeyboardEvent).keyCode === 229) return;
         if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
             e.preventDefault();
             void doSave();

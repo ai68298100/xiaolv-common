@@ -501,19 +501,32 @@ function buildInsertSection(ctx: SettingsUiContext, root: HTMLElement): void {
 
         const mangoCard = document.createElement("div");
         mangoCard.className = "xlc-bento-card xlc-bento-card--mango";
-        mangoCard.innerHTML = `
-            <div class="xlc-bento-head">🔥 累计调用</div>
-            <div class="xlc-bento-value">${insights.totalCalls} <span style="font-size:12px; font-weight:normal;">次</span></div>
-            <div class="xlc-bento-sub">节省约 ${insights.totalSavedKeystrokes} 字符</div>
-        `;
+        const mangoHead = document.createElement("div");
+        mangoHead.className = "xlc-bento-head";
+        mangoHead.textContent = "🔥 累计调用";
+        const mangoVal = document.createElement("div");
+        mangoVal.className = "xlc-bento-value";
+        const valSpan = document.createElement("span");
+        valSpan.style.cssText = "font-size:12px; font-weight:normal;";
+        valSpan.textContent = " 次";
+        mangoVal.append(document.createTextNode(String(insights.totalCalls)), valSpan);
+        const mangoSub = document.createElement("div");
+        mangoSub.className = "xlc-bento-sub";
+        mangoSub.textContent = `节省约 ${insights.totalSavedKeystrokes} 字符`;
+        mangoCard.append(mangoHead, mangoVal, mangoSub);
 
         const lilacCard = document.createElement("div");
         lilacCard.className = "xlc-bento-card xlc-bento-card--lilac";
-        lilacCard.innerHTML = `
-            <div class="xlc-bento-head">⚡ 效率增益</div>
-            <div class="xlc-bento-value">${insights.formattedTimeSaved}</div>
-            <div class="xlc-bento-sub">近7天活跃 ${insights.activeItems7Days} 项</div>
-        `;
+        const lilacHead = document.createElement("div");
+        lilacHead.className = "xlc-bento-head";
+        lilacHead.textContent = "⚡ 效率增益";
+        const lilacVal = document.createElement("div");
+        lilacVal.className = "xlc-bento-value";
+        lilacVal.textContent = insights.formattedTimeSaved;
+        const lilacSub = document.createElement("div");
+        lilacSub.className = "xlc-bento-sub";
+        lilacSub.textContent = `近7天活跃 ${insights.activeItems7Days} 项`;
+        lilacCard.append(lilacHead, lilacVal, lilacSub);
 
         bentoDeck.append(mangoCard, lilacCard);
         insightsBox.appendChild(bentoDeck);
@@ -1849,7 +1862,12 @@ function buildExternalIntegrationSection(ctx: SettingsUiContext, root: HTMLEleme
         row.className = "xlc-eco-row";
 
         const left = document.createElement("div");
-        left.innerHTML = `<strong>${p.name}</strong><span class="xlc-eco-desc">(${p.description})</span>`;
+        const nameStrong = document.createElement("strong");
+        nameStrong.textContent = p.name;
+        const descSpan = document.createElement("span");
+        descSpan.className = "xlc-eco-desc";
+        descSpan.textContent = `(${p.description})`;
+        left.append(nameStrong, descSpan);
 
         const badge = document.createElement("span");
         badge.className = "xlc-badge " + (p.installed ? "xlc-badge--ai" : "xlc-badge--text");

@@ -2,6 +2,7 @@
 // 支持在打包导出 (JSON bundle) 或导出 Markdown 时微调脱敏策略
 
 import type {SanitizerOptions, SanitizeMode} from "../model/export-sanitizer";
+import {escapeHtml} from "../model/clipboard";
 
 export interface SanitizerModalProps {
     initialOptions?: SanitizerOptions;
@@ -108,7 +109,7 @@ export function renderSanitizerOptionsModal(props: SanitizerModalProps): Sanitiz
             </div>
             <div class="b3-label" style="display:flex; flex-direction:column; gap:4px;">
                 <span>自定义字面替换词典（每行 原始词=替换词）</span>
-                <textarea class="b3-text-field fn__block xlc-export-sanitizer-custom" rows="3" placeholder="内部IP=10.0.0.x&#10;核心客户=保密客户">${customText}</textarea>
+                <textarea class="b3-text-field fn__block xlc-export-sanitizer-custom" rows="3" placeholder="内部IP=10.0.0.x&#10;核心客户=保密客户">${escapeHtml(customText)}</textarea>
             </div>
         </div>
         <div class="b3-dialog__action" style="display:flex; justify-content:flex-end; gap:8px; padding:12px 16px;">

@@ -68,8 +68,16 @@ export class CaptureDialog {
     /** 命令面板入口没有可禁用的按钮，用操作锁防止重复读取和重复落库。 */
     private readonly activeCaptures = new Set<string>();
     private formOpen = false;
+    private currentDialog: Dialog | null = null;
 
     constructor(private readonly deps: CaptureDeps) {}
+
+    destroy(): void {
+        this.currentDialog?.destroy();
+        this.currentDialog = null;
+        this.formOpen = false;
+        this.activeCaptures.clear();
+    }
 
     /** 保存前的共同前置条件：没有内容库时直接回到首次设置，避免先访问宿主再报错。 */
     private ensureConfigured(): boolean {
@@ -372,10 +380,12 @@ export class CaptureDialog {
             destroyCallback: () => {
                 closed = true;
                 this.formOpen = false;
+                this.currentDialog = null;
                 ++tidySeq;
                 ++draftSeq;
             },
         });
+        this.currentDialog = dialog;
         dialog.element.querySelector(".b3-dialog__container")?.classList.add("xlc-form-host");
         const body = getDialogBody(dialog.element);
         if (!body) {

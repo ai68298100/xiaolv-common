@@ -228,6 +228,7 @@ test("parseSiYuanTimestamp：14位 YYYYMMDDHHmmss、毫秒戳与秒级戳安全�
     assert.strictEqual(omniSearch.parseSiYuanTimestamp(""), 0);
     assert.strictEqual(omniSearch.parseSiYuanTimestamp(undefined), 0);
     assert.strictEqual(omniSearch.parseSiYuanTimestamp("invalid"), 0);
+    assert.strictEqual(omniSearch.parseSiYuanTimestamp("14digitnotnum!"), 0);
 });
 
 test("parseOmniQueryScope：支持 type:code / type:h / type:引述 等块类型限定语法提取", () => {

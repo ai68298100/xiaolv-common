@@ -108,6 +108,10 @@ test("deriveTitle：别名 > 首行 > 类型兜底", () => {
     assert.equal(item.deriveTitle("hello\nworld", "text", {"custom-xlc-alias": "别名"}), "别名");
     assert.equal(item.deriveTitle("# 标题行\n正文", "markdown", {}), "标题行");
     assert.equal(item.deriveTitle("", "code", {}), "Code");
+    // 空值安全防御
+    assert.equal(item.deriveTitle(null, "text", null), "text");
+    assert.equal(item.kramdownToPlainText(null), "");
+    assert.equal(item.kramdownToPlainText(undefined), "");
 });
 
 test("deriveSummary：有界摘要（≤240）且纯文本化", () => {

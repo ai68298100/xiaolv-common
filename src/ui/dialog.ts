@@ -2865,7 +2865,8 @@ export class CommonSearchDialog {
                 // Enter 选第一个命中；↑↓ 在输入框内移动光标不被菜单级 keydown 劫持（R138）
                 input.addEventListener("keydown", (ev) => {
                     ev.stopPropagation();
-                    if (ev.key === "Enter" && !ev.isComposing) {
+                    if (ev.isComposing || (ev as KeyboardEvent).keyCode === 229) return;
+                    if (ev.key === "Enter") {
                         ev.preventDefault();
                         if (docDebounce) {
                             clearTimeout(docDebounce);
