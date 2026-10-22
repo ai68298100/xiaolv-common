@@ -12,7 +12,7 @@ A quick-recall content launcher for SiYuan Notes: turn frequently used content �
 
 > Runs fully standalone (no dependency on other Lv plugins), and exposes the `xiaolv-common/v1` protocol for sibling plugins.
 
-> **Released: v0.6.3 (2026-10-22)** · [Download the latest release](https://github.com/ai68298100/xiaolv-common/releases/latest) · Direct copy channel in variable fill cards (Alt+C) for external workflows, conditional toggle block live preview synchronization, and 723 passing automated tests.
+> **Released: v0.6.4 (2026-10-22)** · [Download the latest release](https://github.com/ai68298100/xiaolv-common/releases/latest) · Quick tag appending pills and category datalist autocomplete in capture forms, conditional toggle syntax in variable insertion bar, and 723 passing automated tests.
 
 ## Latest Capabilities (Omni-Search Terminal, Headless Integration & Sync Merge · R273~R292)
 
@@ -45,7 +45,15 @@ Advanced Templates & Security Suite:
 - **Computation & Formatting**: Pure recursive-descent math parser (`{{xlc:calc:...}}`), UUID generator, case converters (camel/snake/kebab/pascal), and cross-application rich-text clipboard payload.
 - **Security & Privacy**: Batch tag and category governance, export privacy sanitizer (phone/email/token masking and placeholder replacement).
 
-## This release (v0.6.3)
+## This release (v0.6.4)
+
+Capture & Authoring Workflow Enhancements:
+
+- **Quick tag appending pills (`.xlc-capture-quick-tags`)**: Form extracts top existing library tags as clickable `+tag` pills for one-click tag assignment without manual typing.
+- **Category autocomplete datalist**: Automatically links existing library categories to the category input for unified organization.
+- **Variable insertion bar adds toggle syntax**: Adds `{{xlc:ask:clause=content|toggle}}` to the shortcut variable bar in capture and edit forms.
+
+## Previous release (v0.6.3)
 
 Cross-Application Usability & Conditional Clause Execution:
 

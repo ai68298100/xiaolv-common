@@ -1496,6 +1496,34 @@
     }
   }
 
+  .xlc-capture-quick-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    margin-top: 4px;
+
+    .xlc-quick-pill {
+      display: inline-flex;
+      align-items: center;
+      border: 1px solid var(--b3-border-color);
+      background-color: var(--b3-theme-surface);
+      color: var(--b3-theme-on-surface);
+      font-size: var(--xlc-font-2xs);
+      padding: 1px 7px;
+      border-radius: var(--xlc-radius-pill, 9999px);
+      cursor: pointer;
+      line-height: var(--xlc-line-control);
+      transition: all var(--xlc-dur-fast) var(--xlc-ease);
+
+      &:hover {
+        border-color: var(--b3-theme-primary);
+        background-color: var(--xlc-list-selected, rgba(53, 117, 240, 0.12));
+        color: var(--b3-theme-primary);
+        transform: scale(1.03);
+      }
+    }
+  }
+
   // 设置数据动作的统一反馈槽：不会因 toast 消失而让用户失去上下文，
   // 错误态与重试按钮保持同一行并允许长错误换行。
   .xlc-operation-status {

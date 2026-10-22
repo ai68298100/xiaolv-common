@@ -328,6 +328,24 @@ export default class XiaolvCommonPlugin extends Plugin {
             },
             isConfigured: () => Boolean(this.config),
             onNotConfigured: () => this.openSetup(),
+            getExistingTags: () => {
+                const idx = this.library.getIndex();
+                if (!idx) return [];
+                const set = new Set<string>();
+                for (const e of idx.entries) {
+                    if (e.tags) for (const t of e.tags) if (t) set.add(t);
+                }
+                return Array.from(set).slice(0, 10);
+            },
+            getExistingCategories: () => {
+                const idx = this.library.getIndex();
+                if (!idx) return [];
+                const set = new Set<string>();
+                for (const e of idx.entries) {
+                    if (e.category) set.add(e.category);
+                }
+                return Array.from(set).slice(0, 10);
+            },
         });
         // 协议命令面（稳定 ID；雷切等通过 app.plugins 获取本插件后调用）
         this.protocolCommands["xiaolv.common.open"] = async () => {

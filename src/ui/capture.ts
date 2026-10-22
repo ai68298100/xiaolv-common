@@ -51,6 +51,8 @@ export interface CaptureDeps {
     getLibraryName?: () => Promise<string | null>;
     isConfigured?: () => boolean;
     onNotConfigured?: () => void;
+    getExistingTags?: () => string[];
+    getExistingCategories?: () => string[];
 }
 
 /** 选区 → 条目类型推断 */
@@ -485,9 +487,47 @@ export class CaptureDialog {
         tagsHint.className = "xlc-form-hint";
         tagsHint.textContent = t("tagsHint");
         (tagsEl.parentElement as HTMLElement).appendChild(tagsHint);
+
+        const existingTags = this.deps.getExistingTags?.() ?? [];
+        if (existingTags.length > 0) {
+            const tagPillsWrap = document.createElement("div");
+            tagPillsWrap.className = "xlc-capture-quick-tags";
+            for (const tag of existingTags) {
+                const pill = document.createElement("button");
+                pill.type = "button";
+                pill.className = "xlc-quick-pill";
+                pill.textContent = "+" + tag;
+                pill.title = `点击追加标签「${tag}」`;
+                pill.addEventListener("click", () => {
+                    const cur = (tagsEl as HTMLInputElement).value.trim();
+                    const tagList = cur ? cur.split(/[,，;；、\s]+/).filter(Boolean) : [];
+                    if (!tagList.includes(tag)) {
+                        tagList.push(tag);
+                        (tagsEl as HTMLInputElement).value = tagList.join("; ");
+                        (tagsEl as HTMLInputElement).dispatchEvent(new Event("input", {bubbles: true}));
+                    }
+                });
+                tagPillsWrap.appendChild(pill);
+            }
+            (tagsEl.parentElement as HTMLElement).appendChild(tagPillsWrap);
+        }
+
         const categoryEl = field(t("category"), overrides?.category ?? "", false, "xlc-form-category", tagRow);
         categoryEl.dataset.xlcControl = "capture.category";
         (categoryEl.parentElement as HTMLElement).classList.add("xlc-form-field--fixed");
+
+        const existingCats = this.deps.getExistingCategories?.() ?? [];
+        if (existingCats.length > 0) {
+            categoryEl.setAttribute("list", "xlc-capture-category-list");
+            const catDatalist = document.createElement("datalist");
+            catDatalist.id = "xlc-capture-category-list";
+            for (const cat of existingCats) {
+                const opt = document.createElement("option");
+                opt.value = cat;
+                catDatalist.appendChild(opt);
+            }
+            (categoryEl.parentElement as HTMLElement).appendChild(catDatalist);
+        }
         form.appendChild(tagRow);
 
         // 底部提示行（原型屏 3）：真源声明，紧贴动作区；库名异步补全（回答「存到哪了」）
