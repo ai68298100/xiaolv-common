@@ -12,7 +12,7 @@ A quick-recall content launcher for SiYuan Notes: turn frequently used content �
 
 > Runs fully standalone (no dependency on other Lv plugins), and exposes the `xiaolv-common/v1` protocol for sibling plugins.
 
-> **Released: v0.6.0 (2026-10-21)** · [Download the latest release](https://github.com/ai68298100/xiaolv-common/releases/latest) · Full SiYuan block search integration (Zero-SQL), Headless automation with Quicker recall/resolve, multi-library sync diff and merge engine, Bento Grid dual-accent visual hierarchy, and power keyboard interactions.
+> **Released: v0.6.1 (2026-10-22)** · [Download the latest release](https://github.com/ai68298100/xiaolv-common/releases/latest) · Comprehensive feature optimizations: diff modal real-time search & status filtering, variable option chips with active states, Bento Grid mobile responsive alignment, seamless Quick Look keyboard flow, and SiYuan 3.8.8+ lifecycle contract alignment.
 
 ## Latest Capabilities (Omni-Search Terminal, Headless Integration & Sync Merge · R273~R292)
 
@@ -45,7 +45,17 @@ Advanced Templates & Security Suite:
 - **Computation & Formatting**: Pure recursive-descent math parser (`{{xlc:calc:...}}`), UUID generator, case converters (camel/snake/kebab/pascal), and cross-application rich-text clipboard payload.
 - **Security & Privacy**: Batch tag and category governance, export privacy sanitizer (phone/email/token masking and placeholder replacement).
 
-## This release (v0.6.0)
+## This release (v0.6.1)
+
+Cross-Feature Usability and Experience Optimizations:
+
+- **Sync diff modal keyword search & status focus**: Real-time keyword search filter (`.xlc-diff-search-input`) by title or item ID; summary cards support click-to-filter toggling to isolate conflicts immediately.
+- **Variable quick options with active state**: Quick candidate option pills (`.xlc-varform-quick-options`) highlight active selection (`.xlc-quick-option-pill--selected`) and sync live expansion preview.
+- **Bento Grid mobile responsiveness**: Auto-switches to single-column card layout on narrow viewports (`max-width: 620px`) for zero cramped text wrapping.
+- **Seamless Quick Look keyboard flow**: Enter/Alt+C/Ctrl+Enter from within the Quick Look viewport closes the overlay smoothly and proceeds directly to insertion or copying.
+- **SiYuan 3.8.8+ host lifecycle alignment**: `settingsWindow: true` declaration, `openSetting()` override, storage dirty cache clearing, editor visibility defenses, and `orderBy: 7` relevance ranking.
+
+## Previous release (v0.6.0)
 
 Omni-Search Terminal & Full SiYuan Block Search (Zero-SQL):
 

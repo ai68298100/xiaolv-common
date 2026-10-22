@@ -168,6 +168,7 @@ export function openSyncDiffModal(props: SyncDiffModalProps): SyncDiffModalInsta
     let currentStrategy: MergeStrategy = props.initialStrategy ?? "smart-merge";
     let mirrorDelete = props.mirrorDelete ?? false;
     let currentStatusFilter: string | null = null;
+    let searchKeyword = "";
 
     // 计算当前合并计划
     let currentPlan = planLibrarySync(props.report, currentStrategy, {mirrorDelete});
@@ -227,6 +228,7 @@ export function openSyncDiffModal(props: SyncDiffModalProps): SyncDiffModalInsta
                         <input type="checkbox" class="b3-switch xlc-mirror-checkbox" ${mirrorDelete ? "checked" : ""} />
                         镜像删除本地多余项
                     </label>
+                    <input type="text" class="b3-text-field xlc-diff-search-input" placeholder="🔍 快速过滤标题或 ID..." value="${escapeHtml(searchKeyword)}" style="flex:1; min-width:140px; height:28px; font-size:12px;" />
                 </div>
                 <div class="b3-label__text xlc-strategy-hint">
                     ${escapeHtml(STRATEGY_DESCRIPTIONS[currentStrategy])}
@@ -235,18 +237,28 @@ export function openSyncDiffModal(props: SyncDiffModalProps): SyncDiffModalInsta
         `;
     };
 
-    const renderDiffRowsHtml = (report: LibraryDiffReport, plan: SyncPlan, activeFilter?: string | null): string => {
+    const renderDiffRowsHtml = (report: LibraryDiffReport, plan: SyncPlan, activeFilter?: string | null, keyword?: string): string => {
         const actionMap = new Map<string, SyncPlannedItem>();
         for (const item of plan.items) {
             actionMap.set(item.id, item);
         }
 
-        const candidateDiffs = activeFilter
+        const cleanKw = (keyword ?? "").trim().toLowerCase();
+        let candidateDiffs = activeFilter
             ? report.diffs.filter((d) => d.status === activeFilter)
             : report.diffs;
 
+        if (cleanKw) {
+            candidateDiffs = candidateDiffs.filter((d) => {
+                const target = d.remote || d.local;
+                const title = (target?.title || "").toLowerCase();
+                const id = d.id.toLowerCase();
+                return title.includes(cleanKw) || id.includes(cleanKw);
+            });
+        }
+
         if (candidateDiffs.length === 0) {
-            return `<tr><td colspan="5" class="xlc-empty-diff">${activeFilter ? "当前状态筛选下无匹配项（点击上方卡片可取消筛选）。" : "两端内容库完全一致，无任何变动项。"}</td></tr>`;
+            return `<tr><td colspan="5" class="xlc-empty-diff">${activeFilter || cleanKw ? "当前筛选下无匹配项（点击上方卡片或清空搜索可重置）。" : "两端内容库完全一致，无任何变动项。"}</td></tr>`;
         }
 
         return candidateDiffs
@@ -353,7 +365,7 @@ export function openSyncDiffModal(props: SyncDiffModalProps): SyncDiffModalInsta
 
             const tbody = container.querySelector(".xlc-sync-diff-tbody");
             if (tbody) {
-                tbody.innerHTML = renderDiffRowsHtml(props.report, currentPlan, currentStatusFilter);
+                tbody.innerHTML = renderDiffRowsHtml(props.report, currentPlan, currentStatusFilter, searchKeyword);
             }
 
             const statHint = container.querySelector(".xlc-plan-stat-hint");
@@ -395,6 +407,12 @@ export function openSyncDiffModal(props: SyncDiffModalProps): SyncDiffModalInsta
         const mirrorCheck = container.querySelector(".xlc-mirror-checkbox") as HTMLInputElement | null;
         mirrorCheck?.addEventListener("change", () => {
             mirrorDelete = mirrorCheck.checked;
+            updateView();
+        });
+
+        const searchInput = container.querySelector(".xlc-diff-search-input") as HTMLInputElement | null;
+        searchInput?.addEventListener("input", () => {
+            searchKeyword = searchInput.value;
             updateView();
         });
 

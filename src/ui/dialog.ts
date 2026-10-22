@@ -3196,6 +3196,7 @@ export class CommonSearchDialog {
             if ((e.target as HTMLElement).closest?.(".xlc-row-action")) return;
             if (e.repeat) return; // 按住 Enter 不得连续插入（R138）
             e.preventDefault();
+            if (this.quickLookOpen) this.closeQuickLook();
             if (this.activeProvider >= 0) {
                 const row = this.providerRows[this.activeProvider];
                 if (row) {
@@ -3210,6 +3211,7 @@ export class CommonSearchDialog {
             if (entry) await this.runPrimary(entry);
         } else if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
             e.preventDefault();
+            if (this.quickLookOpen) this.closeQuickLook();
             if (this.activeProvider >= 0) {
                 const row = this.providerRows[this.activeProvider];
                 if (row) await this.deps.copyProviderPayload(row.payload);
@@ -3220,6 +3222,7 @@ export class CommonSearchDialog {
         } else if ((e.altKey && !e.ctrlKey && !e.metaKey && (e.key === "c" || e.key === "C")) || (e.key === "Enter" && (e.ctrlKey || e.metaKey) && e.shiftKey)) {
             // Alt+C / Ctrl+Shift+Enter: 快捷复制并自动关闭弹窗（Copy & Auto-Close，便于跨窗口直接粘贴）
             e.preventDefault();
+            if (this.quickLookOpen) this.closeQuickLook();
             if (this.activeProvider >= 0) {
                 const row = this.providerRows[this.activeProvider];
                 if (row) {

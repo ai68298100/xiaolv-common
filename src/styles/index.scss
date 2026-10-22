@@ -2242,6 +2242,13 @@
           color: var(--xlc-lilac-ink, #4e46e5);
           transform: scale(1.03);
         }
+
+        &--selected {
+          border-color: var(--xlc-lilac, #6c63ff) !important;
+          background-color: var(--xlc-lilac-soft, rgba(108, 99, 255, 0.16)) !important;
+          color: var(--xlc-lilac-ink, #4e46e5) !important;
+          font-weight: 600;
+        }
       }
     }
 
@@ -3929,5 +3936,9 @@
 
       .xlc-bento-value { color: var(--xlc-lilac, #6c63ff); }
     }
+  }
+
+  @media (max-width: 620px) {
+    grid-template-columns: 1fr;
   }
 }

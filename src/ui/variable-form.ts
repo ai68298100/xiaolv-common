@@ -148,10 +148,15 @@ export function openVariableFillCard(options: VariableFillOptions): void {
         if (candidateOptions.size > 0) {
             const pillsWrap = document.createElement("div");
             pillsWrap.className = "xlc-varform-quick-options";
+            const syncPills = () => {
+                pillsWrap.querySelectorAll<HTMLElement>(".xlc-quick-option-pill").forEach((pill) => {
+                    pill.classList.toggle("xlc-quick-option-pill--selected", pill.textContent === input.value);
+                });
+            };
             for (const opt of Array.from(candidateOptions).slice(0, 8)) {
                 const optBtn = document.createElement("button");
                 optBtn.type = "button";
-                optBtn.className = "xlc-quick-option-pill";
+                optBtn.className = "xlc-quick-option-pill" + (input.value === opt ? " xlc-quick-option-pill--selected" : "");
                 optBtn.textContent = opt;
                 optBtn.title = `点击填入 "${opt}"`;
                 optBtn.addEventListener("click", (e) => {
@@ -163,6 +168,8 @@ export function openVariableFillCard(options: VariableFillOptions): void {
                 });
                 pillsWrap.appendChild(optBtn);
             }
+            input.addEventListener("input", syncPills);
+            input.addEventListener("change", syncPills);
             wrap.appendChild(pillsWrap);
         }
 
