@@ -12,7 +12,7 @@ A quick-recall content launcher for SiYuan Notes: turn frequently used content �
 
 > Runs fully standalone (no dependency on other Lv plugins), and exposes the `xiaolv-common/v1` protocol for sibling plugins.
 
-> **Released: v0.6.2 (2026-10-22)** · [Download the latest release](https://github.com/ai68298100/xiaolv-common/releases/latest) · Inspired by Raycast & TextExpander: conditional toggle blocks, copy raw template action, comprehensive i18n parity, and robust XSS/IME composition defenses.
+> **Released: v0.6.3 (2026-10-22)** · [Download the latest release](https://github.com/ai68298100/xiaolv-common/releases/latest) · Direct copy channel in variable fill cards (Alt+C) for external workflows, conditional toggle block live preview synchronization, and 723 passing automated tests.
 
 ## Latest Capabilities (Omni-Search Terminal, Headless Integration & Sync Merge · R273~R292)
 
@@ -45,7 +45,15 @@ Advanced Templates & Security Suite:
 - **Computation & Formatting**: Pure recursive-descent math parser (`{{xlc:calc:...}}`), UUID generator, case converters (camel/snake/kebab/pascal), and cross-application rich-text clipboard payload.
 - **Security & Privacy**: Batch tag and category governance, export privacy sanitizer (phone/email/token masking and placeholder replacement).
 
-## This release (v0.6.2)
+## This release (v0.6.3)
+
+Cross-Application Usability & Conditional Clause Execution:
+
+- **Direct "Copy" channel in variable fill cards (`Alt+C`)**: For external workflows in WeChat, Word, Slack, or browsers, users can fill parameters and click "⧉ Copy" or press `Alt+C` to copy the resolved output directly to the clipboard without inserting into SiYuan.
+- **Conditional toggle blocks live preview**: When using `{{xlc:ask:clause=text|toggle}}`, the variable card renders an accessible switch; toggling synchronously adds/omits the clause in the live preview.
+- **Multi-library sync diff keyword search**: Real-time filtering by title or item ID in the sync diff modal.
+
+## Previous release (v0.6.2)
 
 Inspirations from Raycast / TextExpander & Quality Hardening:
 

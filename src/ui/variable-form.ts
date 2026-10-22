@@ -23,6 +23,8 @@ export interface VariableFillOptions {
     templateText?: string;
     /** 确认：收集到的填充值（键=字段名；空值字段已由展开层兜底为 __名称__） */
     onConfirm: (fills: Record<string, string>) => void;
+    /** 复制：将展开结果直接写入剪贴板并关闭（便于跨窗口粘贴，G49） */
+    onCopy?: (fills: Record<string, string>) => void;
     /** 取消/关闭回调（缺省仅销毁） */
     onCancel?: () => void;
 }
@@ -278,6 +280,23 @@ export function openVariableFillCard(options: VariableFillOptions): void {
     });
     foot.appendChild(resetBtn);
 
+    if (options.onCopy) {
+        const copyBtn = document.createElement("button");
+        copyBtn.type = "button";
+        copyBtn.className = "b3-button xlc-btn-ghost";
+        copyBtn.dataset.xlcControl = "variable.copy";
+        copyBtn.textContent = "⧉ " + (t("copy") || "复制");
+        copyBtn.title = "将填入变量后的展开结果复制到剪贴板并关闭 (Alt+C)";
+        copyBtn.addEventListener("click", () => {
+            if (liveDebounceTimer) clearTimeout(liveDebounceTimer);
+            if (settled) return;
+            settled = true;
+            dialog.destroy();
+            options.onCopy?.(collect());
+        });
+        foot.appendChild(copyBtn);
+    }
+
     const insertBtn = document.createElement("button");
     insertBtn.className = "b3-button xlc-btn-primary";
     insertBtn.textContent = t("insert");
@@ -313,6 +332,18 @@ export function openVariableFillCard(options: VariableFillOptions): void {
             ev.preventDefault();
             confirm();
             return;
+        }
+        // Alt+C / Ctrl+Shift+C: 快捷复制展开结果并关闭 (G49)
+        if ((ev.altKey && (ev.key === "c" || ev.key === "C")) || (ev.ctrlKey && ev.shiftKey && (ev.key === "C" || ev.key === "c"))) {
+            if (options.onCopy) {
+                ev.preventDefault();
+                if (liveDebounceTimer) clearTimeout(liveDebounceTimer);
+                if (settled) return;
+                settled = true;
+                dialog.destroy();
+                options.onCopy(collect());
+                return;
+            }
         }
         if (ev.key === "Enter" && !ev.altKey && !ev.ctrlKey && !ev.metaKey) {
             if ((ev.target as HTMLElement).tagName === "BUTTON") return;

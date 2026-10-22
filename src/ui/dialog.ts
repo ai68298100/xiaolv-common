@@ -2680,6 +2680,29 @@ export class CommonSearchDialog {
                     releaseBusy();
                 });
             },
+            onCopy: async (fills) => {
+                this.varFormOpen = false;
+                this.syncPaneActions();
+                try {
+                    this.deps.rememberVariables?.(fills);
+                } catch {
+                    // 记忆写入失败不得阻断
+                }
+                this.destroy();
+                try {
+                    if (entry.isOmni) {
+                        let finalContent = entry.content || entry.summary || "";
+                        finalContent = expandAsks(finalContent, fills);
+                        finalContent = applyAskDefaults(stripCursorToken(finalContent));
+                        await this.deps.copyProviderPayload(finalContent);
+                    } else {
+                        await this.deps.runActionWithFills(entry.id, "copy", fills);
+                    }
+                    this.deps.notify?.("info", "已根据填入变量复制到剪贴板，可直接在外部窗口粘贴 (Ctrl+V)");
+                } finally {
+                    releaseBusy();
+                }
+            },
             // 取消/关闭（Esc/scrim/取消钮）后焦点回搜索框，与浮层菜单一致（R128）
             onCancel: () => {
                 this.varFormOpen = false;

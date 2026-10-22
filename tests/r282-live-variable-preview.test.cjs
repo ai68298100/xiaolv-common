@@ -63,3 +63,13 @@ test("renderLivePreviewText: 空模板与超长安全截断", () => {
     assert.equal(outClipped.length, 101); // 100 + "…"
     assert.ok(outClipped.endsWith("…"));
 });
+
+test("renderLivePreviewText: 条件开关段落实时展开预览", () => {
+    const tpl = "发货通知。{{xlc:ask:发票=请下载电子普通发票|toggle}}";
+    // 1. 勾选开关
+    const outOn = vf.renderLivePreviewText(tpl, {"发票": "是"});
+    assert.equal(outOn, "发货通知。请下载电子普通发票");
+    // 2. 取消勾选开关
+    const outOff = vf.renderLivePreviewText(tpl, {"发票": ""});
+    assert.equal(outOff, "发货通知。");
+});
