@@ -133,6 +133,18 @@ export default class XiaolvCommonPlugin extends Plugin {
             return;
         }
 
+        // 官方存储会话缓存防御（对齐 SiYuan Issue #19908）：
+        // loadData 读取失败时会回退到 this.data[key]，若其他窗口已删除该文件可能返回陈旧数据。
+        // 调用前清除会话缓存，确保真实读取磁盘最新状态。
+        try {
+            if (this.data && typeof this.data === "object") {
+                delete this.data[STORAGE_KEYS.config];
+                delete this.data[STORAGE_KEYS.state];
+            }
+        } catch {
+            // ignore
+        }
+
         const [configRead, stateRead] = await Promise.all([
             readWithTimeout(() => this.loadData(STORAGE_KEYS.config), SIDECAR_LOAD_TIMEOUT_MS),
             readWithTimeout(() => this.loadData(STORAGE_KEYS.state), SIDECAR_LOAD_TIMEOUT_MS),
@@ -660,6 +672,10 @@ export default class XiaolvCommonPlugin extends Plugin {
      */
     onDataChanged(_reason?: string): void {
         try {
+            if (this.data && typeof this.data === "object") {
+                delete this.data[STORAGE_KEYS.config];
+                delete this.data[STORAGE_KEYS.state];
+            }
             this.library?.invalidateIndex();
             this.invalidatePreviewCache();
         } catch {
@@ -754,12 +770,25 @@ export default class XiaolvCommonPlugin extends Plugin {
             if (notifyFailure) this.notify("error", this.i18nFn()("sidecarReadOnly"));
             return;
         }
-        void this.saveData(key, value).catch((err) => {
-            if (notifyFailure) {
-                const detail = toErrorMessage(err);
-                this.notify("error", this.i18nFn()("kernelError", detail || "sidecar save failed"));
-            }
+        // 对齐 SiYuan Issue #19908 存储写入契约：
+        // 1. 负数错误码或网络异常可能使 Promise 持续挂起，增加 5 秒超时保护；
+        // 2. 检查返回响应 code，不能仅将兑现视为写入成功。
+        const timeoutPromise = new Promise<{code: number; msg: string}>((_, reject) => {
+            setTimeout(() => reject(new Error("sidecar save timed out")), 5000);
         });
+        void Promise.race([this.saveData(key, value), timeoutPromise])
+            .then((res: unknown) => {
+                const response = res as {code?: number; msg?: string} | undefined;
+                if (response && typeof response.code === "number" && response.code !== 0) {
+                    throw new Error(response.msg || `saveData failed with code ${response.code}`);
+                }
+            })
+            .catch((err) => {
+                if (notifyFailure) {
+                    const detail = toErrorMessage(err);
+                    this.notify("error", this.i18nFn()("kernelError", detail || "sidecar save failed"));
+                }
+            });
     }
 
     // ---- 命令与入口 ----
@@ -1849,6 +1878,14 @@ export default class XiaolvCommonPlugin extends Plugin {
         }).catch((err: unknown) => {
             this.notify("error", this.i18nFn()("startupFailed", toErrorMessage(err)));
         });
+    }
+
+    /**
+     * 官方思源插件设置入口（对齐 SiYuan hasPluginSetting 识别契约）：
+     * 覆盖 Plugin 基类的 openSetting()，使宿主在已安装插件列表与顶栏菜单中正常呈现「设置」按钮。
+     */
+    openSetting(): void {
+        this.openSettings();
     }
 
     /** 完整设置：库管理（含更改库）+ AI + 搜索 + 数据 */

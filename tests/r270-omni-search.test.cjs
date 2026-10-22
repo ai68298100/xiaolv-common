@@ -128,7 +128,7 @@ test("searchAllNotesBlocks & searchAllNotesUnified：走 fullTextSearchBlock 端
     assert.strictEqual(unified[0].content, "发票报销审批流程");
     assert.strictEqual(unified[1].id, "xlc-omni-20240101120000-doc2222");
 
-    assert.ok(calls.some((c) => c.endpoint === "fullTextSearchBlock" && c.payload.query === "发票" && c.payload.method === 0));
+    assert.ok(calls.some((c) => c.endpoint === "fullTextSearchBlock" && c.payload.query === "发票" && c.payload.method === 0 && c.payload.orderBy === 7));
 });
 
 test("normalizeBlockKramdown：代码块、标题与引述结构保真规范化", () => {

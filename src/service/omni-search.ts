@@ -471,7 +471,7 @@ export async function searchAllNotesBlocks(
     const payload: Record<string, unknown> = {
         query: actualQuery,
         method: 0, // 0 = 关键词普通检索（零 SQL）
-        orderBy: 0, // 相关度排序
+        orderBy: 7, // 7 = 官方内核原生相关度降序（按 FTS 相关性降序，对齐 SiYuan kernel/model/search.go）
         page: 1,
         pageSize: limit,
     };

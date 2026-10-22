@@ -1,6 +1,7 @@
 // 宿主执行层：把 planAction 的纯计划执行到思源（protyle.insert / clipboard / openTab）。
 // 每个动作返回诚实回执；降级路径明示；不伪造成功。
 import type {App, ITrackedRangeHandle, Plugin, Protyle} from "siyuan";
+import * as siyuan from "siyuan";
 import {getActiveEditor, openTab} from "siyuan";
 import {EVENTS, PROTOCOL_VERSION} from "../constants";
 import {ActionContext, InsertMode, InsertPlan, OpenTarget, planAction, planOpenSource} from "../model/actions";
@@ -111,6 +112,16 @@ export class HostBridge implements IHostBridge {
         try {
             const editor = target === undefined ? getActiveEditor() : target?.editor;
             if (!editor) return false;
+
+            // 宿主编辑器可见性防御（对齐 SiYuan Issue #20566 官方稳定插入契约）：
+            // 若编辑器处于不可见状态（包含 .fn__none、[inert] 或已从 DOM 树脱离），拒绝插入，防状态污染
+            const wysiwygEl = editor.protyle?.wysiwyg?.element;
+            if (wysiwygEl && typeof wysiwygEl.closest === "function") {
+                if (wysiwygEl.closest(".fn__none, [inert]") || !wysiwygEl.isConnected) {
+                    return false;
+                }
+            }
+
             if (target !== undefined) {
                 if (!this.canInsertAtTarget(target) || !target?.handle) return false;
                 const resolved = editor.protyle.resolveTrackedRange(target.handle);
@@ -121,6 +132,24 @@ export class HostBridge implements IHostBridge {
                 selection.removeAllRanges();
                 selection.addRange(resolved.range);
             }
+
+            // 渐进增强优先调用官方原子插入接口（SiYuan 3.8.8+）
+            try {
+                const siyuanApi = siyuan as unknown as {insertContent?: (opts: {data: string; dataType?: string; editor?: Protyle}) => {status: string}};
+                if (typeof siyuanApi?.insertContent === "function") {
+                    const res = siyuanApi.insertContent({
+                        data: markdown,
+                        dataType: "markdown",
+                        editor,
+                    });
+                    if (res && res.status === "inserted") {
+                        return true;
+                    }
+                }
+            } catch {
+                // 忽略异常，平滑降级走 editor.insert
+            }
+
             editor.insert(markdown, true, false);
             return true;
         } catch {
