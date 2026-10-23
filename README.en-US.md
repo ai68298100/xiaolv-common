@@ -12,7 +12,7 @@ A quick-recall content launcher for SiYuan Notes: turn frequently used content �
 
 > Runs fully standalone (no dependency on other Lv plugins), and exposes the `xiaolv-common/v1` protocol for sibling plugins.
 
-> **Released: v0.6.6 (2026-10-23)** · [Download the latest release](https://github.com/ai68298100/xiaolv-common/releases/latest) · Unified dialog headers with .lv-dialog-title-wrap, segmented track scope chip active state fix and "All" chip addition, and COMMON_CREATED ecosystem event broadcast.
+> **Released: v0.6.7 (2026-10-23)** · [Download the latest release](https://github.com/ai68298100/xiaolv-common/releases/latest) · Strict execution of Lv Ecosystem Directive: flat root ./package.zip build output, English name spaced as "Lv Common (Beta)", monochrome curly-brace vector icons, callBridge checkin macro resolution, and Raikiri module registration.
 
 ## Latest Capabilities (Omni-Search Terminal, Headless Integration & Sync Merge · R273~R292)
 
@@ -45,7 +45,18 @@ Advanced Templates & Security Suite:
 - **Computation & Formatting**: Pure recursive-descent math parser (`{{xlc:calc:...}}`), UUID generator, case converters (camel/snake/kebab/pascal), and cross-application rich-text clipboard payload.
 - **Security & Privacy**: Batch tag and category governance, export privacy sanitizer (phone/email/token masking and placeholder replacement).
 
-## This release (v0.6.6)
+## This release (v0.6.7)
+
+Ecosystem Integration Directive Alignment & Release Packaging:
+
+- **Root `./package.zip` flat build output**: Configured Webpack `ZipPlugin` to emit directly to the repository root directory as a flat archive `./package.zip` (586 KiB), resolving automated release and bazaar indexer path issues.
+- **English name spacing alignment**: Normalized `displayName.default` to `"Lv Common (Beta)"` (with space, matching the `Lv <Name>` family standard); bumped `minAppVersion` to `"3.8.4"`.
+- **Monochrome vector icons upgrade**: Upgraded topbar, sidebar, and breadcrumb icons to the 32×32 monochrome curly-brace symbol (`iconXlcCommon` & `iconLvCommon`).
+- **Graceful `{{xlc:checkin:today}}` macro resolution**: Integrates `callBridge` from `src/ecosystem-bridge-kit.ts` for safe checkin item querying with non-throwing fallback text.
+- **Raikiri workbench widget registration**: Safely registers the `common-quick-palette` module for instant snippet insertion.
+- **Block attributes namespace containment**: All block attributes strictly adhere to `custom-xlc-*`, preserving `icon.png` intact.
+
+## Previous release (v0.6.6)
 
 Dialog Header Unification & Segmented Track Enhancements:
 

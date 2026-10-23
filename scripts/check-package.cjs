@@ -10,12 +10,14 @@ const {listZipEntries} = require("./zip-entries.cjs");
 const ROOT = path.resolve(__dirname, "..");
 const zipPath = process.argv[2]
     ? path.resolve(process.argv[2])
-    : path.join(ROOT, "dist", "package.zip");
+    : (fs.existsSync(path.join(ROOT, "package.zip"))
+        ? path.join(ROOT, "package.zip")
+        : path.join(ROOT, "dist", "package.zip"));
 const pluginManifest = JSON.parse(fs.readFileSync(path.join(ROOT, "plugin.json"), "utf8"));
 const packageJson = JSON.parse(fs.readFileSync(path.join(ROOT, "package.json"), "utf8"));
 
 if (!fs.existsSync(zipPath)) {
-    console.error("check-package 失败：未找到 dist/package.zip（先 pnpm run build）");
+    console.error("check-package 失败：未找到 package.zip（先 pnpm run build）");
     process.exit(1);
 }
 

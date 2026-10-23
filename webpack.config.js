@@ -41,15 +41,18 @@ module.exports = (env, argv) => {
     if (production) {
         plugins.push(new ZipPlugin({
             filename: "package.zip",
+            path: path.resolve(__dirname),
             include: [/\.js$/, /\.css$/, /\.json$/, /\.md$/, /\.png$/, /\.html$/, /^LICENSE$/],
         }));
         plugins.push({
             apply(compiler) {
-                compiler.hooks.afterEmit.tap("CopyZipToRoot", () => {
-                    const src = path.resolve(__dirname, "dist", "package.zip");
-                    const dest = path.resolve(__dirname, "package.zip");
-                    if (fs.existsSync(src)) {
-                        fs.copyFileSync(src, dest);
+                compiler.hooks.afterEmit.tap("SyncPackageZip", () => {
+                    const rootZip = path.resolve(__dirname, "package.zip");
+                    const distZip = path.resolve(__dirname, "dist", "package.zip");
+                    if (fs.existsSync(rootZip) && !fs.existsSync(distZip)) {
+                        fs.copyFileSync(rootZip, distZip);
+                    } else if (fs.existsSync(distZip) && !fs.existsSync(rootZip)) {
+                        fs.copyFileSync(distZip, rootZip);
                     }
                 });
             },

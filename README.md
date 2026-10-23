@@ -12,7 +12,7 @@
 
 支持插入前填写变量、日期与随机占位符、片段嵌套、模板包分享、Espanso 配置导入、拼音搜索和 AI 辅助。插件可独立使用，也提供 `xiaolv-common/v1` 公开协议供小驴系列插件接入。
 
-> **已发布版本：v0.6.6（2026-10-23）** · [下载最新版](https://github.com/ai68298100/xiaolv-common/releases/latest) · 规范化全仓 Dialog 标题栏视觉（.lv-dialog-title-wrap 帝王紫勋章）、分段胶囊沉浸底槽修复激活态高亮并新增「全部」选项、生态事件广播 COMMON_CREATED 联动。
+> **已发布版本：v0.6.7（2026-10-23）** · [下载最新版](https://github.com/ai68298100/xiaolv-common/releases/latest) · 严格落地小驴生态中枢统领指令：根目录 package.zip 扁平自动生成、ZipPlugin 根目录落点对齐、英文名加空格规范化 Lv Common (Beta)、变量大括号 32×32 矢量图标、callBridge 安全解析打卡宏与雷切小组件注册。
 
 ## 最新进阶演进（全域搜索终端、Headless 全局联动与同步比对合并 · R273~R292）
 
@@ -45,7 +45,18 @@
 - **计算与格式化**：纯函数递归下降四则算术求值器（`{{xlc:calc:100 * 1.13}}`）、UUID 生成器、文本命名范式转换器（camel/snake/kebab/pascal 等）、跨应用富文本双载荷剪贴板。
 - **安全治理**：批量标签与分类治理引擎、导出模板隐私安全脱敏（手机号/邮箱/Token 掩码或占位符化）。
 
-## 本次更新（v0.6.6）
+## 本次更新（v0.6.7）
+
+生态统领指令落地与根目录发布包对齐：
+
+- **根目录扁平 `./package.zip` 构建生成**：配置 Webpack `ZipPlugin` 的 `path` 直接在项目根目录生成扁平结构的 `./package.zip`（586 KiB），彻底解决自动化发布脚本与集市同步爬虫找不到根目录 zip 的问题。
+- **英文名加空格规范化**：`plugin.json` 中的英文名规范为 `"Lv Common (Beta)"`（带空格，对齐家族 `Lv <Name>` 统一标准）；`minAppVersion` 明确提升至 `"3.8.4"`。
+- **单色矢量图标升级**：全面更换顶栏、侧栏与面包屑图标为带 `{{ }}` 变量大括号的 32×32 单色矢量图标（`iconXlcCommon` 与 `iconLvCommon`），对标全新 256×256 品牌头像。
+- **生态宏 `{{xlc:checkin:today}}` 优雅解析**：基于 `ecosystem-bridge-kit` 的 `callBridge` 安全探测并调用小驴打卡公开接口，未安装时安全降级为友好提示文本。
+- **雷切工作台小组件注册**：安全注册 `common-quick-palette` 常用资产模块，并在插件注销时干净释放。
+- **块属性命名空间收敛**：严格将自定义块属性收敛至 `custom-xlc-*`，保持新版 `icon.png` 勿覆盖。
+
+## 历史版本（v0.6.6）
 
 弹窗标题规范化与分段胶囊交互修复：
 
