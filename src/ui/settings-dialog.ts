@@ -1,7 +1,7 @@
 // 设置界面（自 index.ts 拆出，R19）：首次引导 / 完整设置 / 库选择器 / AI / 搜索 / 数据区 / 标签体检 / 导入策略。
 // 依赖经 SettingsUiContext 注入（不持有插件实例）；状态对象按引用共享，落盘由 persistSoon 节流。
 import {Dialog, confirm} from "siyuan";
-import {getDialogBody} from "./dialog-dom";
+import {getDialogBody, mountPlatformDialogTitleWrap} from "./dialog-dom";
 import {CONFIG_VERSION, LibraryConfig, PluginState, summarizeUsage} from "../model/storage";
 import {LIMITS} from "../constants";
 import {validateImport, ConflictPolicy, ImportIssue, ImportReceipt, ExportedItem} from "../model/transfer";
@@ -141,6 +141,7 @@ export function openSettingsDialog(ctx: SettingsUiContext): void {
     });
     activeSettingsDialog = dialog;
     dialog.element.querySelector(".b3-dialog__container")?.classList.add("xlc-form-host", "xlc-settings-host", "xlc-settings-root-host");
+    mountPlatformDialogTitleWrap(dialog.element, t("openSettings"), "v0.6.6", "iconXlcCommon");
     const body = getDialogBody(dialog.element);
     if (!body) return;
     body.innerHTML = "";

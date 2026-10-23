@@ -459,6 +459,7 @@
   "csvImportNone": "未解析出可用条目，请确认粘贴的是有效的 CSV/TSV 表格文本",
   "searchCurrentDocAction": "在当前打开文档中检索「%s」",
   "searchAllNotesAction": "在全库笔记中检索「%s」",
+  "scopeAll": "全部",
   "scopeCurrentDoc": "当前文档",
   "scopeCurrentDocPlaceholder": "搜索当前打开文档中的内容块...",
   "scopeAllNotes": "全库笔记",

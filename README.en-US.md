@@ -12,7 +12,7 @@ A quick-recall content launcher for SiYuan Notes: turn frequently used content �
 
 > Runs fully standalone (no dependency on other Lv plugins), and exposes the `xiaolv-common/v1` protocol for sibling plugins.
 
-> **Released: v0.6.5 (2026-10-23)** · [Download the latest release](https://github.com/ai68298100/xiaolv-common/releases/latest) · Full implementation of Lv Ecosystem Epoch 6 Directive: 4-alias mounting/unmounting, callBridge checkin macro parsing, Raikiri widget registration, Imperial Purple & Cyber Mint visual aesthetic, and root ./package.zip build output.
+> **Released: v0.6.6 (2026-10-23)** · [Download the latest release](https://github.com/ai68298100/xiaolv-common/releases/latest) · Unified dialog headers with .lv-dialog-title-wrap, segmented track scope chip active state fix and "All" chip addition, and COMMON_CREATED ecosystem event broadcast.
 
 ## Latest Capabilities (Omni-Search Terminal, Headless Integration & Sync Merge · R273~R292)
 
@@ -45,7 +45,15 @@ Advanced Templates & Security Suite:
 - **Computation & Formatting**: Pure recursive-descent math parser (`{{xlc:calc:...}}`), UUID generator, case converters (camel/snake/kebab/pascal), and cross-application rich-text clipboard payload.
 - **Security & Privacy**: Batch tag and category governance, export privacy sanitizer (phone/email/token masking and placeholder replacement).
 
-## This release (v0.6.5)
+## This release (v0.6.6)
+
+Dialog Header Unification & Segmented Track Enhancements:
+
+- **Unified `.lv-dialog-title-wrap` dialog header**: Implemented across main search workbench, new item capture dialog, and settings panel (22×22 purple logo + title + version pill).
+- **Segmented track active state fix & "All" option**: Fixed class matching for active pill highlight inside `.xlc-segmented-track`; added the "All" default scope pill matching reference design (`All | ...`).
+- **`COMMON_CREATED` ecosystem event**: Dispatches `xiaolv:common:item-created` upon successful snippet creation to sync with sibling plugins.
+
+## Previous release (v0.6.5)
 
 Ecosystem Federation & Visual Design Overhaul (Epoch 6 Standards):
 

@@ -5,7 +5,7 @@
 // 触控：44px 命中区、长按 550ms（移动 <10px 判定）弹动作菜单；不依赖 hover、不做坐标猜测。
 // AI：? 前缀语义找条目（默认仅元数据出域）；动作菜单 AI 变换（预览后选插入，原文永不被改写）。
 import {Dialog} from "siyuan";
-import {getDialogBody} from "./dialog-dom";
+import {getDialogBody, mountPlatformDialogTitleWrap} from "./dialog-dom";
 import {ITEM_TYPES, ItemType, getCategoryColorVariant, deriveSmartSummary} from "../model/item";
 import {toErrorMessage} from "../model/errors";
 import {SearchEntry, SearchQuery, splitSearchTokens, findExactAliasMatch} from "../model/search";
@@ -185,6 +185,7 @@ export class CommonSearchDialog {
         }
         const container = this.dialog.element.querySelector(".b3-dialog__container");
         if (container) container.classList.add(isMobile ? "xlc-sheet" : "xlc-dialog-host");
+        mountPlatformDialogTitleWrap(this.dialog.element, this.deps.t("pluginName"), "v0.6.6", "iconXlcCommon");
         const input = this.dialog.element.querySelector<HTMLInputElement>(".xlc-search-input");
         if (input) {
             // 上次搜索词回填（跨会话保留）
@@ -467,7 +468,7 @@ export class CommonSearchDialog {
         });
         filters.appendChild(categorySelect);
 
-        const scopes = ["favorites", "recent", "current-doc", "all-notes"] as const;
+        const scopes = ["all", "favorites", "recent", "current-doc", "all-notes"] as const;
         const track = document.createElement("div");
         track.className = "xlc-segmented-track";
         track.setAttribute("role", "radiogroup");
@@ -475,17 +476,19 @@ export class CommonSearchDialog {
 
         for (const scope of scopes) {
             const chip = document.createElement("button");
-            chip.className = "xlc-chip xlc-scope-chip";
+            const on = this.currentScope === scope;
+            chip.className = "xlc-chip xlc-scope-chip" + (on ? " xlc-chip--on xlc-scope-chip--on" : "");
             chip.dataset.scope = scope;
             chip.dataset.xlcControl = `filter.scope.${scope}`;
             let text = "";
-            if (scope === "favorites") text = "★ " + this.deps.t("filterFavorites");
+            if (scope === "all") text = this.deps.t("scopeAll") || "全部";
+            else if (scope === "favorites") text = "★ " + this.deps.t("filterFavorites");
             else if (scope === "recent") text = "🕐 " + this.deps.t("filterRecent");
             else if (scope === "current-doc") text = "☵ " + this.deps.t("scopeCurrentDoc");
             else if (scope === "all-notes") text = "🔍 " + this.deps.t("scopeAllNotes");
             chip.textContent = text;
             chip.addEventListener("click", () => {
-                this.currentScope = this.currentScope === scope ? "all" : scope;
+                this.currentScope = scope === "all" ? "all" : (this.currentScope === scope ? "all" : scope);
                 this.syncScopeChips();
                 void this.refresh();
             });
@@ -1090,7 +1093,9 @@ export class CommonSearchDialog {
 
     private syncScopeChips(): void {
         this.dialog?.element.querySelectorAll<HTMLElement>(".xlc-scope-chip").forEach((chip) => {
-            chip.classList.toggle("xlc-chip--on", chip.dataset.scope === this.currentScope);
+            const on = chip.dataset.scope === this.currentScope;
+            chip.classList.toggle("xlc-chip--on", on);
+            chip.classList.toggle("xlc-scope-chip--on", on);
         });
         const searchBox = this.dialog?.element.querySelector<HTMLElement>(".xlc-search");
         if (searchBox) {

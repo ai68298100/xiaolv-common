@@ -1,7 +1,7 @@
 // 捕获流程：选区/当前块 → 新条目表单（类型推断 + 元数据一步完成）。
 // 剪贴板读取失败（权限/平台）诚实回执，保留手动输入。
 import {Dialog, confirm} from "siyuan";
-import {getDialogBody} from "./dialog-dom";
+import {getDialogBody, mountPlatformDialogTitleWrap} from "./dialog-dom";
 import {ItemType, isSafeHttpUrl} from "../model/item";
 import {toErrorMessage} from "../model/errors";
 import {NewItemInput} from "../service/library";
@@ -394,6 +394,7 @@ export class CaptureDialog {
         this.currentDialog = dialog;
         const container = dialog.element.querySelector(".b3-dialog__container") as HTMLElement | null;
         container?.classList.add("xlc-form-host");
+        mountPlatformDialogTitleWrap(dialog.element, t("newItem"), "v0.6.6", "iconXlcCommon");
 
         // 移动端虚拟键盘避让（动态计算高度偏移，防遮挡操作区）
         const handleViewport = () => {

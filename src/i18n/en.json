@@ -459,6 +459,7 @@
   "csvImportNone": "No valid items parsed. Please ensure valid CSV/TSV tabular text is pasted.",
   "searchCurrentDocAction": "Search \"%s\" in current document",
   "searchAllNotesAction": "Search \"%s\" across all notes",
+  "scopeAll": "All",
   "scopeCurrentDoc": "Current Document",
   "scopeCurrentDocPlaceholder": "Search content blocks in current document...",
   "scopeAllNotes": "All Notes",
