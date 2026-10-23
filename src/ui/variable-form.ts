@@ -52,12 +52,28 @@ export function openVariableFillCard(options: VariableFillOptions): void {
         // 所有关闭路径（Esc/scrim）统一走 onCancel：上层搜索弹窗焦点回归（R128）；
         // 按钮确认/取消已自行结算，不在此重复触发（R138 结算语义）
         destroyCallback: () => {
+            if (typeof window !== "undefined" && window.visualViewport) {
+                window.visualViewport.removeEventListener("resize", handleViewport);
+                window.visualViewport.removeEventListener("scroll", handleViewport);
+            }
             if (!settled) options.onCancel?.();
         },
     });
     // 原型屏 4：紧凑卡形态，卡头（徽标+标题+Esc 取消）即标题，隐藏宿主标题栏
-    const container = dialog.element.querySelector(".b3-dialog__container");
+    const container = dialog.element.querySelector(".b3-dialog__container") as HTMLElement | null;
     if (container) container.classList.add("xlc-varform-host");
+
+    // 移动端虚拟键盘避让（window.visualViewport 动态抬升，防遮挡按钮）
+    const handleViewport = () => {
+        if (!container || typeof window === "undefined" || !window.visualViewport) return;
+        const offset = Math.max(0, window.innerHeight - window.visualViewport.height);
+        container.style.paddingBottom = offset > 0 ? `${offset + 12}px` : "";
+    };
+    if (typeof window !== "undefined" && window.visualViewport) {
+        window.visualViewport.addEventListener("resize", handleViewport);
+        window.visualViewport.addEventListener("scroll", handleViewport);
+    }
+
     const body = getDialogBody(dialog.element);
     if (!body) return;
     body.innerHTML = "";

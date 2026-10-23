@@ -12,7 +12,7 @@ A quick-recall content launcher for SiYuan Notes: turn frequently used content �
 
 > Runs fully standalone (no dependency on other Lv plugins), and exposes the `xiaolv-common/v1` protocol for sibling plugins.
 
-> **Released: v0.6.4 (2026-10-22)** · [Download the latest release](https://github.com/ai68298100/xiaolv-common/releases/latest) · Quick tag appending pills and category datalist autocomplete in capture forms, conditional toggle syntax in variable insertion bar, and 723 passing automated tests.
+> **Released: v0.6.5 (2026-10-23)** · [Download the latest release](https://github.com/ai68298100/xiaolv-common/releases/latest) · Full implementation of Lv Ecosystem Epoch 6 Directive: 4-alias mounting/unmounting, callBridge checkin macro parsing, Raikiri widget registration, Imperial Purple & Cyber Mint visual aesthetic, and root ./package.zip build output.
 
 ## Latest Capabilities (Omni-Search Terminal, Headless Integration & Sync Merge · R273~R292)
 
@@ -45,7 +45,18 @@ Advanced Templates & Security Suite:
 - **Computation & Formatting**: Pure recursive-descent math parser (`{{xlc:calc:...}}`), UUID generator, case converters (camel/snake/kebab/pascal), and cross-application rich-text clipboard payload.
 - **Security & Privacy**: Batch tag and category governance, export privacy sanitizer (phone/email/token masking and placeholder replacement).
 
-## This release (v0.6.4)
+## This release (v0.6.5)
+
+Ecosystem Federation & Visual Design Overhaul (Epoch 6 Standards):
+
+- **4-Alias bridge mounting & secure unregistration**: Window bridge supports `window.xiaolvCommon`, `window.LvCommon`, `window.lvCommon`, and `window.siyuanCommon` under first-instance-wins and verified unmounting.
+- **Graceful `{{xlc:checkin:today}}` macro resolution**: Integrates `callBridge` from `ecosystem-bridge-kit` for safe querying of checkin items, with non-throwing fallback text.
+- **Raikiri workbench widget registration**: Safely registers the `common-quick-palette` module to showcase high-frequency common snippets in the Raikiri launcher.
+- **Monochrome vector icons upgrade**: Topbar, sidebar, and breadcrumb icons upgraded to 32×32 monochrome curly-brace symbols (`iconXlcCommon` & `iconLvCommon`).
+- **Tuscan Imperial Purple + Cyber Mint Green aesthetic**: Injected `--lv-brand: #9333EA` and `--lv-accent-mint: #10B981`, added physical micro-touch feedback on button press, and unified `.lv-dialog-title-wrap` headers.
+- **Engineering compliance**: Flat `./package.zip` output in root; mobile `visualViewport` dynamic keyboard offset; normalized English name `Lv Common (Beta)`.
+
+## Previous release (v0.6.4)
 
 Capture & Authoring Workflow Enhancements:
 

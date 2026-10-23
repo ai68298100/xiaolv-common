@@ -10,6 +10,7 @@ import {applyAskDefaults, expandAsks, stripCursorToken} from "../model/variables
 import {CommonItem} from "../model/item";
 import {LibraryService, SourceHealth} from "./library";
 import {isMarkdownFormattingPresent, renderSafeHtmlFromMarkdown, writeRichClipboard} from "../model/clipboard";
+import {callBridge} from "../ecosystem-bridge-kit";
 
 /** 占位符应用钩子：由入口注入（读设置 + 当前时间 + 当前文档 + 剪贴板）；未注入则原样保留 */
 export interface IPlaceholderHook {
@@ -294,21 +295,23 @@ export class ActionExecutor {
                 output = output.replaceAll("{{xlc:clipboard}}", clipboardText.slice(0, 4000));
             }
             if (output.includes("{{xlc:checkin:today}}")) {
-                let checkinText = "";
-                try {
-                    const host = typeof window !== "undefined" ? (window as any) : null;
-                    const checkin = host?.siyuanCheckin;
-                    if (checkin && typeof checkin.getItems === "function") {
-                        const items = checkin.getItems();
+                const checkinSummaryText = await callBridge<any, string>(
+                    "checkin",
+                    "items.read",
+                    (bridge) => {
+                        const items = typeof bridge.queryItems === "function"
+                            ? bridge.queryItems({ includeArchived: false })
+                            : (typeof bridge.getItems === "function" ? bridge.getItems() : []);
                         if (Array.isArray(items)) {
                             const active = items.filter((it: any) => !it.archived);
-                            checkinText = `今日打卡（${active.length}项）`;
+                            if (active.length === 0) return "今日打卡（无未完成项）";
+                            return active.map((i: any) => `✓ ${i.name || i.title || "打卡项"}`).join("\n");
                         }
-                    }
-                } catch {
-                    checkinText = "";
-                }
-                output = output.replaceAll("{{xlc:checkin:today}}", checkinText);
+                        return "（未检测到打卡数据）";
+                    },
+                    () => "（未检测到小驴打卡）"
+                );
+                output = output.replaceAll("{{xlc:checkin:today}}", checkinSummaryText);
             }
             return output;
         } catch {

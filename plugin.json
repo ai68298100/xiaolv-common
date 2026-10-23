@@ -2,8 +2,8 @@
   "name": "xiaolv-common",
   "author": "ai68298100",
   "url": "https://github.com/ai68298100/xiaolv-common",
-  "version": "0.6.4",
-  "minAppVersion": "3.8.0",
+  "version": "0.6.5",
+  "minAppVersion": "3.8.4",
   "settingsWindow": true,
   "disabledInPublish": false,
   "backends": [
@@ -17,7 +17,7 @@
     "browser-mobile"
   ],
   "displayName": {
-    "default": "LvCommon (Beta)",
+    "default": "Lv Common (Beta)",
     "zh-CN": "小驴常用（内测版）"
   },
   "description": {
@@ -35,6 +35,8 @@
     "custom": []
   },
   "keywords": [
+    "lv",
+    "小驴",
     "常用语",
     "common phrases",
     "snippet",

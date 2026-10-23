@@ -196,7 +196,7 @@ export function createKernelClient(options: {
             else if (err.kind === "permission") options.onPermissionFailure?.(err);
         } catch (callbackError) {
             // 错误提示本身不能掩盖原始内核错误；宿主侧回调失败仅作诊断记录。
-            console.warn("[小驴常用] kernel failure handler failed", callbackError);
+            console.warn("[LvCommon] kernel failure handler failed", callbackError);
         }
     };
 

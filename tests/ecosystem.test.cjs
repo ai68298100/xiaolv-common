@@ -130,12 +130,12 @@ test("生态占位符：{{xlc:checkin:today}} 宏解析与优雅降级", async (
 
     const executor = new ActionExecutor(mockLib, mockHost, () => {}, undefined, placeholders);
 
-    // 1. 无打卡插件时：安全降级为空串
+    // 1. 无打卡插件时：优雅降级为提示文本
     global.window = {};
     const out1 = await executor.renderForInsert("状态：{{xlc:checkin:today}}已就绪");
-    assert.strictEqual(out1, "状态：已就绪");
+    assert.strictEqual(out1, "状态：（未检测到小驴打卡）已就绪");
 
-    // 2. 有打卡插件时：解析出今日打卡项统计
+    // 2. 有打卡插件时：解析出今日打卡项
     global.window = {
         siyuanCheckin: {
             getItems: () => [
@@ -144,8 +144,8 @@ test("生态占位符：{{xlc:checkin:today}} 宏解析与优雅降级", async (
             ],
         },
     };
-    const out2 = await executor.renderForInsert("状态：{{xlc:checkin:today}}");
-    assert.strictEqual(out2, "状态：今日打卡（2项）");
+    const out2 = await executor.renderForInsert("状态：\n{{xlc:checkin:today}}");
+    assert.strictEqual(out2, "状态：\n✓ 读书\n✓ 健身");
 
     // 清理全局
     delete global.window;

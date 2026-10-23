@@ -33,6 +33,9 @@ $roots: ".xlc-dialog, .xlc-form, .xlc-varform, .b3-dialog__container.xlc-dialog-
   --xlc-mango-soft: rgba(255, 152, 0, 0.14);
   --xlc-mango-ink: #b45309;
   --xlc-dark-card: #1e1e24;
+  --lv-brand: #9333EA; /* 托斯卡纳帝王紫 */
+  --lv-brand-soft: color-mix(in srgb, var(--lv-brand) 12%, transparent);
+  --lv-accent-mint: #10B981; /* 赛博薄荷绿点缀 */
   --xlc-radius-pill: 9999px;
   --xlc-radius-bento: 16px;
   --xlc-control-knob: #ffffff;
@@ -76,6 +79,9 @@ $roots: ".xlc-dialog, .xlc-form, .xlc-varform, .b3-dialog__container.xlc-dialog-
   --xlc-mango-soft: rgba(255, 167, 38, 0.22);
   --xlc-mango-ink: #ffd599;
   --xlc-dark-card: #16161c;
+  --lv-brand: #A855F7; /* 托斯卡纳帝王紫（暗色模式） */
+  --lv-brand-soft: color-mix(in srgb, var(--lv-brand) 18%, transparent);
+  --lv-accent-mint: #34D399; /* 赛博薄荷绿（暗色模式） */
   --xlc-radius-pill: 9999px;
   --xlc-radius-bento: 16px;
   --xlc-control-knob: #ffffff;
@@ -789,6 +795,9 @@ $roots: ".xlc-dialog, .xlc-form, .xlc-varform, .b3-dialog__container.xlc-dialog-
     --xlc-mango-soft: Canvas;
     --xlc-mango-ink: HighlightText;
     --xlc-dark-card: Canvas;
+    --lv-brand: Highlight;
+    --lv-brand-soft: Canvas;
+    --lv-accent-mint: HighlightText;
     --xlc-radius-pill: 9999px;
     --xlc-radius-bento: 16px;
     --xlc-control-knob: CanvasText;

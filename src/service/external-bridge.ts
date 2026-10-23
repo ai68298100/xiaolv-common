@@ -103,19 +103,33 @@ export function buildXlcBridge(service: XiaolvCommonService): XlcBridgeApi {
     };
 }
 
-/** 挂载桥到 window（服务装配完成后调用）；返回卸载函数 */
-export function mountXlcBridge(service: XiaolvCommonService, host: {xiaolvCommon?: unknown} = window as unknown as {xiaolvCommon?: unknown}): () => void {
-    if (host.xiaolvCommon) {
-        // 已有桥（多实例/重复加载）：不覆盖，跳过——首个实例持有窗口期
-        return () => undefined;
-    }
+import {BRIDGE_ALIASES} from "../ecosystem-bridge-kit";
+
+export const COMMON_BRIDGE_ALIASES = BRIDGE_ALIASES.common;
+
+/** 挂载桥到 window（服务装配完成后调用，支持四别名挂载与安全核验注销）；返回卸载函数 */
+export function mountXlcBridge(
+    service: XiaolvCommonService,
+    host: Record<string, unknown> = (typeof window !== "undefined" ? window : {}) as unknown as Record<string, unknown>
+): () => void {
     const bridge = buildXlcBridge(service);
-    (host as {xiaolvCommon?: XlcBridgeApi}).xiaolvCommon = bridge;
+    const mountedAliases: string[] = [];
+
+    for (const alias of COMMON_BRIDGE_ALIASES) {
+        if (!host[alias]) {
+            host[alias] = bridge;
+            mountedAliases.push(alias);
+        }
+    }
+
     let disposed = false;
     return () => {
-        // 只删自己挂载的桥；新实例接管后旧 disposer 不得误删新桥
-        if (disposed || (host as {xiaolvCommon?: unknown}).xiaolvCommon !== bridge) return;
+        if (disposed) return;
         disposed = true;
-        delete (host as {xiaolvCommon?: unknown}).xiaolvCommon;
+        for (const alias of mountedAliases) {
+            if (host[alias] === bridge) {
+                delete host[alias];
+            }
+        }
     };
 }

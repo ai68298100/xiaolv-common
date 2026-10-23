@@ -33,6 +33,8 @@ module.exports = (env, argv) => {
             patterns: [
                 ...packageFilePatterns,
                 {from: "src/i18n", to: "./i18n"},
+                {from: "src/i18n/zh-CN.json", to: "./i18n/zh_CN.json"},
+                {from: "src/i18n/en.json", to: "./i18n/en_US.json"},
             ],
         }),
     ];
@@ -41,6 +43,17 @@ module.exports = (env, argv) => {
             filename: "package.zip",
             include: [/\.js$/, /\.css$/, /\.json$/, /\.md$/, /\.png$/, /\.html$/, /^LICENSE$/],
         }));
+        plugins.push({
+            apply(compiler) {
+                compiler.hooks.afterEmit.tap("CopyZipToRoot", () => {
+                    const src = path.resolve(__dirname, "dist", "package.zip");
+                    const dest = path.resolve(__dirname, "package.zip");
+                    if (fs.existsSync(src)) {
+                        fs.copyFileSync(src, dest);
+                    }
+                });
+            },
+        });
     }
     return {
         mode: production ? "production" : "development",

@@ -115,7 +115,9 @@
 
   &:hover { background-color: var(--b3-list-hover); }
 
-  &:active { transform: scale(.97); }
+  &:active:not(:disabled) {
+    transform: translateY(1.5px) scale(0.985);
+  }
 
   &:focus-visible {
     outline: 2px solid var(--b3-theme-primary);
@@ -3883,6 +3885,44 @@
   max-width: 320px;
   margin: var(--xlc-space-2) auto 0 auto;
   line-height: var(--xlc-line-body);
+}
+
+// ---------- 对标生态规范：Dialog 标题栏统一组件 (.lv-dialog-title-wrap) ----------
+.lv-dialog-title-wrap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+
+  .lv-dialog-title-icon {
+    width: 22px;
+    height: 22px;
+    border-radius: 6px;
+    background: linear-gradient(135deg, var(--lv-brand, #9333EA), #581C87);
+    color: #ffffff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+
+    svg {
+      width: 14px;
+      height: 14px;
+    }
+  }
+
+  .lv-dialog-title-text {
+    font-weight: 600;
+  }
+
+  .lv-dialog-title-pill {
+    font-size: 10px;
+    padding: 1px 6px;
+    border-radius: var(--xlc-radius-pill, 9999px);
+    background-color: var(--lv-brand-soft, rgba(147, 51, 234, 0.12));
+    color: var(--lv-brand, #9333EA);
+    border: 1px solid rgba(147, 51, 234, 0.25);
+    font-weight: 600;
+  }
 }
 
 // ---------- 参考图同款：深色悬浮快捷新建加号键 (FAB) ----------

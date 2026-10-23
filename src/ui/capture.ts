@@ -383,12 +383,28 @@ export class CaptureDialog {
                 closed = true;
                 this.formOpen = false;
                 this.currentDialog = null;
+                if (typeof window !== "undefined" && window.visualViewport) {
+                    window.visualViewport.removeEventListener("resize", handleViewport);
+                    window.visualViewport.removeEventListener("scroll", handleViewport);
+                }
                 ++tidySeq;
                 ++draftSeq;
             },
         });
         this.currentDialog = dialog;
-        dialog.element.querySelector(".b3-dialog__container")?.classList.add("xlc-form-host");
+        const container = dialog.element.querySelector(".b3-dialog__container") as HTMLElement | null;
+        container?.classList.add("xlc-form-host");
+
+        // 移动端虚拟键盘避让（动态计算高度偏移，防遮挡操作区）
+        const handleViewport = () => {
+            if (!container || typeof window === "undefined" || !window.visualViewport) return;
+            const offset = Math.max(0, window.innerHeight - window.visualViewport.height);
+            container.style.paddingBottom = offset > 0 ? `${offset + 12}px` : "";
+        };
+        if (typeof window !== "undefined" && window.visualViewport) {
+            window.visualViewport.addEventListener("resize", handleViewport);
+            window.visualViewport.addEventListener("scroll", handleViewport);
+        }
         const body = getDialogBody(dialog.element);
         if (!body) {
             this.formOpen = false;

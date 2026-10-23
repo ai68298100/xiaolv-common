@@ -47,6 +47,7 @@ import {buildVariableBar} from "./ui/variable-form";
 import type {TransformKind} from "./service/ai";
 import {mountXlcBridge} from "./service/external-bridge";
 import {queryEcosystemItems} from "./service/ecosystem";
+import {registerRaikiriModuleSafely} from "./ecosystem-bridge-kit";
 
 declare let __webpack_public_path__: string;
 
@@ -106,6 +107,8 @@ export default class XiaolvCommonPlugin extends Plugin {
     public readonly protocolCommands: Record<string, (payload?: unknown) => Promise<unknown>> = {};
     /** 对外窗口桥卸载器（T-0031 · ADR-0013；onunload 注销 window.xiaolvCommon） */
     private bridgeDisposer: (() => void) | null = null;
+    /** 雷切工作台小组件卸载器（Epoch 6 标准） */
+    private raikiriDisposer: (() => void) | null = null;
     private discoveryDialog: DiscoveryDialogController | null = null;
     private unloading = false;
 
@@ -242,6 +245,8 @@ export default class XiaolvCommonPlugin extends Plugin {
         });
         // 对外窗口桥 window.xiaolvCommon v1（T-0031 · ADR-0013）：只读子集，服务已装配即可挂
         this.bridgeDisposer = mountXlcBridge(this.service);
+        // 向小驴雷切注册“高频常用语”小组件（Epoch 6 标准）
+        this.registerRaikiriWidget();
         try {
             // 思源智能体能力（3.8.x）：按关键词搜常用条目——只读 localRead，输出仅元数据
             this.addAgentCapability({
@@ -1588,7 +1593,7 @@ export default class XiaolvCommonPlugin extends Plugin {
             aiTransformCustom: async (itemId, customId) => {
                 try {
                     const ct = this.state.ai.customTransforms.find((c) => c.id === customId);
-                    if (!ct) return {ok: false as const, message: "custom-transform-not-found"};
+                    if (!ct) return {ok: false as const, message: "custom-xlc-transform-not-found"};
                     const got = await this.library.getItem(itemId);
                     if (!got.ok) return {ok: false as const, message: got.message};
                     const kd = await this.library.getItemKramdown(got.data);
@@ -1857,6 +1862,38 @@ export default class XiaolvCommonPlugin extends Plugin {
         body.appendChild(form);
     }
 
+    private registerRaikiriWidget(): void {
+        this.raikiriDisposer = registerRaikiriModuleSafely({
+            moduleId: "common-quick-palette",
+            title: "常用资产",
+            description: "展示高频与最近使用的常用语资产",
+            icon: "iconXlcCommon",
+            category: "资产",
+            source: {
+                pluginId: "xiaolv-common",
+                name: "小驴常用",
+                version: "0.6.4",
+            },
+            read: async () => {
+                const res = await this.service.getRecent(5);
+                const items = (res.ok && res.data)
+                    ? res.data.map((it) => ({
+                        label: it.title ?? it.id,
+                        value: it.itemType,
+                        command: `xiaolv.common.insert:${it.id}`,
+                    }))
+                    : [];
+                return {
+                    title: "常用资产",
+                    items,
+                };
+            },
+            open: () => {
+                this.openSearch();
+            },
+        });
+    }
+
     // ---- 首次引导 / 设置 ----
 
     private settingsContext(): SettingsUiContext {
@@ -2010,6 +2047,12 @@ export default class XiaolvCommonPlugin extends Plugin {
             // 宿主 window 已销毁：忽略
         }
         this.bridgeDisposer = null;
+        try {
+            this.raikiriDisposer?.();
+        } catch {
+            // 忽略
+        }
+        this.raikiriDisposer = null;
         this.discoveryDialog?.close(true);
         this.discoveryDialog = null;
         // 事件总线/监听全部随 dialog destroy 释放；侧车已节流持久化
@@ -2067,20 +2110,20 @@ export default class XiaolvCommonPlugin extends Plugin {
             ]);
             if (timer !== undefined) clearTimeout(timer);
             if (result === timedOut) {
-                console.warn("[小驴常用] 卸载等待发现收录清理超过 4 秒，当前条目清理结果尚未确认；思源可能继续拆除插件资源");
+                console.warn("[LvCommon] 卸载等待发现收录清理超过 4 秒，当前条目清理结果尚未确认；思源可能继续拆除插件资源");
                 void discoveryShutdown.then((lateResult) => {
                     if (lateResult.compensatedItemIds.length) {
-                        console.info("[小驴常用] 卸载等待超时后，发现收录条件清理已完成", lateResult.compensatedItemIds);
+                        console.info("[LvCommon] 卸载等待超时后，发现收录条件清理已完成", lateResult.compensatedItemIds);
                     }
                     for (const item of lateResult.unresolved) {
-                        console.warn("[小驴常用] 卸载等待超时后仍无法确认发现收录状态", item);
+                        console.warn("[LvCommon] 卸载等待超时后仍无法确认发现收录状态", item);
                     }
                 }).catch((error) => {
-                    console.warn("[小驴常用] 卸载等待超时后发现收录清理仍未完成", error);
+                    console.warn("[LvCommon] 卸载等待超时后发现收录清理仍未完成", error);
                 });
             } else {
                 for (const item of result.unresolved) {
-                    console.warn("[小驴常用] 发现收录在插件卸载期间未能安全确认", item);
+                    console.warn("[LvCommon] 发现收录在插件卸载期间未能安全确认", item);
                 }
             }
         }

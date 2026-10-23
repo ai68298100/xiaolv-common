@@ -132,17 +132,26 @@ test("getCategories / getTags：返回去重排序后的分类与标签列表", 
     assert.ok(Array.isArray(tags.data));
 });
 
-test("挂载/卸载：首实例持有；二次挂载跳过；disposer 只删自己的桥", () => {
+test("挂载/卸载：首实例持有；二次挂载跳过；disposer 只删自己的桥 (四别名 Epoch 6 兼容)", () => {
     const host = {};
     const s1 = makeService();
     const s2 = makeService();
     const dispose1 = externalBridge.mountXlcBridge(s1, host);
-    assert.ok(host.xiaolvCommon, "桥已挂载");
+    assert.ok(host.xiaolvCommon, "xiaolvCommon 桥已挂载");
+    assert.ok(host.LvCommon, "LvCommon 别名已挂载");
+    assert.ok(host.lvCommon, "lvCommon 别名已挂载");
+    assert.ok(host.siyuanCommon, "siyuanCommon 别名已挂载");
+
     const dispose2 = externalBridge.mountXlcBridge(s2, host);
     dispose2();
     assert.ok(host.xiaolvCommon, "二次挂载被跳过，disposer 不得误删首实例的桥");
+    assert.ok(host.LvCommon, "二次挂载被跳过，LvCommon 仍保留首实例");
+
     dispose1();
-    assert.equal(host.xiaolvCommon, undefined, "首实例 disposer 正常注销");
+    assert.equal(host.xiaolvCommon, undefined, "首实例 disposer 正常注销 xiaolvCommon");
+    assert.equal(host.LvCommon, undefined, "首实例 disposer 正常注销 LvCommon");
+    assert.equal(host.lvCommon, undefined, "首实例 disposer 正常注销 lvCommon");
+    assert.equal(host.siyuanCommon, undefined, "首实例 disposer 正常注销 siyuanCommon");
     dispose1();
     assert.equal(host.xiaolvCommon, undefined, "重复卸载安全");
 });

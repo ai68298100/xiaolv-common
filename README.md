@@ -12,7 +12,7 @@
 
 支持插入前填写变量、日期与随机占位符、片段嵌套、模板包分享、Espanso 配置导入、拼音搜索和 AI 辅助。插件可独立使用，也提供 `xiaolv-common/v1` 公开协议供小驴系列插件接入。
 
-> **已发布版本：v0.6.4（2026-10-22）** · [下载最新版](https://github.com/ai68298100/xiaolv-common/releases/latest) · 录入表单支持常用标签快速点选追加 (+标签) 与分类自动补全 datalist、变量快捷条新增条件开关语法快捷插入、全套门禁体检 723 项通过。
+> **已发布版本：v0.6.5（2026-10-23）** · [下载最新版](https://github.com/ai68298100/xiaolv-common/releases/latest) · 全面落地小驴生态 Epoch 6 统领指令：四别名挂载注销、callBridge 优雅解析打卡宏、雷切常用资产小组件注册、帝王紫+赛博薄荷绿美学升级与根目录 package.zip 自动化产出。
 
 ## 最新进阶演进（全域搜索终端、Headless 全局联动与同步比对合并 · R273~R292）
 
@@ -45,7 +45,18 @@
 - **计算与格式化**：纯函数递归下降四则算术求值器（`{{xlc:calc:100 * 1.13}}`）、UUID 生成器、文本命名范式转换器（camel/snake/kebab/pascal 等）、跨应用富文本双载荷剪贴板。
 - **安全治理**：批量标签与分类治理引擎、导出模板隐私安全脱敏（手机号/邮箱/Token 掩码或占位符化）。
 
-## 本次更新（v0.6.4）
+## 本次更新（v0.6.5）
+
+小驴生态联邦协同与视觉美学全面升级（Epoch 6 标准）：
+
+- **跨插件联邦四别名挂载与安全注销**：对外窗口桥全面兼容 `window.xiaolvCommon`、`window.LvCommon`、`window.lvCommon`、`window.siyuanCommon`，遵循 First-Instance-Wins 原则且在插件卸载时进行严格身份核验注销，保障跨插件生态高并发稳定性。
+- **生态宏 `{{xlc:checkin:today}}` 优雅解析**：基于 `ecosystem-bridge-kit` 的 `callBridge` 安全探测并调用小驴打卡公开接口，未安装打卡插件时安全降级为友好提示文本，杜绝任何未捕获异常。
+- **向小驴雷切工作台注册「常用资产」小组件**：安全注册 `common-quick-palette` 模块，向雷切中枢提供高频使用的常用语列表，支持单键点击快速插入。
+- **顶栏与侧栏单色矢量图标升级**：全面更换为 32×32 单色大括号变量矢量图标（`iconXlcCommon` 与 `iconLvCommon`），对标全新品牌头像。
+- **托斯卡纳帝王紫 + 赛博薄荷绿美学注入**：注入专属品牌色 `--lv-brand: #9333EA` 与 `--lv-accent-mint: #10B981`，为全仓按钮赋予物理微触感，弹窗标题栏引入规范化 `.lv-dialog-title-wrap`。
+- **工程规范与全生态发布对齐**：构建产物在根目录扁平输出 `./package.zip`；移动端挂载 `visualViewport` 动态键盘避让；英文名规范为 `Lv Common (Beta)`；补齐 `.gitattributes`、`SECURITY.md` 与 Release 工作流。
+
+## 历史版本（v0.6.4）
 
 录入与创作辅助体验升级：
 
