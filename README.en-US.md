@@ -12,7 +12,7 @@ A quick-recall content launcher for SiYuan Notes: turn frequently used content �
 
 > Runs fully standalone (no dependency on other Lv plugins), and exposes the `xiaolv-common/v1` protocol for sibling plugins.
 
-> **Released: v0.7.0 (2026-10-24)** · [Download the latest release](https://github.com/ai68298100/xiaolv-common/releases/latest) · Native Block Ecosystem & Automation Milestone: SiYuan Attribute View (AV Database) integration guide, timestamp & ISO week number dynamic macros, and live synced block dual-mode output.
+> **Released: v0.7.1 (2026-10-24)** · [Download the latest release](https://github.com/ai68298100/xiaolv-common/releases/latest) · Block hierarchy context probe (Alt+H), raw Markdown syntax copy (Alt+M), random integer range generation (1..100), and provenance document path chip.
 
 ## Latest Capabilities (Omni-Search Terminal, Headless Integration & Sync Merge · R273~R292)
 
@@ -45,7 +45,15 @@ Advanced Templates & Security Suite:
 - **Computation & Formatting**: Pure recursive-descent math parser (`{{xlc:calc:...}}`), UUID generator, case converters (camel/snake/kebab/pascal), and cross-application rich-text clipboard payload.
 - **Security & Privacy**: Batch tag and category governance, export privacy sanitizer (phone/email/token masking and placeholder replacement).
 
-## This release (v0.7.0)
+## This release (v0.7.1)
+
+Block Hierarchy Context Probe & Multi-Format Copying:
+
+- **Block Hierarchy Context Probe (`Alt+H`)**: Press `Alt+H` during search to reveal the full document hierarchy path outline; preview metadata adds a clickable `📄 Provenance Path` chip.
+- **Raw Markdown Quick Copy (`Alt+M`)**: Copy raw template Markdown syntax with dynamic variables directly to the clipboard, compatible with Pin Window mode (`Alt+P`).
+- **Random Range Macro (`{{xlc:random|1..100}}`)**: Supports integer range generation (e.g. `1..100`, `1000..9999`) for test data and verification code templates.
+
+## Previous release (v0.7.0)
 
 Attribute View Database Automation & Dynamic Macros:
 

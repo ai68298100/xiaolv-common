@@ -291,9 +291,21 @@ function resolveWeekdayArg(now: Date, rawArg: string): string | null {
     return null;
 }
 
-/** 随机选一：逗号分隔选项（支持中英文逗号与顿号 [,，、]），每项去首尾空白；无可选项返回 null（保留原文）。 */
+/** 随机选一：支持 1..100 整数范围生成，或逗号分隔选项（支持中英文逗号与顿号 [,，、]），每项去首尾空白；无可选项返回 null（保留原文）。 */
 export function pickRandomOption(rawArg: string): string | null {
-    const options = rawArg.split(/[,，、]/).map((s) => s.trim()).filter(Boolean).slice(0, 16);
+    const trimmed = rawArg.trim();
+    const rangeMatch = trimmed.match(/^(-?\d+)\.\.(-?\d+)$/);
+    if (rangeMatch) {
+        const start = parseInt(rangeMatch[1]!, 10);
+        const end = parseInt(rangeMatch[2]!, 10);
+        if (Number.isFinite(start) && Number.isFinite(end)) {
+            const min = Math.min(start, end);
+            const max = Math.max(start, end);
+            const val = Math.floor(Math.random() * (max - min + 1)) + min;
+            return String(val);
+        }
+    }
+    const options = trimmed.split(/[,，、]/).map((s) => s.trim()).filter(Boolean).slice(0, 16);
     if (options.length === 0) return null;
     return options[Math.floor(Math.random() * options.length)] ?? null;
 }

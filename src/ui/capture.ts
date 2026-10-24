@@ -394,7 +394,7 @@ export class CaptureDialog {
         this.currentDialog = dialog;
         const container = dialog.element.querySelector(".b3-dialog__container") as HTMLElement | null;
         container?.classList.add("xlc-form-host");
-        mountPlatformDialogTitleWrap(dialog.element, t("newItem"), "v0.7.0", "iconXlcCommon");
+        mountPlatformDialogTitleWrap(dialog.element, t("newItem"), "v0.7.1", "iconXlcCommon");
 
         // 移动端虚拟键盘避让（动态计算高度偏移，防遮挡操作区）
         const handleViewport = () => {

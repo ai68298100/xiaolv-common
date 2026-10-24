@@ -66,4 +66,10 @@ test("dialog.ts: 窗口固定 (Alt+P) 与块引用复制 (Alt+R) 快捷键契约
     // 验证 Alt+Enter 插入块引用 (insert-ref) 快捷键存在
     assert.ok(dialogSrc.includes('e.key === "Enter" && e.altKey && !e.ctrlKey && !e.metaKey && !e.shiftKey'));
     assert.ok(dialogSrc.includes('"insert-ref"'));
+
+    // 验证 Alt+M 复制原始 Markdown 快捷键存在
+    assert.ok(dialogSrc.includes('e.altKey && !e.ctrlKey && !e.metaKey && (e.key === "m" || e.key === "M")'));
+
+    // 验证 Alt+H 块层级路径探针快捷键存在
+    assert.ok(dialogSrc.includes('e.altKey && !e.ctrlKey && !e.metaKey && (e.key === "h" || e.key === "H")'));
 });

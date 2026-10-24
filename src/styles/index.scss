@@ -1052,6 +1052,18 @@
         }
       }
 
+      &--path {
+        max-width: 260px;
+        color: var(--b3-theme-primary);
+        border-color: rgba(53, 117, 240, 0.25);
+        background-color: var(--xlc-list-selected, rgba(53, 117, 240, 0.08));
+
+        &:hover {
+          background-color: var(--xlc-list-selected, rgba(53, 117, 240, 0.16));
+          border-color: var(--b3-theme-primary);
+        }
+      }
+
       // 激活筛选态（R127）：与 doclist--on 同族，点选状态可见
       &--on,
       &--on:hover {

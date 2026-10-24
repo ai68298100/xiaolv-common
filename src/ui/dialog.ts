@@ -187,7 +187,7 @@ export class CommonSearchDialog {
         }
         const container = this.dialog.element.querySelector(".b3-dialog__container");
         if (container) container.classList.add(isMobile ? "xlc-sheet" : "xlc-dialog-host");
-        mountPlatformDialogTitleWrap(this.dialog.element, this.deps.t("pluginName"), "v0.7.0", "iconXlcCommon");
+        mountPlatformDialogTitleWrap(this.dialog.element, this.deps.t("pluginName"), "v0.7.1", "iconXlcCommon");
         const input = this.dialog.element.querySelector<HTMLInputElement>(".xlc-search-input");
         if (input) {
             // 上次搜索词回填（跨会话保留）
@@ -393,6 +393,8 @@ export class CommonSearchDialog {
                 {key: `${isApple ? "⌥" : "Alt"} + S`, action: "收录全库块"},
                 {key: `${isApple ? "⌥" : "Alt"} + R`, action: "复制块引用"},
                 {key: `${isApple ? "⌥" : "Alt"} + D`, action: "打开来源定位"},
+                {key: `${isApple ? "⌥" : "Alt"} + M`, action: "复制 Markdown"},
+                {key: `${isApple ? "⌥" : "Alt"} + H`, action: "层级大纲"},
                 {key: `${isApple ? "⌥" : "Alt"} + P`, action: "固定窗口"},
                 {key: `${isApple ? "⌥" : "Alt"} + C`, action: "复制并关闭"},
                 {key: `${isApple ? "⌥" : "Alt"} + T`, action: "轮转范围"},
@@ -2522,6 +2524,21 @@ export class CommonSearchDialog {
             more.textContent = `+${cleanTags.length - shownTags.length}`;
             meta.appendChild(more);
         }
+        if (entry.sourceDocPath) {
+            const pathBtn = document.createElement("button");
+            pathBtn.type = "button";
+            pathBtn.className = "xlc-meta-chip xlc-meta-chip--path";
+            pathBtn.textContent = "📄 " + entry.sourceDocPath;
+            pathBtn.title = "点击在思源中打开并定位此文档或块 (Alt+D)";
+            pathBtn.addEventListener("click", () => {
+                if (entry.isOmni && this.deps.openDocBlock) {
+                    void this.deps.openDocBlock(entry.targetBlockId || entry.id);
+                } else {
+                    void this.deps.openSource(entry.id);
+                }
+            });
+            meta.appendChild(pathBtn);
+        }
         // 更新日期（Raycast accessory date 惯例的详情面板版；1970 级脏值不显示）
         if (Number.isFinite(entry.updatedAt) && entry.updatedAt > 946684800000) {
             const date = document.createElement("span");
@@ -3438,6 +3455,27 @@ export class CommonSearchDialog {
                     void this.deps.openSource(entry.id);
                 }
                 if (!this.pinWindow) this.destroy();
+            }
+            return;
+        } else if (e.altKey && !e.ctrlKey && !e.metaKey && (e.key === "m" || e.key === "M")) {
+            // Alt+M: 复制条目原始 Markdown 语法到剪贴板
+            e.preventDefault();
+            if (this.quickLookOpen) this.closeQuickLook();
+            const entry = this.results[this.activeIndex];
+            if (entry) {
+                const text = entry.isOmni ? (entry.content || entry.summary || "") : await this.deps.preview(entry.id);
+                await this.deps.copyProviderPayload(text || entry.summary || "");
+                if (!this.pinWindow) this.destroy();
+                this.deps.notify?.("info", this.pinWindow ? "已复制原始 Markdown（窗口已固定，可连续取用）" : "已复制原始 Markdown 语法到剪贴板");
+            }
+            return;
+        } else if (e.altKey && !e.ctrlKey && !e.metaKey && (e.key === "h" || e.key === "H")) {
+            // Alt+H: 上下文层级探针（查看当前块所属完整路径大纲）
+            e.preventDefault();
+            const entry = this.results[this.activeIndex];
+            if (entry) {
+                const docPath = entry.sourceDocPath || entry.category || "未命名路径";
+                this.deps.notify?.("info", `📍 块层级路径：${docPath}`);
             }
             return;
         } else if (e.altKey && !e.ctrlKey && !e.metaKey && (e.key === "p" || e.key === "P")) {

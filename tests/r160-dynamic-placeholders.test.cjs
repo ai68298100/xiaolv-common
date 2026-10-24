@@ -115,6 +115,17 @@ test("随机选择：结果必在选项集中；选项去空白；多次取值�
     assert.equal(ph.applyPlaceholders("{{xlc:random|唯一}}", NOW, true), "唯一");
 });
 
+test("随机选择：支持 1..100 整数范围生成", () => {
+    const seen = new Set();
+    for (let i = 0; i < 100; i++) {
+        const out = ph.applyPlaceholders("{{xlc:random|1..5}}", NOW, true);
+        const val = Number(out);
+        assert.ok(val >= 1 && val <= 5, "值必须在 1..5 范围内");
+        seen.add(out);
+    }
+    assert.ok(seen.size >= 2, "多次生成应覆盖多个数字");
+});
+
 test("随机选择：支持中文逗号与顿号（[,，、]）切分选项", () => {
     // 中文逗号切分
     const seenComma = new Set();
