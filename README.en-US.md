@@ -12,7 +12,7 @@ A quick-recall content launcher for SiYuan Notes: turn frequently used content �
 
 > Runs fully standalone (no dependency on other Lv plugins), and exposes the `xiaolv-common/v1` protocol for sibling plugins.
 
-> **Released: v0.6.9 (2026-10-24)** · [Download the latest release](https://github.com/ai68298100/xiaolv-common/releases/latest) · Dual-mode asset output: live synced embed block insertion (Shift+Enter, Notion Synced Block counterpart), block ref insertion (Alt+Enter), pin window mode, and multi-select variable support.
+> **Released: v0.7.0 (2026-10-24)** · [Download the latest release](https://github.com/ai68298100/xiaolv-common/releases/latest) · Native Block Ecosystem & Automation Milestone: SiYuan Attribute View (AV Database) integration guide, timestamp & ISO week number dynamic macros, and live synced block dual-mode output.
 
 ## Latest Capabilities (Omni-Search Terminal, Headless Integration & Sync Merge · R273~R292)
 
@@ -45,7 +45,14 @@ Advanced Templates & Security Suite:
 - **Computation & Formatting**: Pure recursive-descent math parser (`{{xlc:calc:...}}`), UUID generator, case converters (camel/snake/kebab/pascal), and cross-application rich-text clipboard payload.
 - **Security & Privacy**: Batch tag and category governance, export privacy sanitizer (phone/email/token masking and placeholder replacement).
 
-## This release (v0.6.9)
+## This release (v0.7.0)
+
+Attribute View Database Automation & Dynamic Macros:
+
+- **SiYuan Attribute View (AV Database) Automation Guide**: Added AV database collection guidelines in settings. Because Xiaolv Common snippets are anchored to real blocks with standard `custom-xlc-*` attributes, users can insert an Attribute View and set rule `custom-xlc-id exists` to manage all snippets via native SiYuan tables and boards.
+- **Timestamp & ISO Week Dynamic Macros**: Added `{{xlc:timestamp}}` (Unix seconds), `{{xlc:timestamp|ms}}` (milliseconds), and `{{xlc:week}}` (ISO week, e.g. `第43周`, `W43`), accessible via the shortcut variable bar.
+
+## Previous release (v0.6.9)
 
 Live Synced Block (Notion Synced Block counterpart) & Ref Dual-Mode Insertion:
 

@@ -141,7 +141,7 @@ export function openSettingsDialog(ctx: SettingsUiContext): void {
     });
     activeSettingsDialog = dialog;
     dialog.element.querySelector(".b3-dialog__container")?.classList.add("xlc-form-host", "xlc-settings-host", "xlc-settings-root-host");
-    mountPlatformDialogTitleWrap(dialog.element, t("openSettings"), "v0.6.9", "iconXlcCommon");
+    mountPlatformDialogTitleWrap(dialog.element, t("openSettings"), "v0.7.0", "iconXlcCommon");
     const body = getDialogBody(dialog.element);
     if (!body) return;
     body.innerHTML = "";
@@ -2207,6 +2207,34 @@ function buildDataSection(ctx: SettingsUiContext, root: HTMLElement): void {
     });
     templateRow.appendChild(templateBtn);
     dataSec.appendChild(templateRow);
+
+    // 思源原生属性视图（AV 数据库）自动化联动指引（G51）
+    const avRow = document.createElement("div");
+    avRow.className = "xlc-template-import-row";
+    const avHint = document.createElement("div");
+    avHint.className = "xlc-form-hint";
+    const avStrong = document.createElement("strong");
+    avStrong.textContent = "思源属性视图（AV 数据库块）自动化联动：";
+    avHint.appendChild(avStrong);
+    avHint.appendChild(document.createElement("br"));
+    avHint.appendChild(document.createTextNode("所有条目均锚定在真实思源块并携带 custom-xlc-* 属性。您可在笔记中输入 /av 插入原生属性视图，配置自动收集规则「custom-xlc-id 存在」，即可自动以原生表格、看板等形态管理全部常用资产。"));
+    avRow.appendChild(avHint);
+
+    const avCopyBtn = document.createElement("button");
+    avCopyBtn.type = "button";
+    avCopyBtn.className = "b3-button";
+    avCopyBtn.textContent = "📋 复制 AV 收集规则说明";
+    avCopyBtn.addEventListener("click", () => {
+        const guideText = `【思源属性视图 (AV 数据库) 常用资产自动化收集指引】\n1. 在思源笔记任意文档输入 /av 插入一个属性视图（数据库块）；\n2. 点击右上角视图设置 -> 自动收集规则 (Automations)；\n3. 添加块属性匹配条件：\n   - 属性名：custom-xlc-id\n   - 操作符：存在 (exists) 或 不为空\n4. （可选）按分类多维聚合：\n   - 属性名：custom-xlc-category\n   - 操作符：等于 (equals) 您指定的分类名\n5. 完成后，所有小驴常用资产将自动以思源官方原生表格、看板或列表形态全量汇聚，双向无缝读写！`;
+        if (navigator.clipboard) {
+            void navigator.clipboard.writeText(guideText).then(() => {
+                ctx.notify("info", "已复制思源属性视图 (AV 数据库) 收集规则说明到剪贴板");
+            }).catch(() => undefined);
+        }
+    });
+    avRow.appendChild(avCopyBtn);
+    dataSec.appendChild(avRow);
+
     root.appendChild(dataSec);
 }
 

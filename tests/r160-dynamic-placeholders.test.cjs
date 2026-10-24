@@ -70,6 +70,25 @@ test("日期算术：中文自然语言快捷支持（今天/明天/后天/昨�
     );
 });
 
+test("占位符扩展：timestamp 时间戳与 week 周数", () => {
+    // timestamp
+    const secStr = ph.applyPlaceholders("{{xlc:timestamp}}", NOW, true);
+    assert.equal(secStr, String(Math.floor(NOW.getTime() / 1000)));
+
+    const msStr = ph.applyPlaceholders("{{xlc:timestamp|ms}}", NOW, true);
+    assert.equal(msStr, String(NOW.getTime()));
+
+    // week (2026-10-06 为第 41 周)
+    const weekDefault = ph.applyPlaceholders("当前为{{xlc:week}}", NOW, true);
+    assert.equal(weekDefault, "当前为第41周");
+
+    const weekNum = ph.applyPlaceholders("{{xlc:week|num}}", NOW, true);
+    assert.equal(weekNum, "41");
+
+    const weekW = ph.applyPlaceholders("{{xlc:week|W}}", NOW, true);
+    assert.equal(weekW, "W41");
+});
+
 test("负向：非法日期表达式原样保留，不吞内容", () => {
     const raw = "{{xlc:date:bogus}} {{xlc:date|+3x}} {{xlc:date|monday}}";
     assert.equal(ph.applyPlaceholders(raw, NOW, true), raw);
