@@ -6,7 +6,7 @@
 // AI：? 前缀语义找条目（默认仅元数据出域）；动作菜单 AI 变换（预览后选插入，原文永不被改写）。
 import {Dialog} from "siyuan";
 import {getDialogBody, mountPlatformDialogTitleWrap} from "./dialog-dom";
-import {ITEM_TYPES, ItemType, getCategoryColorVariant, deriveSmartSummary, isBlockId} from "../model/item";
+import {ITEM_TYPES, ItemType, getCategoryColorVariant, deriveSmartSummary, isBlockId, kramdownToPlainText} from "../model/item";
 import {toErrorMessage} from "../model/errors";
 import {SearchEntry, SearchQuery, splitSearchTokens, findExactAliasMatch} from "../model/search";
 import {BatchTagCategoryPatch, BatchOperationReceipt} from "../model/batch-ops";
@@ -187,7 +187,7 @@ export class CommonSearchDialog {
         }
         const container = this.dialog.element.querySelector(".b3-dialog__container");
         if (container) container.classList.add(isMobile ? "xlc-sheet" : "xlc-dialog-host");
-        mountPlatformDialogTitleWrap(this.dialog.element, this.deps.t("pluginName"), "v0.7.1", "iconXlcCommon");
+        mountPlatformDialogTitleWrap(this.dialog.element, this.deps.t("pluginName"), "v0.7.2", "iconXlcCommon");
         const input = this.dialog.element.querySelector<HTMLInputElement>(".xlc-search-input");
         if (input) {
             // 上次搜索词回填（跨会话保留）
@@ -2917,6 +2917,14 @@ export class CommonSearchDialog {
                     this.deps.notify?.("info", `已复制块引用: ${refCode}`);
                 }, "xlc-menu-item", !this.pinWindow);
             }
+
+            // 快捷复制清洗纯文本 (Alt+Shift+C)
+            addAction("📄", "复制纯文本 (Alt+Shift+C)", async () => {
+                const raw = entry.isOmni ? (entry.content || entry.summary || "") : await this.deps.preview(entry.id);
+                const plain = kramdownToPlainText(raw || entry.summary || "");
+                await this.deps.copyProviderPayload(plain);
+                this.deps.notify?.("info", "已复制清洗纯文本到剪贴板 (适用于微信/QQ)");
+            }, "xlc-menu-item", !this.pinWindow);
             menu.appendChild(sec1);
 
             // AI 变换（启用时展示；需要正文出域权限，失败在预览盒诚实提示；
@@ -3393,7 +3401,20 @@ export class CommonSearchDialog {
             }
             const entry = this.results[this.activeIndex];
             if (entry) await this.deps.runAction(entry.id, "copy");
-        } else if ((e.altKey && !e.ctrlKey && !e.metaKey && (e.key === "c" || e.key === "C")) || (e.key === "Enter" && (e.ctrlKey || e.metaKey) && e.shiftKey)) {
+        } else if (e.altKey && e.shiftKey && !e.ctrlKey && !e.metaKey && (e.key === "c" || e.key === "C")) {
+            // Alt+Shift+C: 纯文本清洗复制（自动剥离任何 Markdown / Kramdown 语法，适用于微信、QQ 等纯文本输入框）
+            e.preventDefault();
+            if (this.quickLookOpen) this.closeQuickLook();
+            const entry = this.results[this.activeIndex];
+            if (entry) {
+                const raw = entry.isOmni ? (entry.content || entry.summary || "") : await this.deps.preview(entry.id);
+                const plain = kramdownToPlainText(raw || entry.summary || "");
+                await this.deps.copyProviderPayload(plain);
+                if (!this.pinWindow) this.destroy();
+                this.deps.notify?.("info", this.pinWindow ? "已复制清洗纯文本（窗口已固定，可连续取用）" : "已复制清洗纯文本到剪贴板 (适用于微信/QQ)");
+            }
+            return;
+        } else if ((e.altKey && !e.shiftKey && !e.ctrlKey && !e.metaKey && (e.key === "c" || e.key === "C")) || (e.key === "Enter" && (e.ctrlKey || e.metaKey) && e.shiftKey)) {
             // Alt+C / Ctrl+Shift+Enter: 快捷复制（窗口固定时保留）
             e.preventDefault();
             if (this.quickLookOpen) this.closeQuickLook();

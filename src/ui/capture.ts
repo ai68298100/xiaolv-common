@@ -394,7 +394,7 @@ export class CaptureDialog {
         this.currentDialog = dialog;
         const container = dialog.element.querySelector(".b3-dialog__container") as HTMLElement | null;
         container?.classList.add("xlc-form-host");
-        mountPlatformDialogTitleWrap(dialog.element, t("newItem"), "v0.7.1", "iconXlcCommon");
+        mountPlatformDialogTitleWrap(dialog.element, t("newItem"), "v0.7.2", "iconXlcCommon");
 
         // 移动端虚拟键盘避让（动态计算高度偏移，防遮挡操作区）
         const handleViewport = () => {
@@ -494,6 +494,51 @@ export class CaptureDialog {
         const aliasEl = field(t("alias"), overrides?.alias ?? "", false, "xlc-form-alias", metaRow);
         aliasEl.dataset.xlcControl = "capture.alias";
         metaRow.insertBefore(aliasEl.parentElement as HTMLElement, typeWrap);
+
+        // 智能别名推荐胶囊（输入标题时自动推导拼音缩写并支持一键点选填入）
+        const aliasHint = document.createElement("div");
+        aliasHint.className = "xlc-form-hint xlc-alias-hint";
+        aliasHint.style.marginTop = "3px";
+        aliasHint.style.display = "none";
+        (aliasEl.parentElement as HTMLElement).appendChild(aliasHint);
+
+        const syncAliasRecommendation = () => {
+            const currentTitle = (titleEl as HTMLInputElement).value.trim();
+            const currentAlias = (aliasEl as HTMLInputElement).value.trim();
+            if (!currentTitle) {
+                aliasHint.style.display = "none";
+                return;
+            }
+            const meta = deriveOmniItemMetadata({
+                title: currentTitle,
+                content: (contentEl as HTMLTextAreaElement).value || "",
+            } as any);
+            const rec = meta.recommendedAlias?.trim();
+            if (rec && rec !== currentAlias) {
+                aliasHint.textContent = "";
+                const tipLabel = document.createElement("span");
+                tipLabel.textContent = "⚡ 推荐别名：";
+                const pill = document.createElement("button");
+                pill.type = "button";
+                pill.className = "xlc-quick-pill";
+                pill.textContent = rec;
+                pill.title = `点击填入推荐别名「${rec}」`;
+                pill.addEventListener("click", () => {
+                    (aliasEl as HTMLInputElement).value = rec;
+                    (aliasEl as HTMLInputElement).dispatchEvent(new Event("input", {bubbles: true}));
+                    aliasHint.style.display = "none";
+                });
+                aliasHint.append(tipLabel, pill);
+                aliasHint.style.display = "flex";
+                aliasHint.style.alignItems = "center";
+                aliasHint.style.gap = "4px";
+            } else {
+                aliasHint.style.display = "none";
+            }
+        };
+
+        titleEl.addEventListener("input", syncAliasRecommendation);
+        setTimeout(syncAliasRecommendation, 0);
         // 标签 + 分类（原型：双栏行）
         const tagRow = document.createElement("div");
         tagRow.className = "xlc-form-row";

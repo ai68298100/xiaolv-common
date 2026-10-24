@@ -72,4 +72,8 @@ test("dialog.ts: 窗口固定 (Alt+P) 与块引用复制 (Alt+R) 快捷键契约
 
     // 验证 Alt+H 块层级路径探针快捷键存在
     assert.ok(dialogSrc.includes('e.altKey && !e.ctrlKey && !e.metaKey && (e.key === "h" || e.key === "H")'));
+
+    // 验证 Alt+Shift+C 复制纯文本快捷键存在
+    assert.ok(dialogSrc.includes('e.altKey && e.shiftKey && !e.ctrlKey && !e.metaKey && (e.key === "c" || e.key === "C")'));
+    assert.ok(dialogSrc.includes('kramdownToPlainText'));
 });

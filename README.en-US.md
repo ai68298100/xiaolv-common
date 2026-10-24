@@ -12,7 +12,7 @@ A quick-recall content launcher for SiYuan Notes: turn frequently used content �
 
 > Runs fully standalone (no dependency on other Lv plugins), and exposes the `xiaolv-common/v1` protocol for sibling plugins.
 
-> **Released: v0.7.1 (2026-10-24)** · [Download the latest release](https://github.com/ai68298100/xiaolv-common/releases/latest) · Block hierarchy context probe (Alt+H), raw Markdown syntax copy (Alt+M), random integer range generation (1..100), and provenance document path chip.
+> **Released: v0.7.2 (2026-10-24)** · [Download the latest release](https://github.com/ai68298100/xiaolv-common/releases/latest) · Plain text stripped copy (Alt+Shift+C), auto-recommended alias pill generation, multi-format clipboard matrix, and 729 passing automated tests.
 
 ## Latest Capabilities (Omni-Search Terminal, Headless Integration & Sync Merge · R273~R292)
 
@@ -45,7 +45,15 @@ Advanced Templates & Security Suite:
 - **Computation & Formatting**: Pure recursive-descent math parser (`{{xlc:calc:...}}`), UUID generator, case converters (camel/snake/kebab/pascal), and cross-application rich-text clipboard payload.
 - **Security & Privacy**: Batch tag and category governance, export privacy sanitizer (phone/email/token masking and placeholder replacement).
 
-## This release (v0.7.1)
+## This release (v0.7.2)
+
+Multi-Format Clipboard Matrix & Smart Alias Recommendation:
+
+- **Plain Text Stripped Copy (`Alt+Shift+C`)**: For WeChat, QQ, and external plain text web forms, strips all Markdown syntax (bold, links, code fences, IALs) for clean, pure text pasting.
+- **Smart Alias Recommendation Pill in Forms**: Typing snippet titles automatically derives pinyin acronyms (e.g. `khmydde`) and shows a clickable pill for one-click alias assignment.
+- **Multi-Format Clipboard Matrix**: Alt+C (Rich Text HTML), Alt+Shift+C (Plain Text), Alt+M (Raw Markdown), and Alt+R (Block Reference).
+
+## Previous release (v0.7.1)
 
 Block Hierarchy Context Probe & Multi-Format Copying:
 
