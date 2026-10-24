@@ -9,7 +9,7 @@
 
 import {LIMITS} from "../constants";
 
-export type AskFieldKind = "text" | "select" | "date" | "textarea" | "toggle";
+export type AskFieldKind = "text" | "select" | "date" | "textarea" | "toggle" | "multi";
 
 export interface AskField {
     /** 字段名（label；同名去重后只询问一次） */
@@ -33,11 +33,28 @@ export function parseAskField(rawName: string, rawOptions: string | undefined): 
         name = name.slice(0, eqIdx).trim().slice(0, LIMITS.tag);
     }
     if (!name) return null;
-    const options = (rawOptions ?? "")
+    let isMulti = false;
+    let cleanRawOptions = rawOptions ?? "";
+    if (cleanRawOptions.includes("|")) {
+        const parts = cleanRawOptions.split("|");
+        const suffix = parts[parts.length - 1]?.trim().toLowerCase() ?? "";
+        if (["multi", "multiple", "checkboxes", "mselect", "多选"].includes(suffix)) {
+            isMulti = true;
+            cleanRawOptions = parts.slice(0, parts.length - 1).join("|");
+        }
+    } else if (/^(?:multi|multiple|多选)\s*[:：]/i.test(cleanRawOptions)) {
+        isMulti = true;
+        cleanRawOptions = cleanRawOptions.replace(/^(?:multi|multiple|多选)\s*[:：]/i, "");
+    }
+
+    const options = cleanRawOptions
         .split(/[,，、]/)
         .map((s) => s.trim().slice(0, LIMITS.tag))
         .filter(Boolean)
         .slice(0, 16);
+    if (isMulti && options.length > 0) {
+        return {name, kind: "multi", options, ...(defaultValue ? {defaultValue} : {})};
+    }
     // date/textarea/toggle 单选项大小写不敏感（R139/R160/G49）
     const firstOpt = options[0]?.toLowerCase() ?? "";
     if (options.length === 1 && firstOpt === "date") return {name, kind: "date", options: [], ...(defaultValue ? {defaultValue} : {})};
@@ -59,6 +76,7 @@ export function askFieldTag(field: AskField): string {
         : field.name;
     if (field.kind === "text") return field.defaultValue && field.options.length === 0 ? `{{xlc:ask:${nameWithDef}}}` : `{{xlc:ask:${field.name}}}`;
     if (field.kind === "select") return `{{xlc:ask:${field.name}|${field.options.join(",")}}}`;
+    if (field.kind === "multi") return `{{xlc:ask:${field.name}|${field.options.join(",")}|multi}}`;
     if (field.kind === "toggle") return field.defaultValue ? `{{xlc:ask:${field.name}=${field.defaultValue}|toggle}}` : `{{xlc:ask:${field.name}|toggle}}`;
     return `{{xlc:ask:${field.name}|${field.kind}}}`;
 }

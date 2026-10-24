@@ -175,9 +175,48 @@ export function openVariableFillCard(options: VariableFillOptions): void {
             wrap.appendChild(toggleRow);
         }
 
+        if (field.kind === "multi") {
+            input.style.display = "none";
+            const multiWrap = document.createElement("div");
+            multiWrap.className = "xlc-varform-multi-options";
+            const currentSelected = new Set(
+                (input.value ? input.value.split(/[,，、]/) : (field.defaultValue ? field.defaultValue.split(/[,，、]/) : []))
+                    .map((s) => s.trim())
+                    .filter(Boolean)
+            );
+            input.value = Array.from(currentSelected).join("、");
+
+            const updateMultiVal = () => {
+                input.value = Array.from(currentSelected).join("、");
+                input.dispatchEvent(new Event("input", {bubbles: true}));
+                input.dispatchEvent(new Event("change", {bubbles: true}));
+            };
+
+            for (const opt of field.options) {
+                const optBtn = document.createElement("button");
+                optBtn.type = "button";
+                optBtn.className = "xlc-multi-option-pill" + (currentSelected.has(opt) ? " xlc-multi-option-pill--selected" : "");
+                optBtn.textContent = opt;
+                optBtn.title = `点击切换选中 "${opt}"`;
+                optBtn.addEventListener("click", (e) => {
+                    e.preventDefault();
+                    if (currentSelected.has(opt)) {
+                        currentSelected.delete(opt);
+                        optBtn.classList.remove("xlc-multi-option-pill--selected");
+                    } else {
+                        currentSelected.add(opt);
+                        optBtn.classList.add("xlc-multi-option-pill--selected");
+                    }
+                    updateMultiVal();
+                });
+                multiWrap.appendChild(optBtn);
+            }
+            wrap.appendChild(multiWrap);
+        }
+
         // 快捷候选项胶囊行（快速单点填充并联动实时预览，对标移动端与参考图交互 · G45）
         const candidateOptions = new Set<string>();
-        if (field.options && Array.isArray(field.options)) {
+        if (field.kind !== "multi" && field.options && Array.isArray(field.options)) {
             for (const opt of field.options) {
                 if (opt && opt.trim()) candidateOptions.add(opt.trim());
             }
@@ -403,6 +442,7 @@ export function buildVariableBar(t: (key: string, ...args: string[]) => string, 
         {id: "ask", text: "{{xlc:ask:字段}}"},
         {id: "ask.options", text: "{{xlc:ask:字段|选项A,选项B}}"},
         {id: "ask.textarea", text: "{{xlc:ask:字段|textarea}}"},
+        {id: "ask.multi", text: "{{xlc:ask:字段|选项A,选项B,选项C|multi}}"},
         {id: "ask.toggle", text: "{{xlc:ask:字段=默认内容|toggle}}"},
         {id: "snippet", text: "{{xlc:snippet:标题}}"},
         {id: "cursor", text: "{{xlc:cursor}}"},

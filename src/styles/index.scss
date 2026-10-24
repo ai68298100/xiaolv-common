@@ -450,6 +450,40 @@
         justify-content: center;
       }
     }
+
+    // 窗口固定按钮（📌，G50）
+    .xlc-search-pin {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      width: 22px;
+      height: 22px;
+      margin-left: 2px;
+      border: 1px solid transparent;
+      border-radius: var(--xlc-radius-pill, 9999px);
+      background-color: transparent;
+      cursor: pointer;
+      font-size: 13px;
+      line-height: 1;
+      opacity: 0.5;
+      transition: all var(--xlc-dur-fast) var(--xlc-ease);
+
+      &:hover {
+        opacity: 0.85;
+        background-color: var(--b3-theme-surface);
+        border-color: var(--b3-border-color);
+        transform: scale(1.08);
+      }
+
+      &--active {
+        opacity: 1 !important;
+        background-color: var(--lv-brand-soft, rgba(147, 51, 234, 0.14)) !important;
+        border-color: var(--lv-brand, #9333EA) !important;
+        box-shadow: 0 0 8px rgba(147, 51, 234, 0.25);
+        transform: rotate(-15deg);
+      }
+    }
   }
 
   // ---- 筛选 chips（含自绘箭头的轻量下拉）----
@@ -2279,6 +2313,43 @@
           background-color: var(--xlc-lilac-soft, rgba(108, 99, 255, 0.16)) !important;
           color: var(--xlc-lilac-ink, #4e46e5) !important;
           font-weight: 600;
+        }
+      }
+    }
+
+    // 多选复选胶囊行（G50）
+    .xlc-varform-multi-options {
+      display: flex;
+      flex-wrap: wrap;
+      gap: var(--xlc-space-1);
+      margin-top: 4px;
+
+      .xlc-multi-option-pill {
+        display: inline-flex;
+        align-items: center;
+        border: 1px solid var(--b3-border-color);
+        background-color: var(--b3-theme-surface);
+        color: var(--b3-theme-on-surface);
+        font-size: var(--xlc-font-xs);
+        padding: 2px 10px;
+        border-radius: var(--xlc-radius-pill, 9999px);
+        cursor: pointer;
+        user-select: none;
+        transition: all var(--xlc-dur-fast) var(--xlc-ease);
+
+        &:hover {
+          border-color: var(--lv-brand, #9333EA);
+          background-color: var(--lv-brand-soft, rgba(147, 51, 234, 0.12));
+          color: var(--lv-brand, #9333EA);
+          transform: scale(1.02);
+        }
+
+        &--selected {
+          border-color: var(--lv-brand, #9333EA) !important;
+          background-color: var(--lv-brand, #9333EA) !important;
+          color: #ffffff !important;
+          font-weight: 600;
+          box-shadow: 0 1px 4px rgba(147, 51, 234, 0.28);
         }
       }
     }

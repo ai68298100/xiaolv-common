@@ -16,7 +16,7 @@ export function getDialogBody(root: HTMLElement | Document): HTMLElement | null 
 export function mountPlatformDialogTitleWrap(
     dialogElement: HTMLElement | null | undefined,
     titleText: string,
-    badgeText = "v0.6.7",
+    badgeText = "v0.6.8",
     iconName = "iconXlcCommon",
 ): HTMLElement | null {
     if (!dialogElement || typeof dialogElement.querySelector !== "function") return null;

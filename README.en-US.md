@@ -12,7 +12,7 @@ A quick-recall content launcher for SiYuan Notes: turn frequently used content �
 
 > Runs fully standalone (no dependency on other Lv plugins), and exposes the `xiaolv-common/v1` protocol for sibling plugins.
 
-> **Released: v0.6.7 (2026-10-23)** · [Download the latest release](https://github.com/ai68298100/xiaolv-common/releases/latest) · Strict execution of Lv Ecosystem Directive: flat root ./package.zip build output, English name spaced as "Lv Common (Beta)", monochrome curly-brace vector icons, callBridge checkin macro resolution, and Raikiri module registration.
+> **Released: v0.6.8 (2026-10-24)** · [Download the latest release](https://github.com/ai68298100/xiaolv-common/releases/latest) · Deep SiYuan block ecosystem & cross-app continuous recall: Pin Window mode (Alt+P), block reference syntax copying (Alt+R), source block jump (Alt+D), and multi-select variable pills (multi).
 
 ## Latest Capabilities (Omni-Search Terminal, Headless Integration & Sync Merge · R273~R292)
 
@@ -45,7 +45,16 @@ Advanced Templates & Security Suite:
 - **Computation & Formatting**: Pure recursive-descent math parser (`{{xlc:calc:...}}`), UUID generator, case converters (camel/snake/kebab/pascal), and cross-application rich-text clipboard payload.
 - **Security & Privacy**: Batch tag and category governance, export privacy sanitizer (phone/email/token masking and placeholder replacement).
 
-## This release (v0.6.7)
+## This release (v0.6.8)
+
+Block Ecosystem Integration & Continuous Cross-App Workflows:
+
+- **📌 Pin Window mode (`Alt+P`)**: Search dialog stays open across insertions and copies for continuous multi-field entry in WeChat, Excel, and web forms.
+- **Block reference syntax copy (`Alt+R`)**: Instantly formats and copies SiYuan bidirectional block reference syntax `((blockId 'anchor'))` to clipboard for any snippet or external block hit.
+- **Open and focus source block (`Alt+D`)**: Quickly navigates and scrolls directly to the source note or block.
+- **Multi-select variable type (`multi`)**: Supports `{{xlc:ask:features|Design,Dev,QA|multi}}` with interactive multi-select pills that concatenate cleanly into prompt expansions.
+
+## Previous release (v0.6.7)
 
 Ecosystem Integration Directive Alignment & Release Packaging:
 

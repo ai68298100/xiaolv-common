@@ -42,6 +42,38 @@ test("ask 解析：支持 toggle/checkbox 开关类型与条件段落展开", ()
     assert.strictEqual(variables.expandAsks(tplNoDef, {}), "提醒：");
 });
 
+test("ask 解析：支持 multi/多选 交互类型与多选展开", () => {
+    // 语法 1：|multi 后缀
+    const fMulti1 = variables.parseAskField("涉及模块", "UI设计,前端开发,测试验收|multi");
+    assert.deepStrictEqual(fMulti1, {
+        name: "涉及模块",
+        kind: "multi",
+        options: ["UI设计", "前端开发", "测试验收"],
+    });
+
+    // 语法 2：多选: 前缀
+    const fMulti2 = variables.parseAskField("权限", "多选:读取、写入、审核");
+    assert.deepStrictEqual(fMulti2, {
+        name: "权限",
+        kind: "multi",
+        options: ["读取", "写入", "审核"],
+    });
+
+    // 带有默认值的 multi
+    const fMultiWithDef = variables.parseAskField("服务=设计、开发", "设计、开发、测试|multi");
+    assert.deepStrictEqual(fMultiWithDef, {
+        name: "服务",
+        kind: "multi",
+        options: ["设计", "开发", "测试"],
+        defaultValue: "设计、开发",
+    });
+
+    // 展开测试
+    const tpl = "项目范围：{{xlc:ask:模块|UI,前端,测试|multi}}。";
+    assert.strictEqual(variables.expandAsks(tpl, {模块: "UI、前端"}), "项目范围：UI、前端。");
+    assert.strictEqual(variables.expandAsks(tpl, {}), "项目范围：__模块__。");
+});
+
 test("ask 解析：空名/畸形输入安全返回", () => {
     assert.strictEqual(variables.listAskFields("{{xlc:ask:|a,b}}").length, 0);
     assert.strictEqual(variables.listAskFields("没有变量").length, 0);

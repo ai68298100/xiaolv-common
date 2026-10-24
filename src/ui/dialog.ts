@@ -6,11 +6,11 @@
 // AI：? 前缀语义找条目（默认仅元数据出域）；动作菜单 AI 变换（预览后选插入，原文永不被改写）。
 import {Dialog} from "siyuan";
 import {getDialogBody, mountPlatformDialogTitleWrap} from "./dialog-dom";
-import {ITEM_TYPES, ItemType, getCategoryColorVariant, deriveSmartSummary} from "../model/item";
+import {ITEM_TYPES, ItemType, getCategoryColorVariant, deriveSmartSummary, isBlockId} from "../model/item";
 import {toErrorMessage} from "../model/errors";
 import {SearchEntry, SearchQuery, splitSearchTokens, findExactAliasMatch} from "../model/search";
 import {BatchTagCategoryPatch, BatchOperationReceipt} from "../model/batch-ops";
-import {InsertMode} from "../model/actions";
+import {InsertMode, buildBlockRef} from "../model/actions";
 import {TransformKind} from "../service/ai";
 import {ProviderRow} from "../model/provider-section";
 import {AskField, askFieldTag, hasCursorToken, listAskFields, listSnippetRefs, expandAsks, applyAskDefaults, stripCursorToken} from "../model/variables";
@@ -126,6 +126,8 @@ export class CommonSearchDialog {
     private quickLookReturnFocus: HTMLElement | null = null;
     private currentScope: SearchScope = "all";
     private lastPreviewId: string | null = null;
+    /** 窗口固定模式（连续调用时不关闭弹窗，Alt+P 切换） */
+    private pinWindow = false;
     /** 空状态文案（refresh 计算后交 renderList 渲染大空态；瞬态/错误仍走 status 行） */
     private emptyMessage = "";
     /** 使用计数快照（refresh 时取自侧车；行 meta 与预览徽标展示用） */
@@ -185,7 +187,7 @@ export class CommonSearchDialog {
         }
         const container = this.dialog.element.querySelector(".b3-dialog__container");
         if (container) container.classList.add(isMobile ? "xlc-sheet" : "xlc-dialog-host");
-        mountPlatformDialogTitleWrap(this.dialog.element, this.deps.t("pluginName"), "v0.6.7", "iconXlcCommon");
+        mountPlatformDialogTitleWrap(this.dialog.element, this.deps.t("pluginName"), "v0.6.8", "iconXlcCommon");
         const input = this.dialog.element.querySelector<HTMLInputElement>(".xlc-search-input");
         if (input) {
             // 上次搜索词回填（跨会话保留）
@@ -298,6 +300,20 @@ export class CommonSearchDialog {
         search.appendChild(qMark);
         search.appendChild(input);
         search.appendChild(clearBtn);
+
+        // 窗口固定按钮（连续取用时不自动关闭窗口，支持 Alt+P 快捷切换 · G50）
+        const pinBtn = document.createElement("button");
+        pinBtn.type = "button";
+        pinBtn.className = "xlc-search-pin" + (this.pinWindow ? " xlc-search-pin--active" : "");
+        pinBtn.dataset.xlcControl = "search.pin";
+        pinBtn.textContent = "📌";
+        pinBtn.title = "固定窗口（连续复制/插入不关闭，Alt+P 切换）";
+        pinBtn.setAttribute("aria-label", "固定窗口");
+        pinBtn.addEventListener("click", () => {
+            this.togglePinWindow();
+        });
+        search.appendChild(pinBtn);
+
         searchBlock.appendChild(search);
         const searchHint = document.createElement("div");
         searchHint.className = "xlc-search-hint";
@@ -374,6 +390,9 @@ export class CommonSearchDialog {
                 {key: `${isApple ? "⌥" : "Alt"} + 1-9`, action: this.deps.t("kbdQuickInsert")},
                 {key: `${isApple ? "⌥ + ⇧" : "Alt + Shift"} + 1-9`, action: this.deps.t("kbdQuickCopy")},
                 {key: `${isApple ? "⌥" : "Alt"} + S`, action: "收录全库块"},
+                {key: `${isApple ? "⌥" : "Alt"} + R`, action: "复制块引用"},
+                {key: `${isApple ? "⌥" : "Alt"} + D`, action: "打开来源定位"},
+                {key: `${isApple ? "⌥" : "Alt"} + P`, action: "固定窗口"},
                 {key: `${isApple ? "⌥" : "Alt"} + C`, action: "复制并关闭"},
                 {key: `${isApple ? "⌥" : "Alt"} + T`, action: "轮转范围"},
                 {key: "@ /", action: "全库穿透"},
@@ -2680,10 +2699,11 @@ export class CommonSearchDialog {
                 // 主列表保留原行为；动作菜单传入 beforePerform，让取消填写时搜索上下文仍在。
                 const execution = perform(fills);
                 if (options?.beforePerform) options.beforePerform();
-                else this.destroy();
+                else if (!this.pinWindow) this.destroy();
                 void execution.finally(() => {
                     releaseBusy();
                 });
+                if (this.pinWindow) this.deps.notify?.("info", "已插入（窗口已固定，可连续选择）");
             },
             onCopy: async (fills) => {
                 this.varFormOpen = false;
@@ -2693,7 +2713,7 @@ export class CommonSearchDialog {
                 } catch {
                     // 记忆写入失败不得阻断
                 }
-                this.destroy();
+                if (!this.pinWindow) this.destroy();
                 try {
                     if (entry.isOmni) {
                         let finalContent = entry.content || entry.summary || "";
@@ -2703,7 +2723,7 @@ export class CommonSearchDialog {
                     } else {
                         await this.deps.runActionWithFills(entry.id, "copy", fills);
                     }
-                    this.deps.notify?.("info", "已根据填入变量复制到剪贴板，可直接在外部窗口粘贴 (Ctrl+V)");
+                    this.deps.notify?.("info", this.pinWindow ? "已根据填入变量复制到剪贴板（窗口已固定，可连续取用）" : "已根据填入变量复制到剪贴板，可直接在外部窗口粘贴 (Ctrl+V)");
                 } finally {
                     releaseBusy();
                 }
@@ -2810,6 +2830,17 @@ export class CommonSearchDialog {
                         this.deps.notify?.("info", this.deps.t("copyRawTemplateDone"));
                     });
                 }
+            }
+
+            // 快捷复制块引用语法 (Alt+R)
+            const targetBlockId = entry.isOmni ? entry.id : (entry.targetBlockId || entry.sourceBlockId || entry.blockId || entry.id);
+            if (isBlockId(targetBlockId)) {
+                addAction("((•))", "复制块引用语法 (Alt+R)", async () => {
+                    const anchor = (entry.title || entry.summary || "引用").slice(0, 50).replace(/[\r\n]+/g, " ");
+                    const refCode = buildBlockRef(targetBlockId, anchor);
+                    await this.deps.copyProviderPayload(refCode);
+                    this.deps.notify?.("info", `已复制块引用: ${refCode}`);
+                }, "xlc-menu-item", !this.pinWindow);
             }
             menu.appendChild(sec1);
 
@@ -3237,8 +3268,9 @@ export class CommonSearchDialog {
                 if (row) {
                     // 定向模式一致性（R50）：provider payload 同样插入目标文档
                     const execution = this.deps.insertProviderPayload(row.payload, this.insertTarget ?? undefined);
-                    this.destroy();
+                    if (!this.pinWindow) this.destroy();
                     await execution;
+                    if (this.pinWindow) this.deps.notify?.("info", "已插入（窗口已固定，可连续选择）");
                 }
                 return;
             }
@@ -3255,24 +3287,73 @@ export class CommonSearchDialog {
             const entry = this.results[this.activeIndex];
             if (entry) await this.deps.runAction(entry.id, "copy");
         } else if ((e.altKey && !e.ctrlKey && !e.metaKey && (e.key === "c" || e.key === "C")) || (e.key === "Enter" && (e.ctrlKey || e.metaKey) && e.shiftKey)) {
-            // Alt+C / Ctrl+Shift+Enter: 快捷复制并自动关闭弹窗（Copy & Auto-Close，便于跨窗口直接粘贴）
+            // Alt+C / Ctrl+Shift+Enter: 快捷复制（窗口固定时保留）
             e.preventDefault();
             if (this.quickLookOpen) this.closeQuickLook();
             if (this.activeProvider >= 0) {
                 const row = this.providerRows[this.activeProvider];
                 if (row) {
                     await this.deps.copyProviderPayload(row.payload);
-                    this.destroy();
-                    this.deps.notify?.("info", "已复制到剪贴板，可直接在外部窗口粘贴 (Ctrl+V)");
+                    if (!this.pinWindow) this.destroy();
+                    this.deps.notify?.("info", this.pinWindow ? "已复制到剪贴板（窗口已固定，可连续取用）" : "已复制到剪贴板，可直接在外部窗口粘贴 (Ctrl+V)");
                 }
                 return;
             }
             const entry = this.results[this.activeIndex];
             if (entry) {
-                this.destroy();
-                await this.deps.runAction(entry.id, "copy");
-                this.deps.notify?.("info", "已复制到剪贴板，可直接在外部窗口粘贴 (Ctrl+V)");
+                if (entry.isOmni) {
+                    await this.deps.copyProviderPayload(entry.content || entry.summary || "");
+                } else {
+                    await this.deps.runAction(entry.id, "copy");
+                }
+                if (!this.pinWindow) this.destroy();
+                this.deps.notify?.("info", this.pinWindow ? "已复制到剪贴板（窗口已固定，可连续取用）" : "已复制到剪贴板，可直接在外部窗口粘贴 (Ctrl+V)");
             }
+            return;
+        } else if (e.altKey && !e.ctrlKey && !e.metaKey && (e.key === "r" || e.key === "R")) {
+            // Alt+R: 快捷复制当前条目/全库块的思源块引用语法 ((blockId 'anchor'))
+            e.preventDefault();
+            if (this.quickLookOpen) this.closeQuickLook();
+            const entry = this.results[this.activeIndex];
+            if (entry) {
+                const targetBlockId = entry.isOmni ? entry.id : (entry.targetBlockId || entry.sourceBlockId || entry.blockId || entry.id);
+                if (isBlockId(targetBlockId)) {
+                    const anchor = (entry.title || entry.summary || "引用").slice(0, 50).replace(/[\r\n]+/g, " ");
+                    try {
+                        const refCode = buildBlockRef(targetBlockId, anchor);
+                        await this.deps.copyProviderPayload(refCode);
+                        if (!this.pinWindow) this.destroy();
+                        this.deps.notify?.("info", `已复制块引用: ${refCode}`);
+                    } catch {
+                        this.deps.notify?.("error", "无法生成块引用：目标块 ID 无效");
+                    }
+                } else {
+                    this.deps.notify?.("error", "无法生成块引用：未关联有效块 ID");
+                }
+            }
+            return;
+        } else if (e.altKey && !e.ctrlKey && !e.metaKey && (e.key === "d" || e.key === "D")) {
+            // Alt+D: 打开来源定位当前块/文档
+            e.preventDefault();
+            if (this.quickLookOpen) this.closeQuickLook();
+            const entry = this.results[this.activeIndex];
+            if (entry) {
+                if (entry.isOmni) {
+                    if (this.deps.openDocBlock) {
+                        void this.deps.openDocBlock(entry.targetBlockId || entry.id);
+                    } else {
+                        void this.deps.openSource(entry.id);
+                    }
+                } else {
+                    void this.deps.openSource(entry.id);
+                }
+                if (!this.pinWindow) this.destroy();
+            }
+            return;
+        } else if (e.altKey && !e.ctrlKey && !e.metaKey && (e.key === "p" || e.key === "P")) {
+            // Alt+P: 切换窗口固定状态（Pin Window）
+            e.preventDefault();
+            this.togglePinWindow();
             return;
         } else if (e.key === "Escape") {
             e.preventDefault();
@@ -3442,6 +3523,21 @@ export class CommonSearchDialog {
 
     getActiveEntry(): SearchEntry | null {
         return this.results[this.activeIndex] ?? null;
+    }
+
+    public togglePinWindow(): boolean {
+        this.pinWindow = !this.pinWindow;
+        const pinBtn = this.dialog?.element.querySelector<HTMLElement>(".xlc-search-pin");
+        if (pinBtn) {
+            pinBtn.classList.toggle("xlc-search-pin--active", this.pinWindow);
+            pinBtn.title = this.pinWindow ? "已固定窗口（连续复制/插入不关闭，Alt+P 切换）" : "固定窗口（连续复制/插入不关闭，Alt+P 切换）";
+        }
+        this.deps.notify?.("info", this.pinWindow ? "已开启窗口固定：连续复制或插入将保持窗口打开 (Alt+P 切换)" : "已关闭窗口固定");
+        return this.pinWindow;
+    }
+
+    public isPinWindow(): boolean {
+        return this.pinWindow;
     }
 
     /** 空格键极速大卡片预览的开关入口（供弹窗与测试共用） */
