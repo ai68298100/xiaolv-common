@@ -12,7 +12,7 @@ A quick-recall content launcher for SiYuan Notes: turn frequently used content �
 
 > Runs fully standalone (no dependency on other Lv plugins), and exposes the `xiaolv-common/v1` protocol for sibling plugins.
 
-> **Released: v0.6.8 (2026-10-24)** · [Download the latest release](https://github.com/ai68298100/xiaolv-common/releases/latest) · Deep SiYuan block ecosystem & cross-app continuous recall: Pin Window mode (Alt+P), block reference syntax copying (Alt+R), source block jump (Alt+D), and multi-select variable pills (multi).
+> **Released: v0.6.9 (2026-10-24)** · [Download the latest release](https://github.com/ai68298100/xiaolv-common/releases/latest) · Dual-mode asset output: live synced embed block insertion (Shift+Enter, Notion Synced Block counterpart), block ref insertion (Alt+Enter), pin window mode, and multi-select variable support.
 
 ## Latest Capabilities (Omni-Search Terminal, Headless Integration & Sync Merge · R273~R292)
 
@@ -45,7 +45,15 @@ Advanced Templates & Security Suite:
 - **Computation & Formatting**: Pure recursive-descent math parser (`{{xlc:calc:...}}`), UUID generator, case converters (camel/snake/kebab/pascal), and cross-application rich-text clipboard payload.
 - **Security & Privacy**: Batch tag and category governance, export privacy sanitizer (phone/email/token masking and placeholder replacement).
 
-## This release (v0.6.8)
+## This release (v0.6.9)
+
+Live Synced Block (Notion Synced Block counterpart) & Ref Dual-Mode Insertion:
+
+- **⊞ Live Synced Embed Block Insertion (`Shift+Enter`)**: Press `Shift+Enter` to insert the selected entry as a SiYuan native embed block (`insert-embed`). When the common snippet or source block is updated, all inserted instances across your notebook automatically update in real time!
+- **＋ Block Reference Link Insertion (`Alt+Enter`)**: Press `Alt+Enter` to insert as a native SiYuan block reference (`insert-ref`).
+- **Preview Footer Actions Enhanced**: Explicit buttons for live embed and block ref insertion alongside snapshot text and clipboard copy.
+
+## Previous release (v0.6.8)
 
 Block Ecosystem Integration & Continuous Cross-App Workflows:
 

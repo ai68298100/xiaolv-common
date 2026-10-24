@@ -58,4 +58,12 @@ test("dialog.ts: 窗口固定 (Alt+P) 与块引用复制 (Alt+R) 快捷键契约
 
     // 验证 Alt+D 打开来源定位快捷键存在
     assert.ok(dialogSrc.includes('e.altKey && !e.ctrlKey && !e.metaKey && (e.key === "d" || e.key === "D")'));
+
+    // 验证 Shift+Enter 嵌入同步块 (insert-embed) 快捷键存在
+    assert.ok(dialogSrc.includes('e.key === "Enter" && e.shiftKey && !e.ctrlKey && !e.metaKey && !e.altKey'));
+    assert.ok(dialogSrc.includes('"insert-embed"'));
+
+    // 验证 Alt+Enter 插入块引用 (insert-ref) 快捷键存在
+    assert.ok(dialogSrc.includes('e.key === "Enter" && e.altKey && !e.ctrlKey && !e.metaKey && !e.shiftKey'));
+    assert.ok(dialogSrc.includes('"insert-ref"'));
 });

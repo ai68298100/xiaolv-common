@@ -187,7 +187,7 @@ export class CommonSearchDialog {
         }
         const container = this.dialog.element.querySelector(".b3-dialog__container");
         if (container) container.classList.add(isMobile ? "xlc-sheet" : "xlc-dialog-host");
-        mountPlatformDialogTitleWrap(this.dialog.element, this.deps.t("pluginName"), "v0.6.8", "iconXlcCommon");
+        mountPlatformDialogTitleWrap(this.dialog.element, this.deps.t("pluginName"), "v0.6.9", "iconXlcCommon");
         const input = this.dialog.element.querySelector<HTMLInputElement>(".xlc-search-input");
         if (input) {
             // 上次搜索词回填（跨会话保留）
@@ -384,8 +384,9 @@ export class CommonSearchDialog {
             kbdLabel.textContent = this.deps.t("shortcutLabel");
             kbdRow.appendChild(kbdLabel);
             for (const hint of [
-                {key: "↑ ↓", action: this.deps.t("kbdNav")},
-                {key: "Enter", action: this.deps.t("kbdEnter")},
+                {key: "Enter", action: "插入文本快照"},
+                {key: "Shift+Enter", action: "嵌入同步块"},
+                {key: "Alt+Enter", action: "插入块引用"},
                 {key: `${isApple ? "⌘" : "Ctrl"} + Enter`, action: this.deps.t("kbdCopy")},
                 {key: `${isApple ? "⌥" : "Alt"} + 1-9`, action: this.deps.t("kbdQuickInsert")},
                 {key: `${isApple ? "⌥ + ⇧" : "Alt + Shift"} + 1-9`, action: this.deps.t("kbdQuickCopy")},
@@ -885,6 +886,49 @@ export class CommonSearchDialog {
             const entry = this.results[this.activeIndex];
             if (entry) void this.showActionMenu(entry);
         });
+
+        // 嵌入同步块按钮（Shift+Enter）
+        const embedBtn = document.createElement("button");
+        embedBtn.className = "b3-button b3-button--text xlc-btn-ghost";
+        embedBtn.textContent = "⊞ " + (this.deps.t("insertEmbed") || "同步嵌入");
+        embedBtn.title = "作为思源原生嵌入块插入（源变动时多处自动同步更新，Shift+Enter）";
+        embedBtn.dataset.xlcPaneAct = "embed";
+        embedBtn.dataset.xlcControl = "preview.embed";
+        embedBtn.addEventListener("click", () => {
+            const entry = this.results[this.activeIndex];
+            if (entry) {
+                const targetBlockId = entry.isOmni ? entry.id : (entry.targetBlockId || entry.sourceBlockId || entry.blockId || entry.id);
+                if (isBlockId(targetBlockId)) {
+                    void this.runActionFor(entry, undefined, "insert-embed");
+                    if (!this.pinWindow) this.destroy();
+                    this.deps.notify?.("info", "已插入同步嵌入块（源变动时自动同步）");
+                } else {
+                    this.deps.notify?.("error", "无法嵌入：未关联有效块 ID");
+                }
+            }
+        });
+
+        // 插入块引用按钮（Alt+Enter）
+        const refBtn = document.createElement("button");
+        refBtn.className = "b3-button b3-button--text xlc-btn-ghost";
+        refBtn.textContent = "＋ " + (this.deps.t("insertRef") || "插入引用");
+        refBtn.title = "作为思源原生块引用插入（Alt+Enter）";
+        refBtn.dataset.xlcPaneAct = "ref";
+        refBtn.dataset.xlcControl = "preview.ref";
+        refBtn.addEventListener("click", () => {
+            const entry = this.results[this.activeIndex];
+            if (entry) {
+                const targetBlockId = entry.isOmni ? entry.id : (entry.targetBlockId || entry.sourceBlockId || entry.blockId || entry.id);
+                if (isBlockId(targetBlockId)) {
+                    void this.runActionFor(entry, undefined, "insert-ref");
+                    if (!this.pinWindow) this.destroy();
+                    this.deps.notify?.("info", "已插入块引用链接");
+                } else {
+                    this.deps.notify?.("error", "无法引用：未关联有效块 ID");
+                }
+            }
+        });
+
         const spacer = document.createElement("span");
         spacer.className = "xlc-foot-spacer";
         const source = document.createElement("button");
@@ -954,8 +998,10 @@ export class CommonSearchDialog {
             }
         });
         foot.appendChild(insert);
-        foot.appendChild(aiBtn);
         foot.appendChild(copy);
+        foot.appendChild(embedBtn);
+        foot.appendChild(refBtn);
+        foot.appendChild(aiBtn);
         foot.appendChild(spacer);
         foot.appendChild(source);
         foot.appendChild(edit);
@@ -2605,11 +2651,23 @@ export class CommonSearchDialog {
         await this.insertEntryWithVars(entry, (fills) => this.runActionFor(entry, fills));
     }
 
-    private runActionFor(entry: SearchEntry, fills?: Record<string, string>): Promise<unknown> {
+    private runActionFor(entry: SearchEntry, fills?: Record<string, string>, overrideMode?: InsertMode): Promise<unknown> {
         // 定向插入模式（文档树入口）：插入到指定文档而非活动编辑器
         if (this.insertTarget) {
             const target = this.insertTarget;
-            return this.deps.insertToDoc(entry.id, target.docId, target.hPath, fills);
+            const insertMode = overrideMode === "insert-embed" || overrideMode === "insert-ref" || overrideMode === "insert-content"
+                ? overrideMode
+                : "insert";
+            return this.deps.insertToDoc(entry.id, target.docId, target.hPath, fills, insertMode);
+        }
+        if (overrideMode === "insert-embed") {
+            const targetBlockId = entry.isOmni ? entry.id : (entry.targetBlockId || entry.sourceBlockId || entry.blockId || entry.id);
+            return this.deps.insertProviderPayload(`{{select * from blocks where id='${targetBlockId}'}}`);
+        }
+        if (overrideMode === "insert-ref") {
+            const targetBlockId = entry.isOmni ? entry.id : (entry.targetBlockId || entry.sourceBlockId || entry.blockId || entry.id);
+            const anchor = (entry.title || entry.summary || "引用").slice(0, 50).replace(/[\r\n]+/g, " ");
+            return this.deps.insertProviderPayload(buildBlockRef(targetBlockId, anchor));
         }
         if (entry.isOmni) {
             let finalContent = entry.content || entry.summary || "";
@@ -2619,7 +2677,7 @@ export class CommonSearchDialog {
             finalContent = applyAskDefaults(stripCursorToken(finalContent));
             return this.deps.insertProviderPayload(finalContent);
         }
-        const mode: InsertMode = entry.itemType === "blockref" ? "insert-ref" : "insert";
+        const mode: InsertMode = overrideMode || (entry.itemType === "blockref" ? "insert-ref" : "insert");
         return fills
             ? this.deps.runActionWithFills(entry.id, mode, fills)
             : this.deps.runAction(entry.id, mode);
@@ -3257,7 +3315,39 @@ export class CommonSearchDialog {
             this.setNav(Math.max(this.navPosition() - 1, 0));
             this.paintActive();
             this.updatePreview();
-        } else if (e.key === "Enter" && !e.ctrlKey && !e.metaKey) {
+        } else if (e.key === "Enter" && e.shiftKey && !e.ctrlKey && !e.metaKey && !e.altKey) {
+            // Shift+Enter: 作为思源原生嵌入块（insert-embed，Notion Synced Block 同款实时同步）直接插入
+            e.preventDefault();
+            if (this.quickLookOpen) this.closeQuickLook();
+            const entry = this.results[this.activeIndex];
+            if (entry) {
+                const targetBlockId = entry.isOmni ? entry.id : (entry.targetBlockId || entry.sourceBlockId || entry.blockId || entry.id);
+                if (isBlockId(targetBlockId)) {
+                    await this.runActionFor(entry, undefined, "insert-embed");
+                    if (!this.pinWindow) this.destroy();
+                    this.deps.notify?.("info", "已插入同步嵌入块（源变动时自动同步）");
+                } else {
+                    this.deps.notify?.("error", "无法嵌入：未关联有效块 ID");
+                }
+            }
+            return;
+        } else if (e.key === "Enter" && e.altKey && !e.ctrlKey && !e.metaKey && !e.shiftKey) {
+            // Alt+Enter: 作为思源原生块引用（insert-ref）直接插入
+            e.preventDefault();
+            if (this.quickLookOpen) this.closeQuickLook();
+            const entry = this.results[this.activeIndex];
+            if (entry) {
+                const targetBlockId = entry.isOmni ? entry.id : (entry.targetBlockId || entry.sourceBlockId || entry.blockId || entry.id);
+                if (isBlockId(targetBlockId)) {
+                    await this.runActionFor(entry, undefined, "insert-ref");
+                    if (!this.pinWindow) this.destroy();
+                    this.deps.notify?.("info", "已插入块引用链接");
+                } else {
+                    this.deps.notify?.("error", "无法引用：未关联有效块 ID");
+                }
+            }
+            return;
+        } else if (e.key === "Enter" && !e.ctrlKey && !e.metaKey && !e.shiftKey && !e.altKey) {
             // 焦点在行内按钮（★ 收藏等）时交给原生激活，不劫持为插入（R138）
             if ((e.target as HTMLElement).closest?.(".xlc-row-action")) return;
             if (e.repeat) return; // 按住 Enter 不得连续插入（R138）
